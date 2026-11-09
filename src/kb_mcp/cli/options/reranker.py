@@ -12,7 +12,7 @@ from kb_mcp.kernel.names import MODEL_NAME
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def reranker_name(value: str) -> str:
@@ -32,7 +32,7 @@ def reranker_named(
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``reranker`` to the command."""
     parser = subparsers.add_parser(

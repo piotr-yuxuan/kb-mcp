@@ -13,9 +13,9 @@ from kb_mcp.evaluation.app.evaluation import read_golden
 from kb_mcp.evaluation.app.reranked import Counted
 from kb_mcp.evaluation.domain import reranking as bar
 from kb_mcp.evaluation.domain.reranking import (
+    BarVerdict,
     Decision,
     Depthed,
-    Verdict,
     default_reranking,
 )
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -24,7 +24,7 @@ from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Reranks, Scripted, connector, serving
+from tests.endpoint import Reranks, Scripted, connect_scripted, serving
 from tests.reference import Emitted, undocumented
 from tests.test_evaluate import GOLDEN, data
 
@@ -276,7 +276,7 @@ def test_a_sample_larger_than_the_golden_file_is_refused_before_any_request(data
 def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_first_n(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Recall@2 and @3 of the order not reranked: the first stage, searched again alone."""
+    """Recall@2 and @3 of the order not reranked: the first ranking, searched again alone."""
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url, "--format", "json") == 0
     record = json.loads(capsys.readouterr().out)
@@ -284,7 +284,7 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
         GOLDEN, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve
     )
     index = data / "eval" / "indexes" / "windows" / "tiny.sqlite"
-    plain = Library(SqliteIndex(index), data / "docs", Meaning(connector()), "hybrid")
+    plain = Library(SqliteIndex(index), data / "docs", Meaning(connect_scripted()), "hybrid")
     found = {
         size: [
             {shown.path for shown in plain.ranked(question.text, "hybrid", size)[0]}
@@ -311,8 +311,8 @@ def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
 ) -> None:
     """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
     verdicts = (
-        Verdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
-        Verdict(
+        BarVerdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
+        BarVerdict(
             depth=20,
             adjusted=0.004,
             beats=True,

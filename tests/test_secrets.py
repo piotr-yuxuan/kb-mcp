@@ -31,7 +31,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_api_token import CREDENTIAL, EMAIL, HOST, KEY, served
-from tests.test_download import SITE, FakeSite
+from tests.test_fetching import SITE, FakeSite
 from tests.test_observed import said
 from tests.test_serve import talk
 

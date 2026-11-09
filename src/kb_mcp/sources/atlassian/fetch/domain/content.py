@@ -9,7 +9,6 @@ and nothing else.
 
 from __future__ import annotations
 
-import builtins
 import re
 from datetime import UTC, datetime
 from typing import ClassVar, Self
@@ -18,6 +17,7 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
 from kb_mcp.kernel.record import Record
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOSTS, CONFLUENCE, ISSUES, JIRA, PAGES
 
 # A path on the site, never another host's: one slash, no second one, no backslash, no
 # control character.
@@ -36,7 +36,7 @@ def time_revision(updated: datetime) -> str:
     return updated.astimezone(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
 
 
-class Person(Record):
+class SiteUser(Record):
     """Someone named in content: the account id is stable; the name, when given, is not."""
 
     account_id: str
@@ -94,34 +94,34 @@ class Comment(Record):
     """A comment, with its body as the site renders it."""
 
     id: str
-    author: Person | None
+    author: SiteUser | None
     created: datetime
     html: str
 
 
-class Document(Record):
+class FetchedDocument(Record):
     """A page, a blog post or an issue: what becomes one file of the mirror.
 
-    ``source`` and ``kind`` name where it is stored; ``revision`` names this state of it,
+    ``source`` and ``resource_type`` name where it is stored; ``revision`` names this state of it,
     and orders states as text.
     """
 
     source: ClassVar[str]
-    kind: ClassVar[str]
+    resource_type: ClassVar[str]
 
     id: str
     title: str
-    author: Person | None
+    author: SiteUser | None
     created: datetime
     updated: datetime
-    url: str  # the site-relative path of its web page
+    site_path: str  # the site-relative path of its web page
     labels: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def check_document(self) -> Self:
         """Refuse an id that could not name a folder, and a web page off the site."""
         require(IDENTIFIER, self.id, "id")
-        require(SITE_PATH, self.url, "url")
+        require(SITE_PATH, self.site_path, "url")
         return self
 
     @property
@@ -130,10 +130,10 @@ class Document(Record):
         return time_revision(self.updated)
 
 
-class ConfluenceDocument(Document):
+class ConfluenceDocument(FetchedDocument):
     """A page or a blog post, versioned within its space."""
 
-    source: ClassVar[str] = "confluence"
+    source: ClassVar[str] = CONFLUENCE
 
     space_id: str
     version: int
@@ -154,7 +154,7 @@ class ConfluenceDocument(Document):
 class BlogPost(ConfluenceDocument):
     """A Confluence blog post."""
 
-    kind: ClassVar[str] = "blogposts"
+    resource_type: ClassVar[str] = BLOGPOSTS
 
 
 class Page(ConfluenceDocument):
@@ -164,24 +164,24 @@ class Page(ConfluenceDocument):
     space.
     """
 
-    kind: ClassVar[str] = "pages"
+    resource_type: ClassVar[str] = PAGES
 
     parent_id: str | None = None
     parent_type: str | None = None
 
 
-class Issue(Document):
+class Issue(FetchedDocument):
     """A Jira issue; its id stays when it moves, its key does not."""
 
-    source: ClassVar[str] = "jira"
-    kind: ClassVar[str] = "issues"
+    source: ClassVar[str] = JIRA
+    resource_type: ClassVar[str] = ISSUES
 
     key: str
     project: str  # the project's key
     issue_type: str
     status: str
-    creator: Person | None = None  # who created it; its author is its reporter
-    assignee: Person | None = None
+    creator: SiteUser | None = None  # who created it; its author is its reporter
+    assignee: SiteUser | None = None
     parent: str | None = None  # the parent issue's key
 
     @model_validator(mode="after")
@@ -192,6 +192,11 @@ class Issue(Document):
         return self
 
 
+# The documents' classes: Confluence's, each listed per space, then every one.
+CONFLUENCE_CLASSES: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
+DOCUMENT_CLASSES: tuple[type[Page | BlogPost | Issue], ...] = (*CONFLUENCE_CLASSES, Issue)
+
+
 class Listed(Record):
     """What a listing says of a document: enough to decide whether to fetch it, and how.
 
@@ -200,8 +205,7 @@ class Listed(Record):
     fetched. It names its stored snapshot as the document would.
     """
 
-    # The builtin, which the field's own name hides in the class's body.
-    type: builtins.type[Document]
+    document_class: type[FetchedDocument]
     id: str
     revision: str
     updated: datetime
@@ -217,18 +221,18 @@ class Listed(Record):
     @property
     def source(self) -> str:
         """Name the source, as the document's type does."""
-        return self.type.source
+        return self.document_class.source
 
     @property
-    def kind(self) -> str:
-        """Name the kind, as the document's type does."""
-        return self.type.kind
+    def resource_type(self) -> str:
+        """Name the resource type, as the document's class does."""
+        return self.document_class.resource_type
 
 
 class Snapshot(Record):
     """A document at one revision, with what the mirror shows of it."""
 
-    document: Document
+    document: FetchedDocument
     html: str  # the body as the site renders it
     attachments: tuple[Attachment, ...] = ()
     comments: tuple[Comment, ...] = ()

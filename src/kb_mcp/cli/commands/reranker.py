@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 # The probe: a question, a passage that answers it, and one that does not.
 PROBE = "How do I roll back a release?"
@@ -80,7 +80,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Chec
     return ExitStatus.OK, checked
 
 
-def text(checked: Checked, _summary: Summary) -> str:
+def text(checked: Checked, _summary: Detail) -> str:
     """Write the probe's scores and the time at the depth; say what to mind."""
     probe = (
         f"{checked.model}, at {checked.url}: the answer scores {checked.answering:.4f},"

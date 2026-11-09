@@ -58,7 +58,7 @@ def disable_password_saving(profile: Path) -> None:
     preferences.write_text(json.dumps(settings), encoding="utf-8")
 
 
-def sign_in(
+def open_sign_in_window(
     site: str, profile: Path, chrome: Path | None, *, extensions: bool = False
 ) -> list[dict[str, object]]:
     """Open the site in Chrome, wait until the user is signed in, return every cookie.

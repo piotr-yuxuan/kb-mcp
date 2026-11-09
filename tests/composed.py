@@ -15,10 +15,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
-def model_of(sources: Iterable[Declared]) -> type[Settings]:
+def model_of(sources: Iterable[Source]) -> type[Settings]:
     """Compose the settings' model of a registry, each table loaded by its module path."""
     return settings_model(*tables(sources))
 

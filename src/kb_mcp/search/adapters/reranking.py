@@ -25,6 +25,7 @@ from kb_mcp.kernel.reranking import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,
+    REFUSING,
     TOKEN_USAGE,
     WAITS_S,
     Bounds,
@@ -45,9 +46,6 @@ EVALUATION = Bounds(deadline_s=300, attempts=len(WAITS_S) + 1)
 # The provider, as the GenAI conventions name it by the client's best knowledge: the
 # server whose API, and whose quirks, this module knows.
 PROVIDER = "llama.cpp"
-# Statuses that may point at what was sent: llama.cpp fails a whole request for one
-# document that it cannot score.
-REFUSING = frozenset({400, 413, 422, 500})
 # Statuses of a server that is not a reranker: no such route, or ``llama-server`` started
 # without ``--reranking``.
 NOT_A_RERANKER = frozenset({404, 501})
@@ -56,16 +54,16 @@ NOT_A_RERANKER = frozenset({404, 501})
 # the prompt: each is written otherwise.
 INERT = (("<|", "< |"), ("{query}", "(query)"), ("{document}", "(document)"))
 
-type Kind = Literal["unanswered", "refused", "bad_answer"]
+type RerankFailure = Literal["unanswered", "refused", "bad_answer"]
 
 
 class RerankError(ModelError):
     """Scores that the server did not give, and the kind of failure, which callers read."""
 
-    def __init__(self, message: str, kind: Kind) -> None:
+    def __init__(self, message: str, kind: RerankFailure) -> None:
         """Say why, and whether no answer came, the request was refused, or the answer was amiss."""
         super().__init__(message)
-        self.kind: Kind = kind
+        self.kind: RerankFailure = kind
 
 
 class Reranked(Record):

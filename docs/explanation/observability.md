@@ -1,7 +1,7 @@
 # Observability
 
 Why a run tells of itself as it does: why its logs may hold titles, why its telemetry is
-off by default and goes to this machine alone, how a download's traces stay small
+off by default and goes to this machine alone, how a fetch's traces stay small
 enough to be kept, how a run's end stays bounded when nothing receives its telemetry,
 and how secrets are kept out of every sink.
 [The reference](../reference/telemetry/README.md) lists what each command records;
@@ -24,14 +24,14 @@ results stays clean.
 
 The logs are for the user, on the machine where the mirror is, to find what went wrong
 in detail; they are not meant to leave it. So the file keeps DEBUG, and an event names
-what it is about: a document's id and title, a path, a query. A failure in a download of
+what it is about: a document's id and title, a path, a query. A failure in a fetch of
 thousands of documents is then found by its document, not guessed from a count.
 
 The file stays where the data stays, under the same rules: in the user's log folder, or
 `logs.dir`, which passes the data directory's guard, never under a synchronised folder
 nor in a git working tree; the folder 0700 when the run makes it, the file 0600; kept
-30 days, and cut at 256 MiB a run. What is safe to carry off the machine is
-`doctor --shareable`, which gives counts alone, never a log.
+30 days, and cut at 256 MiB a run. No command gives an extract of them to carry off the
+machine.
 
 Metrics, unlike logs, carry bounded attributes alone: a command, an outcome, a mode, a
 status. Ids, titles and queries go on spans and in logs, so that the number of series
@@ -64,12 +64,12 @@ calls home, and no volume, so that `down` discards what it received.
 
 ## A trace per document
 
-Tempo drops a trace past 5 MB ([ingestion][tempo-limits]). A first download of thousands
+Tempo drops a trace past 5 MB ([ingestion][tempo-limits]). A first fetch of thousands
 of documents, each with its requests, would pass it, and the whole run's trace would be
 lost, or kept cut short. So each document fetched is a trace of its own,
 `fetch.document`, linked to the span of its space or project, while the run's trace
 holds its phases and listings: its size does not grow with the documents, and scripted
-downloads of 3 and 30 documents give run traces of the same number of spans. The files
+fetches of 3 and 30 documents give run traces of the same number of spans. The files
 that a document already stored lacks are fetched within the run's trace, which only the
 failures of earlier runs make longer. `serve` has no trace of its own, as a server may
 run for days: each message of its protocol is one.

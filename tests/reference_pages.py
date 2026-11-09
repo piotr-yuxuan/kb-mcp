@@ -23,11 +23,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 from unittest.mock import patch
 
-from kb_mcp.cli.domain.command import PROGRAM
 from kb_mcp.cli.main import parser
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.config.domain.settings import NESTING, PREFIX, setting_paths, variable
 from kb_mcp.kernel.exit_status import MEANINGS
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.observability.adapters.logs import default_log_folder
 from tests.composed import MODEL
 

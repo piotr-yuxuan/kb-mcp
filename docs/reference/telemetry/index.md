@@ -17,7 +17,7 @@ read until the new one is in place. A build with vectors is [`embed`](embed.md)'
 | Event | Level | Fields | When |
 |---|---|---|---|
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror, added or changed, is read: its path, its document's type, its sections |
-| `index.whole` | info | `reason` | The index is rebuilt whole, nothing kept of the one in place: `unavailable`, none that this version reads; `another version`, one written by another version of the cut, or before plan 035; `damaged`, one of whose tables cannot be read; `--rebuild`, asked |
+| `index.whole` | info | `reason` | The index is rebuilt whole, nothing kept of the one in place: `unavailable`, none that this version reads; `another version`, one written by another version of `WORDS`, or before plan 035; `damaged`, one of whose tables cannot be read; `--rebuild`, asked |
 | `index.lock_wait` | info | `lock` | Another `index` or `embed` holds the index's lock: the run waits for it, at most 60 s, past which the index is not written |
 | `index.restarted` | info | | Another run wrote the index between this run's read and its write: the update starts again, once |
 | `index.built` | info | `documents`, `sections`, `skipped`, `people`, `copied`, `added`, `replaced`, `removed` | The index is written: what it holds, the files skipped, the persons that the documents' people make; of the documents of the index before, those copied, replaced by their file changed, and removed; those added |
@@ -25,7 +25,7 @@ read until the new one is in place. A build with vectors is [`embed`](embed.md)'
 | `index.file_skipped` | warning | `path`, `reason` | A file cannot be read, its front matter is refused, or an earlier file by path has its document's source and id: exit 1, at each run, written or not |
 | `index.lacks_files` | warning | `count` | How many files the index lacks |
 | `index.person_ambiguous` | warning | `spelling`, `people` | A name without an account that is the name of several accounts, or a transcript's speaker that begins the names of several participants of its meetings, or whose meetings name another than the one account of its name, once a build, as first spelt: it joins none of the persons it could be, how many said, and is a person by name alone. Or a name that two notes or more in brackets, such as `Kim (not in the header)` and `Kim (late)`, part among persons by name alone, as the first of them is spelt, how many said. An alias settles it; the exit status stays the build's |
-| `index.alias_unused` | warning | `alias`, `key`, `reason` | An alias that changes nothing, once a build: its name as the file writes it, its key, and why: no name without an account has its key, or its target names nobody, or several people. The exit status stays the build's |
+| `index.alias_unused` | warning | `alias`, `key`, `reason` | An alias that changes nothing, once a build: its name as the file writes it, its key, and why: no name without an account has its key, or its value names nobody, or several people. The exit status stays the build's |
 | `index.not_built` | error | `reason` | No mirror, the alias file is refused, by its path and any alias at fault, or cannot be read, the index cannot be written (a full disk), its lock is held past 60 s, or another run wrote it twice during this one: the index in place stays, exit 1 |
 
 ## Spans

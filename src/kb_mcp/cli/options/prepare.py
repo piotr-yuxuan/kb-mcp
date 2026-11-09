@@ -14,12 +14,12 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    sources: Sequence[Declared],
+    sources: Sequence[Source],
 ) -> None:
     """Add ``prepare`` to the command, for every source of the registry.
 
@@ -37,7 +37,7 @@ def register(
             " the registry's order, each with its source, its outcome (done, failed,"
             " interrupted, not run) and its result, null when it gave none: its outcome, and"
             " under mirrored what the source's documents became, null when it did not run:"
-            " documents, how many are mirrored; for Confluence and Jira, converted, the"
+            " documents, how many it prepared; for Confluence and Jira, converted, the"
             " conversions pandoc ran, and reused, those the cache gave, a document's file and"
             " a space's tree being one each; changes, the files written, unchanged and"
             " removed; unsupported, what the mirror does not show, by name; problems, each by"

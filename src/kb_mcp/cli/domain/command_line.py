@@ -12,7 +12,7 @@ import shlex
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import PROGRAM
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:

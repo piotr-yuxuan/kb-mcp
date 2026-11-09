@@ -45,13 +45,13 @@ from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, t
 from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, write
 from tests.reference import README, Emitted, documented, operations, undocumented
 from tests.samples import v2_space
-from tests.test_download import SITE, FakeSite
 from tests.test_evaluate import GOLDEN
-from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
+from tests.test_fetching import SITE, FakeSite
+from tests.test_prepare_atlassian import FETCHED, SPACE_ID, listing_page, page_responses
 from tests.test_prepare_command import fake_pandoc
+from tests.test_prepare_worklog import FIXTURE as WORKLOG_FIXTURE
 from tests.test_serve import talk
 from tests.test_settings import user_log_folder
-from tests.test_worklog_mirror import FIXTURE as WORKLOG_FIXTURE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -261,7 +261,7 @@ def test_prepare_records_as_documented(
         with emitted.gathering(telemetry, "prepare"):
             assert main(worklog_alone) == ExitStatus.FAILED
     with monkeypatch.context() as patch:
-        patch.setattr(worklog_preparer, "mirror_worklog", stopped)
+        patch.setattr(worklog_preparer, "prepare_worklog", stopped)
         with emitted.gathering(telemetry, "prepare"):
             assert main(worklog_alone) == ExitStatus.INTERRUPTED
     monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path / "absent"))
@@ -556,7 +556,7 @@ def test_login_records_as_documented(
         SITE,
     ]
     emitted = Emitted()
-    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == 0
 
@@ -564,7 +564,7 @@ def test_login_records_as_documented(
         message = "the sign-in window was closed"
         raise SignInFailedError(message)
 
-    monkeypatch.setattr(login_module, "login", closed)
+    monkeypatch.setattr(login_module, "save_session", closed)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == ExitStatus.SIGN_IN_AGAIN
     assert undocumented("login", emitted) == []

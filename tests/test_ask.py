@@ -18,7 +18,7 @@ from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
-from tests.endpoint import connector, tiny
+from tests.endpoint import connect_scripted, tiny
 from tests.mirrors import MOMENT, PEOPLE, PERSONS, fillers, issue, page, write
 from tests.test_people import ROBIN
 from tests.test_tools import ROBIN_DOCUMENTS
@@ -80,7 +80,7 @@ FOUND = {
 }
 # One short section, near "vacation lunch" by meaning.
 HOLIDAY = "# Holiday canteen\n\nLeave for a meal.\n"
-UNIT = 2400
+PASSAGE_CHARS = 2400
 ENOUGH = 40  # documents holding a word, more than one answer quotes
 GAMMA = "gamma notes " * 40  # so that fewer than 20 of their passages fit one answer
 ASK_DOCUMENTS = 20  # the documents that one answer quotes, at most
@@ -155,7 +155,7 @@ def test_a_long_section_is_cut_after_a_line_within_2400_characters(words: Librar
     """4,500 characters: the passage ends at the last line break of the first 2,400."""
     (first, *_) = passages(words.ask("broker sizing"))
     section = LONG[LONG.index("## Sizing") :]
-    within = section[:UNIT]
+    within = section[:PASSAGE_CHARS]
     assert first["text"] == within[: within.rfind("\n") + 1]
     assert first["address"] == "confluence/ENG/196846-brokers.md"
 
@@ -163,14 +163,14 @@ def test_a_long_section_is_cut_after_a_line_within_2400_characters(words: Librar
 def test_a_long_paragraph_is_cut_at_2400_characters(words: Library) -> None:
     """No line break in the second half of the 2,400: none is waited for."""
     (first, *_) = passages(words.ask("pool sizing"))
-    assert first["text"] == PARAGRAPH[PARAGRAPH.index("## Pooling") :][:UNIT]
+    assert first["text"] == PARAGRAPH[PARAGRAPH.index("## Pooling") :][:PASSAGE_CHARS]
 
 
 def test_a_long_section_is_quoted_about_the_question_s_words(words: Library) -> None:
     """The words in its last line: 2,400 characters of its end, from a line's start."""
     (first, *_) = passages(words.ask("zebracrossing quota"))
     section = TAIL[TAIL.index("## Crossings") :]
-    end = section[-UNIT:]
+    end = section[-PASSAGE_CHARS:]
     assert first["text"] == end[end.index("\n") + 1 :]
     assert first["text"].endswith("zebracrossing quota met\n")
 
@@ -182,7 +182,7 @@ def test_the_question_s_words_are_found_as_the_index_finds_them(words: Library, 
     (first, *_) = passages(words.ask(question))
     assert first["ref"] == ref
     assert first["text"].endswith(tail)
-    assert len(first["text"]) <= UNIT
+    assert len(first["text"]) <= PASSAGE_CHARS
 
 
 def test_the_rarest_word_s_occurrence_with_most_words_about_it_is_the_centre(
@@ -193,7 +193,7 @@ def test_the_rarest_word_s_occurrence_with_most_words_about_it_is_the_centre(
     The passage is the section's last 2,400 characters, from a line's start.
     """
     (first, *_) = passages(words.ask("falcon ledger"))
-    end = SCORED[SCORED.index("## Log") :][-UNIT:]
+    end = SCORED[SCORED.index("## Log") :][-PASSAGE_CHARS:]
     assert first["text"] == end[end.index("\n") + 1 :]
     assert "ledger before the end" in first["text"]
 
@@ -325,7 +325,9 @@ def test_without_vectors_ask_answers_by_words_and_says_why(tmp_path: Path) -> No
     fillers(docs)
     write(docs, page("196845", "Kafka"), RETENTION)
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    library = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
+    library = Library(
+        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connect_scripted()), "hybrid"
+    )
     answer = library.ask("kafka retention")
     assert "Ranked by words alone: the index holds no vectors" in parts(answer)[0]
     assert passages(answer)[0]["ref"] == "196845"
@@ -367,7 +369,9 @@ def test_the_call_s_span_says_that_words_stood_in_for_meaning(
     fillers(docs)
     write(docs, page("196845", "Kafka"), RETENTION)
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    library = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
+    library = Library(
+        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connect_scripted()), "hybrid"
+    )
     said = call_s_span(library, "kafka retention", telemetry)
     assert (said["kb_mcp.mode"], said["kb_mcp.fallback"]) == ("hybrid", True)
 
@@ -381,7 +385,9 @@ def by_meaning(
     write(docs, page("4002", title), body)
     embedding = Embedding(tiny(), root / "vectors.sqlite", chunking=chunking)
     build_index(docs, root / "index.sqlite", MOMENT, embedding)
-    return Library(SqliteIndex(root / "index.sqlite"), docs, Meaning(connector()), "semantic")
+    return Library(
+        SqliteIndex(root / "index.sqlite"), docs, Meaning(connect_scripted()), "semantic"
+    )
 
 
 @pytest.mark.parametrize(
@@ -414,6 +420,6 @@ def test_small_to_big_quotes_2400_characters_of_a_long_section_about_its_piece(
     body = f"# Office notes\n\n{filler}{near}{filler}"
     library = by_meaning(tmp_path, "small-to-big", body, "Office notes")
     (first, *_) = passages(library.ask("vacation lunch"))
-    assert len(first["text"]) == UNIT
+    assert len(first["text"]) == PASSAGE_CHARS
     assert near in first["text"]
     assert first["text"] in body

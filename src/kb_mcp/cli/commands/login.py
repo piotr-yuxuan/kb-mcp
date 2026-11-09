@@ -13,8 +13,8 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.roles import SignedIn
+    from kb_mcp.kernel.output import Detail
+    from kb_mcp.sources.stages import SignedIn
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, SignedIn | None]:
@@ -34,6 +34,6 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sign
     return (ExitStatus.SIGN_IN_AGAIN, None) if signed is None else (ExitStatus.OK, signed)
 
 
-def text(_signed_in: SignedIn, _summary: Summary) -> str:
+def text(_signed_in: SignedIn, _summary: Detail) -> str:
     """Say that the session is saved."""
     return "Signed in; the session is saved.\n"

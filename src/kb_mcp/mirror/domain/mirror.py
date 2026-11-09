@@ -70,6 +70,18 @@ class PersonRole(Record):
         return self
 
 
+class Problem(Record):
+    """What a prepare did not write: where it is, and why, never its content."""
+
+    where: str
+    reason: str
+
+
+def ref_of(key: str | None, identifier: str) -> str:
+    """Name a document as ``read`` takes it and links name it: its key, else its id."""
+    return key or identifier
+
+
 class Link(Record):
     """A link from a document to another of the mirror: the relation, and the other's ref."""
 
@@ -87,7 +99,7 @@ class Link(Record):
 
 
 class FrontMatter(Record):
-    """The front matter of one mirrored document, its fields in the order they are written.
+    """The front matter of one document of the mirror, its fields in the order they are written.
 
     Every text is one line, so that the front matter stays a simple YAML mapping. A key
     that does not apply to a source (``key`` for Confluence, ``space`` for Jira) is None.

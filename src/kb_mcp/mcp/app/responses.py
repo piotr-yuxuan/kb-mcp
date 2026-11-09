@@ -14,7 +14,7 @@ import re
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
-from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, ref_of
 from kb_mcp.search.domain import people
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.search.domain.search import Activity, Entry, Passage, Summary
+    from kb_mcp.search.domain.search import Activity, IndexedDocument, IndexStatus, Passage
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
 CEILING = 10_000  # estimated tokens of any answer
@@ -39,10 +39,10 @@ RESERVE = 100
 SPACES = re.compile(r"\s+")
 # How each name of a person joined them, as a person's answer says it.
 JOINED = {
-    people.ACCOUNT: "by its account",
-    people.ALIAS: "by an alias",
-    people.NAME: "by name",
-    people.MEETING: "as a speaker, by the meeting of each transcript",
+    people.BY_ACCOUNT: "by its account",
+    people.BY_ALIAS: "by an alias",
+    people.BY_NAME: "by name",
+    people.BY_MEETING: "as a speaker, by the meeting of each transcript",
 }
 
 
@@ -174,7 +174,7 @@ def person(found: Activity, alike: Sequence[tuple[str, str]]) -> str:
     hit's.
     """
     order = list(JOINED)
-    names = sorted(found.person.names, key=lambda each: order.index(each.how))
+    names = sorted(found.person.spellings, key=lambda each: order.index(each.how))
     ways = [
         (said, [short(each.name, LABEL) for each in names[:NAMES] if each.how == how])
         for how, said in JOINED.items()
@@ -224,7 +224,9 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
-def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | None) -> str:
+def hit(
+    number: int, entry: IndexedDocument, passage: Passage, opening: str, held: str | None
+) -> str:
     """Write one hit of a search: what and where it is, its best section and a snippet.
 
     ``held``, unless None, ends the line of who and when: a person's roles there, as
@@ -234,7 +236,7 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | N
     lines = [
         f"{number}. {short(front.title)}",
         (
-            f"   {front.key or front.id} | {entry.path} | updated {stamp(front.updated)}"
+            f"   {ref_of(front.key, front.id)} | {entry.path} | updated {stamp(front.updated)}"
             f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
             + (f" | {held}" if held else "")
         ),
@@ -243,12 +245,14 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | N
         lines.append(f"   in {short(' / '.join(front.breadcrumb))}")
     heading = f" {short(passage.heading)}" if passage.heading else ""
     lines.append(f"   section {passage.number}{heading}: {opening}")
-    if snippet := short(passage.snippet, SNIPPET):
+    if snippet := short(passage.text, SNIPPET):
         lines.append(f"   > {snippet}")
     return "\n".join(lines)
 
 
-def excerpt(number: int, entry: Entry, passage: Passage, opening: str, held: str | None) -> str:
+def passage(
+    number: int, entry: IndexedDocument, passage: Passage, opening: str, held: str | None
+) -> str:
     """Write one passage that ask quotes: what and where it is, then its text, verbatim.
 
     ``passage`` holds the text whole, where a search's holds a snippet; ``held`` ends the
@@ -257,17 +261,19 @@ def excerpt(number: int, entry: Entry, passage: Passage, opening: str, held: str
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
-        f"{number}. {short(front.title)} | {front.key or front.id} | section"
+        f"{number}. {short(front.title)} | {ref_of(front.key, front.id)} | section"
         f" {passage.number}{heading} | updated {stamp(front.updated)}"
         f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}" + (f" | {held}" if held else "")
     )
-    return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.snippet}"
+    return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.text}"
 
 
-def metadata(entry: Entry, *, whole: bool) -> str:
+def metadata(entry: IndexedDocument, *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
-    ``whole`` gives every key; otherwise the title, path and mirror date alone. People
+    ``whole`` gives every key that a reader needs, but the source, id, key, version and
+    revision that the ref and the dates stand for; otherwise the title, path and mirror
+    date alone. People
     come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
     the last. Links come by ref, one line per relation in the order of the relations:
@@ -280,7 +286,7 @@ def metadata(entry: Entry, *, whole: bool) -> str:
     if whole:
         labels = ", ".join(short(label, LABEL) for label in front.labels[:LABELS])
         rows += [
-            ("ref", front.key or front.id),
+            ("ref", ref_of(front.key, front.id)),
             ("type", front.type),
             ("space", front.space),
             ("project", front.project),
@@ -313,7 +319,7 @@ def metadata(entry: Entry, *, whole: bool) -> str:
     )
 
 
-def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]:
+def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) -> list[str]:
     """Write each document of a tree as one item, indented by its depth below ``base``.
 
     Ancestors not listed before it, in this list, come first as one context line in
@@ -328,8 +334,9 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]
         common = sum(1 for _ in takewhile(lambda pair: pair[0] == pair[1], shared))
         front = entry.front
         line = (
-            f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)} ({front.key or front.id},"
-            f" updated {front.updated:%Y-%m-%d}, mirrored {front.fetched_at:%Y-%m-%d})"
+            f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
+            f" ({ref_of(front.key, front.id)}, updated {front.updated:%Y-%m-%d},"
+            f" mirrored {front.fetched_at:%Y-%m-%d})"
         )
         if missing := ancestors[common:]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"
@@ -338,7 +345,7 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]
     return items
 
 
-def status(summary: Summary, docs: Path) -> str:
+def status(state: IndexStatus, docs: Path) -> str:
     """Say what the index holds, and when it was built.
 
     Its persons on one line: how many, in more than one source, and by name alone; then
@@ -349,7 +356,7 @@ def status(summary: Summary, docs: Path) -> str:
     def counts(values: dict[str, int]) -> str:
         return ", ".join(f"{name} {count}" for name, count in values.items()) or "none"
 
-    persons = summary.people
+    persons = state.people
     shared = ", ".join(
         f"{json.dumps(short(name, LABEL), ensure_ascii=False)} ({count})"
         for name, count in persons.shared[:SHARED]
@@ -357,23 +364,23 @@ def status(summary: Summary, docs: Path) -> str:
     rest = len(persons.shared) - SHARED
 
     lines = [
-        f"built: {stamp(summary.built_at)}",
-        f"documents: {counts(summary.types)}; sections: {summary.sections}",
+        f"built: {stamp(state.built_at)}",
+        f"documents: {counts(state.types)}; sections: {state.sections}",
         (
-            f"search by meaning: {summary.model}, {summary.pieces} pieces cut by {summary.chunking}"
-            if summary.model
+            f"search by meaning: {state.model}, {state.pieces} pieces cut by {state.chunking}"
+            if state.model
             else "search by meaning: off, the index holds no vectors; run kb-mcp embed"
         ),
-        f"spaces: {counts(summary.spaces)}",
-        f"projects: {counts(summary.projects)}",
+        f"spaces: {counts(state.spaces)}",
+        f"projects: {counts(state.projects)}",
         (
             f"people: {persons.count}, {persons.across} in more than one source,"
             f" {persons.alone} by name alone"
             + (f"; names of several accounts: {shared}" if shared else "")
             + (f", and {rest} more" if rest > 0 else "")
         ),
-        f"files skipped at build: {summary.skipped}",
-        f"newest mirror date: {stamp(summary.newest_fetch) if summary.newest_fetch else 'none'}",
+        f"files skipped at build: {state.skipped}",
+        f"newest mirror date: {stamp(state.newest_fetch) if state.newest_fetch else 'none'}",
         f"mirror files: {docs}",
     ]
     return answer("The index of the offline mirror.", "\n".join(lines))

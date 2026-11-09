@@ -14,9 +14,9 @@ import structlog
 from kb_mcp.cli.commands._embedding import open_endpoint
 from kb_mcp.evaluation.app.agents import AgentsError, chosen
 from kb_mcp.evaluation.app.evaluation import (
+    EvaluatedIndex,
     EvaluationError,
     GoldenError,
-    Target,
     read_golden,
 )
 from kb_mcp.evaluation.app.reranked import (
@@ -33,6 +33,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.observability.domain.log_files import STAMP
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
 from kb_mcp.search.adapters.reranking import EVALUATION, rerank, served
@@ -42,9 +43,8 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
-STAMP = "%Y%m%dT%H%M%SZ"
 HEADER = (
     "| Depth | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Found@ask"
     " | Evidence@ask | Tokens | Search, median | Search, 95th |"
@@ -52,7 +52,7 @@ HEADER = (
 DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
-class Evaluated(Record):
+class DepthsEvaluated(Record):
     """Each arm measured, the bar's decision, the mode, and the results file."""
 
     arms: list[Arm]
@@ -61,7 +61,7 @@ class Evaluated(Record):
     results: Path
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, DepthsEvaluated | None]:
     """Measure each depth; exit 1 on a failure, 2 for a refused golden file or sample.
 
     The setting's model, chunking and search mode are measured, reranked by the setting's
@@ -87,9 +87,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
         ):
             listed = served(server)
             score = Counted(functools.partial(rerank, server, reranker.model, bounds=EVALUATION))
-            target = Target(connect(opened, settings.model), settings.chunking)
+            evaluated = EvaluatedIndex(connect(opened, settings.model), settings.chunking)
             arms = Arms(settings.search_mode, depths, score, built_at)
-            found = measured(target, settings, questions, arms, time.perf_counter)
+            found = measured(evaluated, settings, questions, arms, time.perf_counter)
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
@@ -109,7 +109,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     results.parent.mkdir(parents=True, exist_ok=True)
     kept = recorded(found, decision, golden, about)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, Evaluated(
+    return ExitStatus.OK, DepthsEvaluated(
         arms=found, decision=decision, mode=settings.search_mode, results=results
     )
 
@@ -128,8 +128,8 @@ def arm_row(arm: Arm, group: str) -> str:
     )
 
 
-def text(evaluated: Evaluated, summary: Summary) -> str:
-    """Write each arm's row, every group's in detail; the first stage's recall; the bar.
+def text(evaluated: DepthsEvaluated, summary: Detail) -> str:
+    """Write each arm's row, every group's in detail; the first ranking's recall; the bar.
 
     The bar's verdicts come depth by depth, each clause said with the groups' losses,
     then each qualifying depth's p-value against the best, then the depth at which to

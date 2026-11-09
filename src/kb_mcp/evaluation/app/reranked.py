@@ -1,7 +1,7 @@
 """Reranking measured on golden questions: one mode not reranked, then at each depth.
 
 Each arm searches every question as ``search`` does, timed, then asks it as ``ask``
-does; the arm not reranked gives the first stage, whose Recall@N says the most that a
+does; the arm not reranked gives the first ranking, whose Recall@N says the most that a
 depth of N could bring into the first ten. Plan 022's bar then reads the arms.
 """
 
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import SearchMode, Settings
-    from kb_mcp.evaluation.app.evaluation import Target
+    from kb_mcp.evaluation.app.evaluation import EvaluatedIndex
     from kb_mcp.evaluation.domain.evaluation import Question
     from kb_mcp.search.adapters.reranking import Reranked
 
@@ -88,20 +88,20 @@ class Arm(Record):
 
 
 def measured(
-    target: Target,
+    evaluated: EvaluatedIndex,
     settings: Settings,
     questions: Sequence[Question],
     arms: Arms,
     clock: Callable[[], float],
 ) -> list[Arm]:
-    """Build the target's index as ``eval`` does; measure the arm not reranked, then each depth.
+    """Build the evaluated index as ``eval`` does; measure the arm not reranked, then each depth.
 
     Every arm ranks as deep as the deepest, to give Recall@N, and measures its first ten.
     Raises EvaluationError when a search falls back, by words or not reranked, which
     would measure another arm, and ModelError for a model that fails. Each question in
     each arm is the progress task ``questions``.
     """
-    _, plain = prepared(target, settings, questions, clock, arms.built_at)
+    _, plain = prepared(evaluated, settings, questions, clock, arms.built_at)
     deepest = max(arms.depths)
     found: list[Arm] = []
     with task("questions", (1 + len(arms.depths)) * len(questions)) as asking:

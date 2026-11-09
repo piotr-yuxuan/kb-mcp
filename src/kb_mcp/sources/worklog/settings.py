@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from kb_mcp.config.domain.settings import TABLE, LocalPath
 
 
-class WorklogSource(BaseModel):
+class WorklogTable(BaseModel):
     """The user's work log, read in place and never written."""
 
     model_config = TABLE
@@ -26,6 +26,6 @@ class WorklogSource(BaseModel):
         default=True,
         description=(
             "Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the"
-            " subtrees tagged ARCHIVE are mirrored too."
+            " subtrees tagged ARCHIVE are prepared too."
         ),
     )

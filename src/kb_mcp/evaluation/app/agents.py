@@ -34,10 +34,10 @@ from kb_mcp.config.domain.settings import unsafe_location
 from kb_mcp.evaluation.adapters.mcp_client import ServerError, called, listed
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import (
-    Answer,
+    AgentAnswer,
     Graded,
+    GradeVerdict,
     Harness,
-    Verdict,
     ask_verdict,
     grade,
     refusal,
@@ -116,7 +116,7 @@ class AgentsError(Exception):
     """A use of the runs' directory refused; the message says why, never a value given."""
 
 
-class Run(BaseModel):
+class AgentRun(BaseModel):
     """One run: a question on a surface, its prompt, and the tools of its server."""
 
     model_config = OWN
@@ -153,7 +153,7 @@ class Runs(BaseModel):
     server: tuple[str, ...]  # the command that serves, its tools aside
     calls: int  # a run's calls, at most
     call_s: float  # a call's seconds, at most
-    runs: tuple[Run, ...]
+    runs: tuple[AgentRun, ...]
     questions: tuple[Expected, ...]
 
     def question(self, name: str) -> Question:
@@ -167,7 +167,7 @@ class Runs(BaseModel):
             evidence=given.evidence,
         )
 
-    def run(self, name: str) -> Run:
+    def run(self, name: str) -> AgentRun:
         """Give a run by its id, or refuse one that is not there."""
         found = next((run for run in self.runs if run.id == name), None)
         if found is None:
@@ -229,7 +229,7 @@ def prepare(
         name: listed([*asking.server, "--tools", ",".join(each)], LISTING_S)
         for name, each in served.items()
     }
-    schema = json.dumps(Answer.model_json_schema(), indent=1)
+    schema = json.dumps(AgentAnswer.model_json_schema(), indent=1)
     (directory / "prompts").mkdir(parents=True)
     runs = []
     for number, question in enumerate(questions):
@@ -249,7 +249,7 @@ def prepare(
             (directory / prompt).write_text(text, encoding="utf-8")
             sha = hashlib.sha256(text.encode()).hexdigest()
             runs.append(
-                Run(
+                AgentRun(
                     id=run_id,
                     question=question.id,
                     surface=name,
@@ -304,7 +304,7 @@ class Logged(BaseModel):
     status: Literal["answered", "refused", "timeout", "failed"]
 
 
-def logged(directory: Path, run: Run) -> list[Logged]:
+def logged(directory: Path, run: AgentRun) -> list[Logged]:
     """Read a run's calls as the bridge logged them; refuse a line not as it writes them."""
     log = directory / "calls" / f"{run.id}.jsonl"
     lines = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
@@ -316,7 +316,7 @@ def logged(directory: Path, run: Run) -> list[Logged]:
 
 
 @contextmanager
-def locked(directory: Path, run: Run) -> Iterator[None]:
+def locked(directory: Path, run: AgentRun) -> Iterator[None]:
     """Hold a run's lock, so that its calls and its answer go one at a time."""
     (directory / "calls").mkdir(exist_ok=True)
     with (directory / "calls" / f"{run.id}.lock").open("w") as handle:
@@ -396,7 +396,7 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
     return done
 
 
-def answer(directory: Path, name: str, given: str) -> Answer:
+def answer(directory: Path, name: str, given: str) -> AgentAnswer:
     """Keep a run's answer, read strictly, once.
 
     A refused answer names the field at fault, never its value, and may be sent once
@@ -415,7 +415,7 @@ def answer(directory: Path, name: str, given: str) -> Answer:
             message = f"answer: this run's answer {said}"
             raise AgentsError(message)
         try:
-            accepted = Answer.model_validate_json(given)
+            accepted = AgentAnswer.model_validate_json(given)
         except ValidationError as error:
             with refused.open("a", encoding="utf-8") as counted:
                 counted.write("refused\n")
@@ -427,7 +427,7 @@ def answer(directory: Path, name: str, given: str) -> Answer:
     return accepted
 
 
-class Outcome(Record):
+class AgentRunOutcome(Record):
     """A run judged: success or failure, no result and why, or pending; and its costs."""
 
     run: str
@@ -446,11 +446,11 @@ class Outcome(Record):
 
 def judged(
     directory: Path,
-    run: Run,
+    run: AgentRun,
     question: Question,
     resolve: Callable[[str], str | None],
     body: Callable[[str], str],
-) -> Outcome:
+) -> AgentRunOutcome:
     """Judge a run from its harness file, its call log and its answer.
 
     Without a harness file, the run is pending. ``failed`` or ``invalid``, or a call
@@ -473,7 +473,7 @@ def judged(
         named = kept
         # A run that did not return is judged without its answer, which is not read.
         answer = (
-            Answer.model_validate_json(kept.read_text("utf-8"))
+            AgentAnswer.model_validate_json(kept.read_text("utf-8"))
             if returned and kept.exists()
             else None
         )
@@ -493,7 +493,7 @@ def judged(
         result, reason = "failure", "no answer accepted"
     else:
         result, reason = ("success", "") if graded.success else ("failure", "not a success")
-    outcome = Outcome(
+    outcome = AgentRunOutcome(
         run=run.id,
         question=run.question,
         surface=run.surface,
@@ -528,21 +528,21 @@ class Results(Record):
     """The runs judged, B judged against A, and each outcome counted."""
 
     model: str
-    outcomes: list[Outcome]
-    verdict: Verdict
+    outcomes: list[AgentRunOutcome]
+    verdict: GradeVerdict
     counted: dict[str, int]  # runs by result
     left_out: int  # questions out of the tests, a run of theirs without a result
     pairs: int  # questions in the tests, both their runs graded
 
 
-def concluded(directory: Path, runs: Runs, outcomes: Sequence[Outcome]) -> Results:
+def concluded(directory: Path, runs: Runs, outcomes: Sequence[AgentRunOutcome]) -> Results:
     """Judge B against A on the questions whose both runs were graded; keep the results.
 
     ``results.json`` holds ids, numbers, the prompts' SHA-256 and the models reported,
     never a question's text. ``eval.agent.graded`` says at INFO the runs counted and
     whether ask stays.
     """
-    by_question: dict[str, dict[str, Outcome]] = {}
+    by_question: dict[str, dict[str, AgentRunOutcome]] = {}
     for outcome in outcomes:
         by_question.setdefault(outcome.question, {})[outcome.surface] = outcome
     pairs = [

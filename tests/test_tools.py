@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import re
+import typing
 from copy import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.mcp.app.tools import Library, UnanswerableError
-from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.mcp.app.tools import PERSON_FILTERS, Library, SearchFilters, UnanswerableError
+from kb_mcp.mirror.domain.mirror import ROLES, Link, PersonRole
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
+from kb_mcp.sources.registry import SOURCES
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import (
     CREATED,
@@ -619,8 +621,8 @@ def test_read_names_ten_people_of_a_role_whole_then_how_many_more(tmp_path: Path
 
 def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> None:
     """The mirror keeps each person's account id; the tools serve names alone."""
-    mirrored = (tmp_path / "docs" / location(COMMENTED[0])).read_text(encoding="utf-8")
-    assert ACCOUNTS["A Person"] in mirrored
+    markdown = (tmp_path / "docs" / location(COMMENTED[0])).read_text(encoding="utf-8")
+    assert ACCOUNTS["A Person"] in markdown
     answers = [
         commented.search("broker"),
         commented.search(filters={"commenter": "a person"}, sort="created"),
@@ -635,12 +637,12 @@ def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> No
     assert [each for each in served if any(id_ in each for id_ in ACCOUNTS.values())] == []
 
 
-def worklog(kind: str, id_: str, title: str, *names: str) -> FrontMatter:
+def worklog(document_type: str, id_: str, title: str, *names: str) -> FrontMatter:
     """Give a meeting or a transcript of the work log, its participants by name, in order."""
     return replace(
         page(id_, title),
         source="worklog",
-        type=kind,
+        type=document_type,
         space=None,
         people=tuple(PersonRole(role="participant", name=name) for name in names),
         version=None,
@@ -839,7 +841,7 @@ def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Librar
         SAM_3: f"Sam Sample, {SAM_3}: author 1; jira 1; last updated 2026-10-20",
         SAM_ALONE: f"Sam Sample, {SAM_ALONE}: participant 2; worklog 2; last updated 2026-10-20",
     }
-    assert header.strip() == 'person: "Sam Sample" names 3 people; give the id of one:'
+    assert header.strip() == 'person: "Sam Sample" names 3 persons; give the id of one:'
     assert block.splitlines() == [each[person] for person in (SAM_ALONE, *sorted((SAM_2, SAM_3)))]
     assert refs(persons.search(filters={"person": SAM_3}, sort="created")) == ["PAY-2"]
     alone = sorted(refs(persons.search(filters={"person": SAM_ALONE}, sort="created")))
@@ -914,7 +916,7 @@ def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
     )
     for value, expected in [("Robin (Ops)", "PAY-1"), ("robin(sales )", "PAY-2")]:
         assert refs(library.search(filters={"creator": value}, sort="created")) == [expected]
-    with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 people;'):
+    with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 persons;'):
         library.search(filters={"creator": "Robin"}, sort="created")
 
 
@@ -937,7 +939,7 @@ def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
     with pytest.raises(UnanswerableError) as refused:
         library.search(filters={"person": "Alex"}, sort="created")
     header, block, _ = parts(str(refused.value))
-    assert header.strip() == 'person: "Alex" names 3 people; give the id of one:'
+    assert header.strip() == 'person: "Alex" names 3 persons; give the id of one:'
     listed = {line.split(", ")[1].partition(":")[0] for line in block.splitlines()}
     assert listed == {ALEX, anchored("account\nacct-0010"), anchored("account\nacct-0011")}
     assert refs(library.search(filters={"person": "Alex (Ops)"}, sort="created")) == ["300002"]
@@ -1517,3 +1519,15 @@ def test_a_document_shows_ten_labels_at_most(tmp_path: Path) -> None:
     library = built(tmp_path, [(page("196845", "Kafka", labels=labels), None)])
     shown = parts(library.read("196845"))[1]
     assert f"\nlabels: {', '.join(labels[:10])}\n" in shown
+
+
+def test_the_search_filters_spell_each_source_and_each_role_as_the_registry_and_mirror_do() -> None:
+    """Plan 052: the filters' schema, which agents read, names the sources and the roles.
+
+    Contract E keeps the server from importing the registry, so the Literal of ``source``
+    copies the sources' names, held here to ``SOURCES``. Each person filter, each role
+    of ``ROLES`` among them, is a filter of the schema.
+    """
+    hints = typing.get_type_hints(SearchFilters)
+    assert typing.get_args(hints["source"]) == tuple(each.name for each in SOURCES)
+    assert [name for name in [*ROLES, *PERSON_FILTERS] if name not in hints] == []

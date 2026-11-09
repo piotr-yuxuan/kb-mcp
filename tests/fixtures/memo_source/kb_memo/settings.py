@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from kb_mcp.config.domain.settings import TABLE, LocalPath
 
 
-class MemoSource(BaseModel):
+class MemoTable(BaseModel):
     """The folder of the notes, read in place and never written."""
 
     model_config = TABLE

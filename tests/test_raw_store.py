@@ -14,7 +14,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     StoreBusyError,
-    Stored,
+    StoredSnapshot,
     Unreadable,
 )
 from kb_mcp.sources.atlassian.fetch.domain.content import (
@@ -22,7 +22,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Folder,
     Issue,
     Page,
-    Person,
+    SiteUser,
     Space,
 )
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
@@ -65,11 +65,11 @@ def page_responses(version: int, page_id: str = "196845", **changes: object) -> 
     }
 
 
-def readable(results: Iterator[Stored | Unreadable] | list[object]) -> list[Stored]:
+def readable(results: Iterator[StoredSnapshot | Unreadable] | list[object]) -> list[StoredSnapshot]:
     """Keep the snapshots that were read, and fail on any that was not."""
     items = list(results)
     assert not [item for item in items if isinstance(item, Unreadable)]
-    return [item for item in items if isinstance(item, Stored)]
+    return [item for item in items if isinstance(item, StoredSnapshot)]
 
 
 def test_the_newest_snapshot_of_each_document_is_read_back(store: RawStore) -> None:
@@ -136,7 +136,7 @@ def test_a_changed_response_is_kept_and_reported_when_read(store: RawStore) -> N
     store.put(Page, page_responses(1, page_id="200", labels=labels), FETCHED, {})
     store.put(Page, page_responses(1, page_id="300"), FETCHED, {})
     results = list(store.latest(Page))
-    assert [type(item) for item in results] == [Stored, Unreadable, Stored]
+    assert [type(item) for item in results] == [StoredSnapshot, Unreadable, StoredSnapshot]
     unreadable = results[1]
     assert isinstance(unreadable, Unreadable)
     assert unreadable.where == "confluence/pages/200/000001"
@@ -295,28 +295,28 @@ def test_users_are_merged_across_runs_by_account_id(store: RawStore) -> None:
     store.put_users([v1_user(), v1_user(accountId="account-2", displayName="Two")])
     store.put_users([v1_user(displayName="Renamed")])
     assert store.users() == [
-        Person(account_id="account-1", display_name="Renamed"),
-        Person(account_id="account-2", display_name="Two"),
+        SiteUser(account_id="account-1", display_name="Renamed"),
+        SiteUser(account_id="account-2", display_name="Two"),
     ]
 
 
 @pytest.mark.parametrize(
-    ("kind", "missing"),
+    ("document_class", "missing"),
     [(Page, confluence_v2.ATTACHMENTS), (Page, confluence_v2.VIEW), (Issue, jira_v3.COMMENTS)],
 )
 def test_a_snapshot_without_one_of_its_responses_is_refused(
-    store: RawStore, kind: type[Page | Issue], missing: str
+    store: RawStore, document_class: type[Page | Issue], missing: str
 ) -> None:
     """A stored revision is never written again, so it must be whole when first stored."""
     responses: dict[str, object] = (
         page_responses(1)
-        if kind is Page
+        if document_class is Page
         else {jira_v3.ISSUE: v3_issue(), jira_v3.COMMENTS: [v3_comment()]}
     )
     del responses[missing]
     with pytest.raises(ValueError, match=f"a snapshot without {missing}"):
-        store.put(kind, responses, FETCHED, {})
-    assert not (store.root / kind.source).exists()
+        store.put(document_class, responses, FETCHED, {})
+    assert not (store.root / document_class.source).exists()
 
 
 def test_a_blob_of_another_attachment_is_not_a_file_of_this_snapshot(store: RawStore) -> None:
@@ -332,7 +332,7 @@ def test_a_user_without_an_account_id_is_named_by_its_index(store: RawStore) -> 
     store.put_users([v1_user()])
     with pytest.raises(RepresentationError, match=r"^users\[0\]\.accountId: missing"):
         store.put_users([{"displayName": "No id"}])
-    assert store.users() == [Person(account_id="account-1", display_name="A Person")]
+    assert store.users() == [SiteUser(account_id="account-1", display_name="A Person")]
 
 
 @pytest.mark.parametrize(
@@ -366,7 +366,7 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     store.put_coverage(coverage)
     assert store.coverage() == coverage
     stone = Tombstone(
-        kind="pages", id="1001", space_id="196613", first_gone=FETCHED, confirmed=True
+        resource_type="pages", id="1001", space_id="196613", first_gone=FETCHED, confirmed=True
     )
     store.put_tombstones([stone])
     assert store.tombstones() == {("pages", "1001"): stone}

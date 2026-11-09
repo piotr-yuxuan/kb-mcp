@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def meaning_waits(
@@ -23,7 +23,7 @@ def meaning_waits(
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``index`` to the command."""
     parser = subparsers.add_parser(

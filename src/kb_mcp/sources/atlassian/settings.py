@@ -39,7 +39,7 @@ SpaceKey = Annotated[str, matching(SPACE_KEY, "a space key, such as ENG or ~5f1a
 ProjectKey = Annotated[str, matching(PROJECT_KEY, "a project key, such as PLAT")]
 
 
-class AtlassianAccount(BaseModel):
+class AtlassianAccountTable(BaseModel):
     """The Atlassian account that Confluence and Jira sign in with, on its site."""
 
     model_config = TABLE
@@ -59,21 +59,21 @@ class AtlassianAccount(BaseModel):
     )
 
 
-class ConfluenceSource(BaseModel):
-    """What to download from Confluence when no flag says."""
+class ConfluenceTable(BaseModel):
+    """What to fetch from Confluence when no flag says."""
 
     model_config = TABLE
 
     spaces: tuple[SpaceKey, ...] = Field(
-        default=(), description="The spaces to download when no --space is given, by key."
+        default=(), description="The spaces to fetch when no --space is given, by key."
     )
 
 
-class JiraSource(BaseModel):
-    """What to download from Jira when no flag says."""
+class JiraTable(BaseModel):
+    """What to fetch from Jira when no flag says."""
 
     model_config = TABLE
 
     projects: tuple[ProjectKey, ...] = Field(
-        default=(), description="The projects to download when no --project is given, by key."
+        default=(), description="The projects to fetch when no --project is given, by key."
     )

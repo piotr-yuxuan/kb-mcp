@@ -1,11 +1,11 @@
-"""The roles of a source, each one that the registry names, as plan 030 defines them.
+"""A source's part in each stage, each one that the registry names, as plan 030 defines it.
 
 The expectations come from the plan's "A source's declaration, and the roles'
 interfaces": a declaration names its fetcher, if any, and its preparers by module path,
 which ``--help`` never imports; one fetcher and one preparer serve Confluence and Jira,
-each reading from ``run.declared`` the source that it runs for, so its kinds and its
+each reading from ``run.source`` the source that it runs for, so its resource types and its
 rows of the cache of conversions; the work log, read in place, has no fetcher;
-``preflight`` says what a role cannot go on with before any source starts; each
+``preflight`` says what a fetcher or a preparer cannot go on with before any source starts; each
 preparer that converts finds pandoc itself, so that pandoc gone fails its result alone;
 a dry run plans the fetch, counts the work log and leaves Atlassian's prepare alone; and
 a result's ``text`` writes what its command writes. The site is plan 004's scripted one,
@@ -39,16 +39,22 @@ from kb_mcp.sources.atlassian.fetch.app.fetcher import Fetched
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import Fetcher, Preparer, Run
+from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
-from kb_mcp.sources.worklog.prepare.app.prepare import Outcome, Planned
+from kb_mcp.sources.worklog.prepare.app.prepare import WorklogDryRun, WorklogPrepareOutcome
 from tests.composed import MODEL
 from tests.samples import v2_space
-from tests.test_download import SITE, FakeSite
-from tests.test_mirror import FETCHED, SPACE_ID, issue_responses, listing_page, page_responses
-from tests.test_refresh import FIRST, WEEK
+from tests.test_fetching import SITE, FakeSite
+from tests.test_incremental_fetch import FIRST, WEEK
+from tests.test_prepare_atlassian import (
+    FETCHED,
+    SPACE_ID,
+    issue_responses,
+    listing_page,
+    page_responses,
+)
+from tests.test_prepare_worklog import FIXTURE, settle
 from tests.test_sources import WORKLOG_DOCUMENTS
-from tests.test_worklog_mirror import FIXTURE, settle
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -58,19 +64,19 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
-# Each module that a declaration of the registry names, its roles' and its tables'.
+# Each module that a declaration of the registry names, its stages' and its tables'.
 NAMED = frozenset(
     path.partition(":")[0]
     for each in SOURCES
     for path in (
-        each.table,
+        each.table_path,
         *each.preparers,
         *(() if each.fetcher is None else (each.fetcher,)),
-        *(() if each.account is None else (each.account.table,)),
+        *(() if each.account is None else (each.account.table_path,)),
     )
 )
 
@@ -139,23 +145,23 @@ def stored(settings: Settings) -> Settings:
 
 
 def run_of(
-    declared: Declared,
+    declared: Source,
     settings: Settings,
     options: Mapping[str, object] | None = None,
     *,
     dry_run: bool = False,
-) -> Run:
-    """Give a run of a declaration's roles, its tables from the settings, at FIRST.
+) -> SourceRun:
+    """Give a run of a declaration's stages, its tables from the settings, at FIRST.
 
     Each option that it declares is held, as ``fetch``'s command gives them: None when not
     among ``options``.
     """
     account = declared.account
-    return Run(
-        declared=declared,
+    return SourceRun(
+        source=declared,
         settings=settings,
-        table=getattr(settings.sources, declared.name),
-        account=None if account is None else getattr(settings.accounts, account.name),
+        source_table=getattr(settings.sources, declared.name),
+        account_table=None if account is None else getattr(settings.accounts, account.name),
         options={**dict.fromkeys(declared.options), **(options or {})},
         now=lambda: FIRST,
         sleep=lambda _: None,
@@ -163,16 +169,16 @@ def run_of(
     )
 
 
-def fetcher_of(declared: Declared) -> Fetcher:
-    """Load the fetcher that a declaration names, checked against its role."""
+def fetcher_of(declared: Source) -> Fetcher:
+    """Load the fetcher that a declaration names, checked against its interface."""
     assert declared.fetcher is not None
     fetcher = pkgutil.resolve_name(declared.fetcher)
     assert isinstance(fetcher, Fetcher)
     return fetcher
 
 
-def preparer_of(declared: Declared) -> Preparer:
-    """Load the one preparer that a declaration names, checked against its role."""
+def preparer_of(declared: Source) -> Preparer:
+    """Load the one preparer that a declaration names, checked against its interface."""
     (path,) = declared.preparers
     preparer = pkgutil.resolve_name(path)
     assert isinstance(preparer, Preparer)
@@ -209,13 +215,13 @@ def row_text(name: str, outcome: str, text: str) -> str:
     sorted({each.fetcher for each in SOURCES if each.fetcher is not None}),
 )
 def test_each_fetcher_that_the_registry_names_loads_as_a_fetcher(path: str) -> None:
-    """Loaded by its module path, it has the role's methods."""
+    """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Fetcher)
 
 
 @pytest.mark.parametrize("path", sorted({path for each in SOURCES for path in each.preparers}))
 def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) -> None:
-    """Loaded by its module path, it has the role's methods."""
+    """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Preparer)
 
 
@@ -231,7 +237,7 @@ def test_confluence_and_jira_share_their_roles_and_the_work_log_has_no_fetcher()
 
 
 def test_help_imports_the_declarations_and_no_module_that_they_name(home: Path) -> None:
-    """A declaration names its roles and tables by module path: ``--help`` loads none.
+    """A declaration names its fetcher, preparers and tables by module path: ``--help`` loads none.
 
     Neither the command's help nor ``fetch``'s, which lists the sources; ``-X importtime``
     names each module that the child imports.
@@ -266,7 +272,7 @@ def test_help_imports_the_declarations_and_no_module_that_they_name(home: Path) 
             if line.startswith("import time:")
         }
         assert declared | {"kb_mcp.sources.registry"} <= imported
-        assert imported & (NAMED | {"kb_mcp.sources.roles"}) == set()
+        assert imported & (NAMED | {"kb_mcp.sources.stages"}) == set()
 
 
 def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
@@ -539,7 +545,7 @@ def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for
 def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     home: Path, stored: Settings, capsys: CaptureFixture[str]
 ) -> None:
-    """Confluence's role, then Jira's, write the command's files, byte for byte, and its rows."""
+    """Confluence's preparer, then Jira's, write the command's files and rows byte for byte."""
     other = home / "other"
     shutil.copytree(stored.raw, other / "raw")
     said = ""
@@ -606,12 +612,12 @@ def test_the_work_log_s_preparer_counts_in_a_dry_run_then_mirrors_its_folder(
     preparer = preparer_of(WORKLOG)
     planned = preparer.prepare(run_of(WORKLOG, settings, dry_run=True))
     assert planned.outcome == "done"
-    assert isinstance(planned.mirrored, Planned)
+    assert isinstance(planned.mirrored, WorklogDryRun)
     assert planned.mirrored.to_convert == WORKLOG_DOCUMENTS
     assert not settings.docs.exists()
     done = preparer.prepare(run_of(WORKLOG, settings))
     assert done.outcome == "done"
-    assert isinstance(done.mirrored, Outcome)
+    assert isinstance(done.mirrored, WorklogPrepareOutcome)
     assert done.mirrored.documents == WORKLOG_DOCUMENTS
     assert folders(settings.docs) == {"worklog"}
 

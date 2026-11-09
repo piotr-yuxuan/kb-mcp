@@ -11,7 +11,7 @@ from kb_mcp.cli.app.doctor import doctor
 from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.declared import ATLASSIAN
 from kb_mcp.sources.atlassian.fetch.adapters import http
-from kb_mcp.sources.roles import FAILED, SIGN_IN, WELL
+from kb_mcp.sources.stages import FAILED, SIGN_IN, WELL
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 

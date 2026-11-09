@@ -22,6 +22,7 @@ import structlog
 from opentelemetry import trace
 from structlog.tracebacks import ExceptionDictTransformer
 
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.observability.domain.log_files import expired, log_file_name
 from kb_mcp.observability.domain.redaction import redact_secrets
 
@@ -29,8 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterator, Mapping
     from datetime import datetime
 
-# The program's name, as pyproject.toml names its script, which names its log folder.
-PROGRAM = "kb-mcp"
 # What an event or a library's record gets before any sink renders it, redaction last.
 SHARED = (
     structlog.stdlib.add_log_level,

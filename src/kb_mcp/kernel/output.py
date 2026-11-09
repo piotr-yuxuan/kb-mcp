@@ -13,8 +13,8 @@ from typing import Literal
 type Level = Literal["debug", "info", "warning", "error"]
 LEVELS: tuple[Level, ...] = ("debug", "info", "warning", "error")
 # How much of a result is written on stdout: what matters, or all of it.
-type Summary = Literal["short", "detailed"]
-SUMMARIES: tuple[Summary, ...] = ("short", "detailed")
+type Detail = Literal["short", "detailed"]
+DETAILS: tuple[Detail, ...] = ("short", "detailed")
 # How a result is written on stdout: as lines to read, or as one JSON document.
 type Format = Literal["text", "json"]
 FORMATS: tuple[Format, ...] = ("text", "json")
@@ -32,7 +32,7 @@ class Output:
     """
 
     level: Level
-    summary: Summary
+    summary: Detail
     format: Format
     quiet: bool
     stdin_terminal: bool

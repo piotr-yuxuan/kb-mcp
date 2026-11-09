@@ -16,13 +16,14 @@ from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from kb_mcp.kernel.record import Record
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, FIRST_FETCH, Period
 
 # The rule of a target's key, by source.
-KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}
+KEYS = {CONFLUENCE: SPACE_KEY, JIRA: PROJECT_KEY}
 # What a run made of a target's coverage: grown to its window's end, ended at a failure,
 # or left as it was.
-type Extension = Literal["extended", "capped", "held"]
+type CoverageChange = Literal["extended", "capped", "held"]
 # Why a window starts where it does: at --since, a day before an exact covered end, at the
 # covered start (a space, or a project's entry from before plan 034), or a week back.
 type Reason = Literal["given", "since the last fetch", "covered start", "first fetch"]
@@ -53,7 +54,7 @@ class Target(Record):
 
     def __str__(self) -> str:
         """Name the target as the user does: ``space ENG``, ``project PLAT``."""
-        return f"{'space' if self.source == 'confluence' else 'project'} {self.key}"
+        return f"{'space' if self.source == CONFLUENCE else 'project'} {self.key}"
 
     @property
     def searched_by_time(self) -> bool:
@@ -61,7 +62,7 @@ class Target(Record):
 
         A space is listed whole.
         """
-        return self.source == "jira"
+        return self.source == JIRA
 
 
 class Coverage(Record):
@@ -80,7 +81,7 @@ class Coverage(Record):
 
     def extended(
         self, target: Target, fetched: Period, failed: datetime | None = None
-    ) -> tuple[Coverage, Extension]:
+    ) -> tuple[Coverage, CoverageChange]:
         """Return the coverage once a run listed or searched ``fetched`` whole for the target.
 
         ``failed`` is the update time of the earliest document found and not stored whole.
@@ -119,16 +120,16 @@ class Coverage(Record):
         ), "capped"
 
 
-class Window(Record):
+class FetchWindow(Record):
     """The period that a run fetches for a target, and why it starts where it does."""
 
     period: Period
     reason: Reason
 
 
-def window(
+def fetch_window(
     coverage: Coverage, target: Target, since: datetime | None, end: datetime
-) -> Window | None:
+) -> FetchWindow | None:
     """Return the window a run fetches for a target, to ``end``; None to skip the target.
 
     It starts at ``since`` when given, and raises PeriodError when that is not before
@@ -139,7 +140,7 @@ def window(
     nothing on the site is older, and dates stay in range.
     """
     if since is not None:
-        return Window(period=Period(max(since, EPOCH), end), reason="given")
+        return FetchWindow(period=Period(max(since, EPOCH), end), reason="given")
     covered = coverage.periods.get(target)
     start: datetime
     reason: Reason
@@ -152,7 +153,7 @@ def window(
     start = max(start, EPOCH)
     if start >= end:
         return None
-    return Window(period=Period(start, end), reason=reason)
+    return FetchWindow(period=Period(start, end), reason=reason)
 
 
-__all__ = ["EPOCH", "Coverage", "Extension", "Target", "Window", "window"]
+__all__ = ["EPOCH", "Coverage", "CoverageChange", "FetchWindow", "Target", "fetch_window"]

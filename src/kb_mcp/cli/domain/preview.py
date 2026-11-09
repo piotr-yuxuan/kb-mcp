@@ -1,6 +1,6 @@
 """What a run says on stderr before it acts, and whether it asks first.
 
-Its summary, the values it ignores and its command to copy. Pure: the entry gives it the
+Its settings, the values it ignores and its command to copy. Pure: the entry gives it the
 arguments, the settings loaded and how the run reports, writes what it returns, and asks
 the question if one follows.
 """
@@ -73,7 +73,7 @@ def before(
 ) -> tuple[str, Then]:
     """Give what a run writes on stderr before it acts, in lines, and what follows.
 
-    A command that writes begins with its summary: its name, each setting it reads and
+    A command that writes begins with its name, each setting it reads and
     its value, in detail its layer too, and why the run does not apply it, by its
     ``unapplied``, whatever its layer, followed in detail by the entry's own of
     ``OBSERVING``; then the lines of its ``described``. Every command then says, when

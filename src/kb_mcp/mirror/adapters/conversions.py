@@ -1,4 +1,4 @@
-"""Pandoc's conversions so far, kept across mirrors by their input, in one SQLite file.
+"""Pandoc's conversions so far, kept across prepares by their input, in one SQLite file.
 
 A conversion is a row of the source whose prepare asked for it, keyed there by the
 SHA-256 of the UTF-8 bytes of its converter's name, a NUL, then the HTML converted. With
@@ -26,7 +26,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
-# How long a write waits for another run's, in seconds, as the vector store's do.
+# How long a write to a store of SQLite waits for another run's, in seconds: about one
+# batch's embedding, for the vector store's.
 WAIT_S = 60
 CREATE = (
     "CREATE TABLE IF NOT EXISTS conversions (source TEXT NOT NULL, key TEXT NOT NULL,"
@@ -53,6 +54,14 @@ UNUSABLE = frozenset({sqlite3.SQLITE_ERROR, sqlite3.SQLITE_READONLY})
 PRIMARY = 0xFF
 # The files of a store in WAL mode, by what each adds to the store's name.
 SUFFIXES = ("", "-wal", "-shm")
+
+
+def damaged(error: sqlite3.DatabaseError) -> bool:
+    """Say whether an error of SQLite's is that of a damaged file, not of its use or its disk.
+
+    An error of the sqlite3 module's own, such as text that it cannot decode, has no code.
+    """
+    return (getattr(error, "sqlite_errorcode", 0) & PRIMARY) in DAMAGED
 
 
 class Conversions:
@@ -107,7 +116,7 @@ class Conversions:
         self.converted += 1
         return markdown
 
-    def prune(self, *, remove: bool) -> int:
+    def drop_unused(self, *, remove: bool) -> int:
         """Delete every row of the source that this run did not use, unless ``remove`` is false.
 
         Return how many rows were deleted. Another source's rows stay.
@@ -173,8 +182,7 @@ def opened(
         try:
             yield Conversions(connection, source, converter, convert)
         except sqlite3.DatabaseError as error:
-            # An error of the sqlite3 module's own, such as text it cannot decode, has no code.
-            if (getattr(error, "sqlite_errorcode", 0) & PRIMARY) in DAMAGED:
+            if damaged(error):
                 connection.close()
                 delete(path)
             raise

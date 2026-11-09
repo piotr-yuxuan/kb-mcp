@@ -15,7 +15,7 @@ machine where Chrome cannot open, or a test site with an account of its own.
   file, the site from `KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, the settings file or `--site`.
 - With a token set, `fetch`, its dry run and `doctor` sign in with it, as Basic auth
   with the email, sent to the site's host alone, never to another host that a redirect
-  leads to. Nothing under `<data>/session/` is read or written. The summary before a
+  leads to. Nothing under `<data>/session/` is read or written. The preview before a
   fetch says `sign-in: an API token`; `check` says `accounts.atlassian.api_token: set`,
   never the value.
 - A token without its email is refused before anything is asked (exit 2); a token that
@@ -81,7 +81,7 @@ The single quotes keep your shell from expanding anything: sops runs the quoted 
 with `/bin/sh -c`, whose `NAME="$VALUE"` words set the command's environment. So only
 the variables' names appear on a command line or in your history, never their values.
 
-sops gives the command your terminal, so without `--yes` the fetch shows its summary
+sops gives the command your terminal, so without `--yes` the fetch shows its preview
 and asks, as it does outside sops. `--yes` runs it without the question, as a script
 needs: where no terminal can answer, a command that writes is refused without it
 (exit 2). `--dry-run` says what it would fetch, and fetches nothing.

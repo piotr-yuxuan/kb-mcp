@@ -99,7 +99,7 @@ class ApiToken(Record):
         """Keep nothing: the environment gives the token to each run."""
 
 
-def sign_in(settings: Settings) -> SignIn:
+def choose_sign_in(settings: Settings) -> SignIn:
     """Sign in by the API token when one is set, else by the session that ``login`` saved.
 
     Either signs in as the Atlassian account, ``[accounts.atlassian]``, to its site. The

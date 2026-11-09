@@ -1,7 +1,7 @@
 """``fetch`` and ``prepare`` as plan 031 defines them: what each takes, says, runs and exits.
 
 The expectations come from its section "``fetch`` and ``prepare``: a list of sources", and
-from plans 017 and 030 before it: a row for each source's role, with its result, and the
+from plans 017 and 030 before it: a row for each source's stage, with its result, and the
 sources, their options and light checks the declarations'. The Atlassian sources are served
 by plan 004's scripted site, the work log is the invented fixture; each test has a scratch
 home, and terminals are injected or ``--yes`` given.
@@ -43,20 +43,20 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
-from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchOutcome, RunReport
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
-from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
+from kb_mcp.sources.atlassian.prepare.app import prepare as atlassian_prepare
 from kb_mcp.sources.atlassian.prepare.app import preparer
 from kb_mcp.sources.declaration import Option, ResourceType
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import Run
+from kb_mcp.sources.stages import SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.reference import Emitted
-from tests.test_download import PAGES, SITE, FakeSite
-from tests.test_question import QUESTION, Terminal
-from tests.test_refresh import FIRST, SECOND, WEEK, RefreshSite, stored_pages
-from tests.test_worklog_mirror import FIXTURE, Counting, settle, snapshot
+from tests.test_confirmation import QUESTION, Terminal
+from tests.test_fetching import PAGES, SITE, FakeSite
+from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
+from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
     import argparse
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from opentelemetry.sdk.metrics.export import Metric
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
     from tests.conftest import InMemory
 
 # Each setting that chooses a source, as the declaration's functions take them.
@@ -81,21 +81,21 @@ CONFIGURED = {
     "sources.worklog.path": Path("/work/todo"),
     "sources.worklog.archives": True,
 }
-# The work log's documents in the fixture, by kind: thirteen entries, two days, eight
+# The work log's documents in the fixture, by type: thirteen entries, two days, eight
 # meetings and six transcripts, one of them under meetings/.
-WORKLOG_KINDS = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
-WORKLOG_DOCUMENTS = sum(WORKLOG_KINDS.values())
+WORKLOG_BY_TYPE = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
+WORKLOG_DOCUMENTS = sum(WORKLOG_BY_TYPE.values())
 # The period of a fetch that covers what the scripted sites serve: the week before FIRST.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
 
 
-def arguments(step: str, *given: str) -> argparse.Namespace:
+def arguments(stage: str, *given: str) -> argparse.Namespace:
     """Parse a command's arguments as the command does."""
-    return parser().parse_args([step, *given])
+    return parser().parse_args([stage, *given])
 
 
 @pytest.mark.parametrize(
-    ("step", "given", "taken"),
+    ("stage", "given", "taken"),
     [
         ("fetch", (), ["confluence", "jira"]),
         ("fetch", ("jira",), ["jira"]),
@@ -106,10 +106,10 @@ def arguments(step: str, *given: str) -> argparse.Namespace:
     ],
 )
 def test_names_choose_among_the_sources_each_once_in_the_registry_s_order(
-    step: str, given: tuple[str, ...], taken: list[str]
+    stage: str, given: tuple[str, ...], taken: list[str]
 ) -> None:
     """No name takes every one that the command can run; a name, those named alone."""
-    found, _ = chosen(arguments(step, *given), CONFIGURED)
+    found, _ = chosen(arguments(stage, *given), CONFIGURED)
     assert [source.name for source in found] == taken
 
 
@@ -159,13 +159,13 @@ def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) 
     return config
 
 
-def command(home: Path, config: Path, step: str, *more: str) -> list[str]:
+def command(home: Path, config: Path, stage: str, *more: str) -> list[str]:
     """Give a command's arguments: this settings file, the data in the home, then ``more``."""
-    return [step, "--config", str(config), "--data-dir", str(home / "data"), *more]
+    return [stage, "--config", str(config), "--data-dir", str(home / "data"), *more]
 
 
 @pytest.mark.parametrize(
-    ("step", "given", "named"),
+    ("stage", "given", "named"),
     [
         ("prepare", ("worklog",), "worklog: not configured; set sources.worklog.path"),
         ("fetch", ("jira",), "jira: not configured; set sources.jira.projects"),
@@ -173,11 +173,11 @@ def command(home: Path, config: Path, step: str, *more: str) -> list[str]:
     ],
 )
 def test_a_choice_that_leaves_nothing_to_run_exits_2_saying_why(
-    home: Path, capsys: CaptureFixture[str], step: str, given: tuple[str, ...], named: str
+    home: Path, capsys: CaptureFixture[str], stage: str, given: tuple[str, ...], named: str
 ) -> None:
     """A source named without its setting, or none configured, before anything is asked."""
     config = settings_file(home, None)
-    assert main(command(home, config, step, "--yes", *given)) == ExitStatus.REFUSED
+    assert main(command(home, config, stage, "--yes", *given)) == ExitStatus.REFUSED
     assert named in capsys.readouterr().err
     assert not (home / "data").exists()
 
@@ -192,14 +192,14 @@ def test_a_registry_with_nothing_to_prepare_is_refused(
     assert "nothing to prepare: none of its sources is configured" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("step", ["fetch", "prepare"])
+@pytest.mark.parametrize("stage", ["fetch", "prepare"])
 def test_a_source_that_does_not_exist_is_refused_by_the_options(
-    home: Path, capsys: CaptureFixture[str], step: str
+    home: Path, capsys: CaptureFixture[str], stage: str
 ) -> None:
     """Argparse names the choices."""
     config = settings_file(home, None, atlassian=True)
     with pytest.raises(SystemExit) as stopped:
-        main(command(home, config, step, "gitlab"))
+        main(command(home, config, stage, "gitlab"))
     assert stopped.value.code == ExitStatus.REFUSED
     assert "invalid choice: 'gitlab'" in capsys.readouterr().err
 
@@ -208,7 +208,7 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
     """Of the sources taken: --since by Jira, under a registry whose Jira has no option."""
     plain = replace(
         JIRA,
-        types=(ResourceType(name="issues", summary="a project's issues", read="searched"),),
+        resource_types=(ResourceType(name="issues", help="a project's issues", read="searched"),),
         described=None,
     )
     registry = (CONFLUENCE, plain, WORKLOG)
@@ -222,11 +222,11 @@ def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -
     """A source's options are its fetch's: the parser offers none, and the summary reads none."""
     noted = ResourceType(
         name="notes",
-        summary="a folder's notes",
+        help="a folder's notes",
         read="in place",
         options=(Option(flag="--tag", help="a tag"),),
     )
-    registry = (CONFLUENCE, JIRA, replace(WORKLOG, types=(noted,)))
+    registry = (CONFLUENCE, JIRA, replace(WORKLOG, resource_types=(noted,)))
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
     assert "source confluence: spaces MFS" in fetch_described(given, CONFIGURED)
@@ -256,7 +256,7 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
 
 
 @pytest.mark.parametrize(
-    ("step", "lines"),
+    ("stage", "lines"),
     [
         (
             "fetch",
@@ -277,14 +277,14 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
     ],
 )
 def test_a_command_asks_once_after_naming_each_source_taken_and_left_out(
-    home: Path, worklog: Path, monkeypatch: MonkeyPatch, step: str, lines: tuple[str, ...]
+    home: Path, worklog: Path, monkeypatch: MonkeyPatch, stage: str, lines: tuple[str, ...]
 ) -> None:
     """On terminals: each source taken, with what it covers, each left out, one question."""
     config = settings_file(home, worklog, atlassian=True)
     stderr = Terminal()
     monkeypatch.setattr("sys.stdin", Terminal("n\n"))
     monkeypatch.setattr("sys.stderr", stderr)
-    assert main(command(home, config, step, "confluence")) == ExitStatus.FAILED
+    assert main(command(home, config, stage, "confluence")) == ExitStatus.FAILED
     said = stderr.getvalue()
     asked = said.index(QUESTION)
     for line in lines:
@@ -390,7 +390,8 @@ def test_json_is_one_document_with_a_row_per_source(
     """exit_status, then each source's row; one shape for a fetch as for a prepare.
 
     The file that fails, a page's, fails Confluence's fetch alone. A row's result is its
-    role's: its outcome, and what the source gives, under ``downloaded`` or ``mirrored``.
+    fetcher's or preparer's: its outcome, and what the source gives, under ``downloaded``
+    or ``mirrored``.
     """
     config = settings_file(home, worklog, atlassian=True)
     given = ("--yes", "--since", "2026-10-02", "--format", "json")
@@ -453,20 +454,22 @@ def test_a_first_fetch_without_since_fetches_the_last_week_of_each_target(
 def runs(
     settings: Settings,
     now: datetime,
-    *declared: Declared,
+    *declared: Source,
     options: Mapping[str, object] | None = None,
     dry_run: bool = False,
-) -> list[Run]:
+) -> list[SourceRun]:
     """Give a run of each source, at ``now``, as the command builds it from the settings.
 
     Each source's options are those of ``options`` that it declares, None when not given.
     """
     return [
-        Run(
-            declared=each,
+        SourceRun(
+            source=each,
             settings=settings,
-            table=getattr(settings.sources, each.name),
-            account=None if each.account is None else getattr(settings.accounts, each.account.name),
+            source_table=getattr(settings.sources, each.name),
+            account_table=None
+            if each.account is None
+            else getattr(settings.accounts, each.account.name),
             options={flag: (options or {}).get(flag) for flag in each.options},
             now=lambda: now,
             sleep=lambda _: None,
@@ -512,7 +515,7 @@ def test_a_later_fetch_catches_up_on_an_old_page_edited_today_and_nothing_stored
     assert ran.exit_status == ExitStatus.OK
     fetched = ran.sources[0].result
     assert isinstance(fetched, fetcher.Fetched)
-    assert isinstance(fetched.downloaded, Outcome)
+    assert isinstance(fetched.downloaded, FetchOutcome)
     assert fetched.downloaded.report.counts["confluence pages: fetched"] == 1
     assert stored_pages(settings)["1003"] == "000004"
 
@@ -545,7 +548,7 @@ def test_ctrl_c_in_a_fetch_exits_130_and_no_later_source_runs(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """The first interrupted; the next not run, nothing of it asked; the event names the first."""
-    monkeypatch.setattr(fetcher, "download", interrupting)
+    monkeypatch.setattr(fetcher, "run_fetch", interrupting)
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
     with capture_logs() as logged:
@@ -560,16 +563,16 @@ def test_ctrl_c_in_a_fetch_exits_130_and_no_later_source_runs(
     assert not settings.docs.exists()
 
 
-def problem_mirrored() -> mirror_app.Outcome:
+def problem_prepared() -> atlassian_prepare.AtlassianPrepareOutcome:
     """Give a mirror that could not convert a page."""
-    return mirror_app.Outcome(
+    return atlassian_prepare.AtlassianPrepareOutcome(
         documents=0,
         converted=0,
         reused=0,
         changes=Changes(written=0, unchanged=0, removed=0),
         unsupported=Counter(),
         problems=(
-            mirror_app.Problem(
+            atlassian_prepare.Problem(
                 where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
             ),
         ),
@@ -580,7 +583,7 @@ def test_a_prepare_problem_exits_1_with_the_work_log_mirrored(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Confluence's prepare fails, said by place; the work log's still runs."""
-    monkeypatch.setattr(preparer, "mirror", lambda *_: problem_mirrored())
+    monkeypatch.setattr(preparer, "prepare_atlassian", lambda *_: problem_prepared())
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
@@ -659,7 +662,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     spans = telemetry.spans.get_finished_spans()
     (row,) = [span for span in spans if span.name == "prepare.source"]
     assert row.attributes["kb_mcp.outcome"] == "failed"
-    assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
+    assert by_type_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
     assert run_each("prepare", taken).exit_status == ExitStatus.OK
@@ -716,21 +719,21 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
     )
 
 
-@pytest.mark.parametrize("step", ["fetch", "prepare"])
+@pytest.mark.parametrize("stage", ["fetch", "prepare"])
 @pytest.mark.parametrize("registry", [SOURCES, (WORKLOG,), (CONFLUENCE, WORKLOG)])
 def test_the_sources_offered_are_the_registry_s(
-    step: str, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    stage: str, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each name that the registry declares is taken; each other is refused by argparse.
 
     By ``prepare`` every source, by ``fetch`` those that have a fetcher.
     """
-    names = [each.name for each in registry if step == "prepare" or each.fetcher is not None]
+    names = [each.name for each in registry if stage == "prepare" or each.fetcher is not None]
     for name in names:
-        assert parser(sources=registry).parse_args([step, name]).source == [name]
+        assert parser(sources=registry).parse_args([stage, name]).source == [name]
     for name in (each.name for each in SOURCES if each.name not in names):
         with pytest.raises(SystemExit) as stopped:
-            parser(sources=registry).parse_args([step, name])
+            parser(sources=registry).parse_args([stage, name])
         assert stopped.value.code == ExitStatus.REFUSED
         assert f"invalid choice: '{name}'" in capsys.readouterr().err
 
@@ -803,7 +806,7 @@ def test_the_sources_named_are_the_rows_run(
 def test_a_source_not_named_is_not_mirrored_though_its_documents_are_stored(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """``prepare jira`` mirrors Jira alone; a Confluence file deleted stays so."""
+    """``prepare jira`` prepares Jira alone; a Confluence file deleted stays so."""
     config = settings_file(home, None, atlassian=True)
     main(command(home, config, "fetch", "--yes", "--since", "2026-10-02"))
     main(command(home, config, "prepare", "--yes"))
@@ -881,13 +884,13 @@ def test_a_second_prepare_reuses_every_conversion_and_the_work_log_adds_none(
         main(command(home, config, "prepare", "--yes", *output))
         rows.append(capsys.readouterr().out)
     first, second = (json.loads(row)["sources"][0] for row in rows[:2])
-    mirrored = first["result"]["mirrored"]
-    assert (first["source"], first["outcome"], mirrored["reused"]) == ("confluence", "done", 0)
-    converted = mirrored["converted"]
-    assert converted > mirrored["documents"] > 0  # a tree among them
+    outcome = first["result"]["mirrored"]
+    assert (first["source"], first["outcome"], outcome["reused"]) == ("confluence", "done", 0)
+    converted = outcome["converted"]
+    assert converted > outcome["documents"] > 0  # a tree among them
     again = second["result"]["mirrored"]
     assert (again["converted"], again["reused"]) == (0, converted)
-    documents = mirrored["documents"]
+    documents = outcome["documents"]
     assert (
         f"confluence: done\n  documents: {documents}\n"
         f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
@@ -908,8 +911,8 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
     run_each("fetch", runs(settings, FIRST, CONFLUENCE, options=SINCE))
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG)
     first = run_each("prepare", taken).sources[0].result
-    assert isinstance(first, preparer.Prepared)
-    assert isinstance(first.mirrored, mirror_app.Outcome)
+    assert isinstance(first, preparer.AtlassianPrepared)
+    assert isinstance(first.mirrored, atlassian_prepare.AtlassianPrepareOutcome)
     settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
     with capture_logs() as logged:
         ran = run_each("prepare", taken)
@@ -919,10 +922,10 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
         ("worklog", "done"),
     ]
     result = ran.sources[0].result
-    assert isinstance(result, preparer.Prepared)
-    mirrored, first = result.mirrored, first.mirrored
-    assert isinstance(mirrored, mirror_app.Outcome)
-    assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
+    assert isinstance(result, preparer.AtlassianPrepared)
+    outcome, first = result.mirrored, first.mirrored
+    assert isinstance(outcome, atlassian_prepare.AtlassianPrepareOutcome)
+    assert (outcome.converted, outcome.reused) == (first.converted, 0)
     replaced = logged_as(logged, "prepare.cache_replaced")
     assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
 
@@ -939,15 +942,15 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     run_each("fetch", runs(settings, FIRST, CONFLUENCE, options=SINCE))
     taken = runs(settings, FIRST, CONFLUENCE)
     first = run_each("prepare", taken).sources[0].result
-    assert isinstance(first, preparer.Prepared)
+    assert isinstance(first, preparer.AtlassianPrepared)
     first = first.mirrored
-    assert isinstance(first, mirror_app.Outcome)
+    assert isinstance(first, atlassian_prepare.AtlassianPrepareOutcome)
     more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
     monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
     again = run_each("prepare", taken).sources[0].result
-    assert isinstance(again, preparer.Prepared)
+    assert isinstance(again, preparer.AtlassianPrepared)
     again = again.mirrored
-    assert isinstance(again, mirror_app.Outcome)
+    assert isinstance(again, atlassian_prepare.AtlassianPrepareOutcome)
     assert (again.converted, again.reused) == (first.converted, 0)
     assert first.converted > 0
 
@@ -990,7 +993,7 @@ def test_with_the_work_log_alone_the_index_still_holds_every_page(
 
 
 def interrupting(*_: object) -> None:
-    """Stop a role as Ctrl-C would."""
+    """Stop a fetcher or a preparer as Ctrl-C would."""
     raise KeyboardInterrupt
 
 
@@ -998,7 +1001,7 @@ def test_ctrl_c_in_a_prepare_marks_it_interrupted_and_the_work_log_not_run(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Confluence's prepare interrupted, the work log's not run: exit 130."""
-    monkeypatch.setattr(preparer, "mirror", interrupting)
+    monkeypatch.setattr(preparer, "prepare_atlassian", interrupting)
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
@@ -1040,13 +1043,13 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
     assert [each["source"] for each in logged_as(logged, "prepare.interrupted")] == [None]
 
 
-def ending(*statuses: ExitStatus) -> Callable[..., Outcome]:
+def ending(*statuses: ExitStatus) -> Callable[..., FetchOutcome]:
     """Give a download that ends as told, once each, then stops as Ctrl-C would."""
     left = iter(statuses)
 
-    def download(*_: object) -> Outcome:
+    def download(*_: object) -> FetchOutcome:
         for status in left:
-            return Outcome(report=Report(), failed_targets=[], status=status)
+            return FetchOutcome(report=RunReport(), failed_targets=[], status=status)
         raise KeyboardInterrupt
 
     return download
@@ -1058,11 +1061,11 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     """A failed fetch and one to sign in again exit 3, whichever comes first; Ctrl-C, 130."""
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
-    monkeypatch.setattr(fetcher, "download", ending(ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
+    monkeypatch.setattr(fetcher, "run_fetch", ending(ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
     ran = run_each("fetch", taken)
     assert [row.outcome for row in ran.sources] == ["failed", "sign in"]
     assert ran.exit_status == ExitStatus.SIGN_IN_AGAIN
-    monkeypatch.setattr(fetcher, "download", ending(ExitStatus.SIGN_IN_AGAIN))
+    monkeypatch.setattr(fetcher, "run_fetch", ending(ExitStatus.SIGN_IN_AGAIN))
     ran = run_each("fetch", taken)
     assert [row.outcome for row in ran.sources] == ["sign in", "interrupted"]
     assert ran.exit_status == ExitStatus.INTERRUPTED
@@ -1121,10 +1124,10 @@ def test_a_busy_raw_store_fails_the_fetch_and_a_prepare_still_runs(
 ) -> None:
     """Another run writing the store: each fetch failed, said; each next row runs."""
 
-    def busy(*_: object) -> Outcome:
+    def busy(*_: object) -> FetchOutcome:
         raise StoreBusyError
 
-    monkeypatch.setattr(fetcher, "download", busy)
+    monkeypatch.setattr(fetcher, "run_fetch", busy)
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
     with capture_logs() as logged:
@@ -1164,8 +1167,8 @@ def missing() -> Pandoc:
     raise PandocMissingError(message)
 
 
-def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
-    """Give the work log's documents counted, by kind and outcome."""
+def by_type_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
+    """Give the work log's documents counted, by type and outcome."""
     return {
         (point.attributes["kb_mcp.kind"], point.attributes["kb_mcp.outcome"]): point.value
         for point in measured["kb_mcp.prepare.documents"].data.data_points
@@ -1173,13 +1176,13 @@ def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, objec
     }
 
 
-def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
+def test_the_work_log_is_counted_by_type_and_its_spans_are_in_its_row(
     home: Path, worklog: Path, telemetry: InMemory
 ) -> None:
-    """Each document counted by kind and outcome, each work-log span in the source's row.
+    """Each document counted by type and outcome, each work-log span in the source's row.
 
-    Fresh, every entry, day, meeting and transcript is mirrored, each conversion timed by
-    kind; unchanged, all are kept and none timed. Each work-log span is in the row's
+    Fresh, every entry, day, meeting and transcript is prepared, each conversion timed by
+    type; unchanged, all are kept and none timed. Each work-log span is in the row's
     ``prepare.source``, which names the source and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
     """
@@ -1189,14 +1192,14 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
     assert main(given) == ExitStatus.OK
     second = telemetry.measured()
-    assert by_kind_and_outcome(first) == {
-        (kind, "mirrored"): count for kind, count in WORKLOG_KINDS.items()
+    assert by_type_and_outcome(first) == {
+        (document_type, "mirrored"): count for document_type, count in WORKLOG_BY_TYPE.items()
     }
-    assert by_kind_and_outcome(second) == {
-        (kind, "kept"): count for kind, count in WORKLOG_KINDS.items()
+    assert by_type_and_outcome(second) == {
+        (document_type, "kept"): count for document_type, count in WORKLOG_BY_TYPE.items()
     }
     timed = first["kb_mcp.prepare.conversion.duration"].data.data_points
-    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_KINDS
+    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_BY_TYPE
     assert "kb_mcp.prepare.conversion.duration" not in second
     (row,) = [span for span in spans if span.name == "prepare.source"]
     assert (row.attributes["kb_mcp.source"], row.attributes["kb_mcp.outcome"]) == (
@@ -1233,7 +1236,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
 
     Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
-    transcript read, none unread; each document mirrored, by its kind and path; a file
+    transcript read, none unread; each document prepared, by its type and path; a file
     each written. Unchanged, each kept and none written. A dry run says each to convert
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.
@@ -1253,7 +1256,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
     assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
     documents = logged_as(fresh, "worklog.document")
-    assert Counter(each["kind"] for each in documents) == WORKLOG_KINDS
+    assert Counter(each["kind"] for each in documents) == WORKLOG_BY_TYPE
     assert {each["outcome"] for each in documents} == {"mirrored"}
     folders = {
         "entry": "worklog/entries/",
@@ -1357,7 +1360,7 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
 
 
 def test_a_command_is_a_dry_run_by_its_runs_alone(tmp_path: Path, worklog: Path) -> None:
-    """Plan 030: one flag for a run, which each role reads: the events follow it."""
+    """Plan 030: one flag for a run, which each fetcher and preparer reads: the events follow it."""
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as dry:
         ran = run_each("prepare", runs(settings, FIRST, WORKLOG, dry_run=True))
@@ -1464,17 +1467,17 @@ def test_a_prepare_refused_by_a_token_without_its_email_is_none_of_its_concern(
 
 
 @pytest.mark.usefixtures("signed_in")
-@pytest.mark.parametrize("step", ["fetch", "prepare"])
+@pytest.mark.parametrize("stage", ["fetch", "prepare"])
 def test_the_same_command_runs_either_way_round_its_options(
-    home: Path, capsys: CaptureFixture[str], step: str
+    home: Path, capsys: CaptureFixture[str], stage: str
 ) -> None:
     """Names before the options, or after: one command to copy, the names last."""
     config = settings_file(home, None, atlassian=True)
-    period = ("--since", "2026-10-02") if step == "fetch" else ()
+    period = ("--since", "2026-10-02") if stage == "fetch" else ()
     data = str(home / "data")
-    given = [step, "confluence", "--config", str(config), "--data-dir", data, "--dry-run", *period]
+    given = [stage, "confluence", "--config", str(config), "--data-dir", data, "--dry-run", *period]
     assert main(given) == ExitStatus.OK
-    copied = capsys.readouterr().err.split(f"kb-mcp {step} \\\n")[1]
+    copied = capsys.readouterr().err.split(f"kb-mcp {stage} \\\n")[1]
     assert copied.rstrip().rsplit("\n", 1)[-1].strip() == "confluence"
 
 

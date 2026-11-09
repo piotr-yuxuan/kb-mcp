@@ -96,7 +96,7 @@ kb-mcp eval-agents --format json grade pilot --yes
 
 ## After the pilot
 
-Set the estimates of `cli/domain/eval_agents.py` once, from the pilot's calls, tokens
+Set the estimates of `cli/domain/evaluate_agents.py` once, from the pilot's calls, tokens
 handed over and model tokens, then prepare the runs that decide, each model in its own
 directory:
 

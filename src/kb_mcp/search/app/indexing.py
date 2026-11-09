@@ -6,7 +6,7 @@ whose text the model refuses has no vector, and its document is named. Reading t
 joining persons and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` and ``embed.md`` list it. ``update_index`` is
 ``index``'s: only the files whose bytes changed are read, and the index takes them
-through its update. ``refresh`` is ``embed``'s: the pieces that the index's documents
+through its update. ``fill_and_prune`` is ``embed``'s: the pieces that the index's documents
 want are filled, from the index alone, the mirror read for its digests; then the
 vector store is pruned to what the indexes on disk read. ``build_index`` builds an
 index whole, as ``eval`` does.
@@ -50,7 +50,7 @@ from kb_mcp.search.domain.indexes import (
     UnavailableIndexError,
     Whole,
 )
-from kb_mcp.search.domain.people import Outcome, aliases_digest
+from kb_mcp.search.domain.people import JoinOutcome, aliases_digest
 from kb_mcp.search.domain.search import WORDS, Embedded, sections
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.search.adapters.embedding import Embedder
-    from kb_mcp.search.domain.indexes import Held, SearchIndex, Stored, WordsIndex
+    from kb_mcp.search.domain.indexes import Held, IndexedBody, SearchIndex, WordsIndex
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -84,7 +84,7 @@ class ChangedMeanwhileError(Exception):
     """Another run wrote the index each time that this one was about to."""
 
 
-class Report(Record):
+class IndexReport(Record):
     """What a build indexed, which files it skipped and why, and whom it joined."""
 
     model_config = ConfigDict(frozen=False)
@@ -93,10 +93,10 @@ class Report(Record):
     sections: int = 0
     skipped: list[tuple[str, str]] = Field(default_factory=list)  # each path and reason
     pieces: int = 0  # pieces with a vector
-    embedded: int = 0  # texts that the model embedded, the store lacking them
+    embedded: int = 0  # texts that the model embedded, the vector store lacking them
     unembedded: list[str] = Field(default_factory=list)  # paths with a piece refused
-    characters: int = 0  # of the texts that the pieces embed, whatever the store held
-    persons: Outcome = Field(default_factory=Outcome)  # that the documents' people make
+    characters: int = 0  # of the texts that the pieces embed, whatever the vector store held
+    persons: JoinOutcome = Field(default_factory=JoinOutcome)  # that the documents' people make
     # An update's documents: kept from the index in place, new to it, put in place of
     # its own, or gone; those awaiting vectors, of an index that names a model.
     copied: int = 0
@@ -159,13 +159,13 @@ class Indexed(Record):
     vector store; its JSON names them, as before plan 035.
     """
 
-    report: Report
+    report: IndexReport
     index: Path
     model: str | None
     pruned: Pruned | None = None
 
 
-def mirror_files(docs: Path) -> dict[str, Path]:
+def document_files(docs: Path) -> dict[str, Path]:
     """Give each document file of the mirror at ``docs`` by its path, in the mirror's order.
 
     A name not in UTF-8, which no text in the index could hold, goes in ASCII escapes.
@@ -235,7 +235,7 @@ def build_index(
     built_at: datetime,
     embedding: Embedding | None = None,
     aliases: Mapping[str, str] | None = None,
-) -> Report:
+) -> IndexReport:
     """Index every document of the mirror at ``docs`` into a new index at ``index``.
 
     A file that cannot be read, that ``markdown.load`` refuses, or whose document is
@@ -249,15 +249,15 @@ def build_index(
     and its document named in the report. With an embedding,
     the build holds the vector store's lock shared, from before it reads the mirror until
     its index is in place, so that no prune deletes what it embeds; it waits for a prune
-    in progress, and raises TimeoutError past ``vector_store.WAIT_S``. The task ``files``
+    in progress, and raises TimeoutError past ``WAIT_S``, the conversions'. The task ``files``
     reports the files read, each by its path, then the vector store its own. The spans
     ``index.files``, ``Writer.join``'s ``index.join`` and ``index.embed`` hold reading the
     files, joining persons and embedding the pieces;
     ``index.document`` says each file indexed at DEBUG, ``index.built`` the counts at
     INFO once the index is complete.
     """
-    files = mirror_files(docs)
-    report = Report()
+    files = document_files(docs)
+    report = IndexReport()
     model = embedding.embedder if embedding else None
     embedded = (
         Embedded(
@@ -298,7 +298,7 @@ def build_index(
                 for number, start, end, text in (
                     CHUNKERS[embedded.chunking].cut(front, cut) if embedded else ()
                 ):
-                    key = vector_store.key(model.fingerprint, text)
+                    key = vector_store.vector_key(model.fingerprint, text)
                     pending.append((first + number, start, end, key, path))
                     texts[key] = text
                 FILES.add(1, {"kb_mcp.outcome": "indexed"})
@@ -378,7 +378,7 @@ def updated(
     aliases: Mapping[str, str],
     built_at: datetime,
     whole: Whole | None,
-) -> Report:
+) -> IndexReport:
     """Update the index to the mirror's files, or rebuild it whole, and report it.
 
     Whole when ``whole`` says why, or when there is no index that this version reads,
@@ -388,11 +388,11 @@ def updated(
     """
     restarted = False
     while True:
-        held = summary = None
+        held = state = None
         if whole is None:
             try:
                 with index.reading() as reader:
-                    held, summary = reader.held(), reader.summary()
+                    held, state = reader.held(), reader.index_status()
             except DamagedIndexError:
                 whole = "damaged"
             except UnavailableIndexError:
@@ -400,13 +400,13 @@ def updated(
         if held is not None and held.words != WORDS:
             held, whole = None, "another version"
         change = change_of(files, held, aliases, built_at)
-        if change is None and held is not None and summary is not None:  # nothing changed
-            return Report(
-                types=Counter(summary.types),
-                sections=summary.sections,
+        if change is None and held is not None and state is not None:  # nothing changed
+            return IndexReport(
+                types=Counter(state.types),
+                sections=state.sections,
                 skipped=[(path, held.skipped[path].reason) for path in sorted(held.skipped)],
-                persons=Outcome(count=summary.people.count),
-                awaiting=summary.awaiting if summary.model else None,
+                persons=JoinOutcome(count=state.people.count),
+                awaiting=state.awaiting if state.model else None,
                 unchanged=True,
             )
         try:
@@ -415,7 +415,7 @@ def updated(
             whole = "damaged"
             continue
         if done is not None:
-            return Report(
+            return IndexReport(
                 types=Counter(done.types),
                 sections=done.sections,
                 skipped=[(each.path, each.reason) for each in done.skipped],
@@ -451,7 +451,7 @@ def update_index(
     log = structlog.get_logger()
     try:
         aliases = read_aliases(indexing.aliases)
-        files = mirror_files(indexing.docs)
+        files = document_files(indexing.docs)
         index = sqlite_index.SqliteIndex(indexing.index)
         report = updated(index, files, aliases, built_at, "--rebuild" if rebuild else None)
     except (
@@ -493,7 +493,7 @@ def update_index(
             "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
         )
     for alias in report.persons.unused:
-        log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
+        log.warning("index.alias_unused", alias=alias.name, key=alias.name_key, reason=alias.reason)
     return Indexed(report=report, index=indexing.index, model=None)
 
 
@@ -505,7 +505,7 @@ class Filled(Record):
     """What ``embed`` did to the index's pieces, then what the prune that followed did.
 
     ``added`` and ``removed`` count pieces; ``embedded`` the texts that the model embedded,
-    the store lacking them; ``found`` those that the store held; ``refused`` names the
+    the vector store lacking them; ``found`` those that it held; ``refused`` names the
     documents with a piece whose text the model refused, which stays wanted. ``pieces``
     counts what the index then holds, ``documents`` its documents and ``skipped`` the
     files that it lacks. ``unchanged`` says that nothing was written. ``kept`` holds the
@@ -533,7 +533,7 @@ class Filled(Record):
         return not (self.refused or self.skipped)
 
 
-def to_fill(index: SearchIndex) -> tuple[Held, Embedded | None, list[Stored], set[Piece]]:
+def to_fill(index: SearchIndex) -> tuple[Held, Embedded | None, list[IndexedBody], set[Piece]]:
     """Read in one use what ``embed`` fills: what is held, the model, documents and pieces.
 
     What the index holds of the mirror, the model it names, if any, its documents and
@@ -559,7 +559,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
     with it: ``embed.mirror_changed`` warns of any difference, naming ``kb-mcp index``,
     and changes nothing else. The documents' bodies are cut again by this code, each
     piece keyed by the model's fingerprint: those wanted and not held are added, their
-    vectors from the store, else from the model, under the store's lock shared; those
+    vectors from the vector store, else from the model, under its lock shared; those
     held and not wanted are removed; nothing to add or remove, the same model, nothing
     is written, nor when the model refuses every piece to add. Another run that wrote
     the index meanwhile starts the fill again, once, then raises ChangedMeanwhileError.
@@ -570,7 +570,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
     log = structlog.get_logger()
     held, before, stored, pieces = to_fill(index)
     try:
-        files = mirror_files(indexing.docs)
+        files = document_files(indexing.docs)
     except MirrorMissingError:
         files = {}
     found = differences(digested(files), held)
@@ -598,7 +598,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
                     number=number + 1,
                     start=start,
                     stop=stop,
-                    key=vector_store.key(model.fingerprint, text),
+                    vector_key=vector_store.vector_key(model.fingerprint, text),
                 ): text
                 for each in stored
                 for number, start, stop, text in CHUNKERS[model.chunking].cut(
@@ -614,12 +614,12 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
                 pieces=len(kept),
                 documents=len(held.documents),
                 skipped=len(held.skipped),
-                kept=frozenset(piece.key for piece in kept),
+                kept=frozenset(piece.vector_key for piece in kept),
             )
             if not add and not remove and before == model:
                 log.info("embed.unchanged", pieces=filled.pieces)
                 return replace(filled, unchanged=True)
-            texts = {piece.key: text for piece, text in add.items()}
+            texts = {piece.vector_key: text for piece, text in add.items()}
             with vector_store.shared(indexing.vectors):
                 with (
                     TRACER.start_as_current_span("index.embed"),
@@ -627,9 +627,9 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
                 ):
                     vectors, embedded = store.vectors(texts, embedder.documents)
                 given = {
-                    piece: np.frombuffer(vectors[piece.key], dtype=vector_store.LAYOUT)
+                    piece: np.frombuffer(vectors[piece.vector_key], dtype=vector_store.LAYOUT)
                     for piece in add
-                    if piece.key in vectors
+                    if piece.vector_key in vectors
                 }
                 build = (
                     index.fill(held.build, model, given, remove)
@@ -645,7 +645,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
                     embedded=embedded,
                     found=len(texts.keys() & vectors.keys()) - embedded,
                     refused=sorted({piece.path for piece in add.keys() - given.keys()}),
-                    kept=filled.kept | {piece.key for piece in given},
+                    kept=filled.kept | {piece.vector_key for piece in given},
                     unchanged=build == held.build,
                 )
                 counts = {"added": filled.added, "removed": filled.removed}
@@ -672,7 +672,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
             held, before, stored, pieces = to_fill(index)
 
 
-def refresh(indexing: Indexing) -> Filled | None:
+def fill_and_prune(indexing: Indexing) -> Filled | None:
     """Fill the index's pieces, as ``filling`` does, then prune the vector store.
 
     When there is no index, one that this code's cut did not write, one damaged, the

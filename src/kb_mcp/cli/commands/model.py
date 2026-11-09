@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 # Characters of a digest shown, as Ollama shows them.
 SHORT = 12
@@ -55,7 +55,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Read
     )
 
 
-def text(ready: Ready, _summary: Summary) -> str:
+def text(ready: Ready, _summary: Detail) -> str:
     """Write the dimensions, the endpoint, the short digest, and whether prefixes are known."""
     return (
         f"{ready.name}: {ready.dimensions} dimensions, from {ready.url};"

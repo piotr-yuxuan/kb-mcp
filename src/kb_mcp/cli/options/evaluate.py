@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
@@ -32,7 +32,7 @@ def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object])
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``eval`` to the command."""
     parser = subparsers.add_parser(

@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 FIXTURE = Path(__file__).parent / "fixtures" / "memo_source"
 # A word that one note holds, and no other.
@@ -52,7 +52,7 @@ NAMED = re.compile(r"\bmemo\b|\bkb_memo\b", re.IGNORECASE)
 
 
 @pytest.fixture
-def registry(monkeypatch: MonkeyPatch) -> tuple[Declared, ...]:
+def registry(monkeypatch: MonkeyPatch) -> tuple[Source, ...]:
     """Give ``SOURCES`` and the memo's declaration, its package on the path: the one line."""
     monkeypatch.syspath_prepend(FIXTURE)
     return (*SOURCES, importlib.import_module("kb_memo.declared").MEMO)
@@ -77,7 +77,7 @@ def config(tmp_path: Path) -> Path:
 
 
 def prepare_memo(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> list[dict[str, object]]:
     """Prepare the memo alone, by the user's word, then index; check each exits 0; give its rows."""
     given = ["--yes", "--config", str(config), "--format", "json"]
@@ -107,8 +107,8 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
     """In a fresh interpreter, ``prepare --help`` offers it, having imported its declaration alone.
 
     ``-X importtime`` names each module that the child imports, so that a package it does
-    not name never reached ``sys.modules``: neither one of G's, nor the source's table
-    or role.
+    not name never reached ``sys.modules``: neither one of G's, nor the source's table,
+    fetcher or preparer.
     """
     child = subprocess.run(
         [
@@ -148,7 +148,7 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
 
 
 def test_check_lists_its_setting(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Its table is composed into the settings, read from the file, and read by ``check``.
 
@@ -165,7 +165,7 @@ def test_check_lists_its_setting(
 
 
 def test_prepare_writes_under_its_folder_alone_and_search_finds_a_note(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each note is a file of ``docs/memo/``, and another source's stays as it was.
 
@@ -195,7 +195,7 @@ def test_prepare_writes_under_its_folder_alone_and_search_finds_a_note(
 
 
 def test_a_second_prepare_writes_nothing(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each note found unchanged keeps its file, its bytes and its time.
 
@@ -216,7 +216,7 @@ def test_a_second_prepare_writes_nothing(
 
 
 def test_a_note_removed_takes_its_file_with_it(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Its file goes, and only its; search no longer finds it. Another source's file stays."""
     data = config.parent / "data"
@@ -236,7 +236,7 @@ def test_a_note_removed_takes_its_file_with_it(
 
 
 def test_a_dry_run_writes_nothing(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """The prepare is not run, and no file of the mirror is made."""
     given = ["prepare", "memo", "--dry-run", "--config", str(config), "--format", "json"]
@@ -247,7 +247,7 @@ def test_a_dry_run_writes_nothing(
 
 
 def test_a_folder_of_notes_that_is_not_one_is_refused_before_any_row(
-    config: Path, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Its preflight refuses the run, exit 2, by its setting; nothing is written."""
     (config.parent / "notes" / "orchard.txt").unlink()

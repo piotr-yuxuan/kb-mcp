@@ -20,8 +20,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
+from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import Link, PersonRole
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, PersonRole
 from kb_mcp.search.adapters import sqlite_index, vector_store
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
@@ -36,7 +37,7 @@ from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
 from kb_mcp.search.domain.people import (
     UNHELD,
     Ambiguity,
-    Outcome,
+    JoinOutcome,
     Person,
     Spelling,
 )
@@ -56,6 +57,7 @@ from tests.mirrors import (
     write,
 )
 from tests.test_cli import logged_as
+from tests.test_confirmation import read_until
 from tests.test_observed import CONTROL, said
 from tests.test_people import (
     ALEX,
@@ -68,7 +70,6 @@ from tests.test_people import (
     SAM_ALONE,
     anchored,
 )
-from tests.test_question import read_until
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -123,14 +124,14 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     assert out.startswith("documents: 2\n")
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() is None
-        (entry,) = reader.entries(paths=[path])
+        (entry,) = reader.indexed_documents(paths=[path])
         assert entry.front == front
         assert (entry.length, entry.sections) == (len(BODY), 2)
         assert reader.text(path, 0, entry.length) == BODY
         assert reader.text(path, 9, 14) == BODY[9:14]
         second = BODY.index("## ")
         assert reader.bounds(path) == [(0, second), (second, len(BODY))]
-        summary = reader.summary()
+        summary = reader.index_status()
     assert summary.built_at.tzinfo is not None
     assert (summary.types, summary.spaces, summary.projects) == (
         {"issue": 1, "page": 1},
@@ -203,7 +204,7 @@ def test_line_endings_read_back_as_written(data: Path) -> None:
     path = write(data / "docs", page("196845", "Kafka"), body)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
-        (entry,) = reader.entries(paths=[path])
+        (entry,) = reader.indexed_documents(paths=[path])
         assert reader.text(path, 0, entry.length) == body
         second = body.index("## ")
         assert reader.bounds(path) == [(0, second), (second, len(body))]
@@ -242,7 +243,7 @@ def test_a_refused_file_is_named_and_the_others_indexed(
     (lacking,) = logged_as(data.parent / "home", "index.lacks_files")
     assert (lacking["level"], lacking["count"]) == ("warning", SKIPPED)
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().skipped == SKIPPED
+        assert reader.index_status().skipped == SKIPPED
 
 
 def test_a_stray_markdown_file_is_read_and_reported(
@@ -278,7 +279,7 @@ def test_a_failed_build_keeps_the_old_index(data: Path, monkeypatch: MonkeyPatch
         build_index(data / "docs", data / "index.sqlite", MOMENT + timedelta(hours=1))
     assert sorted(path.name for path in data.iterdir()) == ["docs", "index.sqlite"]
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().built_at == MOMENT
+        assert reader.index_status().built_at == MOMENT
 
 
 def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -418,7 +419,7 @@ def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:
 
     monkeypatch.setattr(sqlite3, "connect", spy)
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().types == {"page": 1}
+        assert reader.index_status().types == {"page": 1}
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             opened[0].execute("CREATE TABLE written (value)")
 
@@ -445,7 +446,7 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
     write(data / "docs", replace(page("196846", "Another"), space="OPS"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().spaces == {"ENG": 1, "OPS": 1}
+        assert reader.index_status().spaces == {"ENG": 1, "OPS": 1}
 
 
 @pytest.fixture
@@ -560,7 +561,7 @@ def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data
     assert "people" in columns
     assert not {"author", "assignee"} & columns
     with reading(data / "index.sqlite") as reader:
-        (entry,) = reader.entries(paths=[path])
+        (entry,) = reader.indexed_documents(paths=[path])
     assert entry.front == COMMENTED
 
 
@@ -622,7 +623,7 @@ def test_links_and_participants_read_back_and_participants_are_rows_of_people(
         ("t-20261027-meeting-1", "participant", "Sam Sample", None, None),
     ]
     with reading(data / "index.sqlite") as reader:
-        fronts = {entry.path: entry.front for entry in reader.entries(paths=paths)}
+        fronts = {entry.path: entry.front for entry in reader.indexed_documents(paths=paths)}
     assert fronts == dict(zip(paths, (MEETING, TRANSCRIPT), strict=True))
 
 
@@ -640,34 +641,37 @@ def persons(data: Path) -> Path:
 # spellings' first in the order of the files, all being as frequent: the review's Alex
 # Example, the stand-up's Sam Sample.
 ROBIN_SPELT = (
-    Spelling(name="Robin", key="robin", how="meeting"),
-    Spelling(name="Robin Example", key="robin example", how="account"),
-    Spelling(name="Robin Example", key="robin example", how="name"),
-    Spelling(name="Robin Sample", key="robin sample", how="account"),
-    Spelling(name="robin  EXAMPLE", key="robin example", how="name"),
+    Spelling(name="Robin", name_key="robin", how="meeting"),
+    Spelling(name="Robin Example", name_key="robin example", how="account"),
+    Spelling(name="Robin Example", name_key="robin example", how="name"),
+    Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+    Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
 )
 JOINED = {
     ROBIN: ("Robin Sample", ROBIN_SPELT),
-    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", key="sam sample", how="account"),)),
-    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", key="sam sample", how="account"),)),
+    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
+    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
     SAM_ALONE: (
         "Sam Sample",
         (
-            Spelling(name="Sam", key="sam", how="meeting"),
-            Spelling(name="Sam Sample", key="sam sample", how="name"),
+            Spelling(name="Sam", name_key="sam", how="meeting"),
+            Spelling(name="Sam Sample", name_key="sam sample", how="name"),
         ),
     ),
     ALEX_EXAMPLE: (
         "Alex Example",
         (
-            Spelling(name="Alex", key="alex", how="meeting"),
-            Spelling(name="Alex Example", key="alex example", how="name"),
-            Spelling(name="Alex Example (not in the header)", key="alex example", how="name"),
+            Spelling(name="Alex", name_key="alex", how="meeting"),
+            Spelling(name="Alex Example", name_key="alex example", how="name"),
+            Spelling(name="Alex Example (not in the header)", name_key="alex example", how="name"),
         ),
     ),
-    ALEX: ("Alex", (Spelling(name="Alex", key="alex", how="name"),)),
-    ROBIN_ALONE: ("Robin", (Spelling(name="Robin", key="robin", how="name"),)),
-    ROBIN_OTHER: ("Robin Other", (Spelling(name="Robin Other", key="robin other", how="name"),)),
+    ALEX: ("Alex", (Spelling(name="Alex", name_key="alex", how="name"),)),
+    ROBIN_ALONE: ("Robin", (Spelling(name="Robin", name_key="robin", how="name"),)),
+    ROBIN_OTHER: (
+        "Robin Other",
+        (Spelling(name="Robin Other", name_key="robin other", how="name"),),
+    ),
 }
 # The person of each document's people, by the document's key or id and the name.
 PERSON_OF = {
@@ -723,7 +727,7 @@ def test_every_row_of_people_has_its_person_as_the_rules_join_them(persons: Path
     held, names, person_of = joined_rows(persons)
     assert held == [(person, name) for person, (name, _) in sorted(JOINED.items())]
     assert names == [
-        (person, spelling.name, spelling.key, spelling.how)
+        (person, spelling.name, spelling.name_key, spelling.how)
         for person, (_, spellings) in sorted(JOINED.items())
         for spelling in spellings
     ]
@@ -735,7 +739,7 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
     for front in PERSONS:
         write(data / "docs", front)
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
-    assert report.persons == Outcome(
+    assert report.persons == JoinOutcome(
         count=len(JOINED),
         ambiguous=(
             Ambiguity(name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})),
@@ -817,8 +821,10 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
     tens of seconds so.
     """
     with closing(sqlite3.connect(persons)) as connection:
-        plan = connection.execute(f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARIES}").fetchall()
-    steps = [row[3] for row in plan]
+        plan_query = connection.execute(
+            f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARY_LINKS}"
+        ).fetchall()
+    steps = [row[3] for row in plan_query]
     meeting = [step for step in steps if step.startswith(("SCAN m", "SEARCH m "))]
     assert len(meeting) == 1
     assert meeting[0].startswith("SEARCH m USING ")
@@ -850,7 +856,7 @@ def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -
         robin = reader.person(ROBIN)
         assert reader.person("p-0123456789abcdef") is None
     assert robin is not None
-    assert robin.person == Person(id=ROBIN, name="Robin Sample", names=ROBIN_SPELT)
+    assert robin.person == Person(id=ROBIN, name="Robin Sample", spellings=ROBIN_SPELT)
     assert list(robin.roles.items()) == [
         ("participant", 4),
         ("author", 1),
@@ -1048,7 +1054,7 @@ def test_each_file_skipped_is_recorded_with_its_digest_and_why(data: Path) -> No
     assert sorted(report.skipped) == [(path, reason) for path, _, reason in rows]
     assert rows_of(data / "index.sqlite", "SELECT path FROM documents") == [(kept,)]
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().skipped == len(rows)
+        assert reader.index_status().skipped == len(rows)
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="APFS refuses names that are not UTF-8")
@@ -1079,13 +1085,13 @@ def test_a_build_with_no_file_skipped_records_none(data: Path) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     assert rows_of(data / "index.sqlite", "SELECT * FROM skipped") == []
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().skipped == 0
+        assert reader.index_status().skipped == 0
 
 
 def test_a_build_records_its_words_and_what_the_alias_file_means(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The names and targets, in their order: no other change of the file moves the row."""
+    """The names and values, in their order: no other change of the file moves the row."""
     write(data / "docs", page("196845", "Kafka"))
 
     def recorded(text: str | None) -> tuple[object, ...]:
@@ -1127,13 +1133,13 @@ def test_an_index_built_before_digests_is_read_as_any_other(data: Path) -> None:
         connection.execute("DELETE FROM meta WHERE name IN ('words', 'aliases')")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
-        assert [entry.path for entry in reader.entries(paths=[path])] == [path]
+        assert [entry.path for entry in reader.indexed_documents(paths=[path])] == [path]
         assert list(reader.scores('"retention"', Filters())[0]) == [path]
-        summary = reader.summary()
+        summary = reader.index_status()
     assert (summary.types, summary.skipped) == ({"page": 1}, 0)
 
 
-def written_backwards(index: Path, fronts: Iterable[FrontMatter]) -> Outcome:
+def written_backwards(index: Path, fronts: Iterable[FrontMatter]) -> JoinOutcome:
     """Write documents the last by path first, join them, and give what the join said.
 
     Their rowids then go against their paths, as they do where an edited file comes last.
@@ -1942,3 +1948,31 @@ def test_a_whole_update_s_own_damage_is_raised_once_not_retried(
     lock = data / "index.sqlite.lock"
     with lock.open("a") as file:
         fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)  # free, or this raises
+
+
+def test_the_index_s_sql_names_roles_types_and_relations_as_the_mirror_does() -> None:
+    """Plan 052: each role, type and relation that the SQL spells is one the mirror names.
+
+    The SQL holds them as text, which Ruff's S608 keeps from being built from the mirror's
+    constants: a role it compares is one of ``ROLES``, a type one of the work log's, a
+    relation one of ``RELATIONS``, so that a role or a relation renamed in the mirror
+    fails here rather than matching nothing.
+    """
+    sql = "\n".join(
+        [value for value in vars(sqlite_index).values() if isinstance(value, str)]
+        + list(sqlite_index.VALUES.values())
+    )
+    said = {
+        "roles": set(re.findall(r"role = '(\w+)'", sql)),
+        "types": set(re.findall(r"type (?:=|<>) '(\w+)'", sql)),
+        "relations": set(re.findall(r"'\$\.relation'\) = '(\w+)'", sql)),
+    }
+    assert all(said.values())
+    assert said["roles"] <= set(ROLES)
+    assert said["types"] <= set(WORKLOG_TYPES)
+    assert said["relations"] <= set(RELATIONS)
+
+
+def test_the_index_lists_the_values_of_each_role_s_filter() -> None:
+    """Plan 052: each role of ``ROLES`` has its values, as ``browse`` and ``status`` list them."""
+    assert [role for role in ROLES if role not in sqlite_index.VALUES] == []

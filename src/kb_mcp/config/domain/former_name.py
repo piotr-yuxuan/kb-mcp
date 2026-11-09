@@ -14,7 +14,7 @@ e-mail, which a user cannot rename. Where a former place and its new one both ex
 new one is used and nothing stops. Each name the stop gives a setting or a variable is
 its final one, by ``RENAMED``; a secret, which no file may hold, is named by its variable.
 
-Once the user's machine has moved, the roadmap's row after plan 033 removes this module, its
+Once the user's machine has moved, a later plan removes this module, its
 call in ``load_settings``, ``advice``'s use in ``enter``, its tests, its line in
 ``tests/conftest.py`` and ``docs/how-to/move-to-kb-mcp.md``.
 """

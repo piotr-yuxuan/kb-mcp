@@ -1,4 +1,4 @@
-"""The work log mirrored end to end: plan 017's criteria 7 to 12, through its step.
+"""The work log prepared end to end: plan 017's criteria 7 to 12, through its preparer.
 
 The fixture, ``fixtures/worklog/``, is invented, as the plan's acceptance criteria
 describe it; Emacs's lock, autosave and backup files are added to each copy, since git
@@ -30,16 +30,16 @@ from structlog.testing import capture_logs
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import dump, load
-from kb_mcp.mirror.adapters.mirror_files import sync
+from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
-    Outcome,
-    Planned,
-    mirror_worklog,
+    WorklogDryRun,
+    WorklogPrepareOutcome,
     plan_worklog,
+    prepare_worklog,
 )
 
 if TYPE_CHECKING:
@@ -111,7 +111,7 @@ class Counting(Pandoc):
 
 
 @dataclass(frozen=True)
-class Mirrored:
+class MirrorFile:
     """A document's file: where, its front matter, its body."""
 
     path: str
@@ -121,47 +121,49 @@ class Mirrored:
 
 @dataclass
 class Run:
-    """The work log's step over a copy of the fixture, into a data folder of its own.
+    """The work log's preparer over a copy of the fixture, into a data folder of its own.
 
-    ``runs`` holds pandoc's runs of each mirroring, in order.
+    ``runs`` holds pandoc's runs of each prepare, in order.
     """
 
     root: Path
     docs: Path
     runs: list[list[tuple[str, ...]]] = field(default_factory=list)
 
-    def __call__(self, *, archives: bool = True, failing: str | None = None) -> Outcome:
+    def __call__(
+        self, *, archives: bool = True, failing: str | None = None
+    ) -> WorklogPrepareOutcome:
         """Mirror the work log; return what the run did."""
         pandoc = Counting(path=Pandoc.find().path, failing=failing)
-        outcome = mirror_worklog(self.root, self.docs, pandoc, archives=archives)
+        outcome = prepare_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return outcome
 
-    def plan(self, *, archives: bool = True) -> Planned:
-        """Say what mirroring would do; pandoc's runs are recorded as for a run."""
+    def plan(self, *, archives: bool = True) -> WorklogDryRun:
+        """Say what preparing would do; pandoc's runs are recorded as for a run."""
         pandoc = Counting(path=Pandoc.find().path)
         planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return planned
 
-    def files(self) -> list[Mirrored]:
-        """Read back every file of the work log's step, as search will."""
+    def files(self) -> list[MirrorFile]:
+        """Read back every file of the work log's preparer, as search will."""
         found = sorted((self.docs / "worklog").rglob("*.md"))
         return [
-            Mirrored(path.relative_to(self.docs).as_posix(), *load(path.read_text("utf-8"), "x"))
+            MirrorFile(path.relative_to(self.docs).as_posix(), *load(path.read_text("utf-8"), "x"))
             for path in found
         ]
 
-    def by_title(self, title: str, kind: str | None = None) -> Mirrored:
+    def by_title(self, title: str, document_type: str | None = None) -> MirrorFile:
         """Return the one file of this title, and of this type when given."""
         (found,) = [
             each
             for each in self.files()
-            if each.matter.title == title and kind in (None, each.matter.type)
+            if each.matter.title == title and document_type in (None, each.matter.type)
         ]
         return found
 
-    def by_id(self, identifier: str) -> Mirrored:
+    def by_id(self, identifier: str) -> MirrorFile:
         """Return the file of this id."""
         (found,) = [each for each in self.files() if each.matter.id == identifier]
         return found
@@ -193,7 +195,7 @@ def run(tmp_path: Path) -> Run:
     return Run(root, tmp_path / "data" / "docs")
 
 
-def identities(files: list[Mirrored]) -> list[tuple[str, str, tuple[str, ...]]]:
+def identities(files: list[MirrorFile]) -> list[tuple[str, str, tuple[str, ...]]]:
     """Return each file's id, path and people: two files that swap contents differ."""
     return sorted(
         (each.matter.id, each.path, tuple(person.name for person in each.matter.people))
@@ -318,14 +320,14 @@ def test_front_matter_says_status_labels_and_place(
 ) -> None:
     """Keyword or current; tags, #+FILETAGS and ARCHIVE; the file and journal, or folders."""
     run()
-    kind, title = document
-    matter = run.by_title(title, kind).matter
+    document_type, title = document
+    matter = run.by_title(title, document_type).matter
     assert (matter.status, matter.labels, matter.breadcrumb) == (status, labels, breadcrumb)
     assert (matter.fetched_at, matter.key, matter.space, matter.url) == (MODIFIED, None, None, None)
 
 
 @pytest.mark.parametrize(
-    ("kind", "title", "created", "updated"),
+    ("document_type", "title", "created", "updated"),
     [
         ("entry", "Plan the next quarter", datetime(2026, 10, 14, 16, tzinfo=UTC), None),
         (
@@ -347,7 +349,7 @@ def test_front_matter_says_status_labels_and_place(
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
-    run: Run, kind: str, title: str, created: datetime, updated: datetime | None
+    run: Run, document_type: str, title: str, created: datetime, updated: datetime | None
 ) -> None:
     """A later timestamp is a plan; no event, the file's time; a day's documents, their day.
 
@@ -359,7 +361,7 @@ def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     """
     settle(run.root / "meetings/2026-10-27 Tue/1.org", datetime(2026, 10, 28, tzinfo=UTC))
     run()
-    matter = run.by_title(title, kind).matter
+    matter = run.by_title(title, document_type).matter
     assert (matter.created, matter.updated) == (created, updated or created)
 
 
@@ -653,7 +655,7 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
 ) -> None:
     """Over 32 MiB, linking out, not UTF-8: by path, without content; nothing removed."""
     run()
-    mirrored = run.docs / run.by_title("Notes on the ledger").path
+    written = run.docs / run.by_title("Notes on the ledger").path
     (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").write_bytes(b"* Caf\xe9\n")
     outside = tmp_path / "elsewhere.org"
     outside.write_text("* Outside words\n", "utf-8")
@@ -671,7 +673,7 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
         "transcripts/misc/big.org": "not a file of at most 32 MiB",
     }
     assert all("secret" not in reason and "Caf" not in reason for reason in reasons.values())
-    assert mirrored.exists()  # its last good copy stays while a problem is reported
+    assert written.exists()  # its last good copy stays while a problem is reported
     inside = [each for each in run.files() if each.matter.title == "WAITING Notes"]
     assert sorted(each.matter.breadcrumb for each in inside) == [("transcripts", "misc")] * len(
         {"a.org", "inside.org"}
@@ -695,7 +697,7 @@ def test_a_link_into_the_archive_leaves_a_live_transcript_as_it_is(run: Run) -> 
 def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The step checks the work log's own rules: each type's ids, which no other source has.
+    """The preparer checks the work log's own rules: each type's ids, which no other source has.
 
     The day is read from the fixture, then given a meeting's id, which no org file gives.
     """
@@ -709,7 +711,7 @@ def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
 
 
 def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
-    """Each step removes only what it owns."""
+    """Each preparer removes only what it owns."""
     run()
     page = run.docs / "confluence" / "MFS" / "196845-probe.md"
     page.parent.mkdir(parents=True)
@@ -717,7 +719,7 @@ def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
     worklog = {each.path for each in run.files()}
     run()
     assert page.exists()
-    sync(run.docs, {}, lambda docs: owned(docs, "confluence"), remove=True)
+    write_changed(run.docs, {}, lambda docs: owned(docs, "confluence"), remove=True)
     assert {each.path for each in run.files()} == worklog
     assert not page.exists()
 
@@ -790,7 +792,7 @@ def test_a_journal_file_not_read_holds_every_file_back(run: Run, name: str) -> N
 STANDUP = "m-20261027-payments-stand-up"
 
 
-def one_way(files: list[Mirrored]) -> list[tuple[str, str, str]]:
+def one_way(files: list[MirrorFile]) -> list[tuple[str, str, str]]:
     """Return each link, by its document, relation and ref, that the other does not return.
 
     A meeting's transcript names it by summary, and a transcript's summary by transcript;

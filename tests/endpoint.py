@@ -147,7 +147,7 @@ def tiny(answers: Scripted | None = None, model: str = "tiny") -> ApiEmbedder:
     return connect(scripted(answers), model)
 
 
-def connector(answers: Scripted | None = None) -> Callable[[str], ApiEmbedder]:
+def connect_scripted(answers: Scripted | None = None) -> Callable[[str], ApiEmbedder]:
     """Give what connects a search by meaning to the models, as scripted."""
     return functools.partial(connect, scripted(answers))
 

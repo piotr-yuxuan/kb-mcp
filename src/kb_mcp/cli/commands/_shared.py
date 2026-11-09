@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 import structlog
 from pydantic_core import to_json, to_jsonable_python
 
-from kb_mcp.cli.adapters.question import ask
-from kb_mcp.cli.domain.summary import before, ignored_lines, values_of
+from kb_mcp.cli.adapters.confirmation import ask
+from kb_mcp.cli.domain.preview import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -28,10 +28,10 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from kb_mcp.cli.domain.command import Command
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
-def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Declared]) -> int:
+def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Source]) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
     The settings are loaded for every command observed, which reads those of
@@ -44,7 +44,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     its reason, on stderr alone, as a run that never started has no log file. Before
     ``run.refused`` go the values that the settings loaded ignored, one of which may be
     why, such as a variable that names no setting, unless at the level error, as for a
-    run. Else the values ignored go to stderr, after the summary of a command that writes
+    run. Else the values ignored go to stderr, after the preview of a command that writes
     and before the command to copy. Such a command then asks, unless told not to, and is
     refused where no one can answer: declined, it exits 1, refused, 2, both before the
     run is imported. The run gets the settings loaded, with each one's layer, a flag's

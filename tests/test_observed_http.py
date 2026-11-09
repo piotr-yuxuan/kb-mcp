@@ -24,7 +24,7 @@ from kb_mcp.kernel.endpoint import EMBEDDINGS
 from kb_mcp.search.adapters.embedding import (
     DOCUMENTS,
     SINGLE,
-    RefusedError,
+    EmbeddingRefusedError,
     connect,
     embed,
 )
@@ -33,11 +33,11 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     RETRIES,
     Request,
-    Site,
+    SiteClient,
     SiteError,
 )
 from tests.endpoint import REACHABLE, URL, Scripted, scripted
-from tests.test_download import PICTURE, SITE, FakeSite
+from tests.test_fetching import PICTURE, SITE, FakeSite
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -77,10 +77,10 @@ def site(
     handle: Callable[[httpx.Request], httpx.Response],
     cookies: Iterable[Mapping[str, str]] = (),
     hooks: Iterable[Callable[[httpx.Request], None]] = (),
-) -> Site:
+) -> SiteClient:
     """Give the site, through its own client, answered by ``handle``, never waiting."""
     client = http.client(SITE, cookies, hooks, transport=httpx.MockTransport(handle))
-    return Site(client, sleep=lambda _: None)
+    return SiteClient(client, sleep=lambda _: None)
 
 
 def test_a_request_is_a_client_span_named_after_its_method_by_the_http_conventions(
@@ -328,10 +328,10 @@ def test_an_embedding_is_a_client_span_by_the_genai_conventions_holding_its_atte
 def test_an_embedding_that_fails_is_an_error_typed_as_its_exception(telemetry: InMemory) -> None:
     """Refused, its text sent back with 400: the class qualified by its module; its POST's, 400."""
     opened = scripted(Scripted(statuses=[400]))
-    with opened, pytest.raises(RefusedError):
+    with opened, pytest.raises(EmbeddingRefusedError):
         embed(opened, "tiny", ["undo"], SINGLE)
     refused, embedding = telemetry.spans.get_finished_spans()
-    failed = "kb_mcp.search.adapters.embedding.RefusedError"
+    failed = "kb_mcp.search.adapters.embedding.EmbeddingRefusedError"
     assert dict(embedding.attributes or {}) == {**EMBEDDING, "error.type": failed}
     assert embedding.status.status_code == StatusCode.ERROR
     assert dict(refused.attributes or {})["error.type"] == "400"

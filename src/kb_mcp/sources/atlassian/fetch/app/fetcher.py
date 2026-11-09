@@ -1,9 +1,9 @@
-"""Confluence's and Jira's fetcher: a download of one source's targets, as its role.
+"""Confluence's and Jira's fetcher: one source's targets fetched into the raw store.
 
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
-source that a run is for from its declaration, by its kinds, and fetch that source's
+source that a run is for from its declaration, by its resource types, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
-``fetch_targets`` downloads them, or plans their download, and says what went wrong.
+``fetch_targets`` fetches them, or plans their fetch, and says what went wrong.
 """
 
 from __future__ import annotations
@@ -15,25 +15,30 @@ import structlog
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.fetch.app.download import Outcome, download, plan, read_targets
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
+from kb_mcp.sources.atlassian.fetch.app.fetching import (
+    FetchOutcome,
+    plan_fetch,
+    read_targets,
+    run_fetch,
+)
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
-from kb_mcp.sources.roles import Result
+from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources import roles
-    from kb_mcp.sources.atlassian.fetch.app.download import Targets
-    from kb_mcp.sources.roles import Run
+    from kb_mcp.kernel.output import Detail
+    from kb_mcp.sources import stages
+    from kb_mcp.sources.atlassian.fetch.app.fetching import Targets
+    from kb_mcp.sources.stages import SourceRun
 
-# How a download or its plan ended, by its status. A download that Ctrl-C stops raises
+# How a fetch or its plan ended, by its status. A fetch that Ctrl-C stops raises
 # KeyboardInterrupt, so its status is never none here.
-FETCHED: dict[ExitStatus | None, roles.Outcome] = {
+FETCHED: dict[ExitStatus | None, stages.Outcome] = {
     ExitStatus.OK: "done",
     ExitStatus.FAILED: "failed",
     ExitStatus.SIGN_IN_AGAIN: "sign in",
@@ -43,34 +48,36 @@ BUSY = "another run is writing it; try again once that run ends"
 
 
 class Fetched(Result):
-    """A fetch: how it ended, and what the download did, None when it could not start."""
+    """A fetch: how it ended, and what it did, None when it could not start."""
 
-    downloaded: Outcome | None
+    downloaded: FetchOutcome | None
 
-    def text(self, summary: Summary) -> str:
-        """Write the download's counts; nothing when it could not start."""
+    def text(self, summary: Detail) -> str:
+        """Write the fetch's counts; nothing when it could not start."""
         return "" if self.downloaded is None else self.downloaded.text(summary)
 
 
-def targets_of(run: Run) -> Targets:
-    """Read the targets of the source that ``run`` is for, by its kinds: spaces or projects.
+def targets_of(run: SourceRun) -> Targets:
+    """Read the targets of ``run``'s source, by its resource types: spaces or projects.
 
     Confluence's pages and blog posts are listed per space, Jira's issues searched per
     project; the period is its options', as ``read_targets`` reads them.
     """
-    kinds = {each.name for each in run.declared.types}
+    resource_types = {each.name for each in run.source.resource_types}
     return read_targets(
-        run.table.spaces if kinds & {Page.kind, BlogPost.kind} else (),
-        run.table.projects if Issue.kind in kinds else (),
+        run.source_table.spaces
+        if resource_types & {Page.resource_type, BlogPost.resource_type}
+        else (),
+        run.source_table.projects if Issue.resource_type in resource_types else (),
         run.options,
         run.now(),
     )
 
 
-def preflight(run: Run) -> str | None:
+def preflight(run: SourceRun) -> str | None:
     """Say why the fetch cannot start: an --until before --since, or a store's record not read.
 
-    Those are the records that a download reads before its first request: what is
+    Those are the records that a fetch reads before its first request: what is
     covered, and for a fetch of spaces what answered as gone, which is Confluence's. So
     that one stops no fetch of projects.
     """
@@ -85,8 +92,8 @@ def preflight(run: Run) -> str | None:
     return None
 
 
-def fetch(run: Run) -> Fetched:
-    """Download what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
+def fetch(run: SourceRun) -> Fetched:
+    """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
     later fetch's start, or a record damaged since. It fails this fetch alone, an error,
@@ -95,7 +102,7 @@ def fetch(run: Run) -> Fetched:
     try:
         return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
     except (PeriodError, RepresentationError) as error:
-        structlog.get_logger().error("fetch.refused", source=run.declared.name, reason=str(error))
+        structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
         return Fetched(outcome="failed", downloaded=None)
 
 
@@ -107,25 +114,25 @@ def fetch_targets(
     *,
     dry_run: bool,
 ) -> Fetched:
-    """Download these targets, one source's, or plan their download; say what went wrong.
+    """Fetch these targets, one source's, or plan their fetch; say what went wrong.
 
     Another run writing the raw store fails the fetch before it starts, an error,
     ``fetch.store_busy``; each target that failed is a warning, ``fetch.target_failed``,
     and a sign-in that no longer holds an error, ``fetch.sign_in_needed``, saying how to
     sign in again; both errors name the source, since each source's fetch can give them.
     """
-    act = plan if dry_run else download
+    act = plan_fetch if dry_run else run_fetch
     source = targets.source
     try:
-        downloaded = act(settings, targets, now, sleep)
+        outcome = act(settings, targets, now, sleep)
     except StoreBusyError:
         structlog.get_logger().error(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
         return Fetched(outcome="failed", downloaded=None)
     log = structlog.get_logger()
-    for target in downloaded.failed_targets:
+    for target in outcome.failed_targets:
         log.warning("fetch.target_failed", target=target)
-    if downloaded.status == ExitStatus.SIGN_IN_AGAIN:
-        log.error("fetch.sign_in_needed", source=source, hint=sign_in(settings).again)
-    return Fetched(outcome=FETCHED[downloaded.status], downloaded=downloaded)
+    if outcome.status == ExitStatus.SIGN_IN_AGAIN:
+        log.error("fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again)
+    return Fetched(outcome=FETCHED[outcome.status], downloaded=outcome)

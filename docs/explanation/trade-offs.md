@@ -10,8 +10,8 @@ so that the next person to weigh it knows what was paid.
 ## Reads only
 
 Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
-[`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one
-port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
+[`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one
+port for the session and the token, builds no other request ([`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 and the server's tools are read-only too.
 
 - **Why.** A mirror needs nothing more, and a program that only reads can do the site no
@@ -32,7 +32,7 @@ server never fetches from the site.
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
   by hand cheap: without `--since`, a run fetches what changed since each target's last
-  fetch ([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
+  fetch ([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
   so nobody keeps track of when the last run was, and a target never fetched takes its
   last 7 days rather than refusing the run. A project's search starts a day before its
   covered end, which stops at its first document not stored whole, so that what failed
@@ -68,7 +68,7 @@ server never fetches from the site.
 ## Cookies and API tokens
 
 A run signs in by the session saved from the user's own browser, or by an API token with
-its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
+its account's email: [`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
 takes the token when one is set, else the session.
 
 - **Why.** On a managed network, single sign-on in the user's own browser is the route. Chrome opens
@@ -100,7 +100,7 @@ the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
   maintainer's words. A response that a change breaks is still stored
-  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+  ([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `prepare`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.
@@ -139,12 +139,12 @@ naming its path, never its value.
 ## Three roles, not a bundle
 
 A source is a declaration that names its roles, a fetcher, if any, and its preparers, each
-behind one interface ([`Fetcher`](../../src/kb_mcp/sources/roles.py),
-[`Preparer`](../../src/kb_mcp/sources/roles.py)), and the server reads documents alone,
-whichever source wrote them; [sources](sources.md#three-roles-not-a-bundle) say how.
+behind one interface ([`Fetcher`](../../src/kb_mcp/sources/stages.py),
+[`Preparer`](../../src/kb_mcp/sources/stages.py)), and the server reads documents alone,
+whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say how.
 
 - **Why.** The roles vary apart: git is fetched once and prepared twice, persons are a
-  preparation over every source's documents, and tools per source would bring back the
+  join over every source's documents, which `index` makes, and tools per source would bring back the
   several calls and merges that one interface in front of many tools avoids. A declaration
   also lets a new source be a package and one line, Confluence, Jira and the work log
   treated alike.
@@ -178,7 +178,7 @@ which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
   ([`test_contract_i_lists_the_package_of_each_registered_source_once`](../../tests/test_code_layout.py)).
 - **Cost.** A source of another distribution cannot register itself: until entry points
   come, it needs a line here. A declaration is what an entry point would name, so that
-  adding them changes the registry's module alone. One source type has one instance, its
+  adding them changes the registry's module alone. Each source is configured once, its
   name a table, a folder and the front matter's `source`.
 - **Rejected.** Entry points now: about 10 ms more on every `--help`, 95.9 ms against 106.3
   ms, on a command that a shell's completion runs at every Tab, for what no distribution
@@ -211,7 +211,7 @@ the SHA-256 of pandoc's version line, its arguments and the HTML it was given
 ([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)),
 so that a run converts only the HTML that it has not converted before. Once its files
 are written, each source's prepare deletes those of its rows that it did not use
-([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
+([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 Every run still reads the store and builds every document's HTML.
 
 - **Why.** Pandoc was most of a mirror's time, one process a document whether it had
@@ -224,7 +224,7 @@ Every run still reads the store and builds every document's HTML.
   what else a file depends on, a link made relative, a user's name, the site, is inside
   the HTML that each run builds afresh, or in the front matter, which pandoc never
   reads. On that store, a mirror with nothing changed took 2.3 seconds, against 31.2
-  from no cache, and wrote no file; [the tests](../../tests/test_mirror.py) find the
+  from no cache, and wrote no file; [the tests](../../tests/test_prepare_atlassian.py) find the
   bytes of a mirror from no cache after each kind of change.
 - **Cost.** A file of about the Markdown's size, 3 MB on that store. Reading the store
   and building every document's HTML remain at each run, the 2.3 seconds there. A
@@ -282,7 +282,7 @@ that what read the two keys, a hit's line among them
   creator cost no request: each stored `issue.json` holds every field of the issue
   ([`issue`](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py)).
   Account ids are in the files, because the index is rebuilt from the files alone
-  ([`entry`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
+  ([`indexed_document`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
   because a name alone cannot be told from the account id written when no name is
   known; one account id also ties together a colleague renamed between two fetches.
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
@@ -330,9 +330,9 @@ title, is no longer one entry: each day is a document, and each meeting of a day
 Both are found by their shape alone. A day is a heading at level 1 or 2 titled by one
 active timestamp of a date alone, such as `<2026-10-28 Wed>`
 ([`date_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py),
-[`Part.day`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
+[`PlacedHeading.day`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
 a meeting, a child of a day with `:MEETING:` or `:PARTICIPANTS:` in its drawer
-([`Part.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OLPATH:`
 names, and every part of one date makes one day
 ([`days_and_meetings`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
@@ -348,9 +348,9 @@ a meeting links the transcript whose file its `:MEETING:` names
 which links it back
 ([`linked_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A day, a meeting and a dated transcript are dated by their day
-([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 afresh at each run
-([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 
 - **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
   whole journal, its meetings named nobody,
@@ -446,7 +446,7 @@ a transcript, its own, whose last copy stays. A meeting needs nothing of its tra
 but the id, which the path gives, so that it links a transcript read or not
 ([`transcript_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 and a link is written when its other end is written in that run or kept from an
-earlier one ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
+earlier one ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 A run that meets a problem still removes no file but the old one of a document written
 again under another title's path, and `prepare` exits 1.
 
@@ -496,7 +496,7 @@ a person by name alone, shared by every name of its key. Names compare by a key,
 case, accents, runs of spaces or a trailing part in brackets
 ([`name_key`](../../src/kb_mcp/search/domain/people.py)), but for the
 parts that tell two names of one key apart
-([`Joining.key`](../../src/kb_mcp/search/domain/people.py)). A name that
+([`Joining.compared_key`](../../src/kb_mcp/search/domain/people.py)). A name that
 could be several persons joins none of them, a speaker whose meeting names another
 than the one account of its name among them, and the build warns of it, as of an alias
 that changes nothing
@@ -542,7 +542,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   whole at each build: on a synthetic index of 20,000 issues of 40 accounts and 2,000
   meetings with their transcripts, 148,000 rows of people and 2,000 links, it took 1.4 s
   on this laptop, the meetings of the transcripts read in 9 ms by their source and id
-  ([`SUMMARIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
+  ([`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   where a search of a source's documents for each of them took 28 s. The files hold no
   person, so another engine sees names
   ([the how-to](../how-to/other-search-engines.md#what-another-engine-does-not-get)).

@@ -1,6 +1,6 @@
 # Bring every source up to date
 
-Four commands, each one step, which you compose: `fetch` brings each source's changes into
+Four commands, each one stage, which you compose: `fetch` brings each source's changes into
 its store, `prepare` turns what each source holds into the Markdown mirror, `index` brings
 the index of the mirror's words up to the mirror, and `embed` gives the index's pieces their
 vectors, for search by meaning. Nothing runs them for you, and no command runs another.
@@ -40,10 +40,10 @@ Without `--yes`, each command writes on stderr each setting it reads, each sourc
 each it leaves out and why, and the command written in full, then asks `Proceed? [y/N]`, as
 every command that writes does.
 
-1. **`fetch`** downloads what changed of each configured source that has a fetcher,
+1. **`fetch`** brings what changed of each configured source that has a fetcher,
    Confluence's spaces then Jira's projects, a row each. Without `--since`, each space and
    project fetches what changed since its last fetch, and asks again for what failed; one
-   never fetched takes its last 7 days, as the summary before the question says. `--since`
+   never fetched takes its last 7 days, as the preview before the question says. `--since`
    (`12h`, `7d`, `6mo`, an ISO date or time, or `all`) and `--until` set the period, and
    `--max-file-mb` the largest file kept. `--space` and `--project` replace a setting for
    one run. Each source's report goes to `<data>/runs/<time>-<source>.json`.
@@ -70,7 +70,7 @@ every command that writes does.
    writes nothing when nothing changed; the first run, or `--rebuild`, builds it whole. It
    asks no endpoint, whatever `search_mode` says, and leaves `<data>/vectors.sqlite` as it
    is. Until `embed` runs, the documents added or changed have no vectors, and search
-   finds them by words alone; its summary says how many await them.
+   finds them by words alone; its report says how many await them.
 4. **`embed`** gives the index's pieces their vectors. By default it needs Ollama on this
    machine, or any other OpenAI-compatible API, as [embeddings](embeddings.md) says: without
    them, it exits 1, and the index in place stays. It embeds what `<data>/vectors.sqlite`
@@ -104,7 +104,7 @@ source not taken, such as `--project` with `fetch confluence`, is said not appli
 Confluence's pages are rewritten only when Jira is prepared, and what they attach stays
 until then. `index` digests the whole mirror, and reads each file that changed, whichever
 source wrote it: `prepare worklog`, then `index`, refreshes the work log alone, and search
-still finds every page and issue mirrored.
+still finds every page and issue of the mirror.
 
 ## 4. Search by words alone
 
@@ -124,12 +124,12 @@ reads; `kb-mcp index --rebuild` writes an index without any.
 
 ## 5. Decide what to do on a failure
 
-Each command's exit status says what its next step can rely on:
+Each command's exit status says what the next command can rely on:
 
-| Status | Means | The next step |
+| Status | Means | The next command |
 |---|---|---|
 | 0 | every row done | runs |
-| 1 | a row failed, the others ran; or the run stopped, with no rows written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | can run on what the store or the mirror holds, once you have read why |
+| 1 | a row failed, the others ran; or the run stopped, with no rows written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | can run on what the raw store or the mirror holds, once you have read why |
 | 2 | refused before any row | should not: nothing ran, and it is yours to fix |
 | 3 | to sign in again | should not, until you have |
 | 130 | stopped by Ctrl-C | should not |
@@ -165,8 +165,8 @@ kb-mcp fetch --dry-run --since 7d
 kb-mcp prepare --dry-run
 ```
 
-`fetch --dry-run` reads the site and fetches nothing: each target's window first, where it
-starts and why, then what it would fetch. `prepare --dry-run` counts the work log: its
+`fetch --dry-run` reads the site and fetches nothing: each target's fetch window first,
+where it starts and why, then what it would fetch. `prepare --dry-run` counts the work log: its
 documents, those it would convert, and the files it would remove. Confluence and Jira cannot
 count without converting, so their rows say `not run` and that they are not counted. Neither
 writes anything, nor asks. `index` and `embed` take none.
@@ -175,7 +175,7 @@ writes anything, nor asks. `index` and `embed` take none.
 
 A row per source says how it ended: `done`, `failed`, `sign in`, `interrupted` or `not run`,
 then its counts; `--summary detailed` gives all of them, a fetch's beginning with each
-target's window and what became of its coverage. A fetch counts what it fetches: with
+target's fetch window and what became of its coverage. A fetch counts what it fetches: with
 `--since`, the documents in the period and those already stored; without, those new or
 changed since the last fetch. `--format json` writes one document: `exit_status`, and
 `sources`, each with its `source`, `outcome` and `result`.

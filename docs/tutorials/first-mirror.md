@@ -2,7 +2,7 @@
 
 In this tutorial we mirror one Confluence space on your machine, build its search index,
 and ask Claude Code a question that it answers from the mirror, citing the page and the
-date it was mirrored. Follow the steps in order: each shows what you should see. Where
+date it was fetched. Follow the steps in order: each shows what you should see. Where
 your output shows other numbers, dates or paths, that is your site, not a fault.
 
 ## What you need
@@ -138,7 +138,7 @@ Signed in; the session is saved.
 
 ## 5. Look before you fetch
 
-Four commands, each one step, make the mirror and its index: `fetch` downloads the space
+Four commands, each one stage, make the mirror and its index: `fetch` brings the space
 into a store, `prepare` turns what the store holds into Markdown, `index` builds the search
 index of its words, and `embed` gives the index's pieces their vectors. A space that no
 run has fetched yet takes its last 7 days without `--since`; `--since all` takes the
@@ -158,7 +158,7 @@ fetch, with these settings:
   accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
-After a progress bar, it ends with Confluence's row: the window of the space, from the
+After a progress bar, it ends with Confluence's row: the fetch window of the space, from the
 start of 2000 to now, and what it would fetch:
 
 ```text
@@ -183,7 +183,7 @@ fetch, with these settings:
   accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
-and ends its summary with `Proceed? [y/N]`: answer `y`, four times. A space of tens of
+and ends its preview with `Proceed? [y/N]`: answer `y`, four times. A space of tens of
 pages takes a minute or so. `fetch` ends with Confluence's row, and its counts:
 
 ```text
@@ -243,7 +243,7 @@ vector store: 0.2 MB
 Run again, `index` reads only the files whose bytes changed, and `embed` embeds only the
 texts that changed; with nothing changed, each says `nothing written`.
 
-On macOS, `fetch` may not exit once its download is done: a known issue, which plan 013
+On macOS, `fetch` may not exit once its fetch is done: a known issue, which plan 013
 is to diagnose and fix, parked for now
 ([the roadmap](../work/README.md#plans) lists it).
 
@@ -255,7 +255,7 @@ ls ~/kb-mcp/docs/confluence/<KEY>
 
 A Markdown file per page, named by the page's id and its title, and `_tree.md`, the
 space's tree of pages. The id is the page's ref, by which agents cite it. Each file
-begins with front matter, where `fetched_at` is the page's mirror date: the time `fetch`
+begins with front matter, where `fetched_at` is the page's fetch time: the time `fetch`
 fetched it.
 
 ## 7. Give the mirror to Claude Code
@@ -292,7 +292,7 @@ Start `claude` in any folder, and ask, with your space's key:
 > date.
 
 Claude calls the server's tools, such as `ask`, then answers from the page. Its answer
-should name the page's ref, the id that begins its file's name, and its mirror date,
+should name the page's ref, the id that begins its file's name, and its fetch time,
 today's: the content is as of that date, not live. Keep Ollama running: without it, the
 server ranks by words alone, and says so.
 

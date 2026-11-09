@@ -1,8 +1,8 @@
-"""The mirror end to end: a raw store built from documented responses, mirrored to files.
+"""The mirror end to end: a raw store built from documented responses, prepared to files.
 
 The expectations come from the "Markdown mirror" section of the data layout: the paths,
 the front matter's keys and values, the body's sections, the assets, the trees, and a
-run that changes nothing writing nothing. A run mirrors Confluence, then Jira, apart, as
+run that changes nothing writing nothing. A run prepares Confluence, then Jira, apart, as
 plan 030 has it: each places every document, and writes and removes its own files.
 """
 
@@ -22,17 +22,17 @@ from structlog.testing import capture_logs
 
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
-from kb_mcp.mirror.adapters.mirror_files import sync
+from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
-from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_classes
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
-from tests.mirrors import mirrored_source
+from tests.mirrors import prepared_source
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -42,15 +42,15 @@ from tests.samples import (
     v3_comment,
     v3_issue,
 )
+from tests.test_prepare_worklog import Counting
 from tests.test_pruning import events_named
-from tests.test_worklog_mirror import Counting
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
-    from kb_mcp.sources.atlassian.prepare.app.preparer import Prepared
+    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianPrepareOutcome
+    from kb_mcp.sources.atlassian.prepare.app.preparer import AtlassianPrepared
 
 SITE = "https://site.example.invalid"
 FETCHED = datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -140,14 +140,14 @@ class Sandbox:
         site: str | None = SITE,
         markdown: Callable[[str], str] | None = None,
         sources: Sequence[str] = ("confluence", "jira"),
-    ) -> dict[str, Outcome]:
+    ) -> dict[str, AtlassianPrepareOutcome]:
         """Mirror each source of the store, in order, through the cache; give its outcome.
 
         Pandoc writes the Markdown, unless another writer is given.
         """
         writer = markdown or Pandoc.find().markdown
         return {
-            source: mirrored_source(self.store, self.docs, site, writer, source)
+            source: prepared_source(self.store, self.docs, site, writer, source)
             for source in sources
         }
 
@@ -238,7 +238,9 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def each(outcomes: dict[str, Outcome], count: Callable[[Outcome], object]) -> dict[str, object]:
+def each(
+    outcomes: dict[str, AtlassianPrepareOutcome], count: Callable[[AtlassianPrepareOutcome], object]
+) -> dict[str, object]:
     """Give a count of each source's outcome, by the source's name."""
     return {source: count(outcome) for source, outcome in outcomes.items()}
 
@@ -709,19 +711,19 @@ def test_a_clean_run_removes_only_the_files_the_mirror_owns(sandbox: Sandbox) ->
 def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
     sandbox: Sandbox,
 ) -> None:
-    """Each step removes only the files it owns; neither removes the other's."""
+    """Each preparer removes only the files it owns; neither removes the other's."""
     sandbox.run()
     worklog = ["worklog/entries/e-0123456789abcdef-notes.md", "worklog/transcripts/t-20261020-1.md"]
     for relative in worklog:
         (sandbox.docs / relative).parent.mkdir(parents=True, exist_ok=True)
         (sandbox.docs / relative).write_text("a work-log file", "utf-8")
-    mirrored = set(sandbox.files()) - set(worklog)
+    prepared = set(sandbox.files()) - set(worklog)
     assert each(sandbox.run(), lambda outcome: outcome.changes.removed) == {
         "confluence": 0,
         "jira": 0,
     }
-    assert sync(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
-    assert set(sandbox.files()) == mirrored
+    assert write_changed(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
+    assert set(sandbox.files()) == prepared
 
 
 def test_the_tree_links_only_files_that_were_built(sandbox: Sandbox) -> None:
@@ -794,14 +796,14 @@ def test_either_source_first_writes_the_same_files(crossed: Sandbox, tmp_path: P
 
 
 @pytest.mark.parametrize(
-    "kinds",
+    "document_classes",
     [(Page,), (BlogPost,), (Page, Issue), ()],
-    ids=["pages", "blog posts", "two sources' kinds", "none"],
+    ids=["pages", "blog posts", "two sources' types", "none"],
 )
-def test_kinds_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
-    sandbox: Sandbox, kinds: tuple[type[Page | BlogPost | Issue], ...]
+def test_types_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
+    sandbox: Sandbox, document_classes: tuple[type[Page | BlogPost | Issue], ...]
 ) -> None:
-    """Plan 030: a source's files are removed whichever kinds it built, so it builds them all.
+    """Plan 030: a source's files are removed whichever types it built, so it builds them all.
 
     A prepare of the pages alone would otherwise remove every blog post.
     """
@@ -812,7 +814,7 @@ def test_kinds_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
         conversions.opened(path, lambda: "a writer", str, source="confluence") as cache,
         pytest.raises(KeyError),
     ):
-        mirror(sandbox.store, sandbox.docs, None, cache, kinds)
+        prepare_atlassian(sandbox.store, sandbox.docs, None, cache, document_classes)
     assert sandbox.files() == before
 
 
@@ -823,8 +825,8 @@ def test_a_file_that_both_sources_attach_stays_while_either_wants_it(crossed: Sa
     document wants any more.
     """
     crossed.run()
-    for kind, document in (("pages", "300"), ("blogposts", "600")):
-        shutil.rmtree(crossed.store.root / "confluence" / kind / document)
+    for resource_type, document in (("pages", "300"), ("blogposts", "600")):
+        shutil.rmtree(crossed.store.root / "confluence" / resource_type / document)
     assert crossed.run(sources=("confluence",))["confluence"].changes.removed == len(
         ["300-leaf.md", "blog/600-news.md"]
     )
@@ -993,11 +995,11 @@ def issue_damaged(sandbox: Sandbox) -> None:
     (folder / jira_v3.ISSUE).write_text("{}", "utf-8")
 
 
-def prepared(sandbox: Sandbox, source: str) -> tuple[Prepared, list[dict[str, object]]]:
-    """Prepare one source as its role does; give how it ended, and what it warned."""
+def prepared(sandbox: Sandbox, source: str) -> tuple[AtlassianPrepared, list[dict[str, object]]]:
+    """Prepare one source as its preparer does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
-        done = prepare_kinds(settings, SITE, Pandoc.find(), source, PREPARED[source])
+        done = prepare_classes(settings, SITE, Pandoc.find(), source, PREPARED[source])
     return done, [each for each in events if each["log_level"] == "warning"]
 
 

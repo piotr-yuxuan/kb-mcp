@@ -25,7 +25,7 @@ from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning, Nearest
 from kb_mcp.search.domain.search import Filters, Score
 from tests.answers import parts
-from tests.endpoint import DIGEST, URL, Scripted, connector, scripted, tiny
+from tests.endpoint import DIGEST, URL, Scripted, connect_scripted, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ def data(tmp_path: Path) -> Path:
 
 def library(data: Path, mode: SearchMode, meaning: Meaning | None = None) -> Library:
     """Return the tools over the data directory's index, ranking in ``mode``."""
-    meaning = meaning or Meaning(connector())
+    meaning = meaning or Meaning(connect_scripted())
     return Library(SqliteIndex(data / "index.sqlite"), data / "docs", meaning, mode)
 
 
@@ -186,10 +186,12 @@ def test_hybrid_shows_by_words_a_document_both_rank_first(tmp_path: Path) -> Non
     write(docs, page("4006", "Tied"), tied)
     build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
     semantic = Library(
-        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "semantic"
+        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connect_scripted()), "semantic"
     )
     assert "section 3 Second" in hits(semantic.search("revert"))[0]
-    hybrid = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
+    hybrid = Library(
+        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connect_scripted()), "hybrid"
+    )
     assert "section 2 First" in hits(hybrid.search("revert"))[0]
 
 
@@ -199,7 +201,9 @@ def test_without_vectors_meaning_falls_back_to_words_and_says_why(tmp_path: Path
     fillers(docs)
     write(docs, page("4002", TARGET), "Leave for a meal.\n")
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    tools = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
+    tools = Library(
+        SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connect_scripted()), "hybrid"
+    )
     answer = tools.search("meal")
     assert titles(answer) == [TARGET]
     assert (
@@ -210,10 +214,12 @@ def test_without_vectors_meaning_falls_back_to_words_and_says_why(tmp_path: Path
 
 def test_a_model_gone_or_pulled_again_since_the_build_falls_back(data: Path) -> None:
     """Gone from the endpoint: pull it. Other weights under its name: index again."""
-    gone = library(data, "semantic", Meaning(connector(Scripted({})))).search("vacation lunch")
+    gone = library(data, "semantic", Meaning(connect_scripted(Scripted({})))).search(
+        "vacation lunch"
+    )
     assert "Ranked by words alone: tiny: not in Ollama's list of models" in gone
     assert "with Ollama: ollama pull tiny" in gone
-    pulled = Meaning(connector(Scripted({"tiny:latest": "d2" * 32})))
+    pulled = Meaning(connect_scripted(Scripted({"tiny:latest": "d2" * 32})))
     answer = library(data, "hybrid", pulled).search("vacation lunch")
     assert "tiny: the index was built with other weights of it" in parts(answer)[0]
 
@@ -249,11 +255,11 @@ def test_a_failing_query_falls_back_to_words(data: Path) -> None:
 
 def test_a_query_refused_failing_or_not_answered_as_embeddings_falls_back(data: Path) -> None:
     """A 400 or a 500 for the query, or an answer that is not embeddings: words, and why."""
-    refused = Meaning(connector(Scripted(refused={"revert release"})))
+    refused = Meaning(connect_scripted(Scripted(refused={"revert release"})))
     answer = library(data, "hybrid", refused).search("revert release")
     assert "Ranked by words alone: tiny: the endpoint answered 400" in parts(answer)[0]
     failing = Scripted()
-    tools = library(data, "hybrid", Meaning(connector(failing)))
+    tools = library(data, "hybrid", Meaning(connect_scripted(failing)))
     assert "Ranked by words alone" not in tools.search("revert release")
     failing.statuses = [500]
     answer = tools.search("revert release")
@@ -405,7 +411,7 @@ def test_a_long_section_is_shown_at_the_piece_that_meaning_found(tmp_path: Path)
     body = "# Guide\n\n## Long\n\n" + "opening words " * 72 + "\n\n" + "leave " * 50 + "\n"
     write(docs, page("4007", "Guide"), body)
     build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
-    meaning = Meaning(connector())
+    meaning = Meaning(connect_scripted())
     answer = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, meaning, "semantic").search(
         "holidays"
     )
@@ -423,7 +429,7 @@ def test_ties_by_meaning_keep_the_newest_before_the_cut(tmp_path: Path) -> None:
         updated = MOMENT - timedelta(days=105 - number)
         write(docs, page(str(7000 + number), "Recurring", updated=updated), "leave\n")
     build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
-    meaning = Meaning(connector())
+    meaning = Meaning(connect_scripted())
     for mode in ("semantic", "hybrid"):
         tools = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, meaning, mode)
         shown, _ = tools.ranked("holidays", mode, limit=500)
@@ -437,7 +443,7 @@ class Ordered(Meaning):
 
     def __init__(self, order: list[tuple[str, int, int, int]]) -> None:
         """Rank these paths, each with its section number and its span in the body."""
-        super().__init__(connector())
+        super().__init__(connect_scripted())
         self.order = order
 
     def nearest(self, reader: SearchReader, query: str, filters: Filters) -> Nearest:

@@ -243,8 +243,7 @@ class Rerank(BaseModel):
         default=False,
         description=(
             "Whether search and ask rerank their first documents through the reranking"
-            " server: off by default, as it ranked worse on the sandbox, by the user's"
-            " choice in plan 022."
+            " server: off by default, as it ranked worse on the sandbox."
         ),
     )
     url: RerankUrl = Field(
@@ -299,7 +298,7 @@ class Settings(BaseSettings):
     )
     model: ModelName = Field(
         default=DEFAULT_MODEL,
-        description="The embedding model that indexes by meaning, as the endpoint names it.",
+        description="The embedding model that embed embeds with, as the endpoint names it.",
     )
     search_mode: SearchMode = Field(
         default=DEFAULT_SEARCH_MODE,
@@ -311,9 +310,9 @@ class Settings(BaseSettings):
     chunking: Chunking = Field(
         default=DEFAULT_CHUNKING,
         description=(
-            f"How index cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
-            " search follows the index. By default windows, which ranked best on plan"
-            " 019's sandbox."
+            f"How embed cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
+            " search follows the index. By default windows, which ranked best when the"
+            " chunkings were compared."
         ),
     )
     embedding_url: EmbeddingUrl = Field(
@@ -384,7 +383,7 @@ class Settings(BaseSettings):
 
     @property
     def conversions(self) -> Path:
-        """Pandoc's conversions so far, by their input, kept across mirrors."""
+        """Pandoc's conversions so far, by their input, kept across prepares."""
         return self.data_dir / "conversions.sqlite"
 
     @property
@@ -426,10 +425,10 @@ class Settings(BaseSettings):
 PREFIX = Settings.model_config["env_prefix"]
 NESTING = Settings.model_config["env_nested_delimiter"]
 # What a setting is: a table of settings, a list, a secret, a path, or another value.
-type Kind = Literal["table", "list", "secret", "path", "value"]
+type SettingKind = Literal["table", "list", "secret", "path", "value"]
 # The kind of a setting of each type, other than a table, a list or a choice, that the
 # environment gives as text.
-TEXT_KINDS: dict[object, Kind] = {
+TEXT_KINDS: dict[object, SettingKind] = {
     SecretStr: "secret",
     Path: "path",
     str: "value",
@@ -447,7 +446,7 @@ def bare(annotation: object) -> object:
     return annotation
 
 
-def kind_of(annotation: object) -> Kind:
+def kind_of(annotation: object) -> SettingKind:
     """Give the kind of a setting that is no table by its type; refuse a type of no kind.
 
     An alias, ``Annotated`` and ``| None`` are looked through: ``LocalPath | None`` is a
@@ -478,14 +477,14 @@ def kind_of(annotation: object) -> Kind:
 
 def setting_paths(
     model: type[BaseModel], above: tuple[str, ...] = ()
-) -> dict[tuple[str, ...], Kind]:
+) -> dict[tuple[str, ...], SettingKind]:
     """Give the path of each setting of a model, at any depth, and its kind.
 
     A table is a model of its own, whose settings follow it. The environment gives a
     table or a list in JSON, and it alone gives a secret; ``~`` in a path is the home.
     Raises TypeError for a setting of a type that ``kind_of`` knows no kind for.
     """
-    paths: dict[tuple[str, ...], Kind] = {}
+    paths: dict[tuple[str, ...], SettingKind] = {}
     for name, info in model.model_fields.items():
         path = (*above, name)
         annotation = info.annotation
@@ -573,7 +572,7 @@ def variable(path: tuple[str, ...]) -> str:
     return f"{PREFIX}{NESTING.join(path).upper()}"
 
 
-class Entry(Record):
+class LayerValue(Record):
     """A value that a layer gives a setting: the setting's path, the value, the layer.
 
     A default's layer is None, so that no layer is taken for the defaults by its name,
@@ -611,7 +610,7 @@ class Loaded(Record):
     replaced: frozenset[str] = frozenset()
 
     @property
-    def paths(self) -> dict[tuple[str, ...], Kind]:
+    def paths(self) -> dict[tuple[str, ...], SettingKind]:
         """Give the path of each setting of the settings' model, and its kind."""
         return setting_paths(type(self.settings))
 
@@ -627,7 +626,7 @@ class Loaded(Record):
 
 def entries_of(
     value: object, path: tuple[str, ...], layer: str, model: type[Settings]
-) -> list[Entry]:
+) -> list[LayerValue]:
     """Give a value that a layer read at a path as entries: a table's, one per value in it.
 
     An empty table of the model's settings gives each setting under it its default, so
@@ -643,14 +642,16 @@ def entries_of(
         ]
     if value == {} and setting_paths(model).get(path) == "table":
         return [
-            Entry(path=setting, value=default, layer=layer, implicit=True)
+            LayerValue(path=setting, value=default, layer=layer, implicit=True)
             for setting, default in defaults(model).items()
             if setting[: len(path)] == path
         ]
-    return [Entry(path=path, value=value, layer=layer)]
+    return [LayerValue(path=path, value=value, layer=layer)]
 
 
-def refuse_secrets(entries: Iterable[Entry], paths: Mapping[tuple[str, ...], Kind]) -> None:
+def refuse_secrets(
+    entries: Iterable[LayerValue], paths: Mapping[tuple[str, ...], SettingKind]
+) -> None:
     """Raise SettingsError for a secret that these entries write, naming its own variable.
 
     A secret comes from that variable alone, so no other layer may write it: the settings
@@ -664,7 +665,9 @@ def refuse_secrets(entries: Iterable[Entry], paths: Mapping[tuple[str, ...], Kin
             raise SettingsError(message)
 
 
-def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]) -> list[Entry]:
+def file_entries(
+    values: Mapping[str, object], layer: str, model: type[Settings]
+) -> list[LayerValue]:
     """Give the settings file's values as entries; refuse a moved or unknown one, then a secret."""
     entries = [
         entry
@@ -685,12 +688,12 @@ def file_entries(values: Mapping[str, object], layer: str, model: type[Settings]
 
 
 # How the environment writes a table and a list: in JSON, as an object and an array.
-JSON_TYPES: dict[Kind, type] = {"table": dict, "list": list}
+JSON_TYPES: dict[SettingKind, type] = {"table": dict, "list": list}
 
 
 def environment_entries(
     environ: Mapping[str, str], parse: Callable[[], Mapping[str, object]], model: type[Settings]
-) -> tuple[list[Entry], list[Ignored]]:
+) -> tuple[list[LayerValue], list[Ignored]]:
     """Give the settings' variables of an environment as entries, and those ignored.
 
     Each variable of the prefix is first scanned by the paths of the model's settings,
@@ -757,7 +760,9 @@ SDK_DISABLED = "OTEL_SDK_DISABLED"
 ENDPOINT = ("telemetry", "endpoint")
 
 
-def shared_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Entry], list[Ignored]]:
+def shared_entries(
+    environ: Mapping[str, str],
+) -> tuple[list[LayerValue], list[LayerValue], list[Ignored]]:
     """Give OpenTelemetry's own variables of an environment as entries of telemetry's endpoint.
 
     ``OTEL_EXPORTER_OTLP_ENDPOINT`` gives an entry of the layer below the settings file,
@@ -766,13 +771,13 @@ def shared_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Entry]
     above all, which leaves the endpoint unset: telemetry off. Give the entries below,
     those above, then what was ignored.
     """
-    below: list[Entry] = []
+    below: list[LayerValue] = []
     ignored: list[Ignored] = []
     shared = environ.get(SHARED_ENDPOINT)
     if shared is not None:
         try:
             below.append(
-                Entry(path=ENDPOINT, value=telemetry_address(shared), layer=SHARED_ENDPOINT)
+                LayerValue(path=ENDPOINT, value=telemetry_address(shared), layer=SHARED_ENDPOINT)
             )
         except ValueError as error:
             ignored.append(
@@ -781,7 +786,7 @@ def shared_entries(environ: Mapping[str, str]) -> tuple[list[Entry], list[Entry]
     disabled = environ.get(SDK_DISABLED, "").strip().lower() == "true"
     return (
         below,
-        [Entry(path=ENDPOINT, value=None, layer=SDK_DISABLED)] if disabled else [],
+        [LayerValue(path=ENDPOINT, value=None, layer=SDK_DISABLED)] if disabled else [],
         ignored,
     )
 
@@ -791,7 +796,7 @@ def at_home(path: Path, home: Path) -> Path:
     return home.joinpath(*path.parts[1:])
 
 
-def settings_of(entries: Iterable[Entry], home: Path, model: type[Settings]) -> Loaded:
+def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]) -> Loaded:
     """Merge the layers' entries, weakest first, and build the model's settings from them.
 
     An entry replaces any earlier one at its path, above it or below it, whole: a list is
@@ -805,12 +810,12 @@ def settings_of(entries: Iterable[Entry], home: Path, model: type[Settings]) -> 
     """
     paths = setting_paths(model)
     at_defaults = [
-        Entry(path=path, value=value, layer=None)
+        LayerValue(path=path, value=value, layer=None)
         for path, value in defaults(model).items()
         if paths[path] == "path"
     ]
-    kept: dict[tuple[str, ...], Entry] = {}
-    replaced: list[tuple[Entry, str | None]] = []
+    kept: dict[tuple[str, ...], LayerValue] = {}
+    replaced: list[tuple[LayerValue, str | None]] = []
     for entry in [*at_defaults, *entries]:
         if entry.path not in paths:
             message = f"{'.'.join(entry.path)} ({entry.layer}): not a setting"

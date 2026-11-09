@@ -679,7 +679,7 @@ def test_the_how_to_for_a_source_gives_the_code_of_the_memo_that_the_tests_run()
     """Each of its files, under the page's names, is the memo package's, file for file.
 
     ``tests/test_memo_source.py`` registers and runs that package, so a change that it
-    must follow, such as a key added to the front matter or to a role's result, cannot
+    must follow, such as a key added to the front matter or to a preparer's result, cannot
     leave the page telling a contributor to write what fails. A file created, or one that
     it lacks, is named.
     """

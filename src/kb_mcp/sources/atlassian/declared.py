@@ -1,9 +1,9 @@
-"""Confluence's and Jira's declarations: what each reads of the site, its table and roles.
+"""Confluence's and Jira's declarations: what each reads of the site, its table and stages.
 
-Each resource type is a kind that the raw store keeps, fetched over a period that its
-options give. Both sign in with one Atlassian account, its site's, name one fetcher and
-one preparer, which read the kinds of the source that they run for from its
-declaration, and share their light checks: the sign-in's, and the period's.
+The raw store keeps each resource type, fetched over a period that its options give.
+Both sign in with one Atlassian account, its site's, name one fetcher and one preparer,
+which read the resource types of the source that they run for from its declaration, and
+share their light checks: the sign-in's, and the period's.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     EPOCH,
@@ -22,7 +23,7 @@ from kb_mcp.sources.atlassian.fetch.domain.period import (
     moment,
     period_rule,
 )
-from kb_mcp.sources.declaration import Account, Declared, Option, ResourceType
+from kb_mcp.sources.declaration import Account, Option, ResourceType, Source
 
 if TYPE_CHECKING:
     import re
@@ -52,9 +53,9 @@ def email_without_token(_given: object, settings: Mapping[str, object]) -> dict[
 
 ATLASSIAN = Account(
     name="atlassian",
-    table="kb_mcp.sources.atlassian.settings:AtlassianAccount",
+    table_path="kb_mcp.sources.atlassian.settings:AtlassianAccountTable",
     settings=("site", "email", "api_token"),
-    login="kb_mcp.sources.atlassian.fetch.app.login:signed_in",
+    login="kb_mcp.sources.atlassian.fetch.app.login:login",
     checks="kb_mcp.sources.atlassian.fetch.app.doctor:checks",
     refused=token_without_email,
     unapplied=email_without_token,
@@ -71,8 +72,8 @@ SINCE, UNTIL, MAX_FILE_MB = PERIOD = (
     Option(flag=UNTIL_FLAG, help="12h, 7d, or an ISO date or time, excluded; by default, now"),
     Option(
         flag=MAX_FILE_MB_FLAG,
-        help=f"the largest file kept, in MB; {DEFAULT_MAX_FILE_MB} by default",
-        type=int,
+        help=f"the largest file kept, in MiB; {DEFAULT_MAX_FILE_MB} by default",
+        parse=int,
     ),
 )
 
@@ -93,13 +94,13 @@ def key_of(name: str, rule: re.Pattern[str]) -> Callable[[str], str]:
 SPACE = Option(
     flag="--space",
     help="a space key, in place of the setting's; repeat for more",
-    type=key_of("space", SPACE_KEY),
+    parse=key_of("space", SPACE_KEY),
     setting="sources.confluence.spaces",
 )
 PROJECT = Option(
     flag="--project",
     help="a project key, in place of the setting's; repeat for more",
-    type=key_of("project", PROJECT_KEY),
+    parse=key_of("project", PROJECT_KEY),
     setting="sources.jira.projects",
 )
 FETCHER = "kb_mcp.sources.atlassian.fetch.app.fetcher"
@@ -148,23 +149,23 @@ def described(options: Mapping[str, object], settings: Mapping[str, object]) -> 
     return (f"sign-in: {by}", period_rule(since=options[SINCE.flag] is not None))
 
 
-CONFLUENCE = Declared(
-    name="confluence",
-    summary="Confluence, on the Atlassian site: the pages and blog posts of its spaces,"
+CONFLUENCE = Source(
+    name=names.CONFLUENCE,
+    help="Confluence, on the Atlassian site: the pages and blog posts of its spaces,"
     " with their files",
-    types=(
+    resource_types=(
         ResourceType(
-            name="pages", summary="a space's pages", read="listed", options=(SPACE, *PERIOD)
+            name=names.PAGES, help="a space's pages", read="listed", options=(SPACE, *PERIOD)
         ),
         ResourceType(
-            name="blogposts",
-            summary="a space's blog posts",
+            name=names.BLOGPOSTS,
+            help="a space's blog posts",
             read="listed",
             options=(SPACE, *PERIOD),
         ),
     ),
     settings=("spaces",),
-    table="kb_mcp.sources.atlassian.settings:ConfluenceSource",
+    table_path="kb_mcp.sources.atlassian.settings:ConfluenceTable",
     preparers=(PREPARER,),
     fetcher=FETCHER,
     account=ATLASSIAN,
@@ -172,20 +173,19 @@ CONFLUENCE = Declared(
     unapplied=email_without_token,
     described=described,
 )
-JIRA = Declared(
-    name="jira",
-    summary="Jira, on the Atlassian site: the issues of its projects,"
-    " with their comments and files",
-    types=(
+JIRA = Source(
+    name=names.JIRA,
+    help="Jira, on the Atlassian site: the issues of its projects, with their comments and files",
+    resource_types=(
         ResourceType(
-            name="issues",
-            summary="a project's issues",
+            name=names.ISSUES,
+            help="a project's issues",
             read="searched",
             options=(PROJECT, *PERIOD),
         ),
     ),
     settings=("projects",),
-    table="kb_mcp.sources.atlassian.settings:JiraSource",
+    table_path="kb_mcp.sources.atlassian.settings:JiraTable",
     preparers=(PREPARER,),
     fetcher=FETCHER,
     account=ATLASSIAN,

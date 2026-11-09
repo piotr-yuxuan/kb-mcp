@@ -1,8 +1,8 @@
 # eval
 
 What `eval` records, besides what every command does ([README](README.md)). A run is one
-trace: its root `eval`, the connections, one a target, then a span per target, a model
-and a chunking, which holds the whole build of its index, as the events below list it,
+trace: its root `eval`, the connections, one an evaluated index, then a span per evaluated index, a
+model and a chunking, which holds the whole build of its index, as the events below list it,
 and the searches and answers of every question in every mode, as `serve` records them. A
 question is timed and logged, never a span of its own. A build that waits for a prune of
 the vector store records `vectors.lock_wait`, as [embed.md](embed.md) lists it, and one
@@ -13,7 +13,7 @@ that waits past 60 s is `eval.not_evaluated`.
 | Event | Level | Fields | When |
 |---|---|---|---|
 | `eval.question` | debug | `id`, `chunking`, `mode`, `seconds`, `reciprocal_rank` | A golden question is ranked in a mode, then answered as `ask` answers: its id, never its text; the seconds are the ranking's |
-| `eval.evaluated` | info | `model`, `chunking`, `questions`, `embedded`, `index_seconds` | A target is evaluated: the questions, the texts embedded for its index, how long the index took |
+| `eval.evaluated` | info | `model`, `chunking`, `questions`, `embedded`, `index_seconds` | An index is evaluated: the questions, the texts embedded for its index, how long the index took |
 | `eval.refused` | error | `reason` | The golden file is refused, by the field at fault: exit 2 |
 | `eval.not_evaluated` | error | `reason` | A model fails, or a mode by meaning fell back to words, which would measure words twice: exit 1 |
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed for the model |
@@ -26,7 +26,7 @@ that waits past 60 s is `eval.not_evaluated`.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `eval.model` | internal | `gen_ai.request.model`, `kb_mcp.chunking` | A target, a model and a chunking: its index built, then every question ranked and answered in every mode |
+| `eval.model` | internal | `gen_ai.request.model`, `kb_mcp.chunking` | An evaluated index, a model and a chunking: its index built, then every question ranked and answered in every mode |
 | `index.files` | internal | | The mirror's files read and indexed by words |
 | `index.join` | internal | | The documents' people joined into persons, once the files are read |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |

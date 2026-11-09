@@ -17,8 +17,8 @@ from kb_mcp.cli.main import main
 from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
 from kb_mcp.config.domain.settings import (
     TABLE,
-    Entry,
     Ignored,
+    LayerValue,
     Loaded,
     Settings,
     SettingsError,
@@ -31,8 +31,8 @@ from kb_mcp.config.domain.settings import (
 )
 from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.settings import ConfluenceSource
-from kb_mcp.sources.worklog.settings import WorklogSource
+from kb_mcp.sources.atlassian.settings import ConfluenceTable
+from kb_mcp.sources.worklog.settings import WorklogTable
 from tests.composed import MODEL
 
 if TYPE_CHECKING:
@@ -145,7 +145,9 @@ def test_the_data_directory_is_absolute_with_the_home_given_for_the_tilde(
     given: str | None, data_dir: Path
 ) -> None:
     """Data written under a relative path would land below the current directory."""
-    entries = [] if given is None else [Entry(path=("data_dir",), value=given, layer="--data-dir")]
+    entries = (
+        [] if given is None else [LayerValue(path=("data_dir",), value=given, layer="--data-dir")]
+    )
     assert settings_of(entries, HOME, MODEL).settings.data_dir == data_dir
 
 
@@ -216,7 +218,7 @@ def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object,
         list[str],
         frozenset[str],
         dict[str, str],
-        ConfluenceSource | None,
+        ConfluenceTable | None,
         SecretStr | int,
         tuple[int, ...],
         tuple[Path, ...],
@@ -240,7 +242,7 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
 
 def test_each_source_s_table_is_composed_under_sources_in_name_order() -> None:
     """Plan 030: ``[sources.<name>]``, in name order, with the core's settings in theirs."""
-    model = settings_model({"worklog": WorklogSource, "confluence": ConfluenceSource}, {})
+    model = settings_model({"worklog": WorklogTable, "confluence": ConfluenceTable}, {})
     assert list(model.model_fields) == list(Settings.model_fields)
     assert [path for path in setting_paths(model) if path[0] == "sources"] == [
         ("sources",),
@@ -417,7 +419,7 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
     loaded = settings_of(
         [
             *file_entries({"sources": {"jira": {}}}, FILE, MODEL),
-            Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="--project"),
+            LayerValue(path=("sources", "jira", "projects"), value=["PRB"], layer="--project"),
         ],
         HOME,
         MODEL,
@@ -457,7 +459,7 @@ def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: s
     ``_env_file``, which reads the file named, and ``DATA_DIR`` as ``data_dir``.
     """
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
-        settings_of([Entry(path=(key,), value="/etc/passwd", layer="a layer")], HOME, MODEL)
+        settings_of([LayerValue(path=(key,), value="/etc/passwd", layer="a layer")], HOME, MODEL)
 
 
 def test_a_refusal_never_holds_the_value() -> None:
@@ -477,8 +479,8 @@ def test_a_stronger_layer_replaces_a_weaker_one_and_the_weaker_is_ignored() -> N
     """A flag wins over the file; the file's value is recorded as replaced."""
     loaded = settings_of(
         [
-            Entry(path=SITE, value="https://file.example.invalid", layer=FILE),
-            Entry(path=SITE, value="https://flag.example.invalid", layer="--site"),
+            LayerValue(path=SITE, value="https://file.example.invalid", layer=FILE),
+            LayerValue(path=SITE, value="https://flag.example.invalid", layer="--site"),
         ],
         HOME,
         MODEL,
@@ -495,7 +497,7 @@ def test_a_stronger_list_replaces_a_weaker_one_whole() -> None:
     loaded = settings_of(
         [
             *file_entries({"sources": {"confluence": {"spaces": ["ENG", "OPS"]}}}, FILE, MODEL),
-            Entry(path=("sources", "confluence", "spaces"), value=["MFS"], layer="--space"),
+            LayerValue(path=("sources", "confluence", "spaces"), value=["MFS"], layer="--space"),
         ],
         HOME,
         MODEL,
@@ -511,9 +513,9 @@ def test_a_value_replaces_a_weaker_table_above_or_below_it() -> None:
     """A value at a table's place replaces the values under it, and the reverse."""
     loaded = settings_of(
         [
-            Entry(path=("sources", "jira", "projects"), value=["PLAT"], layer=FILE),
-            Entry(path=("sources", "jira"), value={}, layer="stronger"),
-            Entry(path=("sources", "jira", "projects"), value=["PRB"], layer="strongest"),
+            LayerValue(path=("sources", "jira", "projects"), value=["PLAT"], layer=FILE),
+            LayerValue(path=("sources", "jira"), value={}, layer="stronger"),
+            LayerValue(path=("sources", "jira", "projects"), value=["PRB"], layer="strongest"),
         ],
         HOME,
         MODEL,

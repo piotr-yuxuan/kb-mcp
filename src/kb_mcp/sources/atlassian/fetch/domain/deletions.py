@@ -31,7 +31,7 @@ CONFIRM_AFTER = timedelta(hours=1)
 GONE_STATUSES = frozenset({"trashed", "deleted", "purged"})
 
 
-class Answer(StrEnum):
+class ProbeAnswer(StrEnum):
     """What a probe of an absent document found."""
 
     GONE = "gone"  # 404 (deleted, or no longer visible), trashed, or in a space never kept
@@ -47,7 +47,7 @@ class Tombstone(Record):
     A pending one waits for a probe, however many runs that takes.
     """
 
-    kind: str  # pages or blogposts
+    resource_type: str  # pages or blogposts
     id: str
     space_id: str
     first_gone: datetime | None = None
@@ -63,14 +63,14 @@ class Tombstone(Record):
 
     @property
     def key(self) -> tuple[str, str]:
-        """Name the document by its kind and id."""
-        return self.kind, self.id
+        """Name the document by its resource type and id."""
+        return self.resource_type, self.id
 
 
 def after_probes(
     known: Mapping[tuple[str, str], Tombstone],
     absent: Mapping[tuple[str, str], str],
-    answers: Mapping[tuple[str, str], Answer],
+    answers: Mapping[tuple[str, str], ProbeAnswer],
     now: datetime,
 ) -> dict[tuple[str, str], Tombstone]:
     """Return the tombstones of one space once its absent documents were probed.
@@ -83,38 +83,38 @@ def after_probes(
     """
     kept: dict[tuple[str, str], Tombstone] = {}
     for key, space_id in absent.items():
-        stone = known.get(key, Tombstone(kind=key[0], id=key[1], space_id=space_id))
+        stone = known.get(key, Tombstone(resource_type=key[0], id=key[1], space_id=space_id))
         answer = answers.get(key)
         if answer is None:
             kept[key] = stone
-        elif answer is Answer.GONE and stone.first_gone is None:
+        elif answer is ProbeAnswer.GONE and stone.first_gone is None:
             kept[key] = replace(stone, first_gone=now)
-        elif answer is Answer.GONE:
+        elif answer is ProbeAnswer.GONE:
             # Two answers moments apart prove little: confirmation waits a while.
             kept[key] = replace(stone, confirmed=now - stone.first_gone >= CONFIRM_AFTER)
-        elif answer is Answer.UNSETTLED:
+        elif answer is ProbeAnswer.UNSETTLED:
             kept[key] = replace(stone, first_gone=None, confirmed=False)
     return kept
 
 
-def too_many_gone(answers: Mapping[tuple[str, str], Answer], stored: int) -> bool:
+def too_many_gone(answers: Mapping[tuple[str, str], ProbeAnswer], stored: int) -> bool:
     """Say whether so many answered gone that the session must be checked first."""
-    gone = sum(answer is Answer.GONE for answer in answers.values())
+    gone = sum(answer is ProbeAnswer.GONE for answer in answers.values())
     return gone > MASS_COUNT or gone > MASS_SHARE * stored
 
 
-def answer_of(found_space: str, status: str, kept: Collection[str], *, named: bool) -> Answer:
+def answer_of(found_space: str, status: str, kept: Collection[str], *, named: bool) -> ProbeAnswer:
     """Say what a probe that the site answered found.
 
-    ``kept`` are the spaces whose listings the store keeps; ``named`` says whether the
+    ``kept`` are the spaces whose listings the raw store keeps; ``named`` says whether the
     found space's stored listing names the document. A document trashed, or in a space
-    the store never listed, is gone; one that a stored listing names has moved there, and
+    the raw store never listed, is gone; one that a stored listing names has moved there, and
     is followed by that space's own listing; any other is still somewhere, unsettled,
     and probed again on a later run, so that its tracking never ends unseen.
     """
     if status in GONE_STATUSES or found_space not in kept:
-        return Answer.GONE
-    return Answer.MOVED if named else Answer.UNSETTLED
+        return ProbeAnswer.GONE
+    return ProbeAnswer.MOVED if named else ProbeAnswer.UNSETTLED
 
 
 def probing_order(

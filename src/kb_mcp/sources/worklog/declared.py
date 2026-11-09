@@ -7,22 +7,31 @@ and ``meetings/``. Read in place, it has no fetcher.
 
 from __future__ import annotations
 
-from kb_mcp.sources.declaration import Declared, ResourceType
+from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE, TRANSCRIPT_TYPE, WORKLOG_TYPES
+from kb_mcp.sources.declaration import ResourceType, Source
 
-WORKLOG = Declared(
+WORKLOG = Source(
     name="worklog",
-    summary="The user's work log: org files read in place, never written",
-    types=(
-        ResourceType(name="entries", summary="the entries of todo.org", read="in place"),
-        ResourceType(name="days", summary="the days of todo.org", read="in place"),
-        ResourceType(name="meetings", summary="the meetings of todo.org", read="in place"),
+    help="The user's work log: org files read in place, never written",
+    resource_types=(
         ResourceType(
-            name="transcripts",
-            summary="the transcripts of transcripts/ and meetings/",
+            name=WORKLOG_TYPES[ENTRY_TYPE].plural, help="the entries of todo.org", read="in place"
+        ),
+        ResourceType(
+            name=WORKLOG_TYPES[DAY_TYPE].plural, help="the days of todo.org", read="in place"
+        ),
+        ResourceType(
+            name=WORKLOG_TYPES[MEETING_TYPE].plural,
+            help="the meetings of todo.org",
+            read="in place",
+        ),
+        ResourceType(
+            name=WORKLOG_TYPES[TRANSCRIPT_TYPE].plural,
+            help="the transcripts of transcripts/ and meetings/",
             read="in place",
         ),
     ),
     settings=("path", "archives"),
-    table="kb_mcp.sources.worklog.settings:WorklogSource",
+    table_path="kb_mcp.sources.worklog.settings:WorklogTable",
     preparers=("kb_mcp.sources.worklog.prepare.app.preparer",),
 )

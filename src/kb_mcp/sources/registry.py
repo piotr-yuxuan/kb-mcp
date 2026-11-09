@@ -13,32 +13,29 @@ import pkgutil
 import re
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import SOURCE_NAME
+from kb_mcp.kernel.names import ASSETS, SOURCE_NAME
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.worklog.declared import WORKLOG
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from kb_mcp.sources.declaration import Account, Declared, Option
+    from kb_mcp.sources.declaration import Account, Option, Source
 
 # Every source, in name order.
 SOURCES = (CONFLUENCE, JIRA, WORKLOG)
-# The mirror's folder of the files that Confluence's and Jira's documents attach,
-# docs/assets/, which no source's folder may be.
-ASSETS = "assets"
 # A flag of an option: one dash and a letter, or two and a lower-case word.
 FLAG = re.compile(r"-[a-z]|--[a-z][a-z0-9_-]*")
 
 
-def refuse(sources: Iterable[Declared]) -> None:
+def refuse(sources: Iterable[Source]) -> None:
     """Raise ValueError, naming the declaration, for the first that a registry may not hold.
 
     A source's name is its table, its folder of the mirror and the front matter's
-    ``source``, so one source type has one instance: a name matches ``SOURCE_NAME``, is
+    ``source``, so each source is configured once: a name matches ``SOURCE_NAME``, is
     not ``assets``, and is declared once. An account's name is its table, which the
     sources naming it share: each names it alike. A source names a setting, its first
-    saying whether it is configured, and a role, a fetcher or a preparer, or a run of it
+    saying whether it is configured, and a fetcher or a preparer, or a run of it
     would have no row. An option is one flag of ``fetch``, which the sources declaring it
     share: each declares it alike, and it matches ``FLAG``, or argparse would read it as
     a positional, and no command would start.
@@ -65,9 +62,11 @@ def refuse(sources: Iterable[Declared]) -> None:
             message = f"source {declared.name!r}: names no setting"
             raise ValueError(message)
         if declared.fetcher is None and not declared.preparers:
-            message = f"source {declared.name!r}: names no role, neither fetcher nor preparer"
+            message = f"source {declared.name!r}: names neither fetcher nor preparer"
             raise ValueError(message)
-        for option in (option for kind in declared.types for option in kind.options):
+        for option in (
+            option for resource_type in declared.resource_types for option in resource_type.options
+        ):
             if not FLAG.fullmatch(option.flag):
                 message = (
                     f"source {declared.name!r}: option {option.flag!r}: a flag is {FLAG.pattern}"
@@ -82,7 +81,7 @@ def refuse(sources: Iterable[Declared]) -> None:
                 raise ValueError(message)
 
 
-def accounts_of(sources: Iterable[Declared]) -> dict[str, Account]:
+def accounts_of(sources: Iterable[Source]) -> dict[str, Account]:
     """Give each account that these sources name, by its name, once, in their order."""
     return {
         declared.account.name: declared.account
@@ -105,7 +104,7 @@ def table_of(owner: str, path: str, settings: tuple[str, ...]) -> type:
     return table
 
 
-def tables(sources: Iterable[Declared]) -> tuple[dict[str, type], dict[str, type]]:
+def tables(sources: Iterable[Source]) -> tuple[dict[str, type], dict[str, type]]:
     """Load the table of each source, then of each account that they name, each by its name.
 
     What the entry composes into the settings' model, as each declaration names it.
@@ -113,11 +112,11 @@ def tables(sources: Iterable[Declared]) -> tuple[dict[str, type], dict[str, type
     declared = tuple(sources)
     return (
         {
-            each.name: table_of(f"source {each.name!r}", each.table, each.settings)
+            each.name: table_of(f"source {each.name!r}", each.table_path, each.settings)
             for each in declared
         },
         {
-            name: table_of(f"account {name!r}", each.table, each.settings)
+            name: table_of(f"account {name!r}", each.table_path, each.settings)
             for name, each in accounts_of(declared).items()
         },
     )

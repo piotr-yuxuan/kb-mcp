@@ -48,7 +48,7 @@ from tests.test_api_token import (
     download,
     served,
 )
-from tests.test_download import SITE
+from tests.test_fetching import SITE
 from tests.test_observed import said
 from tests.test_settings import user_log_folder
 

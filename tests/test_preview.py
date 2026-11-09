@@ -22,7 +22,7 @@ import pytest
 from kb_mcp.cli.commands import model as model_command
 from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.cli.domain.summary import values_of
+from kb_mcp.cli.domain.preview import values_of
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early
@@ -94,7 +94,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
     Neither is among the settings that its summary shows.
     """
-    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--summary", summary]
@@ -479,7 +479,7 @@ def test_a_command_s_described_lines_end_its_summary(
     """They are its own function's, of the arguments and the settings' values by path."""
 
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-        return (f"mirrors {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
+        return (f"fetches {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
 
     given = ["prepare", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
     arguments = parser().parse_args(given)
@@ -487,7 +487,7 @@ def test_a_command_s_described_lines_end_its_summary(
     with early():
         assert enter(arguments, given, SOURCES) == 0
     summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
-    assert summary.endswith(f"  mirrors {SITE}\n  as prepare\n")
+    assert summary.endswith(f"  fetches {SITE}\n  as prepare\n")
     assert len(runs) == 1
 
 

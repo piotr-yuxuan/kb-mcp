@@ -1,7 +1,7 @@
 # Data layout
 
 What each part of the program writes and reads under the data directory, so that the
-download (plan 004), the Markdown mirror (005) and search (006) can be built apart.
+fetch (plan 004), the mirror (005) and search (006) can be built apart.
 Where this file and the code disagree, the code named here is right and this file is
 fixed.
 
@@ -53,16 +53,19 @@ reference](telemetry/README.md) gives the file's fields.
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** `sources.atlassian.fetch.domain.content` names what the fetch of
-  Confluence and Jira stores and their prepare reads: `Space`, `Folder`, `Page` and
-  `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`, `Person`,
-  and `Snapshot`, a document at one revision with its rendered body. `Listed` is what a
-  listing says of a document (its type, id, revision, update time and Confluence
-  version), read apart from the rest of the entry, so that an entry whose other fields
-  have changed still lets the document be fetched.
-  `mirror.domain.mirror.FrontMatter` names what the mirror says of each document. A
-  document knows where it is stored (`source`, `kind`) and names its state (`revision`).
-  Every layer above the adapters works with these types alone.
+- **One vocabulary.** [The glossary](glossary.md) defines each word; this bullet says
+  which module holds which record. `sources.atlassian.fetch.domain.content` holds what
+  the fetch of Confluence and Jira stores and their prepare reads: `Space`, `Folder`,
+  `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment` (an
+  [attachment](glossary.md#attachment)), `Comment`, `SiteUser` (a site user, of an
+  [account](glossary.md#account)), and `Snapshot` (a [snapshot](glossary.md#snapshot),
+  with its rendered body). `Listed` is what a [listing](glossary.md#listing) says of a
+  document (its type, id, revision, update time and Confluence version), read apart from
+  the rest of the entry, so that an entry whose other fields have changed still lets the
+  document be fetched. `mirror.domain.mirror.FrontMatter` holds what the mirror says of
+  each [document](glossary.md#document). A fetched document knows where it is stored
+  (`source`, `resource_type`) and names its state (`revision`). Every layer above the adapters
+  works with these types alone.
 - **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
   and `sources.atlassian.fetch.adapters.jira_v3` hold all that the code knows of those
   JSON responses: field names, which response holds what, and the file names a snapshot
@@ -99,14 +102,14 @@ it; every method that writes refuses to run outside it.
 
 ### Snapshots
 
-A snapshot is one document at one revision:
+A [snapshot](glossary.md#snapshot) lies at:
 
 ```
-<data>/raw/<source>/<kind>/<id>/<revision>/<file>.json
+<data>/raw/<source>/<resource type>/<id>/<revision>/<file>.json
 ```
 
-- `source` and `kind`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
-  `source` and `kind` of `Page`, `BlogPost` and `Issue`.
+- `source` and `resource_type`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
+  `source` and `resource_type` of `Page`, `BlogPost` and `Issue`.
 - `id`: the content id (Confluence) or the issue id (Jira, which stays when the key
   changes).
 - `revision`: the version number padded to six digits for Confluence (`000003`), the
@@ -147,23 +150,23 @@ only the store reads and writes:
 
 The store's interface for snapshots:
 
-- `put(kind, responses, fetched_at, blobs)`, with `kind` one of `Page`, `BlogPost` and
-  `Issue`, refuses a snapshot without one of the kind's files (above), reads only the
-  id and the revision (the kind's `identity`), stores the responses as received, and
+- `put(document_class, responses, fetched_at, blobs)`, with `document_class` one of `Page`, `BlogPost` and
+  `Issue`, refuses a snapshot without one of the type's files (above), reads only the
+  id and the revision (the type's `identity`), stores the responses as received, and
   returns the folder. `blobs` maps attachment ids to digests
   of files already stored with `put_blob`: files first, snapshot last, so a record never
   names a missing file. For a revision stored already, `put` keeps the responses and
   records the new blobs.
 - `add_blobs(document, blobs)` records files downloaded later, such as on a retry,
-  replacing the record alone, whole. It, `has` and `read` take a `Document` or a
+  replacing the record alone, whole. It, `has` and `read` take a `FetchedDocument` or a
   `Listed`.
-- `has(document)`; `read(document)`, which returns a `Stored` or raises one of
+- `has(document)`; `read(document)`, which returns a `StoredSnapshot` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
-  `ValueError` or an `OSError` for a damaged file); and `latest(kind)`, which yields the
-  newest snapshot of each document of a kind as a `Stored`, or as an `Unreadable`
+  `ValueError` or an `OSError` for a damaged file); and `latest(document_class)`, which yields
+  the newest snapshot of each document of its type as a `StoredSnapshot`, or as an `Unreadable`
   (where it is, and the refused field's path or the error's class) when it cannot be
   read. The others still follow.
-- `Stored` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
+- `StoredSnapshot` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
   and `blobs`, the files of its own attachments only. An attachment absent from `blobs`
   was not downloaded: a media type not kept, over the size cap, or a failed download.
 - `responses(folder)` gives the responses as received, for adapters to read what the
@@ -177,7 +180,7 @@ status from the space's listing, which is fresher; labels beyond the first page 
 
 ### A space's listings, and users
 
-Each run that downloads a space replaces that space's listings, each as received, every
+Each run that fetches a space replaces that space's listings, each as received, every
 result of every page of each list:
 
 ```
@@ -197,7 +200,7 @@ newest name wins. They are read, each entry by its adapter, with `spaces()`,
 adapter refuses comes back as an `Unreadable` at its index, and the others are read.
 
 Listings give 005 the whole tree, titles and breadcrumbs, even of pages whose bodies are
-outside the period downloaded, folders included (`Page.parent_type` says whether a parent
+outside the period fetched, folders included (`Page.parent_type` says whether a parent
 is a page or a folder), and the names of Confluence authors, whom v2 gives by account id
 only.
 
@@ -215,12 +218,12 @@ Two more of the store's own records, each replaced whole:
   `sources.atlassian.fetch.domain.coverage.Target`), the one period over which every
   document updated is stored (`sources.atlassian.fetch.domain.coverage.Coverage`), and
   `"exact": true` on a project's entry written since plan 034. A run that listed a
-  target whole joins its window to that period when the two overlap or touch. A space's
-  period ends at the window's end whatever failed, since a run without `--since` starts
+  target whole joins its fetch window to that period when the two overlap or touch. A space's
+  period ends at the fetch window's end whatever failed, since a run without `--since` starts
   at its covered start and asks again for whatever failed inside. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
   snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
-  even below the old end, else at the window's end; a search entry that the adapter
+  even below the old end, else at the fetch window's end; a search entry that the adapter
   refuses leaves it as it was, and a failure at its very start makes it inexact. A run
   without `--since` searches an exact project from a day before its covered end, and an
   entry without `exact` from its covered start, which replaces it with an exact one.
@@ -234,8 +237,8 @@ Two more of the store's own records, each replaced whole:
   a kept space whose stored listing names it has moved, and loses its tombstone, as does
   one listed again; one found in a kept space whose listing does not name it goes back
   to pending. The absent are found from the last listing read by id alone
-  (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
-  followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is written
+  (`listed_ids(space_id, document_class)`), so that an entry the adapter would refuse is still
+  followed, and the ids that have a snapshot (`stored_ids(document_class)`); the record is written
   before the space's listing is replaced, so that no absent document is lost to a run
   that stops, and they are probed once every space of the run is listed. A fetch of
   projects neither reads nor rewrites the record.
@@ -247,13 +250,13 @@ Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 `confluence` or `jira`, since two fetches can start within a second (030), in the format
 004's plan defines. A run report holds counts and refused fields' paths, never content,
 and names no target. No code reads one back. Its counts of documents depend on whether
-`--since` was given (034): with it, `<kind>: in the period` and `<kind>: already stored`;
-without, `<kind>: new or changed since the last fetch`; `listed` and `fetched` either way.
+`--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
+stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
 
 ## The Markdown mirror
 
 Each source writes under a folder of its own name, through the mirror's writer,
-`mirror.adapters.mirror_files.sync`, and removes only the files that its `owned` module
+`mirror.adapters.mirror_files.write_changed`, and removes only the files that its `owned` module
 finds there (030):
 
 | Folder | Owned by | Removed by |
@@ -293,12 +296,12 @@ nothing in them depends on when they were prepared.
   characters becomes one `-`; leading and trailing `-` are removed; it is cut at 60
   characters, and a `-` left at the cut is removed. An empty slug leaves `<id>.md`, as
   does a work-log day or meeting, whose id holds its date or its title's slug already
-  (`sources.worklog.prepare.domain.layout.NAMED_BY_ID`). When a title changes, the file
+  (`kernel.names.WORKLOG_TYPES`, by `named_by_id`). When a title changes, the file
   is renamed and the old name removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
 - `_tree.md`: one nested list item per page and folder of the listings, linking the
-  mirrored file, or naming the page as "not yet mirrored" when its body was not
+  page's file, or naming the page as "not yet mirrored" when its body was not
   downloaded.
 
 Each document starts with front matter written by `mirror.adapters.markdown.dump` and
@@ -332,19 +335,19 @@ order or type, by name.
 | `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
-| `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
-| `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `Document.url`; `null` when no site is set, and for the work log |
+| `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
+| `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
 | `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by
 `data-linked-resource-id` (the attachment id) or by the file name in its `src`, as
 plan 001 found on the sandbox; 005's HTML module, the one module that knows the site's
-markup, maps it to `Stored.blobs`. An image of another page's attachment (through an
+markup, maps it to `StoredSnapshot.blobs`. An image of another page's attachment (through an
 include) has a file only when that page is stored; otherwise the mirror keeps a
 placeholder; a backfill that reaches the other page fills it.
 
-A Confluence document is mirrored in the space whose freshest listing (by `listed_at`)
+A Confluence document goes in the space whose freshest listing (by `listed_at`)
 names it, which after a move is not the space its snapshot names; the front matter, the
 tree and the path all take that space. A document with a confirmed tombstone is left
 out, unless a listing taken after its first answer of gone names it again. The files of
@@ -365,7 +368,7 @@ data, never instructions.
 The key `people` (041) names the people of a document by role: one entry per person
 and role, in the order of the roles below, then in the order that the source gives,
 commenters by their first comment. `dump` writes each entry on one line, in YAML's flow
-style, so that forty comments by three people make three lines:
+style, so that forty comments by three commenters make three lines:
 
 ```yaml
 people:
@@ -440,7 +443,7 @@ until the next `prepare` and `index` write them again from the raw store.
 Persons live in the index alone: deleting `<data>/index.sqlite` removes them, until the
 next `index` joins them again; `<data>/aliases.toml` stays until the user
 deletes it. Deleting every copy is deleting the data directory, the log folder and the
-folders of `eval-agents`, after which the mirror is downloaded again, as from a first
+folders of `eval-agents`, after which the mirror is fetched again, as from a first
 run.
 
 ### Links
@@ -595,7 +598,7 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   name: `notes on x.org` of 21 October is `t-20261021-notes-on-x`,
   `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
   and the digest of its name, `meeting-` before it under `meetings/`. No folder below
-  the first is in an id, so a move under `archive/` keeps it. The name is a handle
+  the first is in an id, so a move under `archive/` keeps it. The name is a label
   alone, from which no number, order or time is read. Of two files of one id, the
   second in order of first folder, the folder that holds it, name, then path takes the
   digest of its whole path from the work log's root, written with a leading `/`, which
@@ -610,7 +613,7 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   begins with a letter and holds no colon or bracket, then `: `, blanks before the
   colon not the name's; the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and
   `CLOCK`.
-- The rule of an id is its type's, `kernel.names.WORKLOG_IDS`:
+- The rule of an id is its type's, `kernel.names.WORKLOG_TYPES`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
   `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
   a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}` for a meeting, its day's date and its
@@ -674,7 +677,9 @@ which writes the pieces' vectors; since plan 035 each writes only what changed
 ([below](#updates)). `<data>/index.sqlite` holds the documents of `<data>/docs/` alone,
 the work log's among them, read with `mirror.adapters.markdown`, and each write goes
 into a temporary file beside it that is then renamed into place. Its schema is defined
-in 006's plan; schema 3 (011) adds the
+in 006's plan: the tables `documents` and `sections`, and the FTS5 table `chunks`, the
+words of each section's title, labels, breadcrumb, heading and body, whose content is
+`sections`; schema 3 (011) adds the
 table `pieces` (each piece of a section's body, its span and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row
@@ -743,7 +748,7 @@ finds corrupt, in the update's read or its copy), or on `index --rebuild`, `inde
 naming which. Its index has no pieces and no model's rows: the next `embed` takes their
 vectors back from the vector store.
 
-`embed` (`search.app.indexing.refresh`) reads the index in one use: what it holds of the
+`embed` (`search.app.indexing.fill_and_prune`) reads the index in one use: what it holds of the
 mirror, the model it names, each document's front matter and body, and its pieces by
 path, section number, span and key. It reads no file of the mirror but to digest it,
 compares those digests with the index's, and when they differ warns,
@@ -770,8 +775,8 @@ cut by sections, awaits none.
 lock: `index` and `embed` take it exclusive by `flock` from their check that the index
 is still the build they read until the rename, never while they read files or ask the
 model. A run that finds it held says so, `index.lock_wait`, and gives up after a minute
-(`vector_store.WAIT_S`), naming the lock; one that finds the index written by another
-meanwhile starts again once, `index.restarted`, then stops. The file is never removed,
+(`conversions.WAIT_S`, which `vector_store` imports), naming the lock; one that finds
+the index written by another meanwhile starts again once, `index.restarted`, then stops. The file is never removed,
 and `flock` releases it at a process's end, a kill included. The index stays in SQLite's
 rollback journal, never in WAL mode, whose `-wal` file a rename would pair with the new
 index. A build file that a kill leaves, `.index-*.sqlite`, is ignored, and never
@@ -801,8 +806,8 @@ Unicode NFKD without the combining marks of U+0300 to U+036F, casefolded again, 
 runs of white space made one space, trimmed, and a trailing part in brackets dropped
 when a name comes before it: `Hélène  Example` and `helene example` share one, and
 `Kim (not in the header)` has `kim`. The join keeps that part, though
-(`search.domain.people.Joining.key`), however it is spaced, for the names of a key that
-two parts or more tell apart, as a site or the user wrote them: `Alex (Ops)` and
+(`search.domain.people.Joining.compared_key`), however it is spaced, for the names of a
+key that two parts or more tell apart, as a site or the user wrote them: `Alex (Ops)` and
 `Alex (Sales)` are two persons, and a bare `Alex` is neither; a meeting's `Robin (Ops)`
 is the account named `Robin (Ops)`, not one named `Robin (Sales)`, and a bare `Robin`
 could be either, so that rule 3 finds it among several accounts. A name that rule 3
@@ -823,7 +828,7 @@ person stays. A second note on a name, which parts its annotated spellings, anch
 each of them anew: the bare name keeps the id, and an alias to it, or an id that an
 agent kept, names fewer documents, as the build warns of that name. A person is served
 by a name: an account's, the name on its most recently updated document; a person by
-name alone's, the target of the first alias that made it, when that is a name, else
+name alone's, the value of the first alias that made it, when that is a name, else
 its most frequent spelling; ties go to the first row in the join's order, by document,
 in the order of their paths' text whichever file was written last, then role, name and
 account, the rows of transcripts that link meetings last, so that their
@@ -864,17 +869,17 @@ TOML strings:
   site's. It means its name anywhere but in a transcript whose meetings give the
   speaker one other person: the participants that the user wrote for a meeting tell
   more. Its name compares by its key, without annotation, so that `"Alex"` moves
-  `Alex (Ops)` and `Alex (Sales)` alike. A target that is a name means the one account
+  `Alex (Ops)` and `Alex (Sales)` alike. A value that is a name means the one account
   with a name of its key, else the person by name alone of its key; one that is a
   person's id, that person. Either must be a person that an account or a name makes,
-  not aliases or meetings alone: aliases are not chained, and an alias whose target's
+  not aliases or meetings alone: aliases are not chained, and an alias whose value's
   every name another alias or a meeting joins elsewhere names nobody.
-- A file that is not UTF-8 TOML; a target that is a table or not a string; a name or
-  a target of an empty key, such as white space or accents alone, holding a line break
+- A file that is not UTF-8 TOML; a value that is a table or not a string; a name or
+  a value of an empty key, such as white space or accents alone, holding a line break
   or longer than 200 characters; or two names of one key: the build stops before it
   reads the mirror, `index.not_built` naming the file and, but for a file that is not
   TOML, the alias; the index in place stays, and the run exits 1.
-- An alias whose key no name without an account holds, or whose target names nobody
+- An alias whose key no name without an account holds, or whose value names nobody
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
 - A change takes effect at the next `index`, which writes a new build for it alone,

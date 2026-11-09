@@ -26,7 +26,8 @@ from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
-from tests.test_mirror import (
+from tests.test_observed import said
+from tests.test_prepare_atlassian import (
     FETCHED,
     LISTED,
     POST_LISTED,
@@ -36,7 +37,6 @@ from tests.test_mirror import (
     page_responses,
     post_responses,
 )
-from tests.test_observed import said
 
 if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
@@ -130,7 +130,7 @@ def test_refused_settings_exit_two(home: Path, capsys: CaptureFixture[str]) -> N
     assert "site" in capsys.readouterr().err
 
 
-def test_an_empty_store_mirrors_nothing_and_exits_zero(
+def test_an_empty_store_prepares_nothing_and_exits_zero(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """A data directory without a raw store gives an empty mirror, and counts of zero.
@@ -228,7 +228,7 @@ CONVERSIONS = 3
 def test_the_command_mirrors_both_of_confluence_s_kinds(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A blog post is Confluence's as a page is: mirrored, and counted under its row."""
+    """A blog post is Confluence's as a page is: prepared, and counted under its row."""
     store = RawStore(home / "data" / "raw")
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), LISTED[:1], [POST_LISTED], [])

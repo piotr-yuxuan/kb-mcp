@@ -26,7 +26,7 @@ spaces = ["ENG"]
 kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp index && kb-mcp embed
 ```
 
-The space was never downloaded: without `--since`, its first run would take its last 7
+The space was never fetched: without `--since`, its first run would take its last 7
 days, and `--since` reaches back to the start of the year. The search settings
 keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
 [`DEFAULT_MODEL`](../../src/kb_mcp/config/domain/settings.py).
@@ -56,9 +56,9 @@ argcomplete](trade-offs.md#argparse-with-argcomplete)). With no arguments at all
 parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is observed:
 [`early`](../../src/kb_mcp/observability/app/observed.py) sends warnings
 to stderr until the settings are read, and `main` imports the
-[`ENTRY`](../../src/kb_mcp/cli/main.py) shared by every observed command.
+[`ENTRY_MODULE`](../../src/kb_mcp/cli/main.py) shared by every observed command.
 
-### 2. Settings, the guard and the summary
+### 2. Settings, the guard and the preview
 
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) maps each flag given to
 its setting ([`Command.setting_flags`](../../src/kb_mcp/cli/domain/command.py))
@@ -68,7 +68,7 @@ layers, each stronger than the last: the file
 the environment
 ([`environment_entries`](../../src/kb_mcp/config/domain/settings.py)) and
 the flags. [`settings_of`](../../src/kb_mcp/config/domain/settings.py)
-merges their [`Entry`](../../src/kb_mcp/config/domain/settings.py) rows,
+merges their [`LayerValue`](../../src/kb_mcp/config/domain/settings.py) rows,
 weakest first, into one [`Settings`](../../src/kb_mcp/config/domain/settings.py),
 which Pydantic validates, and keeps each value's layer in a
 [`Loaded`](../../src/kb_mcp/config/domain/settings.py). A value refused is
@@ -102,13 +102,13 @@ off this machine without `--allow-remote-embeddings`, or over plain http even wi
 is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
-Then [`before`](../../src/kb_mcp/cli/domain/summary.py) writes the summary
+Then [`before`](../../src/kb_mcp/cli/domain/preview.py) writes the preview
 on stderr: each setting that the command reads, with its value, a secret only as set or not
-([`setting_line`](../../src/kb_mcp/cli/domain/summary.py)); the sources
+([`setting_line`](../../src/kb_mcp/cli/domain/preview.py)); the sources
 taken and left out ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py));
 each value ignored, and why; and the command to copy
 ([`command_line`](../../src/kb_mcp/cli/domain/command_line.py)).
-[`ask`](../../src/kb_mcp/cli/adapters/question.py) asks `Proceed? [y/N]`;
+[`ask`](../../src/kb_mcp/cli/adapters/confirmation.py) asks `Proceed? [y/N]`;
 `--yes` skips the question, and with no terminal to answer it, the run is refused.
 
 Only now does the run begin.
@@ -122,32 +122,32 @@ settings loaded.
 ### 3. A row per source
 
 [`run`](../../src/kb_mcp/cli/commands/sources.py) turns the settings into
-a [`Run`](../../src/kb_mcp/sources/roles.py) for each source taken, a small frozen
+a [`SourceRun`](../../src/kb_mcp/sources/stages.py) for each source taken, a small frozen
 record: its declaration, the settings, its table and its account's, its options'
 values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
 configured, so no run is of it.
 
-[`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each role that a source's
+[`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each fetcher or preparer that a source's
 declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
 it can before any row: here an `--until` before `--since`, which the fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
-[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) of the
+[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the
 period's options, one space here.
-[`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
-asks [`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-from the coverage that the raw store holds, for each target's window and why it starts
-there, here `given`; a `--since` that does not come before the windows' end raises
+[`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
+asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+from the coverage that the raw store holds, for each target's fetch window and why it
+starts there, here `given`; a `--since` that does not come before the fetch windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
-exit 2, naming both options. Then each row runs in turn, each source's role within a span
+exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
 one before it failed, as it reads what is on disk. The exit status is the first outcome
-of [`RANKED`](../../src/kb_mcp/cli/domain/sources.py) that a row had:
+of [`RANKED`](../../src/kb_mcp/cli/domain/rows.py) that a row had:
 interrupted, then sign in, then failed; else 0.
 
 ### 4. The source and the site's port
 
 The fetcher's [`fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) calls
-[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), which
+[`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), which
 opens the [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
 under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
@@ -156,7 +156,7 @@ a second run stops at once with
 and its row fails while the next one runs.
 
 The sign-in comes from
-[`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
+[`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
 [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py) when
 the environment gives a token, else the
 [`SavedSession`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
@@ -165,23 +165,23 @@ that `login` saved. Either gives an httpx client built by
 by the system's certificates, plain http refused
 ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 no redirect followed by httpx itself, and each request observed by
-[`Recorded`](../../src/kb_mcp/observability/adapters/http.py). A token's
+[`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py). A token's
 header goes to the site's host alone
 ([`ApiToken.authorise`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
 [credentials](credentials.md#on-the-wire) say why.
 
 Every request then goes through
-[`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one port
+[`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one port
 for the session and the token, and is a [`Request`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py):
 a path on the site and its parameters, with no host to send the sign-in elsewhere.
-[`Site.json`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) and
-[`Site.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) call
-[`Site.get`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), which
+[`SiteClient.json`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) and
+[`SiteClient.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) call
+[`SiteClient.get`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), which
 retries throttling and gateway errors within bounds, and stops the run once
 [`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 GETs in a row got no answer
 ([`Breaker`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)).
-[`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) makes
+[`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) makes
 one GET, at least [`INTERVAL_S`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 after the last, and follows a redirect only to the site or to Atlassian's
 [`MEDIA_HOSTS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py). A 401,
@@ -189,38 +189,38 @@ or a redirect anywhere else, such as to a page to sign in, raises
 [`SignInNeededError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py):
 exit 3.
 
-One [`Download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) runs
-the space. [`Download.run`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+One [`Fetching`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) runs
+the space. [`Fetching.run`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 first asks Confluence who is signed in
-([`Download.reachable`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
+([`Fetching.reachable`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 so that a session that no longer holds stops the run before anything is written. Then
-[`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) lists
-the space whole: [`Download.collect`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) lists
+the space whole: [`Fetching.collect`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 follows each paged listing to its end, by the Confluence adapter's
 [`listing_request`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py)
 and [`listing_page`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py).
 It stores the listings whole
 ([`RawStore.put_space`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 after noting what the last listing named and this one does not
-([`Download.track`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)).
-[`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
-then splits the documents listed. Updated within the window, and its revision not stored
+([`Fetching.track`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)).
+[`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
+then splits the documents listed. Updated within the fetch window, and its revision not stored
 ([`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 a document is fetched by
-[`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
+[`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
 by the GETs of
 [`snapshot_requests`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
 the page in its storage format with its labels, the page as the site renders it, and
-its attachments. Updated within the window and its revision stored,
-[`Download.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+its attachments. Updated within the fetch window and its revision stored,
+[`Fetching.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 fetches only the files that its snapshot should have and lacks. The progress and the
 counts are of what is fetched, apart from what is listed, as `fetch.listed` says.
 
 Once the space is listed,
-[`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks after the documents gone from their listing, and
-[`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
-names the authors seen. Last, `download` extends the coverage of each target listed whole
+[`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
+names the authors seen. Last, `run_fetch` extends the coverage of each target listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
 no `--since` and asks again for what failed, as `fetch.coverage` says; writes it, each
@@ -244,11 +244,11 @@ otherwise [`RepresentationError`](../../src/kb_mcp/kernel/fields.py) names
 its path and what was expected, never the value found, such as
 `document.json.version.number: expected an integer`.
 
-[`Download.documents`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.documents`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 reads a listing's entries so, through
-[`LISTED`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), counting and
+[`LISTED`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), counting and
 skipping an entry refused.
-[`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads
+[`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) reads
 a fetched snapshot through
 [`REPRESENTATIONS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
 whose [`Representation`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
@@ -266,11 +266,11 @@ reading](trade-offs.md#strict-reading-a-module-per-representation)).
 
 ### 6. The snapshot
 
-[`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) first
+[`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) first
 downloads the files that the snapshot's attachments name and that are kept
-([`Download.files`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
+([`Fetching.files`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
 [`skip_reason`](../../src/kb_mcp/sources/atlassian/fetch/domain/files.py)), each
-through [`Site.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
+through [`SiteClient.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 and stored once, by its SHA-256
 ([`RawStore.put_blob`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 Then [`RawStore.put`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
@@ -282,7 +282,7 @@ to `<data>/raw/confluence/pages/<id>/<revision>/`, so that a snapshot is complet
 absent. Its responses are never written again: the next run's
 [`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
 finds the revision and asks for none of them. Its files may still grow:
-[`Download.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 downloads the kept files that the snapshot lacks, one that failed, say, and adds them to
 its record
 ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
@@ -291,9 +291,9 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 ### 7. HTML, pandoc and front matter
 
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
-through [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
-whatever the download did. It runs for Confluence here, and reads from `run.declared` the
-kinds that it converts: Jira's issues are placed too, so that a link to one reaches its
+through [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
+whatever the fetch did. It runs for Confluence here, and reads from `run.source` the
+resource types that it converts: Jira's issues are placed too, so that a link to one reaches its
 file, and only pages and blog posts are built.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
 users and listings into a
@@ -318,14 +318,14 @@ document's file:
   module that knows the site's markup, makes the view's HTML plain. Each kind of markup
   is a small [`Construct`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py),
   such as a [`Macro`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py) or a
-  [`Link`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), whose links to
-  mirrored documents become relative; markup that no construct knows stays, as a
+  [`HtmlLink`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), whose links to
+  documents of the mirror become relative; markup that no construct knows stays, as a
   placeholder that names it.
 - [`document_html`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py) lays
   out the title, the body and the attachments (and an issue's comments).
 - [`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)
   gives that HTML's Markdown from the rows of its source in the cache of conversions, which
-  [`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
+  [`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
   ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), or has
   [`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py) write it
   as GitHub's Markdown, one process a document, and keeps it. `--sandbox` is among
@@ -337,10 +337,10 @@ document's file:
   [`load`](../../src/kb_mcp/mirror/adapters/markdown.py), so the two agree
   on every key, type and quotation.
 
-A document whose conversion fails is reported by its place in the store, and the others
+A document whose conversion fails is reported by its place in the raw store, and the others
 go on. The space's tree, `_tree.md`, is written from the listings
 ([`Catalogue.tree`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)). Last,
-[`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
+[`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
 whose bytes differ, through a hidden file renamed into place. Then, when nothing was
 reported, it removes every file that its source owns
 ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py): documents and
@@ -361,7 +361,7 @@ its new file is built, so that the last good copy of every other stays.
 with no endpoint, and
 [`update_index`](../../src/kb_mcp/search/app/indexing.py) reads the alias file first
 ([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)), then lists the files of
-the mirror ([`mirror_files`](../../src/kb_mcp/search/app/indexing.py), by
+the mirror ([`document_files`](../../src/kb_mcp/search/app/indexing.py), by
 [`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)).
 [`updated`](../../src/kb_mcp/search/app/indexing.py) reads in one use what the index
 holds of them ([`Reader.held`](../../src/kb_mcp/search/adapters/sqlite_index.py)): there
@@ -384,7 +384,7 @@ changed are read, and with none, nothing is written.
 
 `embed`'s [`run`](../../src/kb_mcp/cli/commands/embed.py) takes the same
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py), with the means to open the
-endpoint, and [`refresh`](../../src/kb_mcp/search/app/indexing.py) calls
+endpoint, and [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) calls
 [`filling`](../../src/kb_mcp/search/app/indexing.py). It reads the index first, in one
 use ([`to_fill`](../../src/kb_mcp/search/app/indexing.py)): what it holds of the mirror,
 the model it names, each document's front matter and body
@@ -426,7 +426,7 @@ cut it, and into pieces by the chunking that
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py) names: by default
 [`windows`](../../src/kb_mcp/search/domain/chunking.py) of about 300 tokens,
 starting 240 apart, so that two in a row overlap, each embedded with the title. Each
-piece's text gets a [`key`](../../src/kb_mcp/search/adapters/vector_store.py),
+piece's text gets a [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py),
 the SHA-256 of the fingerprint and the text. The pieces wanted that the index does not
 hold are to add, every one at this first run, and those it holds that none wants, to
 remove.
@@ -440,7 +440,7 @@ texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_sto
 texts a commit, so that an interrupted build loses little. The digest is read again
 before and after ([`ApiEmbedder.check`](../../src/kb_mcp/search/adapters/embedding.py)),
 so that no vector of other weights is kept under this fingerprint. Only the texts that
-the store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
+the vector store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
 say which an edit changes.
 [`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py)
 copies the vectors into the index, each piece naming its section by path and number.
@@ -460,11 +460,11 @@ backup, into which
 pieces, the model, its fingerprint, the chunking and a new `build`. On any failure the
 new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
-which [`refresh`](../../src/kb_mcp/search/app/indexing.py) logs as
+which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
 `index.not_built`. A file skipped is named in `index`'s
-[`Report`](../../src/kb_mcp/search/app/indexing.py), and a piece refused in `embed`'s
+[`IndexReport`](../../src/kb_mcp/search/app/indexing.py), and a piece refused in `embed`'s
 [`Filled`](../../src/kb_mcp/search/app/indexing.py); each run exits 0 only when its
-result is whole ([`Report.whole`](../../src/kb_mcp/search/app/indexing.py),
+result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
 
 ### 10. The result
@@ -475,7 +475,7 @@ result is whole ([`Report.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/roles.py). `index`
+its counts, by its [`Result.text`](../../src/kb_mcp/sources/stages.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).
@@ -488,7 +488,7 @@ and `embed` have one result each, written by their own `text`
 
 An agent starts the command with no arguments, as [coding agents](../how-to/agents.md)
 set it up, and `main` reads that as `serve`. The entry is the one of step 2, without a
-summary or a question, as `serve` writes nothing, and its
+preview or a question, as `serve` writes nothing, and its
 [`Command`](../../src/kb_mcp/cli/domain/command.py) is not `traced`: each
 request will be a trace of its own.
 
@@ -516,7 +516,7 @@ times the call;
 [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) checks its arguments
 (their lengths by [`LONGEST`](../../src/kb_mcp/mcp/app/tools.py), the
 filters by [`checked`](../../src/kb_mcp/mcp/app/tools.py)), and
-[`plan`](../../src/kb_mcp/search/domain/search.py) plans the query: its
+[`plan_query`](../../src/kb_mcp/search/domain/search.py) plans the query: its
 words in lower case, without stop words unless nothing else is left, at most ten, each
 made one FTS5 string ([`quote`](../../src/kb_mcp/search/domain/search.py))
 so that nothing in it reads as an operator; the phrase; and the issue keys and page ids
@@ -537,7 +537,7 @@ spans:
   scores each document that matches by its best section's bm25, with weights per column
   ([`WEIGHTS`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
   documents that the query names by key or id come first
-  ([`Reader.entries`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
+  ([`Reader.indexed_documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   and [`rank`](../../src/kb_mcp/search/domain/search.py) orders the rest by
   the sum of their scores.
 - **`search.semantic`.**
@@ -569,12 +569,12 @@ internals](internals.md#fused) say why ranks, not scores.
 ### 14. Budgets and markers
 
 For each document of the page of hits asked,
-[`passage_of`](../../src/kb_mcp/mcp/app/tools.py) chooses the section to
+[`snippet_of`](../../src/kb_mcp/mcp/app/tools.py) chooses the section to
 show, by meaning or by words, as the document was ranked;
 [`call`](../../src/kb_mcp/mcp/app/responses.py) writes the `read(...)` call
 that opens it from `read`'s own signature, so that a call never names a parameter the
 tool lacks; and [`hit`](../../src/kb_mcp/mcp/app/responses.py) writes the
-hit, with its mirror date. [`page`](../../src/kb_mcp/mcp/app/responses.py)
+hit, with its fetch time. [`page`](../../src/kb_mcp/mcp/app/responses.py)
 keeps as many hits as fit the budget,
 [`BUDGET`](../../src/kb_mcp/mcp/app/responses.py) estimated tokens
 ([`tokens`](../../src/kb_mcp/mcp/app/responses.py)), and ends a list that it
@@ -601,10 +601,10 @@ from each document fetched, and a call of a tool is one trace:
 |---|---|
 | `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
 | `fetch.source`, `prepare.source`, one a row | [`run_each`](../../src/kb_mcp/cli/app/sources.py) |
-| `fetch.space`, `fetch.probes`, `fetch.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
-| `fetch.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
-| `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
-| `prepare.read`, `prepare.build`, `prepare.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
+| `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
+| `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
+| `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
+| `prepare.read`, `prepare.build`, `prepare.write` | [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
 | `index.join` | [`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py) |
 | `index.embed` | [`filling`](../../src/kb_mcp/search/app/indexing.py) |
@@ -623,15 +623,15 @@ document fetched is a trace of its own.
 
 Each step has its tests, which say what the code must do in the requirement's words:
 [`test_settings.py`](../../tests/test_settings.py),
-[`test_summary.py`](../../tests/test_summary.py) and
-[`test_question.py`](../../tests/test_question.py) for step 2;
+[`test_preview.py`](../../tests/test_preview.py) and
+[`test_confirmation.py`](../../tests/test_confirmation.py) for step 2;
 [`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
-[`test_download.py`](../../tests/test_download.py),
+[`test_fetching.py`](../../tests/test_fetching.py),
 [`test_http.py`](../../tests/test_http.py) and
 [`test_raw_store.py`](../../tests/test_raw_store.py) for 4 to 6;
 [`test_adapters.py`](../../tests/test_adapters.py) and
 [`test_fields.py`](../../tests/test_fields.py) for 5;
-[`test_mirror.py`](../../tests/test_mirror.py) and
+[`test_prepare_atlassian.py`](../../tests/test_prepare_atlassian.py) and
 [`test_site_html.py`](../../tests/test_site_html.py) for 7;
 [`test_index.py`](../../tests/test_index.py),
 [`test_index_contract.py`](../../tests/test_index_contract.py),

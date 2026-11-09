@@ -23,7 +23,7 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.commands import embed as embed_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.evaluation.app.evaluation import Target, evaluate
+from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
@@ -31,7 +31,7 @@ from kb_mcp.search.app.indexing import (
     Embedding,
     Indexing,
     build_index,
-    refresh,
+    fill_and_prune,
     update_index,
 )
 from kb_mcp.search.app.pruning import (
@@ -250,7 +250,7 @@ def seeded(path: Path, count: int) -> list[str]:
     The fakes' 16 dimensions fit inside B-tree pages, so that deleting some of them frees
     no whole page. Return the keys, in the order put.
     """
-    keys = [vector_store.key("fingerprint", f"text {number}") for number in range(count)]
+    keys = [vector_store.vector_key("fingerprint", f"text {number}") for number in range(count)]
     with vector_store.opened(path) as store:
         store.put({key: os.urandom(4 * 1024) for key in keys})
     return keys
@@ -430,7 +430,7 @@ def indexing(data: Path) -> Indexing:
 def refreshed(indexing: Indexing) -> Filled | None:
     """Update the index, as ``kb-mcp index`` does; then fill and prune, as ``embed`` does."""
     update_index(indexing, MOMENT)
-    return refresh(indexing)
+    return fill_and_prune(indexing)
 
 
 def evaluated(data: Path, store: Path, chunking: Chunking) -> Path:
@@ -491,7 +491,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     for each in (store, fresh):
         evaluated(data, each, "windows")
         evaluated(data, each, "section-paths")
-    other = vector_store.key("another model", "a text")
+    other = vector_store.vector_key("another model", "a text")
     with vector_store.opened(store) as opened:
         opened.put({other: bytes(64)})
     gone.unlink()
@@ -556,7 +556,7 @@ def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> N
     evaluable(data)
     settings = Settings(data_dir=data, model="tiny")
     chunkings: tuple[Chunking, ...] = ("windows", "section-paths")
-    targets = [Target(tiny(), chunking) for chunking in chunkings]
+    targets = [EvaluatedIndex(tiny(), chunking) for chunking in chunkings]
     evaluate(settings, golden(data), targets, ticking(), MOMENT)
     pruned(refreshed(indexing(data)))
     for chunking in chunkings:
@@ -571,9 +571,9 @@ def held_back(data: Path, capsys: CaptureFixture[str]) -> tuple[int, dict[str, A
     A vector of another model is put in the store first, which no index reads.
     """
     with vector_store.opened(data / "vectors.sqlite") as opened:
-        opened.put({vector_store.key("another model", "a text"): bytes(64)})
+        opened.put({vector_store.vector_key("another model", "a text"): bytes(64)})
     status, result, err = command(data, capsys)
-    assert vector_store.key("another model", "a text") in stored(data / "vectors.sqlite")
+    assert vector_store.vector_key("another model", "a text") in stored(data / "vectors.sqlite")
     return status, result["pruned"], err
 
 
@@ -687,7 +687,7 @@ class Paused(Counting):
 def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> None:
     """While an evaluation's build embeds, nothing is deleted; once it is in, its vectors stay."""
     pruned(refreshed(indexing(data)))
-    other = vector_store.key("another model", "a text")
+    other = vector_store.vector_key("another model", "a text")
     with vector_store.opened(data / "vectors.sqlite") as opened:
         opened.put({other: bytes(64)})
     paused, windows = Paused(tiny()), data / "eval" / "indexes" / "windows" / "tiny.sqlite"
@@ -737,22 +737,22 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
     write(data / "docs", page("200", "Edited", breadcrumb=HOME), f"{EDITED}The text after.\n")
     update_index(indexing(data), MOMENT)
     with reading(data / "index.sqlite") as reader:
-        (updated, awaiting) = (reader.build(), reader.summary().awaiting)
+        (updated, awaiting) = (reader.build(), reader.index_status().awaiting)
 
     def interrupted(*_: object) -> vector_store.Swept:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(vector_store.VectorStore, "prune", interrupted)
     with pytest.raises(KeyboardInterrupt):
-        refresh(indexing(data))
+        fill_and_prune(indexing(data))
     assert awaiting == 1
     with reading(data / "index.sqlite") as reader:
-        assert (reader.build() != updated, reader.summary().awaiting) == (True, 0)
+        assert (reader.build() != updated, reader.index_status().awaiting) == (True, 0)
 
 
 def kept_whole(data: Path) -> str:
     """Put in the store a vector that no index reads; give its key, which a prune deletes."""
-    other = vector_store.key("another model", "a text")
+    other = vector_store.vector_key("another model", "a text")
     with vector_store.opened(data / "vectors.sqlite") as opened:
         opened.put({other: bytes(64)})
     return other
@@ -888,7 +888,7 @@ def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> Non
     evaluated(data, data / "vectors.sqlite", "windows")
     (data / "vectors.sqlite").unlink()
     update_index(indexing(data), MOMENT, rebuild=True)
-    done = pruned(refresh(indexing(data)))
+    done = pruned(fill_and_prune(indexing(data)))
     assert (done.kept, done.kept_for_evaluation) == (len(stored(data / "vectors.sqlite")), 0)
     assert done.kept == len(read_by(data / "index.sqlite"))
 

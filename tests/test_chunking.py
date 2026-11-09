@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.search.domain.chunking import CHUNKERS, passages
+from kb_mcp.search.domain.chunking import CHUNKERS, section_pieces
 from kb_mcp.search.domain.search import sections
 from tests.mirrors import page
 
@@ -24,7 +24,7 @@ WINDOW = 1200  # 300 tokens
 STEP = 960  # 240 tokens
 TENTH = 120
 SMALL = 512  # 128 tokens
-UNIT = 2400
+PASSAGE_CHARS = 2400
 # Two windows in a row share OVERLAP characters, and when no word is longer than WORD,
 # OVERLAP_WITH_SHORT_WORDS.
 WORD = 40
@@ -107,8 +107,8 @@ def test_every_chunking_named_has_its_cut_and_unit() -> None:
 def test_sections_cuts_as_011_did_and_returns_the_piece() -> None:
     """The control is 011's passages, unchanged; its unit is the piece."""
     cut = sections(f"# {TITLE}\n\nFirst.\n\n## Second\n\nMore.\n")
-    assert CHUNKERS["sections"].cut(FRONT, cut) == passages(TITLE, cut)
-    assert CHUNKERS["sections"].unit((5, 9), (0, 40)) == (5, 9)
+    assert CHUNKERS["sections"].cut(FRONT, cut) == section_pieces(TITLE, cut)
+    assert CHUNKERS["sections"].quoted_span((5, 9), (0, 40)) == (5, 9)
 
 
 def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> None:
@@ -158,7 +158,7 @@ def test_a_window_is_embedded_with_the_title_and_belongs_to_the_section_of_its_m
     assert absolute(cut, index, start, end) == (0, WINDOW)
     assert start < 0
     assert text == f"{TITLE}\n{body[0:WINDOW].strip()}"
-    assert CHUNKERS["windows"].unit((0, WINDOW), bounds(cut[1])) == (0, WINDOW)
+    assert CHUNKERS["windows"].quoted_span((0, WINDOW), bounds(cut[1])) == (0, WINDOW)
 
 
 def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> None:
@@ -207,17 +207,17 @@ def test_a_unit_holds_its_piece_and_is_its_section_when_that_fits() -> None:
         for index, start, end, _ in CHUNKERS["small-to-big"].cut(FRONT, cut):
             piece = absolute(cut, index, start, end)
             section = bounds(cut[index])
-            first, last = CHUNKERS["small-to-big"].unit(piece, section)
+            first, last = CHUNKERS["small-to-big"].quoted_span(piece, section)
             assert section[0] <= first <= piece[0] < piece[1] <= last <= section[1]
-            assert last - first == min(UNIT, section[1] - section[0])
+            assert last - first == min(PASSAGE_CHARS, section[1] - section[0])
 
 
 @pytest.mark.parametrize(
     ("piece", "section", "unit"),
     [
-        ((100, 600), (0, UNIT), (0, UNIT)),
+        ((100, 600), (0, PASSAGE_CHARS), (0, PASSAGE_CHARS)),
         ((2500, 3000), (0, 5000), (1550, 3950)),
-        ((0, SMALL), (0, 5000), (0, UNIT)),
+        ((0, SMALL), (0, 5000), (0, PASSAGE_CHARS)),
         ((4600, 5000), (0, 5000), (2600, 5000)),
     ],
 )
@@ -225,7 +225,7 @@ def test_a_unit_is_centred_on_its_piece_within_its_section(
     piece: tuple[int, int], section: tuple[int, int], unit: tuple[int, int]
 ) -> None:
     """2,400 characters about the piece's middle, moved back inside the section."""
-    assert CHUNKERS["small-to-big"].unit(piece, section) == unit
+    assert CHUNKERS["small-to-big"].quoted_span(piece, section) == unit
 
 
 def test_section_paths_cuts_as_sections_does() -> None:

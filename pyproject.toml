@@ -1,7 +1,7 @@
 [project]
 name = "kb-mcp"
 version = "0.1.0"
-description = "Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served to coding agents over MCP."
+description = "An offline mirror of Confluence, Jira Cloud and a work log, served to coding agents over MCP."
 readme = "README.md"
 requires-python = ">=3.14"
 # Declared together for plans 004 to 006, so that their parallel branches never
@@ -99,7 +99,7 @@ source_modules = [
   "kb_mcp.**.domain",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
-  "kb_mcp.sources.roles",
+  "kb_mcp.sources.stages",
   "kb_mcp.sources.*.declared",
 ]
 forbidden_modules = [
@@ -211,7 +211,7 @@ source_modules = [
   "kb_mcp.sources.atlassian.settings",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
-  "kb_mcp.sources.roles",
+  "kb_mcp.sources.stages",
   "kb_mcp.sources.worklog",
   "kb_mcp.mirror",
   "kb_mcp.config",

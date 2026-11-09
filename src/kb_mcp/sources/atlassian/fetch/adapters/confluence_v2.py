@@ -19,7 +19,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Folder,
     Listed,
     Page,
-    Person,
+    SiteUser,
     Snapshot,
     Space,
     version_revision,
@@ -57,16 +57,16 @@ def folder(fields: Fields) -> Folder:
         )
 
 
-def person(fields: Fields) -> Person:
-    """Read a user of GET /wiki/rest/api/user/bulk; the email address is left behind."""
+def person(fields: Fields) -> SiteUser:
+    """Read a site user of GET /wiki/rest/api/user/bulk; the email address is left behind."""
     with fields.refusals():
-        return Person(
+        return SiteUser(
             account_id=fields.text("accountId"), display_name=fields.optional_text("displayName")
         )
 
 
-def document(fields: Fields, kind: type[Page | BlogPost]) -> Page | BlogPost:
-    """Read a page or a blog post, as ``kind`` says, from a listing or a GET.
+def document(fields: Fields, document_class: type[Page | BlogPost]) -> Page | BlogPost:
+    """Read a page or a blog post, as ``document_class`` says, from a listing or a GET.
 
     A listing carries no labels; a GET with ``include-labels=true`` carries the first
     page of them, which ``snapshot`` requires.
@@ -76,20 +76,20 @@ def document(fields: Fields, kind: type[Page | BlogPost]) -> Page | BlogPost:
     author = fields.optional_text("authorId")
     links = fields.object("_links")
     place = {}
-    if kind is Page:
+    if document_class is Page:
         place = {
             "parent_id": fields.optional_text("parentId"),
             "parent_type": fields.optional_text("parentType"),
         }
     with fields.refusals():
         require(SITE_PATH, links.text("webui"), "_links.webui")
-        return kind(
+        return document_class(
             id=fields.text("id"),
             title=fields.text("title"),
-            author=None if author is None else Person(account_id=author),
+            author=None if author is None else SiteUser(account_id=author),
             created=fields.time("createdAt"),
             updated=version.time("createdAt"),
-            url=WIKI + links.text("webui"),
+            site_path=WIKI + links.text("webui"),
             labels=tuple(label.text("name") for label in labels.objects("results"))
             if labels
             else (),
@@ -135,13 +135,13 @@ def identity(responses: Mapping[str, object]) -> tuple[str, str]:
     return stored.text("id"), version_revision(number)
 
 
-def snapshot(kind: type[Page | BlogPost], responses: Mapping[str, object]) -> Snapshot:
+def snapshot(document_class: type[Page | BlogPost], responses: Mapping[str, object]) -> Snapshot:
     """Read a page or a blog post from the responses that its snapshot keeps."""
     identity(responses)
     stored = Fields(responses.get(DOCUMENT), DOCUMENT)
     stored.object("labels")  # asked for with include-labels, so never absent here
     return Snapshot(
-        document=document(stored, kind),
+        document=document(stored, document_class),
         html=Fields(responses.get(VIEW), VIEW).object("body").object("view").text("value"),
         attachments=tuple(
             attachment(item) for item in Fields.each(responses.get(ATTACHMENTS), ATTACHMENTS)
@@ -153,7 +153,7 @@ def snapshot(kind: type[Page | BlogPost], responses: Mapping[str, object]) -> Sn
 # _links.next gives, query included.
 LISTING_LIMIT = "250"
 LISTED_STATUSES = {Page: "current,archived", BlogPost: "current"}
-# How many account ids one GET of users names.
+# How many account ids one GET of site users names.
 USERS_PER_REQUEST = 50
 
 
@@ -162,11 +162,11 @@ def space_request(key: str) -> Request:
     return Request(path=f"{WIKI}/api/v2/spaces", params={"keys": key})
 
 
-def listing_request(space_id: str, kind: type[Page | BlogPost]) -> Request:
+def listing_request(space_id: str, document_class: type[Page | BlogPost]) -> Request:
     """GET the first page of a space's pages, or blog posts, without bodies."""
     return Request(
-        path=f"{WIKI}/api/v2/spaces/{space_id}/{kind.kind}",
-        params={"limit": LISTING_LIMIT, "status": LISTED_STATUSES[kind]},
+        path=f"{WIKI}/api/v2/spaces/{space_id}/{document_class.resource_type}",
+        params={"limit": LISTING_LIMIT, "status": LISTED_STATUSES[document_class]},
     )
 
 
@@ -175,13 +175,13 @@ def folder_request(folder_id: str) -> Request:
     return Request(path=f"{WIKI}/api/v2/folders/{folder_id}")
 
 
-def listed(fields: Fields, kind: type[Page | BlogPost]) -> Listed:
+def listed(fields: Fields, document_class: type[Page | BlogPost]) -> Listed:
     """Read of a listing's entry only what decides a fetch: id, version, time."""
     version = fields.object("version")
     number = version.integer("number")
     with fields.refusals():
         return Listed(
-            type=kind,
+            document_class=document_class,
             id=fields.text("id"),
             revision=version_revision(number),
             updated=version.time("createdAt"),
@@ -211,9 +211,9 @@ def entry_ids(entries: object) -> set[str]:
     return ids
 
 
-def probe_request(kind: str, document_id: str) -> Request:
+def probe_request(resource_type: str, document_id: str) -> Request:
     """GET a page or a blog post without its body, to learn where it is, if anywhere."""
-    return Request(path=f"{WIKI}/api/v2/{kind}/{document_id}")
+    return Request(path=f"{WIKI}/api/v2/{resource_type}/{document_id}")
 
 
 def whereabouts(fields: Fields) -> tuple[str, str]:
@@ -226,19 +226,19 @@ def document_request(document: Listed, body: str) -> Request:
     params = {"body-format": body, "version": str(document.version)}
     if body == "storage":
         params["include-labels"] = "true"
-    return Request(path=f"{WIKI}/api/v2/{document.kind}/{document.id}", params=params)
+    return Request(path=f"{WIKI}/api/v2/{document.resource_type}/{document.id}", params=params)
 
 
 def attachments_request(document: Listed) -> Request:
     """GET the first page of a page's, or a blog post's, attachments."""
     return Request(
-        path=f"{WIKI}/api/v2/{document.kind}/{document.id}/attachments",
+        path=f"{WIKI}/api/v2/{document.resource_type}/{document.id}/attachments",
         params={"limit": LISTING_LIMIT},
     )
 
 
 def users_request(account_ids: Sequence[str]) -> Request:
-    """GET the users with these account ids, at most ``USERS_PER_REQUEST``."""
+    """GET the site users with these account ids, at most ``USERS_PER_REQUEST``."""
     return Request(
         path=f"{WIKI}/rest/api/user/bulk",
         params={"accountId": list(account_ids), "limit": str(USERS_PER_REQUEST)},
@@ -246,12 +246,12 @@ def users_request(account_ids: Sequence[str]) -> Request:
 
 
 def current_user_request() -> Request:
-    """GET the user whom the session signs in."""
+    """GET the site user whom the session signs in."""
     return Request(path=f"{WIKI}/rest/api/user/current")
 
 
-def signed_in(response: Fields) -> bool:
-    """Say whether the current user is someone; an expired session reads as anonymous."""
+def is_signed_in(response: Fields) -> bool:
+    """Say whether the current site user is someone; an expired session reads as anonymous."""
     return response.optional_text("accountId", absent=True) is not None
 
 
@@ -263,5 +263,5 @@ def listing_page(response: Fields, _: Request) -> tuple[list[Fields], Request | 
 
 
 def users_page(response: Fields, _: Request) -> tuple[list[Fields], Request | None]:
-    """Read the users of a bulk GET, which names them all on one page."""
+    """Read the site users of a bulk GET, which names them all on one page."""
     return response.objects("results"), None

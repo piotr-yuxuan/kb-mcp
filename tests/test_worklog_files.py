@@ -35,7 +35,7 @@ def write(root: Path, relative: str, data: str | bytes = "* Heading\n") -> Path:
     return path
 
 
-def paths(listing: files.Listing) -> list[str]:
+def paths(listing: files.OrgFiles) -> list[str]:
     """Return the paths listed, as text."""
     return [str(path) for path in listing.paths]
 
@@ -168,8 +168,8 @@ def test_links_are_followed_inside_the_work_log_alone(tmp_path: Path, worklog: P
     assert "transcripts/misc/a.org" in paths(listing)  # the folder itself, before its link
     assert "transcripts/linked folder/a.org" not in paths(listing)
     assert sorted(listing.problems, key=lambda problem: problem.path) == [
-        files.Problem(path="transcripts/out folder", reason="links outside the work log"),
-        files.Problem(path="transcripts/out.org", reason="links outside the work log"),
+        files.UnreadFile(path="transcripts/out folder", reason="links outside the work log"),
+        files.UnreadFile(path="transcripts/out.org", reason="links outside the work log"),
     ]
     assert all(CONTENT not in problem.reason for problem in listing.problems)
 
@@ -182,7 +182,7 @@ def test_a_linked_todo_file_outside_is_named_and_not_listed(tmp_path: Path) -> N
     listing = files.listed(root, archives=True)
     assert (paths(listing), listing.problems) == (
         [],
-        (files.Problem(path="todo.org", reason="links outside the work log"),),
+        (files.UnreadFile(path="todo.org", reason="links outside the work log"),),
     )
 
 
@@ -204,7 +204,7 @@ def test_past_the_bound_the_first_transcripts_are_kept(
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
     ]
     assert listing.problems == (
-        files.Problem(path="transcripts, meetings", reason="over 3 transcripts"),
+        files.UnreadFile(path="transcripts, meetings", reason="over 3 transcripts"),
     )
 
 
@@ -213,7 +213,7 @@ def test_a_folder_that_is_not_there_is_a_problem(tmp_path: Path) -> None:
     listing = files.listed(tmp_path / "absent", archives=True)
     assert (listing.paths, listing.problems) == (
         (),
-        (files.Problem(path=".", reason="not a folder"),),
+        (files.UnreadFile(path=".", reason="not a folder"),),
     )
 
 
@@ -221,7 +221,7 @@ def test_a_file_is_read_with_its_time_of_change(worklog: Path) -> None:
     """Its text, and its modification time in the local zone, the same instant."""
     moment = datetime(2026, 10, 22, 12, 0, 5, tzinfo=UTC)
     os.utime(worklog / "todo.org", (moment.timestamp(), moment.timestamp()))
-    read = files.source(worklog, PurePosixPath("todo.org"))
+    read = files.org_text(worklog, PurePosixPath("todo.org"))
     assert (read.path, read.text, read.modified) == (
         PurePosixPath("todo.org"),
         "* Heading\n",
@@ -246,7 +246,7 @@ def test_a_file_off_the_rules_is_named_without_its_content(
     else:
         path.write_bytes(data)
     with pytest.raises(files.UnreadableError) as raised:
-        files.source(worklog, PurePosixPath("todo.org"))
+        files.org_text(worklog, PurePosixPath("todo.org"))
     assert str(raised.value) == reason
     assert CONTENT not in str(raised.value)
 
@@ -272,10 +272,10 @@ def test_a_time_of_change_out_of_range_is_a_reason(
 
     monkeypatch.setattr(files, "datetime", Far)
     with pytest.raises(files.UnreadableError, match=rf"^not read \({error.__name__}\)$"):
-        files.source(worklog, PurePosixPath("todo.org"))
+        files.org_text(worklog, PurePosixPath("todo.org"))
 
 
 def test_a_file_of_exactly_32_mib_is_read(worklog: Path) -> None:
     """The bound is inclusive."""
     (worklog / "todo.org").write_bytes(b"x" * files.FILE_BYTES)
-    assert len(files.source(worklog, PurePosixPath("todo.org")).text) == files.FILE_BYTES
+    assert len(files.org_text(worklog, PurePosixPath("todo.org")).text) == files.FILE_BYTES

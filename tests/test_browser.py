@@ -8,7 +8,7 @@ import pytest
 from playwright.sync_api import Error
 
 from kb_mcp.sources.atlassian.fetch.adapters import browser
-from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError, sign_in
+from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError, open_sign_in_window
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -103,7 +103,7 @@ def test_a_sign_in_through_an_identity_provider_is_seen_to_end(
     context = Context(page)
     monkeypatch.setattr(browser, "sync_playwright", lambda: Playwright(context))
     monkeypatch.setattr(browser, "SIGN_IN_TIMEOUT_S", 5)
-    assert sign_in(SITE, tmp_path / "profile", None) == context.cookies()
+    assert open_sign_in_window(SITE, tmp_path / "profile", None) == context.cookies()
     assert page.checks == 1
     assert context.closed
 
@@ -116,4 +116,4 @@ def test_closing_the_window_on_the_identity_provider_is_seen(
     monkeypatch.setattr(browser, "sync_playwright", lambda: Playwright(context))
     monkeypatch.setattr(browser, "SIGN_IN_TIMEOUT_S", 5)
     with pytest.raises(SignInFailedError, match="the sign-in window was closed"):
-        sign_in(SITE, tmp_path / "profile", None)
+        open_sign_in_window(SITE, tmp_path / "profile", None)

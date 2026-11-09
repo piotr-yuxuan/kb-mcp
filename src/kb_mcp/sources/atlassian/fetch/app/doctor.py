@@ -1,4 +1,4 @@
-"""Checks of the site and the sign-in that a download needs, each with a verdict."""
+"""Checks of the site and the sign-in that a fetch needs, each with a verdict."""
 
 from __future__ import annotations
 
@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, http, jira_v3
-from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError, Site, SiteError
-from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.roles import FAILED, SIGN_IN, Verdict
+from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError, SiteClient, SiteError
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
+from kb_mcp.sources.stages import FAILED, SIGN_IN, Verdict
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
@@ -31,17 +32,17 @@ def access(settings: Settings) -> list[Verdict]:
 
     By the API token when one is set, else by the session that ``login`` saved.
     """
-    signing = sign_in(settings)
+    signing = choose_sign_in(settings)
     try:
         client = signing.client()
     except SignInNeededError:
         return [Verdict(name="sign-in", found=f"no session saved: {signing.again}", state=SIGN_IN)]
     verdicts = [Verdict(name="sign-in", found=signing.name)]
     with client:
-        reader = Site(client)
+        reader = SiteClient(client)
         for name, request, signed_in in (
-            ("confluence", confluence_v2.current_user_request(), confluence_v2.signed_in),
-            ("jira", jira_v3.myself_request(), jira_v3.signed_in),
+            (CONFLUENCE, confluence_v2.current_user_request(), confluence_v2.is_signed_in),
+            (JIRA, jira_v3.myself_request(), jira_v3.is_signed_in),
         ):
             try:
                 user = Fields(reader.json(request), "user")

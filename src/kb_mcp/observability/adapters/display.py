@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from rich.progress import Task
 
 # The fields of an event that carry text of the site or of the mirror: its titles,
-# headings, queries, excerpts and references. A line on a terminal cuts these to its
+# headings, queries, snippets and references. A line on a terminal cuts these to its
 # width; every other, such as the event, a reason, an error or a path, is whole.
 SITE_TEXT = frozenset({"title", "heading", "query", "snippet", "ref"})
 

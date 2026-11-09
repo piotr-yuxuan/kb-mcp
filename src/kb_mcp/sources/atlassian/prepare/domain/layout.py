@@ -12,16 +12,17 @@ from html import escape
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.names import ASSETS
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from kb_mcp.sources.atlassian.fetch.domain.content import ConfluenceDocument, Issue
 
-ASSETS = PurePosixPath("assets")
 TREE = "_tree.md"
 EXTENSION = re.compile(r"[a-z0-9]{1,8}")
 # The name of an asset: the file's SHA-256, then its extension if it has one.
@@ -30,30 +31,30 @@ NONE = "<p>None.</p>"
 
 
 def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
-    """Return where a page or a blog post of the space with this key is mirrored."""
+    """Return where a page or a blog post of the space with this key goes in the mirror."""
     name = "-".join(part for part in (document.id, slug(document.title)) if part)
-    folder = PurePosixPath("confluence", space)
+    folder = PurePosixPath(CONFLUENCE, space)
     if isinstance(document, BlogPost):
         folder /= "blog"
     return folder / f"{name}.md"
 
 
 def issue_path(issue: Issue) -> PurePosixPath:
-    """Return where an issue is mirrored."""
-    return PurePosixPath("jira", issue.project, f"{issue.key}.md")
+    """Return where an issue goes in the mirror."""
+    return PurePosixPath(JIRA, issue.project, f"{issue.key}.md")
 
 
 def tree_path(space: str) -> PurePosixPath:
     """Return where the tree of the space with this key is."""
-    return PurePosixPath("confluence", space, TREE)
+    return PurePosixPath(CONFLUENCE, space, TREE)
 
 
 def asset_path(digest: str, filename: str) -> PurePosixPath:
-    """Return where an attached file is mirrored: its digest and its name's extension."""
+    """Return where an attached file goes in the mirror: its digest and its name's extension."""
     extension = PurePosixPath(filename).suffix.removeprefix(".").lower()
     if EXTENSION.fullmatch(extension):
-        return ASSETS / f"{digest}.{extension}"
-    return ASSETS / digest
+        return PurePosixPath(ASSETS, f"{digest}.{extension}")
+    return PurePosixPath(ASSETS, digest)
 
 
 def document_html(

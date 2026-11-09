@@ -7,17 +7,17 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint, prefixes_said
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.search.app.indexing import refresh
+from kb_mcp.search.app.indexing import fill_and_prune
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned
 
-# Bytes in a megabyte, as the summary says the vector store's size.
+# Bytes in a megabyte, as the result says the vector store's size.
 MB = 1_000_000
 # A vector store made by an earlier version, converted to give freed space back.
 CONVERTED = "; converted, as made by an earlier version, so that it gives freed space back"
@@ -39,11 +39,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Fill
     """
     settings = loaded.settings
     opening = partial(open_endpoint, arguments, settings)
-    filled = refresh(indexing_of(settings, opening))
+    filled = fill_and_prune(indexing_of(settings, opening))
     return ExitStatus.OK if filled and filled.whole else ExitStatus.FAILED, filled
 
 
-def prune_text(pruned: Pruned | None, summary: Summary) -> str:
+def prune_text(pruned: Pruned | None, summary: Detail) -> str:
     """Say what the prune that followed the build did.
 
     Short gives the vectors deleted and the vector store's size. Detailed gives the
@@ -74,7 +74,7 @@ def prune_text(pruned: Pruned | None, summary: Summary) -> str:
     return f"{written}\n"
 
 
-def text(filled: Filled, summary: Summary) -> str:
+def text(filled: Filled, summary: Detail) -> str:
     """Write the pieces that the index holds and what changed of them, then the prune.
 
     Short gives the pieces, those added and removed, or that nothing was written, and

@@ -36,7 +36,7 @@ STORE_SIZE = METER.create_gauge(
     "kb_mcp.vectors.bytes", unit="By", description="The vector store's size after a prune"
 )
 
-type Outcome = Literal["pruned", "deferred", "held back", "failed"]
+type PruneOutcome = Literal["pruned", "deferred", "held back", "failed"]
 DEFERRED = "a build, or another prune, is using the vector store; the next embed prunes it"
 SKIPPED = "the index skipped a file, so it lacks documents of the mirror"
 NO_DOCUMENT = "the index holds no document"
@@ -51,7 +51,7 @@ UNLISTED = (
     " would let the next prune delete the vectors of the indexes it holds"
 )
 # How each outcome is said: its level, its event and the fields of its event.
-SAID: dict[Outcome, tuple[str, str, tuple[str, ...]]] = {
+SAID: dict[PruneOutcome, tuple[str, str, tuple[str, ...]]] = {
     "pruned": (
         "info",
         "index.pruned",
@@ -96,7 +96,7 @@ class Pruned(Record):
     ``reason`` and ``file`` say why it did not prune, or why the space stayed.
     """
 
-    outcome: Outcome
+    outcome: PruneOutcome
     kept: int = 0
     kept_for_evaluation: int = 0
     deleted: int = 0

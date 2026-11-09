@@ -1,6 +1,6 @@
 # Mirror the work log
 
-Your work log, a folder of org files, is mirrored as Markdown beside Confluence and Jira,
+Your work log, a folder of org files, is written as Markdown beside Confluence and Jira,
 under `<data>/docs/worklog/`, indexed with them, and served to agents. It is read in
 place, never written, and never through git: its folder may be a git repository or
 under a synchronised folder, as the data directory may not be.
@@ -43,7 +43,7 @@ kb-mcp check
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`
 and `DONE` are known, and another keyword stays in the title. `COMMENT` and `noexport`
-subtrees are mirrored too: they are your notes.
+subtrees are prepared too: they are your notes.
 
 ### The journal: days and meetings
 
@@ -126,7 +126,7 @@ A transcript's id is the day that begins its folder's name (or its own) and its 
 under `transcripts/archive/`. A name holding other characters than ASCII letters,
 digits, `_` and `-` takes its slug, as a file name does: `notes on x.org` of 21 October
 is `t-20261021-notes-on-x`. A file under `meetings/` takes `meeting-` before its name,
-so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a handle
+so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a label
 alone, a number or words: `meetings/2026-10-27 Tue/Vendor call.org` is
 `t-20261027-meeting-vendor-call`, and no order or time is read from it. A file without
 a day takes a digest of its name. Of two files of one id, such as a copy and its
@@ -233,7 +233,7 @@ Its first run embeds the whole mirror.
   leaves search; until `embed`, an edited document is found by its words alone. Each
   piece's vector is kept in `<data>/vectors.sqlite` by its model and its text, so
   `embed` embeds again only the pieces whose text changed, then prunes the vectors of
-  text no longer mirrored, unless an evaluation's index reads them.
+  text no longer in the mirror, unless an evaluation's index reads them.
 
 ## 6. Search it
 
@@ -254,7 +254,7 @@ document holds is refused with the valid ones, those that the most meetings name
 ([the tools](../reference/mcp-tools.md)). `filters={"person": "Sam Sample"}` keeps
 Sam Sample's documents in every role, their issues and pages among them.
 
-The server tells agents what each kind is: days, meetings and entries are your notes and
+The server tells agents what each type is: days, meetings and entries are your notes and
 the summaries an AI wrote, a meeting linking its transcript; transcripts are the
 word-by-word record, which they should prefer when quoting and check a summary against.
 Its text comes to them as untrusted reference data, as a page's does. `browse` lists
@@ -321,12 +321,12 @@ kb-mcp index
   participants give someone else: to change that, change the meeting's
   `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
   `Alex (Sales)` alike, and `"Kim" = "Kim"` joins two notes of Kim to Kim.
-- Its target is a name or a person's id, never another alias: a name that another
+- Its value is a name or a person's id, never another alias: a name that another
   alias, or the meeting of each transcript, joins to someone else names nobody.
 - A file that breaks a rule stops the build, naming the file and the alias, and the
   index in place stays: a file that is not UTF-8 TOML, a value that is not a string in
   quotes, an empty name, a name or value of several lines or longer than 200
   characters, or two names that differ by case, accents or spaces alone.
-- An alias whose name no document writes without an account, or whose target names
+- An alias whose name no document writes without an account, or whose value names
   nobody or several people, changes nothing, and the build warns of it.
 - To undo an alias, delete its line and run `index`. The program never writes the file.

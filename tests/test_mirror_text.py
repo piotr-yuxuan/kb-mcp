@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 import pytest
 
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror_layout import one_line, visible
+from kb_mcp.mirror.domain.mirror_text import one_line, visible
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,
@@ -23,15 +23,15 @@ MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 DIGEST = "e" * 64
 
 
-def page(title: str, kind: type[Page | BlogPost] = Page) -> Page | BlogPost:
+def page(title: str, document_class: type[Page | BlogPost] = Page) -> Page | BlogPost:
     """Return a page or a blog post with this title."""
-    return kind(
+    return document_class(
         id="196845",
         title=title,
         author=None,
         created=MOMENT,
         updated=MOMENT,
-        url="/wiki/spaces/MFS/pages/196845",
+        site_path="/wiki/spaces/MFS/pages/196845",
         space_id="196613",
         version=3,
         status="current",
@@ -72,7 +72,7 @@ def test_documents_are_placed_by_space_project_and_key() -> None:
         author=None,
         created=MOMENT,
         updated=MOMENT,
-        url="/browse/PRB-1",
+        site_path="/browse/PRB-1",
         key="PRB-1",
         project="PRB",
         issue_type="Idea",

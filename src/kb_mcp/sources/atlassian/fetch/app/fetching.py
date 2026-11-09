@@ -1,6 +1,6 @@
-"""Downloading the documents of spaces and projects updated in a period.
+"""Fetching the documents of spaces and projects updated in a period.
 
-Each space, project, round of probes and merge of users is a span of the run's trace;
+Each space, project, round of probes and merge of site users is a span of the run's trace;
 each document fetched is a trace of its own, ``fetch.document``, linked to the run's,
 since Tempo drops a trace past 5 MB, which one trace of all a run's requests could pass.
 What is fetched, failed or skipped is counted and logged, as
@@ -33,7 +33,7 @@ from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     SignInNeededError,
-    Site,
+    SiteClient,
     SiteError,
     TooManyFailuresError,
 )
@@ -42,18 +42,18 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     Unreadable,
 )
-from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
+from kb_mcp.sources.atlassian.fetch.domain.content import CONFLUENCE_CLASSES, BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
-    Extension,
+    CoverageChange,
+    FetchWindow,
     Reason,
     Target,
-    Window,
-    window,
+    fetch_window,
 )
 from kb_mcp.sources.atlassian.fetch.domain.deletions import (
-    Answer,
+    ProbeAnswer,
     Tombstone,
     after_probes,
     answer_of,
@@ -61,6 +61,7 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     too_many_gone,
 )
 from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, ISSUES, JIRA, PAGES
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     MAX_FILE_MB_FLAG,
@@ -73,9 +74,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
-    from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, Document, Listed
+    from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, FetchedDocument, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
@@ -87,23 +88,21 @@ MAX_FOLDERS = 1000
 # Documents absent from their listing that one run probes, at most; the rest wait.
 MAX_PROBES = 200
 HTTP_NOT_FOUND = 404
-# The kinds of Confluence documents that a space lists.
-KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
-# Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
-# stands for its midnight: two days on each side always cover the period.
+# Jira reads JQL dates in the signed-in site user's time zone, up to 14 hours off UTC, and
+# a date stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
-# The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
+# The counts that a short result shows: the documents fetched, or to fetch, of each type,
 # and the files downloaded, or to download; then how a run stopped, if it did.
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 STOPPED = "runs: "
 
-# How each kind of document is read from its listing, and which GETs make its snapshot.
-LISTED: dict[type[Document], Callable[[Fields], Listed]] = {
-    Page: partial(confluence_v2.listed, kind=Page),
-    BlogPost: partial(confluence_v2.listed, kind=BlogPost),
+# How each resource type is read from its listing, and which GETs make its snapshot.
+LISTED: dict[type[FetchedDocument], Callable[[Fields], Listed]] = {
+    Page: partial(confluence_v2.listed, document_class=Page),
+    BlogPost: partial(confluence_v2.listed, document_class=BlogPost),
     Issue: jira_v3.listed,
 }
-SNAPSHOT_REQUESTS: dict[type[Document], SnapshotRequests] = {
+SNAPSHOT_REQUESTS: dict[type[FetchedDocument], SnapshotRequests] = {
     Page: confluence_v2.snapshot_requests,
     BlogPost: confluence_v2.snapshot_requests,
     Issue: jira_v3.snapshot_requests,
@@ -123,7 +122,7 @@ BYTES = METER.create_counter(
 )
 
 
-class Report(Record):
+class RunReport(Record):
     """What a run did, by count; it names nothing that the site served."""
 
     model_config = ConfigDict(frozen=False)
@@ -149,13 +148,13 @@ class Report(Record):
         return sum(number for what, number in self.counts.items() if " failed: " in what)
 
 
-def label(kind: type[Document]) -> str:
-    """Name a kind of document in the report, as ``confluence pages``."""
-    return f"{kind.source} {kind.kind}"
+def label(document_class: type[FetchedDocument]) -> str:
+    """Name a resource type in the report, as ``confluence pages``."""
+    return f"{document_class.source} {document_class.resource_type}"
 
 
 @dataclass
-class Download:
+class Fetching:
     """One run over a site, into a store: each target's window, and a cap on attached files.
 
     Each target named has a window, or none when it is skipped, after --until. With
@@ -167,14 +166,14 @@ class Download:
     own keys that failed, for the command to show; they never enter the report.
     """
 
-    site: Site
+    site: SiteClient
     store: RawStore
     max_file_bytes: int
     now: Callable[[], datetime]
-    report: Report = field(default_factory=Report)
+    report: RunReport = field(default_factory=RunReport)
     failed_targets: list[str] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
-    windows: Mapping[Target, Window | None] = field(default_factory=dict)
+    windows: Mapping[Target, FetchWindow | None] = field(default_factory=dict)
     plan: bool = False
     covered: dict[Target, Period] = field(default_factory=dict)
     first_failed: dict[Target, datetime] = field(default_factory=dict)
@@ -185,34 +184,34 @@ class Download:
     )
 
     def run(self, spaces: Sequence[str], projects: Sequence[str]) -> None:
-        """Download every space and project named, after checking that the session holds.
+        """Fetch every space and project named, after checking that the session holds.
 
         Raises SignInNeededError, before anything is written, when the session no longer
         holds. A source that does not answer at all (a site without Jira) is counted as a
         failure, and its targets skipped. A target without a window is skipped too, and
         asked nothing. The task ``targets`` reports those of the sources that answer,
-        each by its key. Confluence's probes and users follow its spaces alone, so that a
+        each by its key. Confluence's probes and site users follow its spaces alone, so that a
         run of projects alone does and counts nothing of Confluence's.
         """
         self.held |= {target: "after --until" for target, w in self.windows.items() if w is None}
         confluence = bool(spaces) and self.reachable(
-            "confluence", confluence_v2.current_user_request(), confluence_v2.signed_in
+            CONFLUENCE, confluence_v2.current_user_request(), confluence_v2.is_signed_in
         )
         jira = bool(projects) and self.reachable(
-            "jira", jira_v3.myself_request(), jira_v3.signed_in
+            JIRA, jira_v3.myself_request(), jira_v3.is_signed_in
         )
         answered_spaces = spaces if confluence else ()
         answered_projects = projects if jira else ()
         with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
             for key in targets.each(answered_spaces, str):
-                target = Target(source="confluence", key=key)
+                target = Target(source=CONFLUENCE, key=key)
                 window = self.windows[target]
                 if window is not None and self.space(target, window):
                     self.covered[target] = window.period
             if spaces and not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
-                target = Target(source="jira", key=key)
+                target = Target(source=JIRA, key=key)
                 window = self.windows[target]
                 if window is not None and self.project(target, window):
                     self.covered[target] = window.period
@@ -220,7 +219,7 @@ class Download:
             self.users()
 
     def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
-        """GET the signed-in user of a source; say whether the source answers.
+        """GET the signed-in site user of a source; say whether the source answers.
 
         Raises SignInNeededError when it answers as to nobody.
         """
@@ -251,18 +250,20 @@ class Download:
         message = f"a listing of more than {MAX_PAGES} pages"
         raise SiteError(message)
 
-    def documents(self, kind: type[Document], entries: Iterable[object]) -> list[Listed]:
+    def documents(
+        self, document_class: type[FetchedDocument], entries: Iterable[object]
+    ) -> list[Listed]:
         """Read what decides a fetch from a listing's entries, counting those refused."""
         found: list[Listed] = []
         for entry in entries:
             try:
-                found.append(LISTED[kind](Fields(entry, kind.kind)))
+                found.append(LISTED[document_class](Fields(entry, document_class.resource_type)))
             except RepresentationError as error:
-                self.report.failed(f"{label(kind)} listed", error)
-        self.report.add(f"{label(kind)}: listed", len(found))
+                self.report.failed(f"{label(document_class)} listed", error)
+        self.report.add(f"{label(document_class)}: listed", len(found))
         return found
 
-    def space(self, target: Target, window: Window) -> bool:
+    def space(self, target: Target, window: FetchWindow) -> bool:
         """List a space whole, store its listings, and fetch what changed in its window.
 
         The task ``listing`` reports the pages of its listings read, and ``fetch_listed``
@@ -303,7 +304,7 @@ class Download:
             self.fetch_listed(target, documents, window)
             return True
 
-    def track(self, space_id: str, listed: Mapping[type[Document], set[str]]) -> None:
+    def track(self, space_id: str, listed: Mapping[type[FetchedDocument], set[str]]) -> None:
         """Record, as pending, what the space's last listing named and the new one does not.
 
         The absent are the documents the last listing named, read by id alone, and the
@@ -314,11 +315,16 @@ class Download:
         known = {key: stone for key, stone in self.tombstones.items() if stone.space_id == space_id}
         absent: dict[tuple[str, str], str] = {}
         stored = 0
-        for kind in KINDS:
-            before = self.store.listed_ids(space_id, kind) & self.store.stored_ids(kind)
+        for document_class in CONFLUENCE_CLASSES:
+            before = self.store.listed_ids(space_id, document_class) & self.store.stored_ids(
+                document_class
+            )
             stored += len(before)
-            again = {key[1] for key in known if key[0] == kind.kind}
-            absent |= {(kind.kind, each): space_id for each in (before | again) - listed[kind]}
+            again = {key[1] for key in known if key[0] == document_class.resource_type}
+            absent |= {
+                (document_class.resource_type, each): space_id
+                for each in (before | again) - listed[document_class]
+            }
         self.absent[space_id] = (absent, stored, known)
         others = {
             key: stone for key, stone in self.tombstones.items() if stone.space_id != space_id
@@ -337,7 +343,7 @@ class Download:
         task ``probes`` reports a space's probes, each by its document's id; all is the
         span ``fetch.probes``.
         """
-        canary = (confluence_v2.current_user_request(), confluence_v2.signed_in)
+        canary = (confluence_v2.current_user_request(), confluence_v2.is_signed_in)
         kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
         with TRACER.start_as_current_span("fetch.probes"):
             for space_id, (absent, stored, before) in self.absent.items():
@@ -350,7 +356,7 @@ class Download:
                         for k in probes.each(order, lambda key: key[1])
                         if (a := self.probe(k, kept))
                     }
-                if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
+                if too_many_gone(answers, stored) and not self.reachable(CONFLUENCE, *canary):
                     answers = {}  # the site stopped answering: believe none of these answers
                 now = after_probes(known, absent, answers, self.now())
                 others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
@@ -361,21 +367,21 @@ class Download:
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
                 self.report.add("confluence documents: absent, waiting for a probe", waiting)
 
-    def probe(self, key: tuple[str, str], kept: set[str]) -> Answer | None:
+    def probe(self, key: tuple[str, str], kept: set[str]) -> ProbeAnswer | None:
         """GET a document absent from its listing, and say what became of it."""
         try:
             response = Fields(self.site.json(confluence_v2.probe_request(*key)), "probe")
             found_space, status = confluence_v2.whereabouts(response)
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
-                return Answer.GONE
+                return ProbeAnswer.GONE
             self.report.failed("confluence probes", error)
             return None
         except RepresentationError as error:
             self.report.failed("confluence probes", error)
             return None
-        kind = Page if key[0] == Page.kind else BlogPost
-        named = found_space in kept and key[1] in self.store.listed_ids(found_space, kind)
+        document_class = Page if key[0] == Page.resource_type else BlogPost
+        named = found_space in kept and key[1] in self.store.listed_ids(found_space, document_class)
         return answer_of(found_space, status, kept, named=named)
 
     def folders(self, pages: Iterable[object]) -> list[object]:
@@ -387,7 +393,7 @@ class Download:
         wanted: list[str | None] = []
         for entry in pages:
             try:
-                page = confluence_v2.document(Fields(entry, "pages"), Page)
+                page = confluence_v2.document(Fields(entry, PAGES), Page)
             except RepresentationError as error:
                 self.report.failed("confluence pages in the tree", error)
                 continue
@@ -413,7 +419,7 @@ class Download:
                 wanted.append(folder.parent_id)
         return [response for response in found.values() if response is not None]
 
-    def project(self, target: Target, window: Window) -> bool:
+    def project(self, target: Target, window: FetchWindow) -> bool:
         """Search a project's issues updated in its window, and fetch what changed.
 
         The task ``listing`` reports the pages of the search read, and ``fetch_listed``
@@ -445,12 +451,14 @@ class Download:
                 return False
             return True
 
-    def fetch_listed(self, target: Target, documents: Sequence[Listed], window: Window) -> None:
-        """Fetch what a target lists in its window and the store lacks; complete what it has.
+    def fetch_listed(
+        self, target: Target, documents: Sequence[Listed], window: FetchWindow
+    ) -> None:
+        """Fetch what a target lists in its window and the raw store lacks; complete what it has.
 
         ``fetch.listed`` says at INFO how many documents the target lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.
-        The report counts, by kind, those in the window and those stored when --since gave
+        The report counts, by type, those in the window and those stored when --since gave
         the window; else those new or changed since the last fetch. Those stored get the
         files they lack, without a task; the task ``documents`` reports those to fetch,
         each by its id. ``first_failed`` keeps, for the target, the update time of the
@@ -480,14 +488,16 @@ class Download:
             else {"new or changed since the last fetch": to_fetch}
         )
         self.report.counts.update(
-            f"{label(document.type)}: {what}" for what, each in counted.items() for document in each
+            f"{label(document.document_class)}: {what}"
+            for what, each in counted.items()
+            for document in each
         )
         failed = [each.updated for each in stored if not (self.plan or self.complete(each))]
         with task("documents", len(to_fetch)) as fetching:
             failed += [
                 document.updated
                 for document in fetching.each(to_fetch, lambda listed: listed.id)
-                if not self.fetch(document)
+                if not self.fetch_document(document)
             ]
         if failed:
             self.first_failed[target] = min(failed)
@@ -500,8 +510,8 @@ class Download:
         counted: set[Listed] = set()
         for entry in entries:
             try:
-                listed = jira_v3.listed(Fields(entry, "issues"))
-                files = jira_v3.listed_attachments(Fields(entry, "issues"))
+                listed = jira_v3.listed(Fields(entry, ISSUES))
+                files = jira_v3.listed_attachments(Fields(entry, ISSUES))
             except RepresentationError:
                 continue  # counted by documents() already
             if listed.updated not in period or self.store.has(listed) or listed in counted:
@@ -511,16 +521,16 @@ class Download:
             self.report.add("files: to download", len(kept))
             self.report.add("files: bytes to download", sum(each.size for each in kept))
 
-    def fetch(self, document: Listed) -> bool:
+    def fetch_document(self, document: Listed) -> bool:
         """Fetch a listed document whose revision is not stored; say if it is stored whole.
 
         It is not when its fetch failed, its snapshot was refused, or a file it keeps
         failed; a plan counts it to fetch, and fails none. The fetch is a trace of its
         own, ``fetch.document``, linked to the span of the run's trace current when it
-        begins, saying the document's id and kind; an error when the fetch fails, which
+        begins, saying the document's id and resource type; an error when the fetch fails, which
         is a warning, by the document's id.
         """
-        what = label(document.type)
+        what = label(document.document_class)
         if self.plan:
             self.report.add(f"{what}: to fetch")
             return True
@@ -533,9 +543,11 @@ class Download:
             try:
                 responses = {
                     name: self.site.json(request) if read is None else self.collect(request, read)
-                    for name, (request, read) in SNAPSHOT_REQUESTS[document.type](document).items()
+                    for name, (request, read) in SNAPSHOT_REQUESTS[document.document_class](
+                        document
+                    ).items()
                 }
-                whole = self.keep(document.type, responses)
+                whole = self.keep(document.document_class, responses)
             except (RepresentationError, SiteError) as error:
                 self.report.failed(what, error)
                 DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
@@ -548,7 +560,7 @@ class Download:
             DOCUMENTS.add(1, {"kb_mcp.outcome": "fetched"})
             return whole
 
-    def keep(self, kind: type[Document], responses: dict[str, object]) -> bool:
+    def keep(self, document_class: type[FetchedDocument], responses: dict[str, object]) -> bool:
         """Download a snapshot's files, then store it with their digests; say if it is whole.
 
         A snapshot that its adapter refuses is stored all the same, without files: raw
@@ -558,21 +570,21 @@ class Download:
         whole when read, with every file it keeps.
         """
         try:
-            snapshot = REPRESENTATIONS[kind].snapshot(responses)
+            snapshot = REPRESENTATIONS[document_class].snapshot(responses)
             document = snapshot.document
             trace.get_current_span().set_attribute("kb_mcp.document.title", document.title)
             structlog.get_logger().debug(
-                "fetch.document", id=document.id, kind=label(kind), title=document.title
+                "fetch.document", id=document.id, kind=label(document_class), title=document.title
             )
         except RepresentationError as error:
-            self.report.failed(f"{label(kind)} read", error)
+            self.report.failed(f"{label(document_class)} read", error)
             structlog.get_logger().warning(
-                "fetch.document_unread", kind=label(kind), reason=str(error)
+                "fetch.document_unread", kind=label(document_class), reason=str(error)
             )
             snapshot = None
         blobs, whole = self.files(snapshot.attachments) if snapshot else ({}, False)
-        self.store.put(kind, responses, self.now(), blobs)
-        if snapshot and snapshot.document.author and kind is not Issue:
+        self.store.put(document_class, responses, self.now(), blobs)
+        if snapshot and snapshot.document.author and document_class is not Issue:
             self.authors.add(snapshot.document.author.account_id)
         return whole
 
@@ -584,7 +596,7 @@ class Download:
         try:
             stored = self.store.read(document)
         except (RepresentationError, ValueError, OSError) as error:
-            self.report.failed(f"{label(document.type)} read", error)
+            self.report.failed(f"{label(document.document_class)} read", error)
             return False
         missing = [
             attachment
@@ -594,7 +606,7 @@ class Download:
         ]
         blobs, whole = self.files(missing)
         self.store.add_blobs(document, blobs)
-        if stored.snapshot.document.author and document.type is not Issue:
+        if stored.snapshot.document.author and document.document_class is not Issue:
             self.authors.add(stored.snapshot.document.author.account_id)
         return whole
 
@@ -636,15 +648,15 @@ class Download:
         return blobs, whole
 
     def users(self) -> None:
-        """Merge the names of the Confluence authors seen into the users kept.
+        """Merge the names of the Confluence authors seen into the site users kept.
 
         All is the span ``fetch.users``.
         """
         with TRACER.start_as_current_span("fetch.users"):
             users: list[object] = []
             authors = sorted(self.authors)
-            for chunk in batched(authors, confluence_v2.USERS_PER_REQUEST, strict=False):
-                request = confluence_v2.users_request(chunk)
+            for batch in batched(authors, confluence_v2.USERS_PER_REQUEST, strict=False):
+                request = confluence_v2.users_request(batch)
                 try:
                     users += self.collect(request, confluence_v2.users_page)
                 except (RepresentationError, SiteError) as error:
@@ -659,7 +671,7 @@ class Download:
 
 
 class Targets(Record):
-    """What a run downloads: spaces and projects, from when, and the largest file kept.
+    """What a run fetches: spaces and projects, from when, and the largest file kept.
 
     ``since`` starts every target's window there; without it, each target catches up on
     what changed since its last fetch, as ``window`` rules. ``until`` ends the windows,
@@ -672,15 +684,15 @@ class Targets(Record):
     since: datetime | None = None
     until: datetime | None = None
 
-    def windows(self, coverage: Coverage, now: datetime) -> dict[Target, Window | None]:
+    def windows(self, coverage: Coverage, now: datetime) -> dict[Target, FetchWindow | None]:
         """Return each target's window, None for one skipped; PeriodError for --until first.
 
         Raises PeriodError when --since does not come before the windows' end.
         """
-        named = [Target(source="confluence", key=key) for key in self.spaces]
-        named += [Target(source="jira", key=key) for key in self.projects]
+        named = [Target(source=CONFLUENCE, key=key) for key in self.spaces]
+        named += [Target(source=JIRA, key=key) for key in self.projects]
         end = min(self.until, now) if self.until else now  # never past what a run can see
-        return {target: window(coverage, target, self.since, end) for target in named}
+        return {target: fetch_window(coverage, target, self.since, end) for target in named}
 
     def by_source(self) -> dict[str, Targets]:
         """Give each source's targets apart, by its name: Confluence's spaces, Jira's projects.
@@ -688,7 +700,7 @@ class Targets(Record):
         Each is fetched on its own, in this order, over the same period; a source without
         targets is left out.
         """
-        apart = {"confluence": replace(self, projects=[]), "jira": replace(self, spaces=[])}
+        apart = {CONFLUENCE: replace(self, projects=[]), JIRA: replace(self, spaces=[])}
         return {source: each for source, each in apart.items() if each.spaces or each.projects}
 
     @property
@@ -710,7 +722,7 @@ class Targets(Record):
 def read_targets(
     spaces: Sequence[str], projects: Sequence[str], options: Mapping[str, object], now: datetime
 ) -> Targets:
-    """Read what a run downloads of these spaces and projects from the period's options.
+    """Read what a run fetches of these spaces and projects from the period's options.
 
     ``options`` holds each by its flag, as typed, None when not given: --since and
     --until read as ``moment`` reads them, at ``now``; --max-file-mb not given is
@@ -727,7 +739,7 @@ def read_targets(
     )
 
 
-class TargetWindow(Record):
+class TargetFetchWindow(Record):
     """A target of a run: its window, from ``start`` to ``end``, and why it starts there.
 
     A target skipped, its catch-up after --until, has none, as ``reason`` says.
@@ -739,15 +751,15 @@ class TargetWindow(Record):
     start: datetime | None
     end: datetime | None
     reason: Reason | Literal["after --until"]
-    coverage: Extension | None
+    coverage: CoverageChange | None
 
 
 def windows_of(
-    windows: Mapping[Target, Window | None], coverage: Mapping[Target, Extension]
-) -> tuple[TargetWindow, ...]:
+    windows: Mapping[Target, FetchWindow | None], coverage: Mapping[Target, CoverageChange]
+) -> tuple[TargetFetchWindow, ...]:
     """Give each target's record: its window, and what became of its coverage."""
     return tuple(
-        TargetWindow(
+        TargetFetchWindow(
             target=target,
             start=None,
             end=None,
@@ -755,7 +767,7 @@ def windows_of(
             coverage=coverage.get(target),
         )
         if window is None
-        else TargetWindow(
+        else TargetFetchWindow(
             target=target,
             start=window.period.start,
             end=window.period.end,
@@ -766,21 +778,21 @@ def windows_of(
     )
 
 
-class Outcome(Record):
+class FetchOutcome(Record):
     """What a run did, the user's keys that failed, and the run's exit status.
 
     ``windows`` holds each target's window, and what became of its coverage; ``dry_run``
     says whether the run only planned.
     """
 
-    report: Report
+    report: RunReport
     failed_targets: list[str]
     status: ExitStatus | None
-    windows: tuple[TargetWindow, ...] = ()
+    windows: tuple[TargetFetchWindow, ...] = ()
     dry_run: bool = False
 
-    def text(self, summary: Summary) -> str:
-        """Write the documents fetched by kind and the files, or a dry run's; then failures.
+    def text(self, summary: Detail) -> str:
+        """Write the documents fetched by type and the files, or a dry run's; then failures.
 
         Detailed, and a dry run, begin with each target's window, why it starts there, and
         what became of its coverage. Short also says how a run stopped, if it did; detailed
@@ -809,26 +821,26 @@ class Outcome(Record):
         )
 
 
-def plan(
+def plan_fetch(
     settings: Settings,
     targets: Targets,
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
-) -> Outcome:
+) -> FetchOutcome:
     """List and decide as a run would, and say what it would fetch; write nothing.
 
     Raises PeriodError when --since does not come before the windows' end.
     """
-    store, report = RawStore(settings.raw), Report()
+    store, report = RawStore(settings.raw), RunReport()
     windows = targets.windows(store.coverage(), now())
-    planned = partial(Outcome, windows=windows_of(windows, {}), dry_run=True)
+    planned = partial(FetchOutcome, windows=windows_of(windows, {}), dry_run=True)
     try:
-        client = sign_in(settings).client()
+        client = choose_sign_in(settings).client()
     except SignInNeededError:
         return planned(report=report, failed_targets=[], status=ExitStatus.SIGN_IN_AGAIN)
     with client:
-        run = Download(
-            Site(client, sleep=sleep),
+        run = Fetching(
+            SiteClient(client, sleep=sleep),
             store,
             targets.max_file_bytes,
             now,
@@ -854,17 +866,17 @@ def plan(
     )
 
 
-def download(
+def run_fetch(
     settings: Settings,
     targets: Targets,
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
-) -> Outcome:
-    """Run a download of one source signed in as the settings say, and save its report.
+) -> FetchOutcome:
+    """Run a fetch of one source signed in as the settings say, and save its report.
 
     The targets are one source's, whose name ends the report's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
-    another download. Each target is fetched over its window. The coverage of every
+    another fetch. Each target is fetched over its window. The coverage of every
     target listed whole grows as ``Coverage.extended`` rules. The tombstones are
     Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
     the run stops, and a fetch of projects neither reads nor rewrites them.
@@ -875,17 +887,17 @@ def download(
     does not come before the windows' end, StoreBusyError when another run writes, and
     ValueError for targets of no source or of both, all before anything is written.
     """
-    report, failed_targets, status = Report(), [], None
-    extensions: dict[Target, Extension] = {}
+    report, failed_targets, status = RunReport(), [], None
+    extensions: dict[Target, CoverageChange] = {}
     store, started, source = RawStore(settings.raw), now(), targets.source
     coverage = store.coverage()
     windows = targets.windows(coverage, started)
-    signing = sign_in(settings)
+    signing = choose_sign_in(settings)
     with store.writing():
         try:
             with signing.client() as client:
-                run = Download(
-                    Site(client, sleep=sleep),
+                run = Fetching(
+                    SiteClient(client, sleep=sleep),
                     store,
                     targets.max_file_bytes,
                     now,
@@ -929,7 +941,7 @@ def download(
             saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
             path = settings.runs / f"{stamp}-{source}.json"
             path.write_text(json.dumps(saved, indent=1), "utf-8")
-    return Outcome(
+    return FetchOutcome(
         report=report,
         failed_targets=failed_targets,
         status=status,

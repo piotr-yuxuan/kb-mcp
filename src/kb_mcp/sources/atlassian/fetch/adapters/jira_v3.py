@@ -17,7 +17,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Comment,
     Issue,
     Listed,
-    Person,
+    SiteUser,
     Snapshot,
     time_revision,
 )
@@ -43,10 +43,10 @@ COMMENTS = "comments.json"
 CONTENT_PATH = "/rest/api/"
 
 
-def person(fields: Fields) -> Person:
-    """Read a user; the email address, when there is one, is left behind."""
+def person(fields: Fields) -> SiteUser:
+    """Read a site user; the email address, when there is one, is left behind."""
     with fields.refusals():
-        return Person(
+        return SiteUser(
             account_id=fields.text("accountId"), display_name=fields.optional_text("displayName")
         )
 
@@ -89,7 +89,7 @@ def issue(fields: Fields) -> Issue:
             author=None if reporter is None else person(reporter),
             created=values.time("created"),
             updated=values.time("updated"),
-            url=f"/browse/{key}",
+            site_path=f"/browse/{key}",
             labels=values.texts("labels"),
             key=key,
             project=values.object("project").text("key"),
@@ -143,8 +143,9 @@ PAGE_SIZE = "100"
 def search_request(project: str, start: date, end: date) -> Request:
     """GET the issues of a project updated from ``start`` until before ``end``, by date.
 
-    Jira reads these dates in the user's time zone, so a caller widens them and decides
-    on each issue's ``updated`` time. The key is quoted, as JQL needs for some keys.
+    Jira reads these dates in the signed-in site user's time zone, so a caller widens them
+    and decides on each issue's ``updated`` time. The key is quoted, as JQL needs for some
+    keys.
     """
     jql = (
         f'project = "{project}" AND updated >= "{start.isoformat()}"'
@@ -170,7 +171,10 @@ def listed(fields: Fields) -> Listed:
     updated = fields.object("fields").time("updated")
     with fields.refusals():
         return Listed(
-            type=Issue, id=fields.text("id"), revision=time_revision(updated), updated=updated
+            document_class=Issue,
+            id=fields.text("id"),
+            revision=time_revision(updated),
+            updated=updated,
         )
 
 
@@ -211,10 +215,10 @@ def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Req
 
 
 def myself_request() -> Request:
-    """GET the user whom the session signs in; Jira answers 401 to an expired session."""
+    """GET the site user whom the session signs in; Jira answers 401 to an expired session."""
     return Request(path="/rest/api/3/myself")
 
 
-def signed_in(response: Fields) -> bool:
-    """Say whether the user answered is someone."""
+def is_signed_in(response: Fields) -> bool:
+    """Say whether the site user answered is someone."""
     return response.optional_text("accountId", absent=True) is not None

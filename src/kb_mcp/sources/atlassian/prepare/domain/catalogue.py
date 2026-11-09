@@ -1,9 +1,9 @@
-"""What the listings and users say beyond the snapshots, and each document's front matter.
+"""What the listings and site users say beyond the snapshots, and each document's front matter.
 
 A snapshot holds one document and its comments; the listings of its space give its
 place in the tree, its fresher status and the names of the folders above it, and the
-users give its people's names. The front matter of a mirrored document is built here
-from all of them, as the table of ``docs/reference/data-layout.md`` says.
+site users give its people's names. The front matter of a document of the mirror is built
+here from all of them, as the table of ``docs/reference/data-layout.md`` says.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pydantic import model_validator
 from kb_mcp.kernel.names import RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, PersonRole
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
     BlogPost,
@@ -30,29 +30,30 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Page,
     Space,
 )
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, ISSUE, JIRA, PAGE
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from datetime import datetime
 
-    from kb_mcp.sources.atlassian.fetch.domain.content import Comment, Person
+    from kb_mcp.sources.atlassian.fetch.domain.content import Comment, SiteUser
 
-# The front matter's type of each kind of document.
+# The front matter's type of each document class.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {
-    Page: "page",
-    BlogPost: "blogpost",
-    Issue: "issue",
+    Page: PAGE,
+    BlogPost: BLOGPOST,
+    Issue: ISSUE,
 }
 # Each type with its source, as the front matter names them.
-SOURCE_TYPES = frozenset((kind.source, name) for kind, name in TYPES.items())
+SOURCE_TYPES = frozenset((document_class.source, name) for document_class, name in TYPES.items())
 # Keys that one source alone has, always.
 ONLY = {
-    "space": "confluence",
-    "version": "confluence",
-    "key": "jira",
-    "project": "jira",
-    "issue_type": "jira",
+    "space": CONFLUENCE,
+    "version": CONFLUENCE,
+    "key": JIRA,
+    "project": JIRA,
+    "issue_type": JIRA,
 }
 
 
@@ -81,7 +82,7 @@ class AtlassianFrontMatter(FrontMatter):
 
 
 class Catalogue(Record):
-    """The spaces, the users' names, and the documents and folders last listed.
+    """The spaces, the site users' names, and the documents and folders last listed.
 
     ``spaces`` are by id, ``names`` by account id, ``listed`` pages and blog posts by id,
     and ``folders`` by the id of the space that listed them.
@@ -99,8 +100,8 @@ class Catalogue(Record):
         pages = {key: page for key, page in self.listed.items() if isinstance(page, Page)}
         return {**folders, **pages}
 
-    def name(self, person: Person | None) -> str | None:
-        """Name a person: by the display name given, else the users', else the account id."""
+    def name(self, person: SiteUser | None) -> str | None:
+        """Name a person: by the display name given, else the site users', else the account id."""
         if person is None:
             return None
         return one_line(person.display_name or self.names.get(person.account_id) or "") or (
@@ -133,8 +134,8 @@ class Catalogue(Record):
         """Lay out a space's tree as plain HTML: its pages and folders as a nested list.
 
         Siblings come by title, then id; a node whose parent is not listed is at the top.
-        A page links its mirrored file, which ``links`` gives by page id, or says it is
-        not yet mirrored; a folder is its title alone. A node on a loop is under no root,
+        A page links its file in the mirror, which ``links`` gives by page id, or says
+        "not yet mirrored"; a folder is its title alone. A node on a loop is under no root,
         so it is left out.
         """
         pages = [
@@ -228,7 +229,7 @@ def front_matter(
         updated=document.updated.astimezone(UTC),
         version=None if confluence is None else confluence.version,
         revision=document.revision,
-        url=None if site is None else site + document.url,
+        url=None if site is None else site + document.site_path,
         breadcrumb=catalogue.breadcrumb(document),
         fetched_at=fetched_at.astimezone(UTC),
     )

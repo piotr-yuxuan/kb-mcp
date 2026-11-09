@@ -24,11 +24,11 @@ from pydantic import ConfigDict, Field
 from rich.console import Console
 
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters import progress
 from kb_mcp.observability.adapters.display import Bars, ConsoleLines
 from kb_mcp.observability.adapters.logs import (
-    PROGRAM,
     QUIET,
     log_file,
     route_through_logging,

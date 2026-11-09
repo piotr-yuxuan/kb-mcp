@@ -1,12 +1,12 @@
 """Evaluating the search strategies on golden questions, for each model and chunking.
 
-Each target, a model connected and a chunking, gets its own index, built from the
+Each evaluated index, a model connected and a chunking, gets its own file, built from the
 mirror like any other with the vector store, so a second evaluation embeds nothing new.
 Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answered by
 ``Library.quoted``, as ``ask`` answers, in each mode; the measures and the paired tests
 of ``evaluation.domain.evaluation`` say how the modes compare, and its rule which
-chunking each model's index should be cut by. Each target is a span; each question is
-timed and logged, and each mode's scores measured, as
+chunking each model's index should be cut by. Each evaluated index is a span; each
+question is timed and logged, and each mode's scores measured, as
 ``docs/reference/telemetry/eval.md`` lists it.
 """
 
@@ -15,13 +15,14 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from statistics import median
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 import structlog
 import yaml
 from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field, ValidationError
 
+from kb_mcp.config.domain.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
     CONTROL,
     CUTOFF,
@@ -52,12 +53,12 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
-    from kb_mcp.config.domain.settings import SearchMode, Settings
+    from kb_mcp.config.domain.settings import Settings
     from kb_mcp.evaluation.domain.evaluation import Choice
     from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
 
-MODES: tuple[SearchMode, ...] = ("lexical", "semantic", "hybrid")
+MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)
 # What the refusal of a golden file says, by the type of Pydantic's error; of another
 # type, Pydantic's message, which holds no input, or the rule's.
 SAID = {
@@ -140,7 +141,7 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
 
 
 def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
-    """Resolve a golden file's ref to a mirrored path, or refuse it, naming ``where`` it is."""
+    """Resolve a golden file's ref to a path of the mirror, or refuse it, naming ``where`` it is."""
     path = resolve(ref)
     if path is None:
         message = f"{where}: {ref!r} is not mirrored"
@@ -149,7 +150,7 @@ def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
 
 
 @dataclass(frozen=True)
-class Target:
+class EvaluatedIndex:
     """What one index under evaluation is built with: a model connected, and a chunking."""
 
     embedder: Embedder
@@ -157,7 +158,7 @@ class Target:
 
 
 class Costs(Record):
-    """What a target's index holds and cost, whatever the vector store held before."""
+    """What an evaluated index holds and cost, whatever the vector store held before."""
 
     pieces: int
     characters: int  # of the texts that the pieces embed
@@ -170,8 +171,8 @@ class Costs(Record):
         return self.characters // CHARACTERS_PER_TOKEN
 
 
-class Run(Record):
-    """How one target's search ranked the golden questions, and ask answered, mode by mode."""
+class IndexMeasures(Record):
+    """How one evaluated index ranked the golden questions, and ask answered, mode by mode."""
 
     model_config = ConfigDict(frozen=False)
 
@@ -195,30 +196,30 @@ class Run(Record):
 def evaluate(
     settings: Settings,
     questions: Sequence[Question],
-    targets: Sequence[Target],
+    indexes: Sequence[EvaluatedIndex],
     clock: Callable[[], float],
     built_at: datetime,
-) -> list[Run]:
-    """Rank and answer every question in every mode with each target, and compare the modes.
+) -> list[IndexMeasures]:
+    """Rank and answer every question in every mode on each evaluated index; compare the modes.
 
-    Each target's index is ``prepared``. Raises EvaluationError when a mode by meaning
+    Each evaluated index is ``prepared``. Raises EvaluationError when a mode by meaning
     falls back to words, which would measure words twice, and ModelError for a model
-    that fails. For each target, its index's build reports its own tasks, then the task
+    that fails. For each, its index's build reports its own tasks, then the task
     ``questions`` every question in every mode, each by its id.
 
-    Each target is the span ``eval.model``; each question, timed in
+    Each is the span ``eval.model``; each question, timed in
     ``kb_mcp.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
     measures on all the questions, ask's among them, are set in ``kb_mcp.eval.score``, but
     Section@10, and Evidence@ask when no question has evidence; ``eval.evaluated`` says
-    at INFO each target evaluated. Each names the target's chunking.
+    at INFO each index evaluated. Each names its chunking.
     """
     log = structlog.get_logger()
-    runs: list[Run] = []
-    for target in targets:
-        name = target.embedder.name
-        named = {"gen_ai.request.model": name, "kb_mcp.chunking": target.chunking}
+    runs: list[IndexMeasures] = []
+    for evaluated in indexes:
+        name = evaluated.embedder.name
+        named = {"gen_ai.request.model": name, "kb_mcp.chunking": evaluated.chunking}
         with TRACER.start_as_current_span("eval.model", attributes=named):
-            run, library = prepared(target, settings, questions, clock, built_at)
+            run, library = prepared(evaluated, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
                     run.per[mode], run.ranks[mode], run.asked[mode] = {}, {}, {}
@@ -228,7 +229,7 @@ def evaluate(
                         shown, note = library.ranked(question.text, mode, limit=CUTOFF)
                         spent.append(clock() - started)
                         QUESTION_DURATION.record(
-                            spent[-1], {"kb_mcp.chunking": target.chunking, "kb_mcp.mode": mode}
+                            spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
                         )
                         if note:
                             message = f"{name}, {mode}:{note}"
@@ -248,7 +249,7 @@ def evaluate(
                         log.debug(
                             "eval.question",
                             id=question.id,
-                            chunking=target.chunking,
+                            chunking=evaluated.chunking,
                             mode=mode,
                             seconds=round(spent[-1], 3),
                             reciprocal_rank=run.per[mode][question.id].reciprocal_rank,
@@ -275,7 +276,7 @@ def evaluate(
             log.info(
                 "eval.evaluated",
                 model=name,
-                chunking=target.chunking,
+                chunking=evaluated.chunking,
                 questions=len(questions),
                 embedded=run.embedded,
                 index_seconds=round(run.seconds, 3),
@@ -289,25 +290,25 @@ def evaluate(
 
 
 def prepared(
-    target: Target,
+    evaluated: EvaluatedIndex,
     settings: Settings,
     questions: Sequence[Question],
     clock: Callable[[], float],
     built_at: datetime,
-) -> tuple[Run, Library]:
-    """Build a target's index, and give its run, costs counted, and a library over it.
+) -> tuple[IndexMeasures, Library]:
+    """Build an evaluated index, and give its run, costs counted, and a library over it.
 
     The index is ``<evaluation_indexes>/<chunking>/<model>.sqlite``, its model's ``/``
     and ``:`` written ``_``. Raises EvaluationError when a document that a question names
     is not in it, and ModelError for a model that fails. The library has read the
     index's vectors already, so that no question's time holds the reading.
     """
-    embedder, name = target.embedder, target.embedder.name
+    embedder, name = evaluated.embedder, evaluated.embedder.name
     safe = name.replace("/", "_").replace(":", "_")
-    index = settings.evaluation_indexes / target.chunking / f"{safe}.sqlite"
+    index = settings.evaluation_indexes / evaluated.chunking / f"{safe}.sqlite"
     index.parent.mkdir(parents=True, exist_ok=True)
     started = clock()
-    embedding = Embedding(embedder, settings.vectors, chunking=target.chunking)
+    embedding = Embedding(embedder, settings.vectors, chunking=evaluated.chunking)
     report = build_index(settings.docs, index, built_at, embedding)
     seconds = clock() - started
     costs = Costs(
@@ -316,12 +317,12 @@ def prepared(
         tokens=embedder.tokens,
         bytes=index.stat().st_size,
     )
-    run = Run(
+    run = IndexMeasures(
         model=name,
         fingerprint=embedder.fingerprint,
         embedded=report.embedded,
         seconds=seconds,
-        chunking=target.chunking,
+        chunking=evaluated.chunking,
         costs=costs,
     )
     # The model that the index names is this embedder's.
@@ -337,7 +338,7 @@ def prepared(
     return run, library
 
 
-def compared(runs: Sequence[Run], questions: Sequence[Question]) -> dict[str, Choice]:
+def compared(runs: Sequence[IndexMeasures], questions: Sequence[Question]) -> dict[str, Choice]:
     """Choose each model's default chunking by the rule, from its runs in hybrid mode.
 
     Only a model whose runs include the control's gets a choice.
@@ -360,7 +361,7 @@ def compared(runs: Sequence[Run], questions: Sequence[Question]) -> dict[str, Ch
 
 
 def record(
-    runs: Sequence[Run], golden: str, built_at: datetime, choices: Mapping[str, Choice]
+    runs: Sequence[IndexMeasures], golden: str, built_at: datetime, choices: Mapping[str, Choice]
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text."""
     return {
@@ -416,12 +417,12 @@ def ask_row(mode: str, group: str, each: Quoted, times: tuple[float, float]) -> 
     )
 
 
-def heading(run: Run) -> str:
+def heading(run: IndexMeasures) -> str:
     """Name a run: its model, and its chunking."""
     return f"## {run.model}, {run.chunking}"
 
 
-def built(run: Run) -> str:
+def built(run: IndexMeasures) -> str:
     """Say how a run's index was built and what it costs."""
     costs = run.costs
     reported = "none" if costs.tokens is None else f"{costs.tokens:,}"
@@ -432,7 +433,7 @@ def built(run: Run) -> str:
     )
 
 
-def table(runs: Sequence[Run]) -> str:
+def table(runs: Sequence[IndexMeasures]) -> str:
     """Write the measures of each run as Markdown: search's table, ask's, then the tests.
 
     Lexical search ignores the model and the chunking: its rows come with the first run

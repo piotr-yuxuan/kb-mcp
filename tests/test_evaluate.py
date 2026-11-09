@@ -21,9 +21,9 @@ from kb_mcp.evaluation.app import evaluation
 from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,
     HEADER,
+    EvaluatedIndex,
     EvaluationError,
     GoldenError,
-    Target,
     evaluate,
     read_golden,
     record,
@@ -186,7 +186,7 @@ def test_the_sandbox_s_golden_set_reads_as_written() -> None:
 
 
 def test_refs_resolve_as_read_takes_them(data: Path) -> None:
-    """A page id, an address and an issue key all name their mirrored path."""
+    """A page id, an address and an issue key all name their path in the mirror."""
     q1, q2, q3 = golden(data)
     assert q1.expected == ("confluence/ENG/4002-holiday-canteen.md",)
     assert q2.partial == q1.expected
@@ -198,7 +198,9 @@ def test_meaning_answers_the_paraphrase_that_words_miss(data: Path) -> None:
     """Measured as search ranks: the paraphrase found by meaning only; the key first in all."""
     settings = Settings(data_dir=data, model="tiny")
     ticks = count()
-    [run] = evaluate(settings, golden(data), targets(tiny()), lambda: float(next(ticks)), MOMENT)
+    [run] = evaluate(
+        settings, golden(data), evaluated_indexes(tiny()), lambda: float(next(ticks)), MOMENT
+    )
     assert run.per["lexical"]["q1"].reciprocal_rank == 0.0
     assert run.per["semantic"]["q1"].reciprocal_rank == 1.0
     assert run.per["hybrid"]["q1"].section == 1.0
@@ -366,9 +368,9 @@ def test_the_record_names_its_test_and_golden_file() -> None:
     assert re.fullmatch(r"[0-9a-f]{64}", str(kept["golden_sha256"]))
 
 
-def targets(*embedders: Embedder) -> list[Target]:
+def evaluated_indexes(*embedders: Embedder) -> list[EvaluatedIndex]:
     """Evaluate each model with the chunking of sections alone."""
-    return [Target(embedder, "sections") for embedder in embedders]
+    return [EvaluatedIndex(embedder, "sections") for embedder in embedders]
 
 
 def ticking() -> Callable[[], float]:
@@ -384,7 +386,11 @@ def test_a_model_reports_its_index_s_tasks_then_every_question_in_every_mode(
     questions = golden(data)
     with capture_logs() as events:
         evaluate(
-            Settings(data_dir=data, model="tiny"), questions, targets(tiny()), ticking(), MOMENT
+            Settings(data_dir=data, model="tiny"),
+            questions,
+            evaluated_indexes(tiny()),
+            ticking(),
+            MOMENT,
         )
     reported = [(each["task"], each["done"], each["total"]) for each in events if "task" in each]
     assert [task for task, _, _ in reported] == ["files", "texts to embed", "questions"]
@@ -401,7 +407,7 @@ def test_a_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
         EvaluationError,
         match=r"tiny: q2: confluence/ENG/4003-words\.md is not in its index; run embed again$",
     ):
-        evaluate(settings, questions, targets(tiny()), ticking(), MOMENT)
+        evaluate(settings, questions, evaluated_indexes(tiny()), ticking(), MOMENT)
 
 
 def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -414,7 +420,7 @@ def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: M
     monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(broken))
     settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match="tiny, semantic: Ranked by words alone"):
-        evaluate(settings, golden(data), targets(tiny()), ticking(), MOMENT)
+        evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)
 
 
 def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -427,7 +433,7 @@ def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch
     given = iter([1.0, 0.01, 0.02, 1.0, 0.03, 0.04])  # lexical, semantic, hybrid, twice
     monkeypatch.setattr(evaluation, "paired_test", lambda *_: next(given))
     settings = Settings(data_dir=data, model="tiny")
-    embedders = targets(tiny(answers), tiny(answers, "tiny2"))
+    embedders = evaluated_indexes(tiny(answers), tiny(answers, "tiny2"))
     runs = evaluate(settings, golden(data), embedders, ticking(), MOMENT)
     raw = [run.pvalues[mode] for run in runs for mode in ("semantic", "hybrid")]
     adjusted = [run.adjusted[mode] for run in runs for mode in ("semantic", "hybrid")]
@@ -443,7 +449,7 @@ def test_a_partial_ref_missing_from_the_index_evaluated_is_refused(data: Path) -
     (data / "docs" / "confluence" / "ENG" / "4004-helper.md").unlink()
     settings = Settings(data_dir=data, model="tiny")
     with pytest.raises(EvaluationError, match=r"q1: confluence/ENG/4004-helper\.md is not"):
-        evaluate(settings, questions, targets(tiny()), ticking(), MOMENT)
+        evaluate(settings, questions, evaluated_indexes(tiny()), ticking(), MOMENT)
 
 
 def test_the_first_search_by_meaning_is_not_timed_as_a_query(
@@ -462,7 +468,7 @@ def test_the_first_search_by_meaning_is_not_timed_as_a_query(
 
     monkeypatch.setattr(evaluation, "Meaning", lambda _connect: Meaning(slow))
     settings = Settings(data_dir=data, model="tiny")
-    [run] = evaluate(settings, golden(data), targets(tiny()), clock, MOMENT)
+    [run] = evaluate(settings, golden(data), evaluated_indexes(tiny()), clock, MOMENT)
     assert all(tail < LOADING for _, tail in run.times.values())
 
 
@@ -474,7 +480,7 @@ def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> No
     before = (data / "index.sqlite").read_bytes()
     settings = Settings(data_dir=data, model="tiny")
     answers = Scripted({"tiny:latest": DIGEST, "hf.co/someone/tiny:latest": DIGEST})
-    embedders = targets(tiny(answers, "tiny:latest"), tiny(answers, "hf.co/someone/tiny"))
+    embedders = evaluated_indexes(tiny(answers, "tiny:latest"), tiny(answers, "hf.co/someone/tiny"))
     evaluate(settings, golden(data), embedders, ticking(), MOMENT)
     assert (data / "index.sqlite").read_bytes() == before
     indexes = data / "eval" / "indexes" / "sections"
@@ -506,7 +512,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
 
     monkeypatch.setattr(evaluation, "paired_test", recorded)
     settings = Settings(data_dir=data, model="tiny")
-    [run] = evaluate(settings, questions, targets(tiny()), ticking(), MOMENT)
+    [run] = evaluate(settings, questions, evaluated_indexes(tiny()), ticking(), MOMENT)
     assert run.per["lexical"]["q4"].recall == 1.0
     assert run.per["lexical"]["q4"].reciprocal_rank == pytest.approx(1 / 10)
     ranks = {
@@ -522,7 +528,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
 def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     """The paraphrase: quoted with its evidence by meaning, missed by words; costs counted."""
     settings = Settings(data_dir=data, model="tiny")
-    [run] = evaluate(settings, golden(data), targets(tiny()), ticking(), MOMENT)
+    [run] = evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)
     assert run.asked["semantic"]["q1"] == Quoted(found=1.0, evidence=1.0)
     assert run.asked["lexical"]["q1"] == Quoted(found=0.0, evidence=0.0)
     assert run.asked["lexical"]["q3"].found == 1.0
@@ -537,10 +543,10 @@ def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
 def test_the_characters_embedded_are_the_same_with_the_store_warm_or_cold(data: Path) -> None:
     """Read from what the index embeds, not from what this run had to embed."""
     settings = Settings(data_dir=data, model="tiny")
-    built = [evaluate(settings, golden(data), targets(tiny()), ticking(), MOMENT)[0]]
-    built += [evaluate(settings, golden(data), targets(tiny()), ticking(), MOMENT)[0]]
+    built = [evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)[0]]
+    built += [evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)[0]]
     (data / "vectors.sqlite").unlink()
-    built += [evaluate(settings, golden(data), targets(tiny()), ticking(), MOMENT)[0]]
+    built += [evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)[0]]
     assert [run.embedded > 0 for run in built] == [True, False, True]
     assert len({run.costs.characters for run in built}) == 1
 
@@ -564,8 +570,8 @@ def test_each_target_s_scores_are_measured_by_its_chunking_ask_s_among_them(
     One question of three has evidence, so that Evidence@ask is measured too.
     """
     settings = Settings(data_dir=data, model="tiny")
-    targets = [Target(tiny(), "sections"), Target(tiny(), "windows")]
-    runs = evaluate(settings, golden(data), targets, ticking(), MOMENT)
+    indexes = [EvaluatedIndex(tiny(), "sections"), EvaluatedIndex(tiny(), "windows")]
+    runs = evaluate(settings, golden(data), indexes, ticking(), MOMENT)
     points = {
         tuple(
             str(point.attributes[key])
@@ -594,10 +600,10 @@ def test_each_target_s_span_events_and_question_times_name_its_chunking(
     data: Path, telemetry: InMemory
 ) -> None:
     """Its span and its events, and its questions' times, each question once a mode."""
-    targets = [Target(tiny(), "sections"), Target(tiny(), "windows")]
+    indexes = [EvaluatedIndex(tiny(), "sections"), EvaluatedIndex(tiny(), "windows")]
     questions = golden(data)
     with capture_logs() as events:
-        evaluate(Settings(data_dir=data, model="tiny"), questions, targets, ticking(), MOMENT)
+        evaluate(Settings(data_dir=data, model="tiny"), questions, indexes, ticking(), MOMENT)
     every = {
         (chunking, mode): len(questions)
         for chunking in ("sections", "windows")
@@ -627,9 +633,9 @@ def test_without_evidence_found_at_ask_is_measured_and_evidence_at_ask_is_not(
 ) -> None:
     """A golden file whose questions have no evidence: no point of Evidence@ask."""
     without = GOLDEN.replace('  evidence: {"4002": "leave for a meal"}\n', "")
-    targets = [Target(tiny(), "sections")]
+    indexes = [EvaluatedIndex(tiny(), "sections")]
     evaluate(
-        Settings(data_dir=data, model="tiny"), golden(data, without), targets, ticking(), MOMENT
+        Settings(data_dir=data, model="tiny"), golden(data, without), indexes, ticking(), MOMENT
     )
     measures = {
         (point.attributes or {})["kb_mcp.measure"]

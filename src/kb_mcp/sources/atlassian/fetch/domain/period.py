@@ -1,4 +1,4 @@
-"""The period that a download covers: documents updated from its start until its end."""
+"""The period that a fetch covers: documents updated from its start until its end."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ LONGEST = timedelta(days=100 * 365)
 FIRST_FETCH = timedelta(days=7)
 # The options of a fetch's period, by flag: from when, until when, the largest file kept.
 SINCE_FLAG, UNTIL_FLAG, MAX_FILE_MB_FLAG = "--since", "--until", "--max-file-mb"
-# The largest file that a download keeps when no --max-file-mb says, in MB: an option of
+# The largest file that a fetch keeps when no --max-file-mb says, in MiB: an option of
 # the period, as the commands add it.
 DEFAULT_MAX_FILE_MB = 50
 

@@ -28,14 +28,15 @@ from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
+from kb_mcp.mirror.domain.mirror import ROLES, ref_of
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
-from kb_mcp.search.domain.chunking import CHUNKERS, UNIT, around
+from kb_mcp.search.domain.chunking import CHUNKERS, PASSAGE_CHARS, around
 from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.reranking import (
-    BODY,
-    HEADING,
-    TITLE,
+    BODY_CHARS,
+    HEADING_CHARS,
+    TITLE_CHARS,
     split_order,
     written,
 )
@@ -47,7 +48,7 @@ from kb_mcp.search.domain.search import (
     Sort,
     fuse,
     identifiers,
-    plan,
+    plan_query,
     rank,
     tree_key,
     tree_paths,
@@ -60,7 +61,7 @@ if TYPE_CHECKING:
     from kb_mcp.search.app.meaning import Meaning
     from kb_mcp.search.app.reranking import Reranking
     from kb_mcp.search.domain.indexes import SearchIndex, SearchReader
-    from kb_mcp.search.domain.search import Entry
+    from kb_mcp.search.domain.search import IndexedDocument
 
 SEARCH_LIMIT = 8
 SEARCH_LIMITS = (1, 50)
@@ -177,8 +178,8 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
         named = [*planned.identifiers.keys, *planned.identifiers.ids]
         keys, ids = planned.identifiers.keys, planned.identifiers.ids
-        pinned = reader.entries(keys=keys, ids=ids, filters=filters)
-        ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
+        pinned = reader.indexed_documents(keys=keys, ids=ids, filters=filters)
+        ordered = sorted(pinned, key=lambda e: named.index(ref_of(e.front.key, e.front.id)))
         first = [entry.path for entry in ordered]
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
@@ -217,7 +218,9 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     )
 
 
-def passage_of(reader: SearchReader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
+def snippet_of(
+    reader: SearchReader, entry: IndexedDocument, ranked: Ranking, planned: Plan
+) -> Passage:
     """Find the section to show for a document: by meaning or by words, as it was ranked.
 
     A document shown by words opens at its best section for the query's words; one
@@ -226,10 +229,10 @@ def passage_of(reader: SearchReader, entry: Entry, ranked: Ranking, planned: Pla
     if entry.path in ranked.meaning:
         number, start, end = ranked.meaning[entry.path]
         lead = reader.text(entry.path, start, min(end, start + 2 * responses.SNIPPET))
-        return Passage(number=number, heading=reader.heading(entry.path, number), snippet=lead)
-    passage = reader.passage(entry.path, planned.match) if planned.words else None
+        return Passage(number=number, heading=reader.heading(entry.path, number), text=lead)
+    passage = reader.snippet(entry.path, planned.match) if planned.words else None
     lead = "" if passage else reader.text(entry.path, 0, 2 * responses.SNIPPET)
-    return passage or Passage(number=1, heading="", snippet=lead.partition("\n")[2])
+    return passage or Passage(number=1, heading="", text=lead.partition("\n")[2])
 
 
 def folded(text: str) -> str:
@@ -259,7 +262,7 @@ def place_of(
         return number, (start, end)
     alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
     words = re.compile("|".join(alone), re.IGNORECASE)
-    best = reader.passage(path, planned.match) if planned.words else None
+    best = reader.snippet(path, planned.match) if planned.words else None
     number = best.number if best else 1
     first, last = reader.bounds(path)[number - 1]
     spots: dict[str, list[int]] = {}  # where each word of the question is
@@ -268,14 +271,15 @@ def place_of(
     hit = first + max(
         min(spots.values(), key=len, default=[0]),
         key=lambda at: sum(
-            bisect.bisect_left(places, at - UNIT // 2) < bisect.bisect_right(places, at + UNIT // 2)
+            bisect.bisect_left(places, at - PASSAGE_CHARS // 2)
+            < bisect.bisect_right(places, at + PASSAGE_CHARS // 2)
             for places in spots.values()
         ),
     )
     return number, (hit, hit + 1)
 
 
-def excerpts(
+def passages(
     reader: SearchReader, ranked: Ranking, planned: Plan, paths: list[str]
 ) -> list[Passage]:
     """Give the passage that ask quotes of each document, verbatim, in the order given.
@@ -286,20 +290,24 @@ def excerpts(
     break falls in the half that the cut shortens.
     """
     embedded = reader.embedded()
-    unit = CHUNKERS[embedded.chunking].unit if embedded else None
+    quoted_span = CHUNKERS[embedded.chunking].quoted_span if embedded else None
     found = []
     for path in paths:
         number, place = place_of(reader, ranked, planned, path)
         first, last = reader.bounds(path)[number - 1]
-        if unit and path in ranked.meaning:
-            start, end = unit(place, (first, last))
+        if quoted_span and path in ranked.meaning:
+            start, end = quoted_span(place, (first, last))
             text = reader.text(path, start, end)
         else:
             start, end = around(place, (first, last))
             text = reader.text(path, start, end)
-            text = text if end == last else text[: text.rfind("\n", UNIT // 2) + 1 or UNIT]
-            text = text if start == first else text[text.find("\n", 0, UNIT // 2) + 1 :]
-        found.append(Passage(number=number, heading=reader.heading(path, number), snippet=text))
+            text = (
+                text
+                if end == last
+                else text[: text.rfind("\n", PASSAGE_CHARS // 2) + 1 or PASSAGE_CHARS]
+            )
+            text = text if start == first else text[text.find("\n", 0, PASSAGE_CHARS // 2) + 1 :]
+        found.append(Passage(number=number, heading=reader.heading(path, number), text=text))
     return found
 
 
@@ -323,13 +331,16 @@ def reranked(
         candidates = ranked.paths[start : start + reranking.depth]
         if len(candidates) < DEPTHS.start:
             return ranked
-        entries = {entry.path: entry for entry in reader.entries(paths=candidates)}
+        indexed = {entry.path: entry for entry in reader.indexed_documents(paths=candidates)}
         texts = []
         for path in candidates:
             number, place = place_of(reader, ranked, asked.planned, path)
-            first, last = around(place, reader.bounds(path)[number - 1], BODY)
-            title, heading = entries[path].front.title, reader.heading(path, number)
-            texts.append(f"{title[:TITLE]}\n{heading[:HEADING]}\n{reader.text(path, first, last)}")
+            first, last = around(place, reader.bounds(path)[number - 1], BODY_CHARS)
+            title, heading = indexed[path].front.title, reader.heading(path, number)
+            texts.append(
+                f"{title[:TITLE_CHARS]}\n{heading[:HEADING_CHARS]}\n"
+                f"{reader.text(path, first, last)}"
+            )
         reordering = reranking.reorder(asked.query, texts)
         if reordering.order is None:
             return replace(ranked, note=f"{ranked.note} Not reranked: {reordering.reason}.")
@@ -371,15 +382,9 @@ def narrowed(reader: SearchReader, given: Mapping[str, str]) -> Filters:
     )
 
 
-# Each filter that names a person, and the role it keeps them in: person, any.
-PERSON_FILTERS = {
-    "person": None,
-    "author": "author",
-    "creator": "creator",
-    "assignee": "assignee",
-    "commenter": "commenter",
-    "participant": "participant",
-}
+# Each filter that names a person, and the role it keeps them in: person, any; then
+# each role, by its name.
+PERSON_FILTERS: dict[str, str | None] = {"person": None, **{role: role for role in ROLES}}
 
 
 def who(reader: SearchReader, name: str, value: str | None) -> str | None:
@@ -409,13 +414,13 @@ def who(reader: SearchReader, name: str, value: str | None) -> str | None:
         each
         for each in found
         if written != wanted
-        and written in {people.written_key(spelling.name) for spelling in each.person.names}
+        and written in {people.written_key(spelling.name) for spelling in each.person.spellings}
     ]
     if len(found) == 1 or len(exact) == 1:
         return (exact or found)[0].person.id
     quoted = json.dumps(value, ensure_ascii=False)
     if found:
-        message = f"{name}: {quoted} names {len(found)} people; give the id of one:"
+        message = f"{name}: {quoted} names {len(found)} persons; give the id of one:"
         found.sort(key=lambda each: (-sum(each.sources.values()), each.person.id))
         listed = "\n".join(responses.activity(each) for each in found[: responses.NAMES])
         rest = len(found) - responses.NAMES
@@ -443,11 +448,11 @@ def about(
     if filters.person is None:
         return "", {}
     found = reader.person(filters.person)
-    words = sorted({people.first_word(spelling.name) for spelling in found.person.names})
+    words = sorted({people.first_word(spelling.name) for spelling in found.person.spellings})
     moved = [
-        (word, reader.persons(word, people.NAME))
+        (word, reader.persons(word, people.BY_NAME))
         for word in words
-        if not reader.persons(word, people.ACCOUNT)
+        if not reader.persons(word, people.BY_ACCOUNT)
     ]
     alike = [
         (word, reader.person(ids[0]))
@@ -455,7 +460,10 @@ def about(
         if len(ids) == 1 and ids[0] != filters.person
     ]
     others = [
-        (next(each.name for each in other.person.names if each.key == word), other.person.id)
+        (
+            next(each.name for each in other.person.spellings if each.name_key == word),
+            other.person.id,
+        )
         for word, other in alike
         if other
     ]
@@ -477,11 +485,12 @@ def canonical(reader: SearchReader, name: str, value: str | None) -> str | None:
 
     Values compare as hits show them, their spaces collapsed, composed and casefolded,
     then decomposed without the combining diacritical marks of U+0300 to U+036F and
-    casefolded again: a Hangul syllable keeps its letters, a kana its voicing mark. One
-    value alone matching is taken; else the value given, then one that a hit shows
-    alike, the most used first. Refuse a value that no document has, or that several
-    have but for accents alone, listing the valid ones: those holding it first, the
-    most used first.
+    casefolded again: a Hangul syllable keeps its letters, a kana its voicing mark; its
+    brackets stay as written, where a name's key writes an annotation alike
+    (``people.written_key``). One value alone matching is taken; else the value given,
+    then one that a hit shows alike, the most used first. Refuse a value that no
+    document has, or that several have but for accents alone, listing the valid ones:
+    those holding it first, the most used first.
     """
     if value is None:
         return None
@@ -565,7 +574,7 @@ class Shown(Record):
 
 
 class Library:
-    """The four tools, over one index."""
+    """The tools that the server offers, over one index."""
 
     def __init__(
         self,
@@ -598,11 +607,11 @@ class Library:
         except UnavailableIndexError as error:
             raise UnanswerableError(str(error)) from None
 
-    def _find(self, reader: SearchReader, ref: str) -> Entry | None:
+    def _find(self, reader: SearchReader, ref: str) -> IndexedDocument | None:
         """Find a document by path, issue key, page or work-log id, or address, in that order."""
         named, path = identifiers(ref), ref.strip()
         ids = [path] if WORKLOG_ID.fullmatch(path) else named.ids[:1]
-        found = reader.entries(paths=[path], keys=named.keys[:1], ids=ids)
+        found = reader.indexed_documents(paths=[path], keys=named.keys[:1], ids=ids)
         return min(found, key=lambda entry: (entry.path != path, not entry.front.key), default=None)
 
     def search(
@@ -622,7 +631,7 @@ class Library:
         """
         given = checked(filters)
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
-        planned = plan(query)
+        planned = plan_query(query)
         with self._reading() as reader:
             built_at, build = reader.built_at(), reader.build()
             (offset, order), size = continued(cursor, build), clamp(limit, SEARCH_LIMITS)
@@ -643,7 +652,9 @@ class Library:
                 ranked = reranked(reader, asked, first, self._reranking)
                 total, whole = len(ranked.paths), ranked.whole
                 paths = ranked.paths[offset : offset + size]
-                shown = sorted(reader.entries(paths=paths), key=lambda e: paths.index(e.path))
+                shown = sorted(
+                    reader.indexed_documents(paths=paths), key=lambda e: paths.index(e.path)
+                )
             else:
                 (total, shown), whole = reader.recent(kept, sort, offset, size), True
             # On the call's span, the SDK's: the mode, the documents found, whether words
@@ -659,8 +670,8 @@ class Library:
             items = []
             person, held = about(reader, kept, [entry.path for entry in shown])
             for number, entry in enumerate(shown, offset + 1):
-                passage = passage_of(reader, entry, ranked, planned)
-                ref = entry.front.key or entry.front.id
+                passage = snippet_of(reader, entry, ranked, planned)
+                ref = ref_of(entry.front.key, entry.front.id)
                 opening = responses.call(self.read, ref=ref, section=passage.number)
                 items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
@@ -707,11 +718,11 @@ class Library:
 
     def _asked(
         self, question: str, filters: SearchFilters | None, cursor: str | None, mode: Mode
-    ) -> tuple[str, list[tuple[Entry, Passage]], Ranking]:
+    ) -> tuple[str, list[tuple[IndexedDocument, Passage]], Ranking]:
         """Write ask's answer in a mode; give the documents and passages quoted, and the ranking."""
         given = checked(filters)
         bounded(question=(question, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
-        planned = plan(question)
+        planned = plan_query(question)
         with self._reading() as reader:
             built_at, build = reader.built_at(), reader.build()
             offset, order = continued(cursor, build)
@@ -728,17 +739,17 @@ class Library:
                 return responses.answer(NO_QUESTION), [], Ranking(paths=[], whole=True, meaning={})
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
-            entries = {entry.path: entry for entry in reader.entries(paths=paths)}
-            chosen = excerpts(reader, ranked, planned, paths)
+            indexed = {entry.path: entry for entry in reader.indexed_documents(paths=paths)}
+            chosen = passages(reader, ranked, planned, paths)
             person, held = about(reader, kept, paths)
-        pairs = [(entries[path], passage) for path, passage in zip(paths, chosen, strict=True)]
+        pairs = [(indexed[path], passage) for path, passage in zip(paths, chosen, strict=True)]
         items = [
-            responses.excerpt(
+            responses.passage(
                 number,
                 entry,
                 passage,
                 responses.call(
-                    self.read, ref=entry.front.key or entry.front.id, section=passage.number
+                    self.read, ref=ref_of(entry.front.key, entry.front.id), section=passage.number
                 ),
                 held.get(entry.path),
             )
@@ -760,7 +771,7 @@ class Library:
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""
         return [
-            Shown(path=entry.path, section=passage.number, text=passage.snippet)
+            Shown(path=entry.path, section=passage.number, text=passage.text)
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
@@ -781,16 +792,18 @@ class Library:
         Give the first ``limit``, each with the section that search shows for it, and
         the note saying why meaning was not used, if it was asked for and was not.
         """
-        planned = plan(query)
+        planned = plan_query(query)
         with self._reading() as reader:
             asked = Asked(
                 query=query, planned=planned, filters=Filters(), sort="relevance", mode=mode
             )
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
-            entries = {entry.path: entry for entry in reader.entries(paths=ranked.paths[:limit])}
+            indexed = {
+                entry.path: entry for entry in reader.indexed_documents(paths=ranked.paths[:limit])
+            }
             shown = []
             for path in ranked.paths[:limit]:
-                number = passage_of(reader, entries[path], ranked, planned).number
+                number = snippet_of(reader, indexed[path], ranked, planned).number
                 start, end = reader.bounds(path)[number - 1]
                 shown.append(Shown(path=path, section=number, text=reader.text(path, start, end)))
         return shown, ranked.note
@@ -825,7 +838,7 @@ class Library:
             last = min(end, begin + clamp(max_chars, CHARS_LIMITS))
             text = reader.text(entry.path, begin, last)
         frame = responses.metadata(entry, whole=begin == 0)
-        ref = entry.front.key or entry.front.id
+        ref = ref_of(entry.front.key, entry.front.id)
         later = responses.call(self.read, ref=ref, section=section, offset=end, max_chars=max_chars)
         allowed = responses.budget(max_chars, READ_CHARS) - responses.RESERVE
         stop = begin + responses.cut(text, allowed - responses.tokens(frame + later))
@@ -899,5 +912,5 @@ class Library:
     def status(self) -> str:
         """Say what the offline mirror holds, and when its index was built."""
         with self._reading() as reader:
-            summary = reader.summary()
-        return responses.status(summary, self._docs)
+            state = reader.index_status()
+        return responses.status(state, self._docs)

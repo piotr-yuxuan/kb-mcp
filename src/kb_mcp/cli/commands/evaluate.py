@@ -16,10 +16,10 @@ from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,
     DIVIDER,
     HEADER,
+    EvaluatedIndex,
     EvaluationError,
     GoldenError,
-    Run,
-    Target,
+    IndexMeasures,
     ask_row,
     built,
     compared,
@@ -35,6 +35,7 @@ from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.observability.domain.log_files import STAMP
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
@@ -43,23 +44,23 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
-
-STAMP = "%Y%m%dT%H%M%SZ"
+    from kb_mcp.kernel.output import Detail
 
 
-class Evaluated(Record):
-    """How each target served the golden questions, each model's chunking, the results file."""
+class IndexesEvaluated(Record):
+    """What each evaluated index measured, each model's chunking, and the results file."""
 
-    runs: list[Run]
+    runs: list[IndexMeasures]
     choices: dict[str, Choice]
     results: Path
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
+def run(
+    arguments: argparse.Namespace, loaded: Loaded
+) -> tuple[ExitStatus, IndexesEvaluated | None]:
     """Evaluate each model and chunking; exit 1 on a failure, 2 for a refused golden file.
 
-    Each target connects anew, so that the tokens reported are its own. The results,
+    Each evaluated index connects anew, so that the tokens reported are its own. The results,
     ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
     """
     settings = loaded.settings
@@ -72,12 +73,12 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     built_at = datetime.now(UTC)
     try:
         with open_endpoint(arguments, settings) as opened:
-            targets = [
-                Target(connect(opened, name), chunking)
+            indexes = [
+                EvaluatedIndex(connect(opened, name), chunking)
                 for name in arguments.model or [settings.model]
                 for chunking in arguments.chunking or CHUNKINGS
             ]
-            runs = evaluate(settings, questions, targets, time.perf_counter, built_at)
+            runs = evaluate(settings, questions, indexes, time.perf_counter, built_at)
     except (ModelError, EvaluationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
@@ -86,10 +87,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     choices = compared(runs, questions)
     kept = record(runs, golden, built_at, choices)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, Evaluated(runs=runs, choices=choices, results=results)
+    return ExitStatus.OK, IndexesEvaluated(runs=runs, choices=choices, results=results)
 
 
-def text(evaluated: Evaluated, summary: Summary) -> str:
+def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
     """Write each run's measures, each model's choice of chunking, then the results file.
 
     Short gives each run's row of all the questions, mode by mode, for search and for

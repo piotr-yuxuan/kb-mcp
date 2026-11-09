@@ -19,17 +19,17 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 
 from kb_mcp.cli import options
-from kb_mcp.cli.domain.command import PROGRAM
 from kb_mcp.kernel.exit_status import MEANINGS
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.sources.registry import SOURCES, refuse
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 # The entry that loads the settings and runs the chosen subcommand.
-ENTRY = "kb_mcp.cli.commands._shared"
+ENTRY_MODULE = "kb_mcp.cli.commands._shared"
 # What observes a run: its logs, from the start on stderr, never on stdout.
 OBSERVED = "kb_mcp.observability.app.observed"
 # The commands that plan 031 removed, whose log files, which hold titles and queries, a
@@ -59,7 +59,7 @@ class Version(argparse.Action):
 
 def parser(
     parser_class: type[argparse.ArgumentParser] = argparse.ArgumentParser,
-    sources: Sequence[Declared] = SOURCES,
+    sources: Sequence[Source] = SOURCES,
 ) -> argparse.ArgumentParser:
     """Return the command's parser, of this class, with every subcommand declared.
 
@@ -73,7 +73,8 @@ def parser(
     program = parser_class(
         prog=PROGRAM,
         description=(
-            "Knowledge base MCP: an offline mirror of Confluence and Jira Cloud, served over MCP."
+            "An offline mirror of Confluence, Jira Cloud and a work log, served to coding agents"
+            " over MCP."
         ),
     )
     program.add_argument(
@@ -103,7 +104,7 @@ def parser(
     return program
 
 
-def main(argv: Sequence[str] | None = None, sources: Sequence[Declared] = SOURCES) -> int:
+def main(argv: Sequence[str] | None = None, sources: Sequence[Source] = SOURCES) -> int:
     """Parse the arguments, run the chosen subcommand, and return its exit status.
 
     ``sources`` is the registry, ``SOURCES`` unless a test gives one of its own: first
@@ -124,4 +125,4 @@ def main(argv: Sequence[str] | None = None, sources: Sequence[Declared] = SOURCE
     if not arguments.command.observed:
         return importlib.import_module(arguments.command.run).run(arguments)
     with importlib.import_module(OBSERVED).early():
-        return importlib.import_module(ENTRY).enter(arguments, given, sources)
+        return importlib.import_module(ENTRY_MODULE).enter(arguments, given, sources)

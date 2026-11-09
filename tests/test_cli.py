@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 import pytest
 
+import kb_mcp
 from kb_mcp.cli import commands, options
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import setting_paths
@@ -26,8 +27,8 @@ from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from kb_mcp.kernel.output import Output
 from tests.composed import MODEL
 from tests.endpoint import nothing_listening
+from tests.test_confirmation import read_until
 from tests.test_observed import said as said_on
-from tests.test_question import read_until
 from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
@@ -249,6 +250,23 @@ def test_refused_settings_exit_before_the_run_is_imported(
     config.write_text('sight = "https://example.atlassian.net"\n', "utf-8")
     assert main(["extra", "--config", str(config)]) == BAD_SETTINGS
     assert "sight (config.toml): not a setting" in capsys.readouterr().err
+
+
+def test_the_program_says_what_it_is_in_one_sentence_everywhere() -> None:
+    """Plan 052: the project's description, the package's docstring and --help's, alike.
+
+    The README and the instructions for coding agents open with it too, its words as they
+    are, whatever their lines.
+    """
+    said = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["description"]
+    assert "work log" in said
+    assert (kb_mcp.__doc__ or "").splitlines()[0] == said
+    assert parser().description == said
+    assert [
+        page
+        for page in ("README.md", "AGENTS.md")
+        if said not in " ".join((ROOT / page).read_text("utf-8").split())
+    ] == []
 
 
 def test_the_version_is_the_project_s(capsys: CaptureFixture[str]) -> None:

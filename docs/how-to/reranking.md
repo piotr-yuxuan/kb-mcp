@@ -9,7 +9,7 @@ which you install and start, as you do Ollama or whichever OpenAI-compatible API
 the embeddings, and which this program reaches on this machine alone, never elsewhere.
 
 Reranking is off by default: on the sandbox's questions it ranked worse than search
-alone, and the user chose the more accurate results. It can be turned on, and measured
+alone, and the maintainer chose the more accurate results. It can be turned on, and measured
 on your own machine and questions to decide whether to (below).
 
 ## Install llama.cpp
@@ -112,7 +112,7 @@ questions, on the development laptop's CPU, reranking 10, 20 or 30 documents ran
 worse than the order not reranked: MRR@10 of 0.542 to 0.557, against 0.639, keyword
 questions losing about 0.2, and a search took 29 to 37 seconds at the median
 ([evaluating search](../explanation/search-evaluation.md#plan-022-reranking-on-a-laptop)).
-The user chose the more accurate results, so it stays off until a measure on the
+The maintainer chose the more accurate results, so it stays off until a measure on the
 machine that serves agents, with its own questions, says that it helps there
 ([on the user's machine](#on-the-users-machine-with-your-own-mirror)).
 

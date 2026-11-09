@@ -29,6 +29,7 @@ import numpy as np
 from opentelemetry import trace
 
 from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.mirror.adapters.conversions import damaged
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.domain import people
@@ -36,9 +37,9 @@ from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
     DamagedIndexError,
     Held,
+    IndexedBody,
     Piece,
     Skipped,
-    Stored,
     UnavailableIndexError,
     Updated,
 )
@@ -46,13 +47,13 @@ from kb_mcp.search.domain.search import (
     WORDS,
     Activity,
     Embedded,
-    Entry,
     Filters,
+    IndexedDocument,
+    IndexStatus,
     Passage,
-    Persons,
+    PersonCounts,
     Pieces,
     Score,
-    Summary,
     sections,
 )
 
@@ -236,7 +237,7 @@ ORDER BY d.path, s.number
 # the copy resolves to a rowid; or the removal of one.
 FILL_ADD = """
 INSERT INTO pieces (section, start, stop, key, vector)
-SELECT s.rowid, :start, :stop, :key, :vector
+SELECT s.rowid, :start, :stop, :vector_key, :vector
 FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path AND s.number = :number
 """
@@ -245,7 +246,7 @@ DELETE FROM pieces WHERE rowid IN (
   SELECT p.rowid FROM pieces p JOIN sections s ON s.rowid = p.section
   JOIN documents d ON d.rowid = s.document
   WHERE d.path = :path AND s.number = :number AND p.start = :start AND p.stop = :stop
-    AND p.key = :key
+    AND p.key = :vector_key
 )
 """
 TEXT = """
@@ -309,7 +310,7 @@ FROM people p JOIN documents d ON d.rowid = p.document
 # Each document's place by its path's text, which numbers it for the join: ties go to the
 # first row, and by rowid to whichever file was not edited last.
 BY_PATH = "SELECT rowid, row_number() OVER (ORDER BY path) FROM documents"
-SUMMARIES = """
+SUMMARY_LINKS = """
 SELECT t.rowid, m.rowid
 FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
 WHERE t.type = 'transcript' AND json_extract(l.value, '$.relation') = 'summary'
@@ -395,12 +396,6 @@ def moment(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="seconds")
 
 
-def damaged(error: sqlite3.DatabaseError) -> bool:
-    """Say whether an error of SQLite's is that of a damaged file, not of its use or its disk."""
-    code = getattr(error, "sqlite_errorcode", 0) & 0xFF  # the primary code
-    return code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}
-
-
 def awaiting(connection: sqlite3.Connection, chunking: Chunking) -> int:
     """Count the documents that hold no piece and want one, as ``chunking`` cuts them.
 
@@ -412,7 +407,7 @@ def awaiting(connection: sqlite3.Connection, chunking: Chunking) -> int:
     wanting = 0
     for row in rows.execute(UNFILLED).fetchall():
         body = "".join(text for (text,) in connection.execute(BODY, (row["rowid"],)))
-        wanting += bool(CHUNKERS[chunking].cut(entry(row).front, sections(body)))
+        wanting += bool(CHUNKERS[chunking].cut(indexed_document(row).front, sections(body)))
     return wanting
 
 
@@ -532,14 +527,14 @@ class Writer:
         )
 
     @TRACER.start_as_current_span("index.join")
-    def join(self, aliases: Mapping[str, str]) -> people.Outcome:
+    def join(self, aliases: Mapping[str, str]) -> people.JoinOutcome:
         """Join the people of the documents added into persons, as ``people.joined`` rules.
 
         Once the last document is added: every row of ``people`` is given its person, and
         ``persons`` and ``person_names`` hold each person and each of its spellings, with
         how it joined. A transcript's meetings are the meetings that its ``summary`` links
         name: no other document, so that each is joined before the transcript.
-        ``aliases`` gives each alias's name and target, as the alias file's reader checks
+        ``aliases`` gives each alias's name and value, as the alias file's reader checks
         them, and the build records their digest. Documents go to the join by the order
         of their paths, so that its ties go as in a whole build, whichever file was edited
         last. Give back how many persons there are, and what the join left apart: the
@@ -549,7 +544,7 @@ class Writer:
         self.aliases = people.aliases_digest(aliases)
         places = dict(self._connection.execute(BY_PATH))
         rows = {
-            rowid: people.Row(
+            rowid: people.PersonRow(
                 document=places[document],
                 role=role,
                 name=name,
@@ -561,7 +556,7 @@ class Writer:
             )
         }
         meetings: dict[int, set[int]] = {}
-        for transcript, meeting in self._connection.execute(SUMMARIES):
+        for transcript, meeting in self._connection.execute(SUMMARY_LINKS):
             meetings.setdefault(places[transcript], set()).add(places[meeting])
         found = people.joined(rows.values(), meetings, aliases)
         self._connection.executemany(
@@ -575,12 +570,12 @@ class Writer:
         self._connection.executemany(
             "INSERT INTO person_names (person, name, key, joined) VALUES (?, ?, ?, ?)",
             [
-                (person.id, spelling.name, spelling.key, spelling.how)
+                (person.id, spelling.name, spelling.name_key, spelling.how)
                 for person in found.persons
-                for spelling in person.names
+                for spelling in person.spellings
             ],
         )
-        return people.Outcome(
+        return people.JoinOutcome(
             count=len(found.persons), ambiguous=found.ambiguous, unused=found.unused
         )
 
@@ -730,7 +725,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
             connection.close()
 
 
-def entry(row: sqlite3.Row) -> Entry:
+def indexed_document(row: sqlite3.Row) -> IndexedDocument:
     """Read a row of ``documents`` back into the front matter it was written from."""
     front = FrontMatter(
         source=row["source"],
@@ -764,7 +759,7 @@ def entry(row: sqlite3.Row) -> Entry:
         fetched_at=datetime.fromisoformat(row["fetched_at"]),
     )
     sections = row["last_section"] - row["first_section"] + 1
-    return Entry(path=row["path"], front=front, length=row["length"], sections=sections)
+    return IndexedDocument(path=row["path"], front=front, length=row["length"], sections=sections)
 
 
 class Reader:
@@ -817,7 +812,7 @@ class Reader:
         }
         return found, every or len(found) < PER_EXPRESSION
 
-    def passage(self, path: str, match: str) -> Passage | None:
+    def snippet(self, path: str, match: str) -> Passage | None:
         """Find the section of a document that best matches, with a snippet of its body.
 
         Sections are judged by their heading and body alone: a match on the title alone
@@ -828,17 +823,17 @@ class Reader:
         return (
             None
             if row is None
-            else Passage(number=row["number"], heading=row["heading"], snippet=row["snippet"])
+            else Passage(number=row["number"], heading=row["heading"], text=row["snippet"])
         )
 
-    def entries(
+    def indexed_documents(
         self,
         *,
         paths: Iterable[str] = (),
         keys: Iterable[str] = (),
         ids: Iterable[str] = (),
         filters: Filters | None = None,
-    ) -> list[Entry]:
+    ) -> list[IndexedDocument]:
         """Find the documents of these paths, issue keys, and page or work-log ids, by path.
 
         An issue's id is never looked up, since a page may have the same.
@@ -849,11 +844,11 @@ class Reader:
             "ids": json.dumps(list(ids)),
             "kept": self.kept(filters or Filters()),
         }
-        return [entry(row) for row in self._connection.execute(ENTRIES, parameters)]
+        return [indexed_document(row) for row in self._connection.execute(ENTRIES, parameters)]
 
     def recent(
         self, filters: Filters, by: Sort, offset: int, limit: int
-    ) -> tuple[int, list[Entry]]:
+    ) -> tuple[int, list[IndexedDocument]]:
         """Count the documents that pass the filters, and list a page of them, newest first.
 
         Newest by created date, or else by update; ties go to the newest update, then the
@@ -862,12 +857,14 @@ class Reader:
         kept = self.kept(filters)
         total = self._connection.execute(COUNT, {"kept": kept}).fetchone()[0]
         parameters = {"kept": kept, "by": by, "offset": offset, "limit": limit}
-        return total, [entry(row) for row in self._connection.execute(RECENT, parameters)]
+        return total, [
+            indexed_document(row) for row in self._connection.execute(RECENT, parameters)
+        ]
 
-    def listing(self, filters: Filters) -> list[Entry]:
+    def listing(self, filters: Filters) -> list[IndexedDocument]:
         """List every document that passes the filters, such as those of one space."""
         rows = self._connection.execute(LISTING, {"kept": self.kept(filters)})
-        return [entry(row) for row in rows]
+        return [indexed_document(row) for row in rows]
 
     def bounds(self, path: str) -> list[tuple[int, int]]:
         """Give where each section of a document starts and ends, in order."""
@@ -891,7 +888,7 @@ class Reader:
     def persons(self, key: str, joined: str | None = None) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
         """
         rows = self._connection.execute(
             "SELECT DISTINCT person FROM person_names"
@@ -914,11 +911,13 @@ class Reader:
             " ORDER BY name, key, joined",
             (person,),
         )
-        spellings = tuple(people.Spelling(name=name, key=key, how=how) for name, key, how in rows)
+        spellings = tuple(
+            people.Spelling(name=name, name_key=key, how=how) for name, key, how in rows
+        )
         roles = self._connection.execute(PERSON_ROLES, {"person": person})
         sources = self._connection.execute(PERSON_SOURCES, {"person": person}).fetchall()
         return Activity(
-            person=people.Person(id=person, name=name[0], names=spellings),
+            person=people.Person(id=person, name=name[0], spellings=spellings),
             roles={row[0]: row[1] for row in roles},
             sources={row[0]: row[1] for row in sources},
             last=max(datetime.fromisoformat(row[2]) for row in sources),
@@ -961,7 +960,7 @@ class Reader:
             },
         )
 
-    def documents(self) -> list[Stored]:
+    def documents(self) -> list[IndexedBody]:
         """Give every document with its front matter and its body as put, by path.
 
         The body is each section's heading line and body, in order, which give it back.
@@ -971,8 +970,10 @@ class Reader:
             bodies.setdefault(path, []).append(text)
         rows = self._connection.execute("SELECT * FROM documents ORDER BY path")
         return [
-            Stored(
-                path=row["path"], front=entry(row).front, body="".join(bodies.get(row["path"], ()))
+            IndexedBody(
+                path=row["path"],
+                front=indexed_document(row).front,
+                body="".join(bodies.get(row["path"], ())),
             )
             for row in rows
         ]
@@ -1018,7 +1019,7 @@ class Reader:
     def pieces(self) -> list[Piece]:
         """Give every piece that has its vector, by path, section number and start."""
         return [
-            Piece(path=path, number=number, start=start, stop=stop, key=key)
+            Piece(path=path, number=number, start=start, stop=stop, vector_key=key)
             for path, number, start, stop, key in self._connection.execute(HELD_PIECES)
         ]
 
@@ -1062,7 +1063,7 @@ class Reader:
         ).fetchone()
         return "" if row is None else row[0]
 
-    def summary(self) -> Summary:
+    def index_status(self) -> IndexStatus:
         """Say what the index holds and when it was built."""
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
@@ -1073,7 +1074,7 @@ class Reader:
         shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
         embedded = self.embedded()
         wanting = awaiting(self._connection, embedded.chunking) if embedded else 0
-        return Summary(
+        return IndexStatus(
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
             types=dict(self.values("type")),
@@ -1081,7 +1082,7 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
-            people=Persons(count=persons, across=across, alone=alone, shared=shared),
+            people=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
             pieces=pieces,
             chunking=embedded.chunking if embedded else None,

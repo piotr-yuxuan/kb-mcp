@@ -20,9 +20,15 @@ from kb_mcp.mcp.app.tools import Library
 from kb_mcp.mirror.domain.mirror import PersonRole
 from kb_mcp.search.adapters.aliases import read_aliases
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
-from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, refresh, update_index
+from kb_mcp.search.app.indexing import (
+    Embedding,
+    Indexing,
+    build_index,
+    fill_and_prune,
+    update_index,
+)
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Scripted, connector, scripted, tiny
+from tests.endpoint import Scripted, connect_scripted, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, location, page, worklog_document, write
 from tests.test_evaluate import GOLDEN
 from tests.test_people import SAM_2
@@ -109,7 +115,7 @@ class Step:
     def run(self) -> None:
         """Update the index, then fill it, as ``index`` then ``embed`` do."""
         assert update_index(self.indexing(), MOMENT) is not None
-        assert refresh(self.indexing()) is not None
+        assert fill_and_prune(self.indexing()) is not None
 
     def whole(self) -> Path:
         """Build the mirror whole, by ``build_index``, with the same aliases, model and cut."""
@@ -184,7 +190,7 @@ QUERIES = ("vacation lunch", "revert release", "PROJ-7 upgrade", "lorem ipsum", 
 
 def rankings(index: Path, docs: Path) -> dict[tuple[str, SearchMode], list[tuple[str, int, str]]]:
     """Rank each query in each mode, the reranker off, as an evaluation does."""
-    library = Library(SqliteIndex(index), docs, Meaning(connector()))
+    library = Library(SqliteIndex(index), docs, Meaning(connect_scripted()))
     return {
         (query, mode): [
             (shown.path, shown.section, shown.text) for shown in library.ranked(query, mode)[0]
@@ -303,7 +309,7 @@ def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data:
     assert updated is not None
     assert (updated.report.copied, updated.report.added) == (len(held["documents"]), 0)
     assert updated.report.persons.count < len(held["persons"])
-    filled = refresh(step.indexing())
+    filled = fill_and_prune(step.indexing())
     assert filled is not None
     assert filled.unchanged
     assert rows(data / "index.sqlite") == rows(step.whole())
@@ -312,6 +318,6 @@ def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data:
     (data / "aliases.toml").write_text("not = [toml\n", encoding="utf-8")
     assert update_index(step.indexing(), MOMENT) is None
     assert (data / "index.sqlite").read_bytes() == before
-    filled = refresh(step.indexing())
+    filled = fill_and_prune(step.indexing())
     assert filled is not None
     assert filled.unchanged

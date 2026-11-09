@@ -18,7 +18,7 @@ from opentelemetry import metrics
 from kb_mcp.config.domain.settings import SettingsError
 from kb_mcp.kernel.endpoint import loopback, refused_endpoint
 from kb_mcp.kernel.record import Record
-from kb_mcp.observability.adapters.http import Recorded
+from kb_mcp.observability.adapters.http import ObservedTransport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -45,6 +45,10 @@ TOKEN_USAGE = metrics.get_meter(__name__).create_histogram(
     description="Number of input and output tokens used.",
     explicit_bucket_boundaries_advisory=TOKEN_BUCKETS,
 )
+# Statuses that may point at what was sent, not at the server: 500 too, as bge-m3 answers
+# to some Markdown and llama.cpp fails a whole request for one document that it cannot
+# score. A gateway's 502, 503 or 504, and a 429, are the server's, never what was sent.
+REFUSING = frozenset({400, 413, 422, 500})
 # Statuses worth another attempt: the endpoint busy, or failing for a while.
 RETRIED = frozenset({429, 500, 502, 503, 504})
 # Seconds waited before the second attempt, and before the third.
@@ -97,7 +101,7 @@ def endpoint(
     Raises SettingsError for an address that is not a literal address of this machine,
     unless ``remote_allowed``, and for plain http to one even then. On this machine the
     environment's proxies are ignored, since one would carry the text away; redirects
-    are never followed. Each request sent is observed, as ``Recorded`` has it.
+    are never followed. Each request sent is observed, as ``ObservedTransport`` has it.
     ``transport`` replaces the network, for tests.
     """
     refusal = refused_endpoint(url, service, remote_allowed=remote_allowed)
@@ -113,7 +117,7 @@ def endpoint(
         base_url=url,
         headers={"Authorization": f"Bearer {key}"} if key else {},
         follow_redirects=False,
-        transport=Recorded(network, httpx.URL(url).host),
+        transport=ObservedTransport(network, httpx.URL(url).host),
     )
     return Endpoint(http, service, remote_allowed)
 

@@ -26,6 +26,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,
+    REFUSING,
     TOKEN_USAGE,
     WAITS_S,
     Bounds,
@@ -45,10 +46,6 @@ KEY_VARIABLE = "KB_MCP_EMBEDDING_API_KEY"
 # Texts sent in one request; a piece is at most about 1,500 characters.
 BATCH = 32
 MAX_DIMENSIONS = 8192
-# Statuses that may point at what was sent, so that a text sent alone may still embed:
-# 500 too, as bge-m3 answers to some Markdown. A gateway's 502, 503 or 504, and a 429,
-# are the endpoint's, never the text's.
-REFUSING = frozenset({400, 413, 422, 500})
 PROBE = "probe"
 # The version of how this module turns texts into vectors; a change that alters any
 # vector raises it, so that no vector embedded before is reused.
@@ -97,7 +94,7 @@ def prefixes(model: str) -> Prefixes | None:
     return PREFIXES.get(ollama_name(model).partition(":")[0])
 
 
-class RefusedError(ModelError):
+class EmbeddingRefusedError(ModelError):
     """An answer that points at what was sent: a text sent alone may still embed."""
 
 
@@ -181,7 +178,7 @@ def embeddings(
             raise ModelError(message)
         if status != httpx.codes.OK:
             message = f"{model}: the endpoint answered {status}"
-            raise (RefusedError if status in REFUSING else ModelError)(message)
+            raise (EmbeddingRefusedError if status in REFUSING else ModelError)(message)
         try:
             answer = json.loads(body)
             items = sorted(answer["data"], key=lambda item: item["index"])
@@ -324,7 +321,7 @@ class ApiEmbedder:
                 answer = embeddings(self.endpoint, self.name, batch, DOCUMENTS, self.dimensions)
                 found += list(answer.vectors)
                 self.counted.append(answer.tokens)
-            except RefusedError:
+            except EmbeddingRefusedError:
                 alone: list[NDArray[np.float32] | None] = []
                 for text in batch:
                     try:
@@ -333,7 +330,7 @@ class ApiEmbedder:
                         )
                         alone.append(answer.vectors[0])
                         self.counted.append(answer.tokens)
-                    except RefusedError:
+                    except EmbeddingRefusedError:
                         alone.append(None)
                 if all(vector is None for vector in alone):
                     if len(alone) > 1:

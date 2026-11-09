@@ -30,7 +30,7 @@ from kb_mcp.search.domain.people import (
     Joined,
     Joining,
     Person,
-    Row,
+    PersonRow,
     Spelling,
     by_alias,
     by_meeting,
@@ -62,9 +62,11 @@ def day(number: int) -> datetime:
     return datetime(2026, 10, number, tzinfo=UTC)
 
 
-def named(document: int, name: str) -> Row:
+def named(document: int, name: str) -> PersonRow:
     """Give a row of the work log's: a participant or a speaker, without an account."""
-    return Row(document=document, role="participant", name=name, account=None, updated=day(20))
+    return PersonRow(
+        document=document, role="participant", name=name, account=None, updated=day(20)
+    )
 
 
 ROBIN = anchored("account\nacct-0001")
@@ -80,10 +82,16 @@ STAND_UP, REVIEW, PLANNING = 11, 12, 13
 LINKED, UNLINKED, OTHER_UNLINKED, PLANNED, STOOD = 21, 22, 23, 24, 25
 LINKS = {LINKED: {REVIEW}, PLANNED: {PLANNING}, STOOD: {STAND_UP}}
 ACCOUNTS = (
-    Row(document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)),
-    Row(document=2, role="creator", name="Robin Sample", account="acct-0001", updated=day(21)),
-    Row(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
-    Row(document=4, role="commenter", name="Sam Sample", account="acct-0003", updated=day(19)),
+    PersonRow(
+        document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)
+    ),
+    PersonRow(
+        document=2, role="creator", name="Robin Sample", account="acct-0001", updated=day(21)
+    ),
+    PersonRow(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
+    PersonRow(
+        document=4, role="commenter", name="Sam Sample", account="acct-0003", updated=day(19)
+    ),
 )
 ROWS = (
     *ACCOUNTS,
@@ -130,7 +138,9 @@ def account(person: str, *names: str) -> Person:
     return Person(
         id=person,
         name=names[0],
-        names=tuple(Spelling(name=name, key=name_key(name), how="account") for name in names),
+        spellings=tuple(
+            Spelling(name=name, name_key=name_key(name), how="account") for name in names
+        ),
     )
 
 
@@ -196,7 +206,7 @@ def test_a_key_keeps_what_makes_another_name(one: str, other: str) -> None:
 
 
 def test_by_alias_gives_a_name_the_person_its_alias_means() -> None:
-    """Rule 2 alone: by the name's key; a target that names nobody or several gives none."""
+    """Rule 2 alone: by the name's key; a value that names nobody or several gives none."""
     rows = (*ACCOUNTS, named(UNLINKED, "Robin"), named(UNLINKED, "Alex"), named(UNLINKED, "Kim"))
     aliases = {"Robin": "Robin Example", "Alex": "Nobody", "Kim": "Sam Sample"}
     joining = Joining(rows, {}, aliases)
@@ -256,7 +266,7 @@ def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> N
     result = joined((*ROWS, named(LINKED, "Rob")), LINKS, {})
     assert result.of[named(LINKED, "Rob")] == rob
     assert (
-        Person(id=rob, name="Rob", names=(Spelling(name="Rob", key="rob", how="name"),))
+        Person(id=rob, name="Rob", spellings=(Spelling(name="Rob", name_key="rob", how="name"),))
         in result.persons
     )
 
@@ -277,12 +287,12 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                     Person(
                         id=ROBIN,
                         name="Robin Sample",
-                        names=(
-                            Spelling(name="Robin", key="robin", how="meeting"),
-                            Spelling(name="Robin Example", key="robin example", how="account"),
-                            Spelling(name="Robin Example", key="robin example", how="name"),
-                            Spelling(name="Robin Sample", key="robin sample", how="account"),
-                            Spelling(name="robin  EXAMPLE", key="robin example", how="name"),
+                        spellings=(
+                            Spelling(name="Robin", name_key="robin", how="meeting"),
+                            Spelling(name="Robin Example", name_key="robin example", how="account"),
+                            Spelling(name="Robin Example", name_key="robin example", how="name"),
+                            Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+                            Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
                         ),
                     ),
                     account(SAM_2, "Sam Sample"),
@@ -290,36 +300,40 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                     Person(
                         id=SAM_ALONE,
                         name="Sam Sample",
-                        names=(
-                            Spelling(name="Sam", key="sam", how="meeting"),
-                            Spelling(name="Sam Sample", key="sam sample", how="name"),
+                        spellings=(
+                            Spelling(name="Sam", name_key="sam", how="meeting"),
+                            Spelling(name="Sam Sample", name_key="sam sample", how="name"),
                         ),
                     ),
                     Person(
                         id=ALEX_EXAMPLE,
                         name="Alex Example (not in the header)",
-                        names=(
-                            Spelling(name="Alex", key="alex", how="meeting"),
-                            Spelling(name="Alex Example", key="alex example", how="name"),
+                        spellings=(
+                            Spelling(name="Alex", name_key="alex", how="meeting"),
+                            Spelling(name="Alex Example", name_key="alex example", how="name"),
                             Spelling(
                                 name="Alex Example (not in the header)",
-                                key="alex example",
+                                name_key="alex example",
                                 how="name",
                             ),
                         ),
                     ),
                     Person(
-                        id=ALEX, name="Alex", names=(Spelling(name="Alex", key="alex", how="name"),)
+                        id=ALEX,
+                        name="Alex",
+                        spellings=(Spelling(name="Alex", name_key="alex", how="name"),),
                     ),
                     Person(
                         id=ROBIN_ALONE,
                         name="Robin",
-                        names=(Spelling(name="Robin", key="robin", how="name"),),
+                        spellings=(Spelling(name="Robin", name_key="robin", how="name"),),
                     ),
                     Person(
                         id=ROBIN_OTHER,
                         name="Robin Other",
-                        names=(Spelling(name="Robin Other", key="robin other", how="name"),),
+                        spellings=(
+                            Spelling(name="Robin Other", name_key="robin other", how="name"),
+                        ),
                     ),
                 ),
                 key=lambda person: person.id,
@@ -339,7 +353,7 @@ def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     """The offsite lists Alex (Ops) and Alex (Sales): two persons, as the user wrote them.
 
     Its transcript's Alex could be either: it is reported, once with the two, under the
-    first of them, and goes with the other Alexes by name alone. An alias's target names
+    first of them, and goes with the other Alexes by name alone. An alias's value names
     one of them by its annotation. One annotation of a key still joins its name: the
     stand-up's Alex Example (not in the header).
     """
@@ -364,9 +378,9 @@ def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     assert next(person for person in result.persons if person.id == ops) == Person(
         id=ops,
         name="alex  (OPS)",
-        names=(
-            Spelling(name="A. Ops", key="a. ops", how="alias"),
-            Spelling(name="Alex (Ops)", key="alex", how="name"),
+        spellings=(
+            Spelling(name="A. Ops", name_key="a. ops", how="alias"),
+            Spelling(name="Alex (Ops)", name_key="alex", how="name"),
         ),
     )
 
@@ -397,7 +411,9 @@ def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reporte
     account's joins both to it, and nothing is reported then.
     """
     rows = (
-        Row(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
+        PersonRow(
+            document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)
+        ),
         named(STAND_UP, "Sam Sample (not in the header)"),
         named(REVIEW, "Sam Sample (late)"),
     )
@@ -443,8 +459,12 @@ def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> 
     """
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
-        Row(document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)),
-        Row(document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)),
+        PersonRow(
+            document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)
+        ),
+        PersonRow(
+            document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)
+        ),
         named(STAND_UP, "robin  (OPS)"),
         named(REVIEW, "Robin"),
     )
@@ -460,7 +480,7 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
     could be two people is not joined by a guess.
     """
     rows = (
-        Row(
+        PersonRow(
             document=5,
             role="creator",
             name="Robin Example (Sales)",
@@ -477,8 +497,12 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
 def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None:
     """Ties between an account's newest documents go to the first row in order."""
     rows = (
-        Row(document=2, role="author", name="Robin Sample", account="acct-0001", updated=day(20)),
-        Row(document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)),
+        PersonRow(
+            document=2, role="author", name="Robin Sample", account="acct-0001", updated=day(20)
+        ),
+        PersonRow(
+            document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)
+        ),
     )
     assert joined(rows, {}, {}).persons[0].name == "Robin Example"
 
@@ -501,8 +525,8 @@ def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
     assert result.of[named(PLANNED, "Robin")] == ROBIN
     robin = next(person for person in result.persons if person.id == ROBIN)
-    assert Spelling(name="Robin", key="robin", how="alias") in robin.names
-    assert Spelling(name="Robin", key="robin", how="meeting") not in robin.names
+    assert Spelling(name="Robin", name_key="robin", how="alias") in robin.spellings
+    assert Spelling(name="Robin", name_key="robin", how="meeting") not in robin.spellings
     assert ROBIN_ALONE not in {person.id for person in result.persons}
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Sam Sample"]
     assert result.unused == ()
@@ -521,7 +545,7 @@ def test_an_alias_never_takes_a_speaker_its_meeting_gives_another() -> None:
     assert result.of[named(linked_to_retro, "Robin")] == ROBIN_OTHER
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
     robin_other = next(person for person in result.persons if person.id == ROBIN_OTHER)
-    assert Spelling(name="Robin", key="robin", how="meeting") in robin_other.names
+    assert Spelling(name="Robin", name_key="robin", how="meeting") in robin_other.spellings
     assert result.unused == ()
 
 
@@ -537,10 +561,10 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
     assert next(person for person in result.persons if person.id == SAM_3) == Person(
         id=SAM_3,
         name="Sam Sample",
-        names=(
-            Spelling(name="Sam", key="sam", how="meeting"),
-            Spelling(name="Sam Sample", key="sam sample", how="account"),
-            Spelling(name="Sam Sample", key="sam sample", how="alias"),
+        spellings=(
+            Spelling(name="Sam", name_key="sam", how="meeting"),
+            Spelling(name="Sam Sample", name_key="sam sample", how="account"),
+            Spelling(name="Sam Sample", name_key="sam sample", how="alias"),
         ),
     )
     assert SAM_ALONE not in {person.id for person in result.persons}
@@ -550,7 +574,7 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
 def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_accounts_share_the_key() -> None:
     """The stand-up's Sam Sample, of two accounts' name, is a person by name alone.
 
-    Its id, which a refusal of Sam Sample lists, is a target as any person's: a meeting's
+    Its id, which a refusal of Sam Sample lists, is a value as any person's: a meeting's
     S. Sample and an unlinked transcript's Sam join it, and no alias is unused.
     """
     rows = (*ROWS, named(REVIEW, "S. Sample"), named(UNLINKED, "Sam"))
@@ -568,7 +592,7 @@ def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
     """
     rows = (
         *ROWS,
-        Row(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        PersonRow(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
         named(UNLINKED, "R."),
     )
     result = joined(rows, LINKS, {"R.": ROBIN_ALONE})
@@ -593,7 +617,7 @@ def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
 
 
 def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
-    """A target of nobody, by name or id, or of several; a key held by no name alone.
+    """A value of nobody, by name or id, or of several; a key held by no name alone.
 
     An account's name is the site's: an alias of it alone joins nothing.
     """
@@ -605,7 +629,7 @@ def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
         "Robin Sample": "Alex Example",
     }
     result = joined(ROWS, LINKS, aliases)
-    assert [(alias.name, alias.key, alias.reason) for alias in result.unused] == [
+    assert [(alias.name, alias.name_key, alias.reason) for alias in result.unused] == [
         ("Alex", "alex", NOBODY),
         ("Robin Other", "robin other", NOBODY),
         ("Sam", "sam", SEVERAL),
@@ -624,7 +648,7 @@ def test_an_alias_moves_the_names_without_an_account_alone() -> None:
 
 
 def test_a_person_by_name_alone_that_an_alias_made_is_named_as_its_target_is_written() -> None:
-    """The target as written names the person, not its most frequent spelling.
+    """The value as written names the person, not its most frequent spelling.
 
     By the person's id, the most frequent spelling names it still: Alex, of three rows.
     """
@@ -638,7 +662,7 @@ def test_a_person_by_name_alone_that_an_alias_made_is_named_as_its_target_is_wri
 
 
 def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
-    """Two targets written apart, of one key: the first alias in the file's order wins."""
+    """Two values written apart, of one key: the first alias in the file's order wins."""
     aliases = {"Alex": "alex EXAMPLE", "Kim": "Alex Example"}
     result = joined((*ROWS, named(UNLINKED, "Kim")), LINKS, aliases)
     assert next(person for person in result.persons if person.id == ALEX_EXAMPLE).name == (
@@ -647,7 +671,7 @@ def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
 
 
 def test_aliases_are_not_chained() -> None:
-    """An alias's target must be a person that names make, as without the aliases.
+    """An alias's value must be a person that names make, as without the aliases.
 
     Robin Other's own alias, written first, takes every Robin Other to Robin's account:
     the name makes no person, so Alex's alias to it names nobody, and changes nothing.
@@ -673,11 +697,11 @@ def test_an_alias_to_a_name_that_its_meeting_joins_elsewhere_names_nobody() -> N
     assert replace(result, unused=()) == joined(rows, LINKS, {})
 
 
-@pytest.mark.parametrize("target", ["Kim", anchored("name\nkim")])
-def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(target: str) -> None:
+@pytest.mark.parametrize("value", ["Kim", anchored("name\nkim")])
+def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(value: str) -> None:
     """Kim and two notes of Kim, which the two annotations part; "Kim" = "Kim" joins them.
 
-    Its target is the person of Kim alone, which Kim makes though the alias takes it, as
+    Its value is the person of Kim alone, which Kim makes though the alias takes it, as
     does that person's id; then no name is several persons.
     """
     rows = (
@@ -685,7 +709,7 @@ def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(target: str)
         named(REVIEW, "Kim (not in the header)"),
         named(PLANNING, "Kim (late)"),
     )
-    result = joined(rows, {}, {"Kim": target})
+    result = joined(rows, {}, {"Kim": value})
     assert set(result.of.values()) == {anchored("name\nkim")}
     assert (result.ambiguous, result.unused) == ((), ())
 
@@ -702,7 +726,7 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     retro, linked_to_retro = 14, 26
     rows = (
         *ROWS,
-        Row(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        PersonRow(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
         named(retro, "Robin"),
         named(retro, "Robin Other"),
         named(linked_to_retro, "Robin"),
@@ -726,8 +750,12 @@ def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() 
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
         *ACCOUNTS,
-        Row(document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)),
-        Row(document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)),
+        PersonRow(
+            document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)
+        ),
+        PersonRow(
+            document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)
+        ),
         named(REVIEW, "Robin Example"),
         named(LINKED, "Robin"),
     )
@@ -783,14 +811,14 @@ def test_a_name_is_reported_once_with_every_person_it_could_be() -> None:
     ],
     ids=["reversed", "rotated", "by name", "twice"],
 )
-def test_the_result_is_the_same_for_the_rows_in_any_order(rows: tuple[Row, ...]) -> None:
+def test_the_result_is_the_same_for_the_rows_in_any_order(rows: tuple[PersonRow, ...]) -> None:
     """Transcripts before their meetings, ties in another order, a row twice: no change."""
     aliases = {"Sam Sample": SAM_3, "Alex": "alex EXAMPLE"}
     assert joined(rows, LINKS, aliases) == joined(ROWS, LINKS, aliases)
 
 
 def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path) -> None:
-    """Names and targets as written, in the file's order; 200 characters are not too many."""
+    """Names and values as written, in the file's order; 200 characters are not too many."""
     path = tmp_path / "aliases.toml"
     long = "R" * 200
     path.write_text(
@@ -820,14 +848,14 @@ def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
         ('"" = "Sam Sample"\n', [""], "the name is empty"),
         ('" " = "Sam Sample"\n', [" "], "the name is empty"),
         ('"\\u0301" = "Robin"\n', ["\u0301"], "the name is empty"),
-        ('"Robin" = "\\u0301\\u0300"\n', ["Robin"], "its target is empty"),
-        ('"Sam" = ""\n', ["Sam"], "its target is empty"),
+        ('"Robin" = "\\u0301\\u0300"\n', ["Robin"], "its value is empty"),
+        ('"Sam" = ""\n', ["Sam"], "its value is empty"),
         ('"Sam\\nSample" = "Sam Sample"\n', ["Sam\nSample"], "the name holds a line break"),
         ('"Sam\\u2028" = "Sam Sample"\n', ["Sam\u2028"], "the name holds a line break"),
-        ('"Sam" = """Sam\nSample"""\n', ["Sam"], "its target holds a line break"),
-        ('"Sam" = "Sam Sample\\r"\n', ["Sam"], "its target holds a line break"),
+        ('"Sam" = """Sam\nSample"""\n', ["Sam"], "its value holds a line break"),
+        ('"Sam" = "Sam Sample\\r"\n', ["Sam"], "its value holds a line break"),
         (f'"{"R" * 201}" = "Robin"\n', ["R" * 201], "the name is longer than 200"),
-        (f'"Robin" = "{"R" * 201}"\n', ["Robin"], "its target is longer than 200"),
+        (f'"Robin" = "{"R" * 201}"\n', ["Robin"], "its value is longer than 200"),
         ('[Sam]\nname = "Sam Sample"\n', ["Sam"], "a table"),
         ('"Sam" = { name = "Sam Sample" }\n', ["Sam"], "a table"),
         ('"Sam" = 1\n', ["Sam"], "not text"),
@@ -843,14 +871,14 @@ def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
         "empty name",
         "blank name",
         "name of an accent alone",
-        "target of accents alone",
-        "empty target",
+        "value of accents alone",
+        "empty value",
         "line feed in a name",
         "line separator in a name",
-        "line feed in a target",
-        "carriage return in a target",
+        "line feed in a value",
+        "carriage return in a value",
         "name of 201 characters",
-        "target of 201 characters",
+        "value of 201 characters",
         "table",
         "inline table",
         "number",
@@ -921,6 +949,23 @@ def index(
     return status, capsys.readouterr().err
 
 
+def test_an_unused_alias_keeps_its_keys_in_index_s_json(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 052 renames no key of ``--format json``: an alias still says its key and target."""
+    (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
+    config = data.parent / "config.toml"
+    config.write_text('search_mode = "lexical"\n', encoding="utf-8")
+    given = ["index", "--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
+    assert main(given) == 0
+    (unused,) = json.loads(capsys.readouterr().out)["report"]["persons"]["unused"]
+    assert (sorted(unused), unused["key"], unused["target"]) == (
+        ["held", "key", "means", "name", "target"],
+        "jo placeholder",
+        "Robin Example",
+    )
+
+
 def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
@@ -963,7 +1008,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
             lambda path: path.write_text('"Sam" = "Sam Sample"\n"sam" = "Sam Other"\n', "utf-8"),
             "'Sam' and 'sam' are one name",
         ),
-        (lambda path: path.write_text('"Sam" = 1\n', "utf-8"), "'Sam': its target is not text"),
+        (lambda path: path.write_text('"Sam" = 1\n', "utf-8"), "'Sam': its value is not text"),
         (lambda path: path.write_bytes(b"Sam = \n"), "not UTF-8 TOML"),
         (lambda path: path.mkdir(), "Is a directory"),
     ],
@@ -1000,6 +1045,6 @@ def test_a_refused_alias_file_stops_a_build_before_the_endpoint_is_asked(
     assert status == 1
     (failed,) = logged_as(data.parent / "home", "index.not_built")
     assert str(failed["reason"]).endswith(
-        "'Sam': its target is not text; write a name or an id in quotes"
+        "'Sam': its value is not text; write a name or an id in quotes"
     )
     assert "hint" not in failed

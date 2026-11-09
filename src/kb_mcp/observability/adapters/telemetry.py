@@ -37,7 +37,8 @@ from opentelemetry.semconv.attributes.service_attributes import (
     SERVICE_VERSION,
 )
 
-from kb_mcp.observability.adapters.logs import PROGRAM, SDK
+from kb_mcp.kernel.names import PROGRAM
+from kb_mcp.observability.adapters.logs import SDK
 from kb_mcp.observability.domain.redaction import redacted
 
 if TYPE_CHECKING:

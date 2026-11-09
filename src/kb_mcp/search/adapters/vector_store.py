@@ -28,6 +28,7 @@ import numpy as np
 import structlog
 
 from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.adapters.conversions import WAIT_S
 from kb_mcp.observability.adapters.progress import task
 
 if TYPE_CHECKING:
@@ -40,8 +41,6 @@ if TYPE_CHECKING:
 LAYOUT = np.dtype("<f4")
 # Texts embedded, then committed, at a time: what an interruption may lose at most.
 BATCH = 256
-# How long a write waits for another run's, in seconds: about one batch's embedding.
-WAIT_S = 60
 # How often a build waiting for a prune asks for the lock again, in seconds.
 POLL_S = 0.1
 CREATE = "CREATE TABLE IF NOT EXISTS vectors (key TEXT PRIMARY KEY, vector BLOB NOT NULL)"
@@ -51,7 +50,7 @@ INCREMENTAL = 2
 SIZE = "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()"
 
 
-def key(fingerprint: str, text: str) -> str:
+def vector_key(fingerprint: str, text: str) -> str:
     """Name the vector of a text embedded by the model of this fingerprint."""
     return hashlib.sha256(f"{fingerprint}\0{text}".encode()).hexdigest()
 

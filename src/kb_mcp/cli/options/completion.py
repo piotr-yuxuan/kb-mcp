@@ -4,19 +4,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import PROGRAM, Command
+from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import add_output_options
+from kb_mcp.kernel.names import PROGRAM
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``completion`` to the command."""
     parser = subparsers.add_parser(

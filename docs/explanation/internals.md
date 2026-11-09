@@ -2,7 +2,7 @@
 
 How the program turns its sources into answers for agents: Confluence and Jira, on the
 site, and the user's work log, a folder of org files on this machine
-([sources](sources.md) says why these three are put together as they are). Five stages,
+([sources](sources.md) says why these three are put together as they are). Five [stages](../reference/glossary.md#stage),
 each a command that the user composes, each reading what an earlier one wrote. Of the
 stages, only `fetch` reads the site; every later one can be run again offline, from what
 is on the disk. This page follows the data through them, then follows one change, from a
@@ -49,24 +49,25 @@ flowchart LR
 ## The stages, each one command
 
 A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
-download of the spaces or projects that its table names
-([`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)); `prepare`, each
-source's preparer, [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
+fetch of the spaces or projects that its table names
+([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)); `prepare`, each
+source's preparer, [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,
-[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
+[`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
 `index`, the words of the mirror's files that changed, whichever sources were prepared
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); and `embed`, the vectors of
 the pieces that the index lacks, then the prune
-([`refresh`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
-use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A source is a declaration that
-names its table and its roles ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
+([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
+use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/glossary.md#source)'s declaration
+names its table, its fetcher and its preparers ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
 names given choose among those that a command can take
 ([`chosen`](../../src/kb_mcp/cli/domain/sources.py));
-[sources](sources.md#three-roles-not-a-bundle) says why a source is put together so.
+[sources](sources.md#three-stages-not-a-bundle) says why a source is put together so.
 
 - **Writes** what each stage writes, as the sections below say.
-- **One row's failure** stops no other: each role reads what is on disk, and the next
-  command reads what the last one left, so that the work log is mirrored while the site asks
+- **One row's failure** stops no other: each fetcher or preparer reads what is on disk, and
+  the next command reads what the last one left, so that the work log is prepared while the
+  site asks
   to sign in again. What can be refused is refused before the first row: a space or
   project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
@@ -74,24 +75,24 @@ names given choose among those that a command can take
   ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
   the row it stops and runs no later one. The exit status ranks how the rows ended:
   interrupted, then to sign in again, then failed
-  ([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)).
+  ([`RANKED`](../../src/kb_mcp/cli/domain/rows.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 
 ## Fetch: from the site to the raw store
 
-[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads the
-site through one port, [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
+[`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) reads the
+site through one port, [`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
-token ([`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
+token ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
-listings whole; for each Jira project, it searches the issues updated in its window. Then
-it fetches each document updated in the window whose revision the store lacks
-([`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
+listings whole; for each Jira project, it searches the issues updated in its fetch window.
+Then it fetches each document updated in the fetch window whose revision the raw store lacks
+([`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 its files first, the snapshot last
-([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
+([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 and counts what it fetches apart from what it lists. Without `--since`, each target
 fetches what changed since its last fetch
-([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
+([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
 project from a day before the end of the period it covers, which ends at its earliest
 document not stored whole, so that a run asks for that again; a space from the start of
 that period, its listing being read whole anyway; a target never fetched, its last 7
@@ -120,12 +121,12 @@ days. A catch-up that would start after `--until` skips its target.
 
 ## Prepare: from the raw store to Markdown
 
-[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
+[`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
 snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `accounts.atlassian.site`:
 nothing else shapes its files. Confluence and Jira are prepared apart, Confluence first,
-each its own kinds, and each places every document, since a page links an issue, and an
+each its own resource types, and each places every document, since a page links an issue, and an
 issue a page. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
 ([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); for its own, it turns the site's HTML
@@ -151,7 +152,7 @@ store and building the HTML are what remain ([the
 trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost).
 
 - **Writes**, into `<data>/docs/` alone, through
-  [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
+  [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, through a hidden file renamed into place, so that no reader sees
   half of one. A file whose bytes are the same keeps them and its time. No lock: the
   snapshots read are each complete, and each file is replaced whole. Each source writes
@@ -162,9 +163,9 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
   `<data>/conversions.sqlite`, each conversion as soon as it is made, so that an
   interrupted run keeps those it made; once the files are written, the conversions of
   its source that the run did not use are deleted, unless it reported anything
-  ([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
+  ([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 - **One document's failure**, a field refused or pandoc failing, is reported by its place
-  in the store, never its content; the run goes on. A source that reported anything
+  in the raw store, never its content; the run goes on. A source that reported anything
   removes no file of its own but those of documents gone or moved, and no conversion, so
   that the last good copy of each stays; the other source's removals go on, but under
   `docs/assets/`, where any snapshot or listing not read stops them, since the files
@@ -176,7 +177,7 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 
 ## The work log: from org files to Markdown
 
-[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work log's
+[`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work log's
 row of `prepare`, reads its folder in place and never writes there, following a link
 only inside it ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)).
 It has no raw store: its files are already on this machine, and reading them whole costs
@@ -194,13 +195,13 @@ or a dated transcript, dated afresh by its day; another is converted again
 ([`Pandoc.org_markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)).
 
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
-  [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
+  [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, renamed into place, and the files of documents gone removed
   ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)).
 - **One document's failure**, a file that links out of the folder
   ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
   over 32 MiB or is not UTF-8
-  ([`source`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
+  ([`org_text`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content, with what it holds
   back ([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
   the run goes on, writes no file that a file not read builds, every one for `todo.org`
@@ -220,7 +221,7 @@ compares it with what the index holds
 ([`change_of`](../../src/kb_mcp/search/app/indexing.py)), reads only those added or
 changed, cuts each body into sections before each heading
 ([`sections`](../../src/kb_mcp/search/domain/search.py)), and indexes them by words.
-[`refresh`](../../src/kb_mcp/search/app/indexing.py), `embed`'s, reads the index alone,
+[`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py), `embed`'s, reads the index alone,
 cuts each document's body again into pieces by the setting `chunking`
 ([`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py)), and gives a vector to each
 piece that the index lacks
@@ -244,7 +245,7 @@ piece that the index lacks
   can share it, a write waiting for the other's
   ([`opened`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` holds the
   store's lock shared from its read of the vectors until its index is in place
-  ([`shared`](../../src/kb_mcp/search/adapters/vector_store.py)); then `refresh` prunes
+  ([`shared`](../../src/kb_mcp/search/adapters/vector_store.py)); then `fill_and_prune` prunes
   the store (below).
 - **Joins** the documents' people into persons, at each write of `index`, over every
   document, those copied included, in the same transaction
@@ -268,7 +269,7 @@ piece that the index lacks
   persons, or an alias that changes nothing, is a warning, once a build, and the exit
   status stays. Only an alias file that cannot be read or is refused stops `index`, and
   an endpoint that does not answer, or lacks the model, or an index that another
-  version of the cut wrote or that is damaged, stops `embed`: the old index stays.
+  version of `WORDS` wrote or that is damaged, stops `embed`: the old index stays.
 - **Offline**, the words and the persons: the index is updated from the mirror and the
   alias file alone. Meaning needs the endpoint, but only for texts that the vector store
   lacks (below).
@@ -288,7 +289,7 @@ named in a query put their documents first, in every mode.
 
 ### By words
 
-The query becomes words ([`plan`](../../src/kb_mcp/search/domain/search.py)):
+The query becomes words ([`plan_query`](../../src/kb_mcp/search/domain/search.py)):
 split, in lower case, without the English and French stop words unless nothing else is
 left, at most ten, each a quoted string, so that nothing a query holds is read as an
 operator; and the whole phrase too, when it has 2 to 16 words. For each word, and the
@@ -360,8 +361,8 @@ the page updated within the period it covers, sees that this revision is not sto
 and fetches it as a new snapshot, beside the old one, which stays. An issue edited in
 Jira has a new update time, its revision, and is fetched the same way.
 
-- **Moved** to another space that the run keeps, a page is listed there, and the store
-  notes when each space was listed.
+- **Moved** to another space that the run keeps, a page is listed there, and the raw
+  store notes when each space was listed.
 - **Deleted**, a page is absent from its space's listing. The run records a
   [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and
   probes the page; a second answer of gone, an hour or more after the first, confirms
@@ -392,11 +393,11 @@ at the last run, is reused. What an edit reaches beyond its own page lies in tha
 too, and is converted again where it shows: a new title, in the page's own heading, in
 the space's tree and in each link that leads to its renamed file; a page stored for the
 first time, in the links to it, now relative, and in the tree; a user's name changed in
-the store's users, in the headings of that user's comments. A child's breadcrumb is in
+the raw store's users, in the headings of that user's comments. A child's breadcrumb is in
 its front matter, written after pandoc, and costs no conversion. The edited page's old
 conversion is deleted once the files are written, with those of documents gone, unless
 the run reported a problem
-([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
+([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 
 The work log's row does the same from the folder itself. Closing an entry turns its
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
@@ -407,9 +408,9 @@ file keeps its name. Its text changed, so its revision did
 ([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)): the
 entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
 its timestamps up to the file's time of change, usually the closing one
-([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 Every other entry keeps its file as it was, dates included, though `todo.org`'s time
-changed ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
+changed ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
 entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled
 `ARCHIVE`, or removed when `archives = false`;
 [sources](sources.md#identity-that-survives-orgs-edits) says why identity is kept so.
@@ -430,7 +431,7 @@ sections, persons are joined again over every document, and the file is renamed 
 place under the index's lock
 ([`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). So nothing
 stale is left in the index, and a run that fails leaves the old one whole. An index that
-cannot be updated, written before plan 035 or by another version of the cut, damaged,
+cannot be updated, written before plan 035 or by another version of `WORDS`, damaged,
 or on `index --rebuild`, is rebuilt whole, with no pieces.
 
 Until `embed` runs, the edited page has no vectors: search finds its new text by words,
@@ -454,7 +455,7 @@ Each piece is embedded as a text that its chunking composes: by `windows`, the d
 the document's title and the window
 ([`windows`](../../src/kb_mcp/search/domain/chunking.py)). Its vector is
 kept under a key, the SHA-256 of the model's fingerprint and that text
-([`key`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` asks
+([`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` asks
 the vector store for the key of each piece that the index lacks, and the endpoint for
 the texts that the store lacks alone. So a piece whose text did not change is never
 embedded again, and one that the index holds is not even looked up: a page moved to
@@ -510,7 +511,7 @@ pieces record: the index in place, the one that `embed` wrote, should an `index`
 renamed another in meanwhile, and those that `eval` keeps under
 `<data>/eval/indexes/`, so that the next evaluation embeds nothing again. The vectors of
 deleted pages, of texts since edited, and of chunkings and models that no index uses
-go. It takes the store's lock exclusive, or waits for the next `embed` while a build
+go. It takes the vector store's lock exclusive, or waits for the next `embed` while a build
 holds it, so that no build loses what it embedded; and it deletes nothing while the
 index lacks a file of the mirror or holds no document, or while an index there cannot
 say what it reads. A store made from plan 023 on gives the space freed back to the file

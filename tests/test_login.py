@@ -16,7 +16,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_c
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.declaration import Account
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import SignedIn, Verdict
+from kb_mcp.sources.stages import SignedIn, Verdict
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.test_cli import logged_as
@@ -47,10 +47,10 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
         {"name": "cloud", "value": "3", "domain": ".atlassian.com", "path": "/"},
         {"name": "idp", "value": "4", "domain": ".login.example.invalid", "path": "/"},
     ]
-    monkeypatch.setattr(login_module, "sign_in", lambda *_, **__: browser)
+    monkeypatch.setattr(login_module, "open_sign_in_window", lambda *_, **__: browser)
     monkeypatch.setattr(login_module, "disable_password_saving", lambda _: None)
     settings = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
-    login_module.login(settings, SITE, None, extensions=False)
+    login_module.save_session(settings, SITE, None, extensions=False)
     saved = read_cookies(settings.session / COOKIES)
     assert [(cookie["name"], cookie["path"]) for cookie in saved] == [
         ("tenant", "/"),
@@ -67,7 +67,7 @@ def test_the_command_says_what_to_do_on_stderr_and_its_result_on_stdout(
     As JSON, the result is one document.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     options = [
         "login",
         "atlassian",
@@ -101,7 +101,7 @@ def test_a_sign_in_that_does_not_complete_exits_3_with_an_error(
     def closed(*_: object, **__: object) -> None:
         raise SignInFailedError(reason)
 
-    monkeypatch.setattr(login_module, "login", closed)
+    monkeypatch.setattr(login_module, "save_session", closed)
     options = [
         "login",
         "atlassian",
@@ -152,7 +152,7 @@ def test_a_site_not_set_is_refused_before_a_window_opens(
     def opened(*_: object, **__: object) -> None:
         raise AssertionError
 
-    monkeypatch.setattr(login_module, "login", opened)
+    monkeypatch.setattr(login_module, "save_session", opened)
     options = ["login", "atlassian", "--yes", "--config", str(tmp_path / "none.toml")]
     assert main(options) == BAD_ARGUMENTS
     assert "accounts.atlassian.site: not set" in capsys.readouterr().err
@@ -163,7 +163,7 @@ def test_the_command_says_the_account_s_other_settings_are_not_used(
 ) -> None:
     """A token and an email given sign in by no browser: said, by each setting's layer."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
     options = ["login", "atlassian", "--yes", "--config", str(tmp_path / "none.toml")]
     assert main([*options, "--site", SITE]) == 0
@@ -197,7 +197,7 @@ def drive_checks(settings: Settings) -> list[Verdict]:
 
 DRIVE = Account(
     name="drive",
-    table=f"{__name__}:DriveAccount",
+    table_path=f"{__name__}:DriveAccount",
     settings=("folder",),
     login=f"{__name__}:drive_signed_in",
     checks=f"{__name__}:drive_checks",

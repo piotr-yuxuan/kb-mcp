@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-# A run's start in a log file's name: UTC, to the second.
+# A moment in a file's name, a run's start in its log file's or an evaluation's in its
+# results': UTC, to the second.
 STAMP = "%Y%m%dT%H%M%SZ"
 # How long a log file is kept after its run started.
 KEPT = timedelta(days=30)

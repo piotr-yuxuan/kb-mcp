@@ -15,7 +15,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Folder,
     Issue,
     Page,
-    Person,
+    SiteUser,
     Space,
 )
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
@@ -31,10 +31,10 @@ def page(page_id: str, title: str, parent: str | None, **changes: object) -> Pag
     made = Page(
         id=page_id,
         title=title,
-        author=Person(account_id="account-1"),
+        author=SiteUser(account_id="account-1"),
         created=MOMENT,
         updated=MOMENT,
-        url=f"/wiki/spaces/MFS/pages/{page_id}",
+        site_path=f"/wiki/spaces/MFS/pages/{page_id}",
         space_id="1",
         version=3,
         status="current",
@@ -53,7 +53,7 @@ POST = BlogPost(
     author=None,
     created=MOMENT,
     updated=MOMENT,
-    url="/wiki/spaces/MFS/blog/2026/10/20/40/News",
+    site_path="/wiki/spaces/MFS/blog/2026/10/20/40/News",
     space_id="1",
     version=1,
     status="current",
@@ -61,10 +61,10 @@ POST = BlogPost(
 ISSUE = Issue(
     id="10000",
     title="What are\narchived ideas?",
-    author=Person(account_id="account-2", display_name="Another\u2028Person"),
+    author=SiteUser(account_id="account-2", display_name="Another\u2028Person"),
     created=MOMENT,
     updated=MOMENT,
-    url="/browse/PRB-1",
+    site_path="/browse/PRB-1",
     labels=("probe",),
     key="PRB-1",
     project="PRB",
@@ -87,9 +87,9 @@ CATALOGUE = Catalogue(
 
 def test_a_name_is_the_display_name_else_the_users_else_the_account_id() -> None:
     """Jira gives names; Confluence names come from the users; else the account id."""
-    assert CATALOGUE.name(Person(account_id="account-2", display_name="Given")) == "Given"
-    assert CATALOGUE.name(Person(account_id="account-1")) == "A Person"
-    assert CATALOGUE.name(Person(account_id="account-9")) == "account-9"
+    assert CATALOGUE.name(SiteUser(account_id="account-2", display_name="Given")) == "Given"
+    assert CATALOGUE.name(SiteUser(account_id="account-1")) == "A Person"
+    assert CATALOGUE.name(SiteUser(account_id="account-9")) == "account-9"
     assert CATALOGUE.name(None) is None
 
 
@@ -196,13 +196,13 @@ def test_a_front_matter_off_confluence_s_and_jira_s_rules_is_refused(
         replace(matter, **changes)
 
 
-ANOTHER = Person(account_id="account-2", display_name="Another Person")
+ANOTHER = SiteUser(account_id="account-2", display_name="Another Person")
 # Filed by Another Person for A Person, assigned to someone whom nothing names.
 FILED = replace(
     ISSUE,
-    author=Person(account_id="account-1", display_name="A Person"),
+    author=SiteUser(account_id="account-1", display_name="A Person"),
     creator=ANOTHER,
-    assignee=Person(account_id="account-3"),
+    assignee=SiteUser(account_id="account-3"),
 )
 # Three comments by two people, as Jira gives them: by creation time. A Person's is
 # named by the users.
@@ -210,7 +210,7 @@ COMMENTS = (
     Comment(id="1", author=ANOTHER, created=datetime(2026, 10, 21, 10, tzinfo=PARIS), html=""),
     Comment(
         id="2",
-        author=Person(account_id="account-1"),
+        author=SiteUser(account_id="account-1"),
         created=datetime(2026, 10, 21, 9, 30, tzinfo=UTC),
         html="",
     ),
@@ -251,8 +251,8 @@ def test_commenters_come_by_their_first_comment_in_whatever_order_given() -> Non
 
 def test_a_commenter_is_one_name_with_one_account() -> None:
     """Namesakes of two accounts are two commenters; one account under two names, two."""
-    namesake = Person(account_id="account-4", display_name="Another Person")
-    renamed = Person(account_id="account-2", display_name="A Person")
+    namesake = SiteUser(account_id="account-4", display_name="Another Person")
+    renamed = SiteUser(account_id="account-2", display_name="A Person")
     comments = (
         Comment(id="5", author=ANOTHER, created=datetime(2026, 10, 21, 8, tzinfo=UTC), html=""),
         Comment(id="6", author=namesake, created=datetime(2026, 10, 21, 9, tzinfo=UTC), html=""),

@@ -10,7 +10,7 @@ opens one, so that all that a call reads comes through one reader. A search read
 and vectors in one use, hence ``SearchIndex``, the two interfaces together, whose
 reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
 mirror; ``Held`` what it holds of them, ``Change`` what an update changes, all of it or
-none, and ``Updated`` what that did. ``Stored`` is a document as the index holds it,
+none, and ``Updated`` what that did. ``IndexedBody`` is a document as the index holds it,
 and ``Piece`` a piece of one that a vector stands for.
 """
 
@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter
-from kb_mcp.search.domain.people import Outcome
+from kb_mcp.search.domain.people import JoinOutcome
 from kb_mcp.search.domain.search import Section
 
 if TYPE_CHECKING:
@@ -34,17 +34,17 @@ if TYPE_CHECKING:
     from kb_mcp.search.domain.search import (
         Activity,
         Embedded,
-        Entry,
         Filters,
+        IndexedDocument,
+        IndexStatus,
         Passage,
         Score,
         Sort,
-        Summary,
     )
 
 
 # Why an update keeps nothing of the index in place: none that this version reads, one
-# written by another version of the cut (``search.WORDS``) or before it was recorded, one
+# written by another version of ``search.WORDS`` or before it was recorded, one
 # damaged, or the run's --rebuild.
 type Whole = Literal["unavailable", "another version", "damaged", "--rebuild"]
 
@@ -74,7 +74,7 @@ class Skipped(Record):
     reason: str  # holding nothing of the file's content
 
 
-class Stored(Record):
+class IndexedBody(Record):
     """A document as an index holds it: its path, its front matter and its body."""
 
     path: str
@@ -89,7 +89,7 @@ class Piece(Record):
     number: int  # the section holding its middle, numbered from 1
     start: int  # its span in that section's body, its heading line aside
     stop: int
-    key: str  # its vector's in the vector store
+    vector_key: str  # its vector's in the vector store
 
 
 class Held(Record):
@@ -114,7 +114,7 @@ class Change(Record):
     removed: frozenset[str]  # the paths of documents to remove
     put: tuple[Put, ...]
     skipped: tuple[Skipped, ...]
-    aliases: dict[str, str]  # each alias's name and target, in the file's order
+    aliases: dict[str, str]  # each alias's name and value, in the file's order
     built_at: datetime
     whole: bool = False
 
@@ -139,7 +139,7 @@ class Updated(Record):
     sections: int
     awaiting: int | None
     skipped: tuple[Skipped, ...]
-    persons: Outcome  # what the join left apart
+    persons: JoinOutcome  # what the join left apart
 
 
 class WordsReader(Protocol):
@@ -159,21 +159,21 @@ class WordsReader(Protocol):
         every document that matches is there.
         """
 
-    def passage(self, path: str, match: str) -> Passage | None:
+    def snippet(self, path: str, match: str) -> Passage | None:
         """Find the section of a document that best matches, with a snippet of its body.
 
         Sections are judged by their heading and body alone: a match on the title alone
         gives the first section. None when the document does not match.
         """
 
-    def entries(
+    def indexed_documents(
         self,
         *,
         paths: Iterable[str] = (),
         keys: Iterable[str] = (),
         ids: Iterable[str] = (),
         filters: Filters | None = None,
-    ) -> list[Entry]:
+    ) -> list[IndexedDocument]:
         """Find the documents of these paths, issue keys, and page or work-log ids, by path.
 
         An issue's id is never looked up, since a page may have the same.
@@ -181,14 +181,14 @@ class WordsReader(Protocol):
 
     def recent(
         self, filters: Filters, by: Sort, offset: int, limit: int
-    ) -> tuple[int, list[Entry]]:
+    ) -> tuple[int, list[IndexedDocument]]:
         """Count the documents that pass the filters, and list a page of them, newest first.
 
         Newest by created date, or else by update; ties go to the newest update, then the
         path.
         """
 
-    def listing(self, filters: Filters) -> list[Entry]:
+    def listing(self, filters: Filters) -> list[IndexedDocument]:
         """List every document that passes the filters, by path."""
 
     def bounds(self, path: str) -> list[tuple[int, int]]:
@@ -209,7 +209,7 @@ class WordsReader(Protocol):
     def persons(self, key: str, joined: str | None = None) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
         """
 
     def person(self, person: str) -> Activity | None:
@@ -227,7 +227,7 @@ class WordsReader(Protocol):
         time of the last comment, None for any other role.
         """
 
-    def summary(self) -> Summary:
+    def index_status(self) -> IndexStatus:
         """Say what the index holds and when it was built."""
 
     def held(self) -> Held:
@@ -236,7 +236,7 @@ class WordsReader(Protocol):
         Raises DamagedIndexError when a table of it cannot be read.
         """
 
-    def documents(self) -> list[Stored]:
+    def documents(self) -> list[IndexedBody]:
         """Give every document with its front matter and its body as put, by path."""
 
     def built_at(self) -> datetime:

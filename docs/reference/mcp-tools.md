@@ -1,7 +1,7 @@
 # The MCP server's tools and prompts
 
 `kb-mcp serve`, or the command with no arguments, serves these over stdio.
-Every tool is read-only and answers in text, never in structured content: compact
+Every [tool](glossary.md#tool) is read-only and answers in text, never in structured content: compact
 Markdown within a budget of estimated tokens, 4,000 for arguments at or below their
 defaults and 10,000 at most, where an estimated token is three ASCII characters or one
 other. Everything copied from the mirror stands inside one block marked as untrusted
@@ -26,22 +26,23 @@ as many documents as fit the budget, 20 at most, then the call that continues.
 - `filters`: as `search`'s, below.
 - `cursor`: the one that the previous answer ended with.
 
-A passage is a line of its number, title, ref, section, heading and dates, ending as a
+A [passage](glossary.md#passage) is shown as a line of its number, title, ref, section, heading and dates, ending as a
 `search` hit's second line does; a line of the site's address (or the mirror's path)
 and the `read(ref=..., section=N)` call that opens its section; then its text,
 verbatim. With the filter `person`, the passages follow the person, as `search`'s hits
 do. By meaning, the text is the unit of the index's chunking (see
 [chunking](../explanation/chunking.md)); by words, the section
 that holds the question's words best, whole up to 2,400 characters, else 2,400 of it
-centred on the first of the question's words that it holds, cut to whole lines.
+centred on the place of the question's rarest word that has the most of its other words
+near it, cut to whole lines.
 The setting `search_mode` gives the mode; without vectors, `ask` answers by words and
 says why.
 
 ### search
 
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
-with its best section's `read()` call and a snippet. A hit's second line gives its ref,
-path, update and mirror date, then what the document has of its issue type, its status
+with its best section's `read()` call and a snippet. A [hit](glossary.md#hit)'s second line gives its ref,
+path, update and fetch time, labelled `mirrored`, then what the document has of its issue type, its status
 unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
 otherwise than its author, and `created <day>`, such as
@@ -116,8 +117,10 @@ Other filters of people add neither.
 ### read
 
 Reads a document, or one of its sections, from a character offset, in slices. Each
-slice opens with the document's title, path and mirror date, and one from the body's
-start with its whole front matter, a `key: value` line each. People come there one line
+slice opens with the document's title, path and fetch time, and one from the body's
+start with its front matter, a `key: value` line each, of what it has: its ref, type,
+space, project, issue type, status, labels, breadcrumb, people, links, created and updated
+days and address. People come there one line
 per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
 without the account id that the mirror keeps beside it, which stands for the name only
 where the source gives none: ten names at most, then how many more, each commenter with

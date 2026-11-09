@@ -35,8 +35,8 @@ from kb_mcp.search.adapters.embedding import (
     DOCUMENTS,
     SINGLE,
     ApiEmbedder,
+    EmbeddingRefusedError,
     Prefixes,
-    RefusedError,
     connect,
     digest,
     embed,
@@ -275,7 +275,7 @@ def test_a_limit_of_the_endpoint_is_never_the_text_s() -> None:
     answers.statuses = [429, 429, 429]
     with pytest.raises(ModelError, match="answered 429") as failed:
         embedder.documents(["undo"])
-    assert not isinstance(failed.value, RefusedError)
+    assert not isinstance(failed.value, EmbeddingRefusedError)
 
 
 def test_three_failures_give_up_and_a_refusal_is_not_retried() -> None:
@@ -288,11 +288,11 @@ def test_three_failures_give_up_and_a_refusal_is_not_retried() -> None:
     opened = replace(opened, http=scripted(answers).http)
     with pytest.raises(ModelError, match="answered 503") as failed:
         embed(opened, "tiny", ["undo"], DOCUMENTS)
-    assert not isinstance(failed.value, RefusedError)
+    assert not isinstance(failed.value, EmbeddingRefusedError)
     assert (len(answers.asked), waits) == (DOCUMENTS.attempts, [1.0, 4.0])
-    with pytest.raises(RefusedError, match="answered 500"):
+    with pytest.raises(EmbeddingRefusedError, match="answered 500"):
         embed(opened, "tiny", ["undo"], DOCUMENTS)
-    with pytest.raises(RefusedError, match="answered 400"):
+    with pytest.raises(EmbeddingRefusedError, match="answered 400"):
         embed(opened, "tiny", ["undo"], DOCUMENTS)
     assert len(answers.asked) == 2 * DOCUMENTS.attempts + 1
 
@@ -619,7 +619,7 @@ def test_one_text_refused_alone_is_its_own_fault_unless_the_probe_fails() -> Non
     answers.refused = set()
     embedder = quiet(answers)
     answers.statuses = [500] * (DOCUMENTS.attempts + 2)
-    with pytest.raises(RefusedError, match="answered 500"):
+    with pytest.raises(EmbeddingRefusedError, match="answered 500"):
         embedder.documents(["one"])
     assert answers.statuses == []
 

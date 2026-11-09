@@ -16,29 +16,29 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, override
 
 from kb_mcp.mirror.adapters.markdown import documents, dump
-from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, sync
+from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter
-from kb_mcp.mirror.domain.mirror_layout import one_line
-from kb_mcp.sources.roles import Result
+from kb_mcp.mirror.domain.mirror_text import one_line
+from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.roles import Run
+    from kb_mcp.kernel.output import Detail
+    from kb_mcp.sources.stages import SourceRun
 
 # The source's name, which is its folder of the mirror too, as the registry's rule has it.
 SOURCE = "memo"
 
 
-class Prepared(Result):
+class MemoPrepared(Result):
     """A prepare: how it ended, and the files it changed, None in a dry run, which writes none."""
 
     changes: Changes | None
 
     @override
-    def text(self, summary: Summary) -> str:
-        """Write the files that it changed, whichever the summary; nothing in a dry run."""
+    def text(self, summary: Detail) -> str:
+        """Write the files that it changed, whichever the detail; nothing in a dry run."""
         done = self.changes
         return (
             ""
@@ -52,17 +52,17 @@ def owned(docs: Path) -> set[PurePosixPath]:
     return regular_files(docs, documents(docs, (f"{SOURCE}/*.md",)))
 
 
-def preflight(run: Run) -> str | None:
+def preflight(run: SourceRun) -> str | None:
     """Refuse a folder of notes that is not one, by its setting, before any source starts."""
-    return None if run.table.folder.is_dir() else f"sources.{SOURCE}.folder: not a folder"
+    return None if run.source_table.folder.is_dir() else f"sources.{SOURCE}.folder: not a folder"
 
 
-def prepare(run: Run) -> Prepared:
+def prepare(run: SourceRun) -> MemoPrepared:
     """Write a document per note and remove those of notes gone, unless a dry run."""
     if run.dry_run:
-        return Prepared(outcome="not run", changes=None)
+        return MemoPrepared(outcome="not run", changes=None)
     wanted: dict[PurePosixPath, bytes | Path] = {}
-    for path in sorted(run.table.folder.glob("*.txt")):
+    for path in sorted(run.source_table.folder.glob("*.txt")):
         text = path.read_text("utf-8", errors="replace")
         when = datetime.fromtimestamp(path.stat().st_mtime, UTC)
         identifier = sha256(path.name.encode()).hexdigest()[:16]
@@ -88,4 +88,6 @@ def prepare(run: Run) -> Prepared:
             fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
-    return Prepared(outcome="done", changes=sync(run.settings.docs, wanted, owned, remove=True))
+    return MemoPrepared(
+        outcome="done", changes=write_changed(run.settings.docs, wanted, owned, remove=True)
+    )

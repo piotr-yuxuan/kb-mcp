@@ -24,7 +24,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from tests.composed import MODEL
 from tests.endpoint import Scripted, serving
-from tests.test_download import SITE, FakeSite
+from tests.test_fetching import SITE, FakeSite
 from tests.test_observed import said as said_on
 
 if TYPE_CHECKING:

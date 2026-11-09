@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from argcomplete.completers import FilesCompleter
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.eval_agents import SEED
+from kb_mcp.cli.domain.evaluate_agents import SAMPLE_SEED
 from kb_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
@@ -23,7 +23,7 @@ from kb_mcp.kernel.reranking import BAR_DEPTHS, DEPTHS
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def depth(value: str) -> int:
@@ -50,7 +50,7 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``eval-rerank`` to the command."""
     parser = subparsers.add_parser(
@@ -81,7 +81,7 @@ def register(
     sample = parser.add_argument(
         "--sample", type=positive, help="this many questions, chosen by the seed; else all"
     )
-    seed = parser.add_argument("--seed", type=int, default=SEED, help="the sample's seed")
+    seed = parser.add_argument("--seed", type=int, default=SAMPLE_SEED, help="the sample's seed")
     parser.set_defaults(
         command=Command(
             "eval-rerank",

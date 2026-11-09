@@ -1,17 +1,17 @@
-"""``check``: validate the settings and the data directory, and show them."""
+"""``check``: validate the settings and where the data directory is, and show them."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.summary import setting_line
+from kb_mcp.cli.domain.preview import setting_line
 from kb_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Loaded]:
@@ -22,7 +22,7 @@ def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Loa
     return ExitStatus.OK, loaded
 
 
-def text(loaded: Loaded, summary: Summary) -> str:
+def text(loaded: Loaded, summary: Detail) -> str:
     """Write each setting that a layer gave, and its value; in detail, every one and its layer.
 
     A setting is named by its path, its names joined by dots; a secret is said to be set
