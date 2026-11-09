@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 @dataclass(frozen=True)
 class Service:
-    """A server that a run sends the mirror's text to, as the messages about it name it."""
+    """A server that a run sends text to, from the mirror or a query, as messages name it."""
 
     name: str  # what it is, as a sentence names it
     setting: str  # the setting that holds its address
