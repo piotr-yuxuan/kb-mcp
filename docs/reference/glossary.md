@@ -53,7 +53,7 @@ setting's kind, a panel of the site's HTML, an org link and telemetry keep.
 
 - In the code: [`FrontMatter.type`](../../src/kb_mcp/mirror/domain/mirror.py),
   [`TYPES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
-  [`WORKLOG_IDS`](../../src/kb_mcp/kernel/names.py).
+  [`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py).
 - User-facing: `type`.
 
 ### stage

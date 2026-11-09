@@ -38,8 +38,9 @@ SAID: dict[Tool, str] = {
     "browse": "browse lists a space or a project as a tree",
     "status": "status says what is mirrored and when",
 }
-# What the work log's two kinds of document are, how they link, and which to quote.
-WORKLOG_KINDS = (
+# What the instructions say of the work log: its notes and its transcripts, how they link,
+# and which to quote.
+WORKLOG_INSTRUCTION = (
     " In the work log, source worklog, days, meetings and entries are the user's notes and"
     " AI-written summaries, a meeting linking its transcript; transcripts are the"
     " word-by-word record: prefer them when quoting, and check a summary against them."
@@ -175,7 +176,7 @@ def surface(library: Library, tools: Sequence[Tool]) -> Surface:
     if "ask" in tools and "search" in tools:
         descriptions["search"] += TO_ASK
     offered = tuple(guide for guide in guides(library) if set(guide.needs) <= set(tools))
-    instructions = f"{OPENING} {said}.{WORKLOG_KINDS}{CLOSING}"
+    instructions = f"{OPENING} {said}.{WORKLOG_INSTRUCTION}{CLOSING}"
     return Surface(
         tools=tuple(tools), instructions=instructions, descriptions=descriptions, guides=offered
     )

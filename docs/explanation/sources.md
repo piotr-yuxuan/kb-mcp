@@ -125,8 +125,7 @@ kinds that the raw store keeps
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)) and, for the work
 log, which keeps no store, its documents' types
-([`ENTRY`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py) and the three
-beside it):
+([`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py)):
 
 | Source | Type | Read | Options |
 |---|---|---|---|
@@ -583,7 +582,7 @@ costs.
 The work log holds the user's notes and summaries an AI wrote, its days, meetings and
 entries, and transcripts, the word-by-word record, which a meeting links. The server
 tells agents so in its instructions
-([`WORKLOG_KINDS`](../../src/kb_mcp/mcp/app/surface.py)), so that they
+([`WORKLOG_INSTRUCTION`](../../src/kb_mcp/mcp/app/surface.py)), so that they
 quote a transcript rather than a summary of it, and check the one against the other;
 its `source` filter
 ([`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py)) says it of

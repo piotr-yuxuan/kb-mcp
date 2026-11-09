@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import trace
 
+from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
@@ -39,9 +40,6 @@ from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG_OWNED, worklog_path
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
-    DAY_TYPE,
-    ENTRY,
-    MEETING_TYPE,
     SOURCE,
     TODO,
     TODO_ARCHIVE,
@@ -197,7 +195,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     kinds = Counter(each.type for each in journaled)
     log.info(
         "worklog.read",
-        entries=kinds[ENTRY],
+        entries=kinds[ENTRY_TYPE],
         days=kinds[DAY_TYPE],
         meetings=kinds[MEETING_TYPE],
         transcripts=len(named),

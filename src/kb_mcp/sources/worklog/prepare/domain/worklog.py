@@ -20,7 +20,15 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import ConfigDict, Field, model_validator
 
-from kb_mcp.kernel.names import WORKLOG_IDS, RefusedError, require
+from kb_mcp.kernel.names import (
+    DAY_TYPE,
+    ENTRY_TYPE,
+    MEETING_TYPE,
+    TRANSCRIPT_TYPE,
+    WORKLOG_TYPES,
+    RefusedError,
+    require,
+)
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter
@@ -48,10 +56,6 @@ MEETING_FILE = "meeting-"
 # The folder of each that holds archived transcripts.
 ARCHIVED = "archive"
 ORG = ".org"
-ENTRY = "entry"
-DAY_TYPE = "day"
-MEETING_TYPE = "meeting"
-TRANSCRIPT = "transcript"
 # The work log's name as a source, in its documents' front matter.
 SOURCE = "worklog"
 # A document's revision: a digest of what pandoc converts, and how.
@@ -161,14 +165,14 @@ class WorklogFrontMatter(FrontMatter):
         type's rule, so that a day never bears a meeting's, a revision off
         ``WORKLOG_REVISION``, and a role of another source.
         """
-        if self.source != SOURCE or self.type not in WORKLOG_IDS:
+        if self.source != SOURCE or self.type not in WORKLOG_TYPES:
             message = "type: not one of the source's types"
             raise RefusedError(message)
         filled = [name for name in NOT_FILLED if getattr(self, name) is not None]
         if filled:
             message = f"{', '.join(filled)}: never the work log's"
             raise RefusedError(message)
-        require(WORKLOG_IDS[self.type], self.id, "id")
+        require(WORKLOG_TYPES[self.type].id_rule, self.id, "id")
         require(WORKLOG_REVISION, self.revision, "revision")
         if any(person.role not in WORKLOG_ROLES for person in self.people):
             message = "people: a role of another source"
@@ -419,7 +423,7 @@ def journal(
         taken[base] += 1
         found.append(
             WorklogDocument(
-                type=ENTRY,
+                type=ENTRY_TYPE,
                 id=f"e-{base}" if taken[base] == 1 else f"e-{base}-{taken[base]}",
                 title=title,
                 status=heading.keyword or CURRENT,
@@ -640,7 +644,7 @@ def transcript_id(path: PurePosixPath) -> str:
         for part in (stem, slug(stem), digest(own))
         if named and part
     ]
-    rule = WORKLOG_IDS[TRANSCRIPT]
+    rule = WORKLOG_TYPES[TRANSCRIPT_TYPE].id_rule
     return next((each for each in dated if rule.fullmatch(each)), f"t-{digest(prefix + own)}")
 
 
@@ -711,7 +715,7 @@ def transcripts(
         first = next((each.title for each in parsed.headings if each.title), fallback)
         found.append(
             WorklogDocument(
-                type=TRANSCRIPT,
+                type=TRANSCRIPT_TYPE,
                 id=identifier,
                 title=parsed.title or first,
                 status=CURRENT,

@@ -296,7 +296,7 @@ nothing in them depends on when they were prepared.
   characters becomes one `-`; leading and trailing `-` are removed; it is cut at 60
   characters, and a `-` left at the cut is removed. An empty slug leaves `<id>.md`, as
   does a work-log day or meeting, whose id holds its date or its title's slug already
-  (`sources.worklog.prepare.domain.layout.NAMED_BY_ID`). When a title changes, the file
+  (`kernel.names.WORKLOG_TYPES`, by `named_by_id`). When a title changes, the file
   is renamed and the old name removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
@@ -613,7 +613,7 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   begins with a letter and holds no colon or bracket, then `: `, blanks before the
   colon not the name's; the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and
   `CLOCK`.
-- The rule of an id is its type's, `kernel.names.WORKLOG_IDS`:
+- The rule of an id is its type's, `kernel.names.WORKLOG_TYPES`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
   `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
   a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}` for a meeting, its day's date and its
