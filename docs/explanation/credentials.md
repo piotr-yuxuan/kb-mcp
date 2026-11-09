@@ -255,9 +255,9 @@ mistake. None of it stops someone who is already on the machine as you:
   nothing else
   ([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)). The
   disk's own encryption, such as FileVault or LUKS, is what keeps a lost machine's data.
-- **A tunnel.** The rules for the embedding endpoint and for telemetry's trust that a
-  loopback address is this machine
-  ([`loopback`](../../src/kb_mcp/kernel/endpoint.py)). A port of this
+- **A tunnel.** The services' rules, of the embedding endpoint, the reranking server and
+  telemetry's, trust that a loopback address is this machine
+  ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). A port of this
   machine forwarded elsewhere, by an SSH tunnel say, carries what is sent to it there:
   the mirror's text and the key, or telemetry's records. The rule cannot see it.
 - **A copy made before the end.** A session or a token copied elsewhere signs in as you

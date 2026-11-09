@@ -709,16 +709,17 @@ ranking notes when it went without a service; a failing service is skipped for a
 rather than called on every query.
 
 **In the code.** [`Service`](../../src/kb_mcp/kernel/endpoint.py),
-[`EMBEDDINGS`](../../src/kb_mcp/kernel/endpoint.py) and
-[`RERANKING`](../../src/kb_mcp/kernel/endpoint.py);
-[`loopback`](../../src/kb_mcp/kernel/endpoint.py),
-[`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py) and
-[`endpoint_host`](../../src/kb_mcp/kernel/endpoint.py);
+[`EMBEDDINGS`](../../src/kb_mcp/kernel/endpoint.py),
+[`RERANKING`](../../src/kb_mcp/kernel/endpoint.py) and
+[`TELEMETRY`](../../src/kb_mcp/kernel/endpoint.py);
+[`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py), the services' rules, which
 [`rerank_address`](../../src/kb_mcp/config/domain/settings.py) and
-[`telemetry_address`](../../src/kb_mcp/config/domain/settings.py), which holds the
-telemetry endpoint's rule; [`QUIET_S`](../../src/kb_mcp/search/app/meaning.py), how long
-a failing service is skipped; the commands `model` and `reranker`; the telemetry
-exporter ([the telemetry reference](telemetry/README.md)).
+[`telemetry_address`](../../src/kb_mcp/config/domain/settings.py) check too;
+[`loopback`](../../src/kb_mcp/kernel/endpoint.py) and
+[`endpoint_host`](../../src/kb_mcp/kernel/endpoint.py);
+[`QUIET_S`](../../src/kb_mcp/search/app/meaning.py), how long a failing service is
+skipped; the commands `model` and `reranker`; the telemetry exporter
+([the telemetry reference](telemetry/README.md)).
 
 ## Context vocabulary
 

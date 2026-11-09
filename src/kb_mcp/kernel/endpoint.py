@@ -1,4 +1,4 @@
-"""A model server's address: its host, whether it is this machine, and the run's rule.
+"""A service's address: its host, whether it is this machine, and the service's rule.
 
 Standard library only, and light, since the settings and the command's declarations
 check an address alike.
@@ -13,12 +13,18 @@ from urllib.parse import urlsplit
 
 @dataclass(frozen=True)
 class Service:
-    """A server that a run sends text to, from the mirror or a query, as messages name it."""
+    """A server that a run sends text to: from the stores or a query, or what it records.
+
+    Its rule: on this machine, or off it over https when ``flag`` is given to the run;
+    a ``bare`` address is http, with a port and no path, its protocol's paths following.
+    """
 
     name: str  # what it is, as a sentence names it
     setting: str  # the setting that holds its address
+    sends: str  # what it is sent, as a refusal names it
     flag: str | None  # the option that lets a run reach one off this machine; None: none may
     start: str  # how to start it, said when it does not answer
+    bare: bool = False
 
     @property
     def otherwise(self) -> str:
@@ -29,6 +35,7 @@ class Service:
 EMBEDDINGS = Service(
     name="the embedding endpoint",
     setting="embedding_url",
+    sends="the mirror's text",
     flag="--allow-remote-embeddings",
     start="With Ollama: ollama serve",
 )
@@ -36,8 +43,18 @@ EMBEDDINGS = Service(
 RERANKING = Service(
     name="the reranking server",
     setting="rerank.url",
+    sends="the mirror's text",
     flag=None,
     start="With llama.cpp: llama-server -m <model> --reranking --port 9931",
+)
+# Local only, since what a run records holds titles, queries and names of persons.
+TELEMETRY = Service(
+    name="the telemetry endpoint",
+    setting="telemetry.endpoint",
+    sends="what a run records",
+    flag=None,
+    start="With podman: podman compose -f deploy/lgtm/compose.yaml up -d",
+    bare=True,
 )
 
 
@@ -76,19 +93,22 @@ def loopback(url: str) -> bool:
 
 
 def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str | None:
-    """Say why a run may not send text to a service, or None when it may.
+    """Say why a run may not send text to a service, or None when it may, by its rule.
 
-    An address that is not a literal one of this machine needs the run's word,
-    ``remote_allowed``, and https even then. The message names the service's setting,
-    and its flag when it has one.
+    ``remote_allowed`` is the run's word, which a service without a flag ignores.
     """
-    if loopback(url):
+    if not loopback(url):
+        if not (remote_allowed and service.flag):
+            return (
+                f"{service.setting}: not an address of this machine, where {service.sends}"
+                f" would go; write 127.0.0.1 for this one{service.otherwise}"
+            )
+        if not url.startswith("https://"):
+            return f"{service.setting}: an endpoint off this machine is reached over https only"
         return None
-    if not remote_allowed:
-        return (
-            f"{service.setting}: not an address of this machine, where the mirror's text"
-            f" would go; write 127.0.0.1 for this one{service.otherwise}"
-        )
-    if not url.startswith("https://"):
-        return f"{service.setting}: an endpoint off this machine is reached over https only"
+    if not service.bare:
+        return None
+    parts = urlsplit(url)
+    if (parts.scheme, parts.path or "/") != ("http", "/") or parts.port is None:
+        return f"{service.setting}: http, with a port and no path"
     return None

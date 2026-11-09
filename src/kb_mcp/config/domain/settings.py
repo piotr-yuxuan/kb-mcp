@@ -45,7 +45,7 @@ from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.kernel.endpoint import endpoint_host, loopback
+from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS
@@ -92,7 +92,7 @@ MOVED = {
 }
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
-# What telemetry's endpoint must be, since what it is sent holds titles and queries.
+# What telemetry's endpoint must be, by its service's rule.
 TELEMETRY_ENDPOINT = (
     "an http address of this machine, with a port and no path, such as"
     " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
@@ -136,12 +136,8 @@ def endpoint_address(value: str) -> str:
 
 
 def rerank_address(value: str) -> str:
-    """Give the reranking server's address without its trailing slash; refuse another.
-
-    The server is on this machine, by the user's word (plan 022): a literal address of
-    it, which no flag can widen.
-    """
-    if not loopback(value):
+    """Give the reranking server's address without its trailing slash; refuse another."""
+    if refused_endpoint(value, RERANKING, remote_allowed=False):
         message = (
             "an address of this machine, such as http://127.0.0.1:9931/v1, where the"
             " mirror's text stays; write 127.0.0.1 for localhost"
@@ -153,14 +149,11 @@ def rerank_address(value: str) -> str:
 def telemetry_address(value: str) -> str:
     """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
 
-    It is an embedding endpoint's address, over http, to a literal address of this
-    machine, with a port and no path: OTLP's own paths follow it. Raises
-    PydanticCustomError, a ValueError, saying ``TELEMETRY_ENDPOINT``.
+    Raises PydanticCustomError, a ValueError, saying ``TELEMETRY_ENDPOINT``.
     """
-    parts = urlsplit(value) if loopback(value) else None
-    if parts is None or parts.scheme != "http" or parts.port is None or parts.path not in {"", "/"}:
+    if refused_endpoint(value, TELEMETRY, remote_allowed=False):
         raise PydanticCustomError(RULE, TELEMETRY_ENDPOINT)
-    return f"http://{parts.netloc}"
+    return f"http://{urlsplit(value).netloc}"
 
 
 def local_path(path: Path) -> Path:

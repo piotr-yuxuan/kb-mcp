@@ -29,7 +29,14 @@ from kb_mcp.config.domain.settings import (
     settings_of,
     unsafe_location,
 )
-from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
+from kb_mcp.kernel.endpoint import (
+    EMBEDDINGS,
+    RERANKING,
+    TELEMETRY,
+    Service,
+    loopback,
+    refused_endpoint,
+)
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.settings import ConfluenceTable
 from kb_mcp.sources.worklog.settings import WorklogTable
@@ -1253,7 +1260,11 @@ def test_archives_false_in_the_environment_turns_archives_off(
 def test_a_refusal_names_its_own_service_s_setting_and_flag() -> None:
     """Each service is refused in its own words: its setting, then the flag that allows it."""
     other = Service(
-        name="the other server", setting="other.url", flag="--allow-remote-other", start="x"
+        name="the other server",
+        setting="other.url",
+        sends="x",
+        flag="--allow-remote-other",
+        start="x",
     )
     url = "http://10.0.0.1:9931/v1"
     elsewhere = refused_endpoint(url, other, remote_allowed=False) or ""
@@ -1262,3 +1273,43 @@ def test_a_refusal_names_its_own_service_s_setting_and_flag() -> None:
     https_only = "other.url: an endpoint off this machine is reached over https only"
     assert refused_endpoint(url, other, remote_allowed=True) == https_only
     assert refused_endpoint("http://127.0.0.1:9931/v1", other, remote_allowed=False) is None
+
+
+@pytest.mark.parametrize("service", [RERANKING, TELEMETRY])
+def test_a_service_on_this_machine_only_is_refused_off_it_whatever_the_run_says(
+    service: Service,
+) -> None:
+    """The reranking server and the telemetry endpoint: no option widens their rule."""
+    for allowed in (False, True):
+        refusal = refused_endpoint("https://192.0.2.1:4318", service, remote_allowed=allowed)
+        assert (refusal or "").startswith(f"{service.setting}: not an address of this machine")
+    assert refused_endpoint("http://127.0.0.1:4318", service, remote_allowed=False) is None
+
+
+@pytest.mark.parametrize(
+    ("url", "refusal"),
+    [
+        ("http://127.0.0.1:4318", None),
+        ("http://[::1]:4318/", None),
+        ("https://127.0.0.1:4318", "telemetry.endpoint: http, with a port and no path"),
+        ("http://127.0.0.1", "telemetry.endpoint: http, with a port and no path"),
+        ("http://127.0.0.1:4318/v1/traces", "telemetry.endpoint: http, with a port and no path"),
+        (
+            "http://192.0.2.1:4318",
+            (
+                "telemetry.endpoint: not an address of this machine, where what a run records"
+                " would go; write 127.0.0.1 for this one"
+            ),
+        ),
+    ],
+)
+def test_telemetry_s_rule_is_a_bare_http_address_of_this_machine(
+    url: str, refusal: str | None
+) -> None:
+    """OTLP's own paths follow the address; what a run records stays on this machine."""
+    assert refused_endpoint(url, TELEMETRY, remote_allowed=True) == refusal
+
+
+def test_only_a_bare_service_needs_a_port_and_no_path() -> None:
+    """The embedding endpoint's address goes up to its API's path."""
+    assert refused_endpoint("http://127.0.0.1/v1", EMBEDDINGS, remote_allowed=False) is None
