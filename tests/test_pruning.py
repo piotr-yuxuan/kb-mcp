@@ -23,7 +23,7 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.commands import embed as embed_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.evaluation.app.evaluation import Target, evaluate
+from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.search.adapters import vector_store
 from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
@@ -556,7 +556,7 @@ def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> N
     evaluable(data)
     settings = Settings(data_dir=data, model="tiny")
     chunkings: tuple[Chunking, ...] = ("windows", "section-paths")
-    targets = [Target(tiny(), chunking) for chunking in chunkings]
+    targets = [EvaluatedIndex(tiny(), chunking) for chunking in chunkings]
     evaluate(settings, golden(data), targets, ticking(), MOMENT)
     pruned(refreshed(indexing(data)))
     for chunking in chunkings:

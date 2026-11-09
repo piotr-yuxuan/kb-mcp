@@ -149,7 +149,7 @@ def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
 
 
 @dataclass(frozen=True)
-class Target:
+class EvaluatedIndex:
     """What one index under evaluation is built with: a model connected, and a chunking."""
 
     embedder: Embedder
@@ -170,7 +170,7 @@ class Costs(Record):
         return self.characters // CHARACTERS_PER_TOKEN
 
 
-class Run(Record):
+class IndexMeasures(Record):
     """How one target's search ranked the golden questions, and ask answered, mode by mode."""
 
     model_config = ConfigDict(frozen=False)
@@ -195,10 +195,10 @@ class Run(Record):
 def evaluate(
     settings: Settings,
     questions: Sequence[Question],
-    targets: Sequence[Target],
+    targets: Sequence[EvaluatedIndex],
     clock: Callable[[], float],
     built_at: datetime,
-) -> list[Run]:
+) -> list[IndexMeasures]:
     """Rank and answer every question in every mode with each target, and compare the modes.
 
     Each target's index is ``prepared``. Raises EvaluationError when a mode by meaning
@@ -213,7 +213,7 @@ def evaluate(
     at INFO each target evaluated. Each names the target's chunking.
     """
     log = structlog.get_logger()
-    runs: list[Run] = []
+    runs: list[IndexMeasures] = []
     for target in targets:
         name = target.embedder.name
         named = {"gen_ai.request.model": name, "kb_mcp.chunking": target.chunking}
@@ -289,12 +289,12 @@ def evaluate(
 
 
 def prepared(
-    target: Target,
+    target: EvaluatedIndex,
     settings: Settings,
     questions: Sequence[Question],
     clock: Callable[[], float],
     built_at: datetime,
-) -> tuple[Run, Library]:
+) -> tuple[IndexMeasures, Library]:
     """Build a target's index, and give its run, costs counted, and a library over it.
 
     The index is ``<evaluation_indexes>/<chunking>/<model>.sqlite``, its model's ``/``
@@ -316,7 +316,7 @@ def prepared(
         tokens=embedder.tokens,
         bytes=index.stat().st_size,
     )
-    run = Run(
+    run = IndexMeasures(
         model=name,
         fingerprint=embedder.fingerprint,
         embedded=report.embedded,
@@ -337,7 +337,7 @@ def prepared(
     return run, library
 
 
-def compared(runs: Sequence[Run], questions: Sequence[Question]) -> dict[str, Choice]:
+def compared(runs: Sequence[IndexMeasures], questions: Sequence[Question]) -> dict[str, Choice]:
     """Choose each model's default chunking by the rule, from its runs in hybrid mode.
 
     Only a model whose runs include the control's gets a choice.
@@ -360,7 +360,7 @@ def compared(runs: Sequence[Run], questions: Sequence[Question]) -> dict[str, Ch
 
 
 def record(
-    runs: Sequence[Run], golden: str, built_at: datetime, choices: Mapping[str, Choice]
+    runs: Sequence[IndexMeasures], golden: str, built_at: datetime, choices: Mapping[str, Choice]
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text."""
     return {
@@ -416,12 +416,12 @@ def ask_row(mode: str, group: str, each: Quoted, times: tuple[float, float]) -> 
     )
 
 
-def heading(run: Run) -> str:
+def heading(run: IndexMeasures) -> str:
     """Name a run: its model, and its chunking."""
     return f"## {run.model}, {run.chunking}"
 
 
-def built(run: Run) -> str:
+def built(run: IndexMeasures) -> str:
     """Say how a run's index was built and what it costs."""
     costs = run.costs
     reported = "none" if costs.tokens is None else f"{costs.tokens:,}"
@@ -432,7 +432,7 @@ def built(run: Run) -> str:
     )
 
 
-def table(runs: Sequence[Run]) -> str:
+def table(runs: Sequence[IndexMeasures]) -> str:
     """Write the measures of each run as Markdown: search's table, ask's, then the tests.
 
     Lexical search ignores the model and the chunking: its rows come with the first run

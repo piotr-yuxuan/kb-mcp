@@ -14,9 +14,9 @@ import structlog
 from kb_mcp.cli.commands._embedding import open_endpoint
 from kb_mcp.evaluation.app.agents import AgentsError, chosen
 from kb_mcp.evaluation.app.evaluation import (
+    EvaluatedIndex,
     EvaluationError,
     GoldenError,
-    Target,
     read_golden,
 )
 from kb_mcp.evaluation.app.reranked import (
@@ -52,7 +52,7 @@ HEADER = (
 DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
-class Evaluated(Record):
+class DepthsEvaluated(Record):
     """Each arm measured, the bar's decision, the mode, and the results file."""
 
     arms: list[Arm]
@@ -61,7 +61,7 @@ class Evaluated(Record):
     results: Path
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Evaluated | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, DepthsEvaluated | None]:
     """Measure each depth; exit 1 on a failure, 2 for a refused golden file or sample.
 
     The setting's model, chunking and search mode are measured, reranked by the setting's
@@ -87,7 +87,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
         ):
             listed = served(server)
             score = Counted(functools.partial(rerank, server, reranker.model, bounds=EVALUATION))
-            target = Target(connect(opened, settings.model), settings.chunking)
+            target = EvaluatedIndex(connect(opened, settings.model), settings.chunking)
             arms = Arms(settings.search_mode, depths, score, built_at)
             found = measured(target, settings, questions, arms, time.perf_counter)
     except (ModelError, EvaluationError) as error:
@@ -109,7 +109,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     results.parent.mkdir(parents=True, exist_ok=True)
     kept = recorded(found, decision, golden, about)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, Evaluated(
+    return ExitStatus.OK, DepthsEvaluated(
         arms=found, decision=decision, mode=settings.search_mode, results=results
     )
 
@@ -128,7 +128,7 @@ def arm_row(arm: Arm, group: str) -> str:
     )
 
 
-def text(evaluated: Evaluated, summary: Summary) -> str:
+def text(evaluated: DepthsEvaluated, summary: Summary) -> str:
     """Write each arm's row, every group's in detail; the first stage's recall; the bar.
 
     The bar's verdicts come depth by depth, each clause said with the groups' losses,

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.domain.eval_agents import (
+from kb_mcp.cli.domain.evaluate_agents import (
     CALL_S,
     CALLS,
     HANDED,
@@ -50,14 +50,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.evaluation.domain.grading import Answer
+    from kb_mcp.evaluation.domain.grading import AgentAnswer
     from kb_mcp.kernel.output import Summary
 
 # The command line that reaches this program, from the agents and for the server.
-PROGRAM = (sys.executable, "-m", "kb_mcp")
+MODULE_COMMAND = (sys.executable, "-m", "kb_mcp")
 
 
-class Prepared(Record):
+class RunsPrepared(Record):
     """The runs that ``prepare`` wrote, or would write with --dry-run, and where."""
 
     runs: int
@@ -65,7 +65,9 @@ class Prepared(Record):
     written: bool
 
 
-def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Prepared | None]:
+def prepared(
+    arguments: argparse.Namespace, loaded: Loaded
+) -> tuple[ExitStatus, RunsPrepared | None]:
     """Write the runs' directory; exit 2 for a refused golden file, sample or directory.
 
     Exit 1 when a surface's server lists nothing.
@@ -79,7 +81,9 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     if arguments.dry_run:
-        return ExitStatus.OK, Prepared(runs=2 * len(asked), directory=arguments.out, written=False)
+        return ExitStatus.OK, RunsPrepared(
+            runs=2 * len(asked), directory=arguments.out, written=False
+        )
     # The server reads the settings as this run did: the same file, the same variables,
     # and the data directory given here, if one was.
     given = ("--data-dir", str(settings.data_dir)) if arguments.data_dir else ()
@@ -88,9 +92,9 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
     asking = Asking(
         model=arguments.model,
         golden_sha256=hashlib.sha256(golden.encode()).hexdigest(),
-        program=(*PROGRAM, "eval-agents"),
+        program=(*MODULE_COMMAND, "eval-agents"),
         server=(
-            *PROGRAM,
+            *MODULE_COMMAND,
             "serve",
             "--config",
             str(config),
@@ -111,7 +115,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
             "eval.agent.not_prepared", reason=f"a surface's server listed nothing ({error!r})"
         )
         return ExitStatus.FAILED, None
-    return ExitStatus.OK, Prepared(runs=len(runs.runs), directory=arguments.out, written=True)
+    return ExitStatus.OK, RunsPrepared(runs=len(runs.runs), directory=arguments.out, written=True)
 
 
 def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Called | None]:
@@ -125,7 +129,9 @@ def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus,
     return ExitStatus.FAILED if failed else ExitStatus.OK, done
 
 
-def answered(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Answer | None]:
+def answered(
+    arguments: argparse.Namespace, _loaded: Loaded
+) -> tuple[ExitStatus, AgentAnswer | None]:
     """Keep a run's answer; exit 2 when it is refused, or one is kept already."""
     try:
         kept = answer(arguments.directory, arguments.run, arguments.answer)
@@ -194,9 +200,9 @@ def text(result: object, summary: Summary) -> str:
     and in detail each run.
     """
     match result:
-        case Prepared(written=True):
+        case RunsPrepared(written=True):
             return f"{result.runs} runs prepared in {result.directory}: runs.json, prompts/\n"
-        case Prepared():
+        case RunsPrepared():
             return f"{result.runs} runs would be prepared in {result.directory}\n"
         case Results():
             counted = ", ".join(f"{name} {count}" for name, count in result.counted.items())

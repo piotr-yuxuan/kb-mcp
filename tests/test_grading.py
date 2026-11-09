@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import (
-    Answer,
+    AgentAnswer,
     Harness,
     ask_verdict,
     grade,
@@ -45,14 +45,14 @@ QUESTIONS = 20
 HALF = 0.5
 
 
-def answered(**fields: object) -> Answer:
+def answered(**fields: object) -> AgentAnswer:
     """Give an answer, found and citing nothing unless told otherwise."""
-    return Answer.model_validate_json(
+    return AgentAnswer.model_validate_json(
         json.dumps({"found": True, "answer": "Seven days.", **fields})
     )
 
 
-def graded(answer: Answer) -> Graded:
+def graded(answer: AgentAnswer) -> Graded:
     """Grade an answer to the question, refs and bodies as above."""
     return grade(answer, QUESTION, REFS.get, BODIES.__getitem__)
 
@@ -131,7 +131,7 @@ def test_a_malformed_answer_is_refused_naming_the_field_never_the_value(
 ) -> None:
     """Strict: a string is no boolean, no field unknown, bounds kept; the value never said."""
     with pytest.raises(ValidationError) as refused:
-        Answer.model_validate_json(given.replace("'", '"'))
+        AgentAnswer.model_validate_json(given.replace("'", '"'))
     said = refusal(refused.value)
     assert said.startswith(named)
     assert SENTINEL not in said

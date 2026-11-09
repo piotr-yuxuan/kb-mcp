@@ -218,7 +218,7 @@ table is one:
 | `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
 | `sources.atlassian.fetch.app.fetching.Fetching` | It holds the raw store under its lock and the site's client |
-| `evaluation.app.evaluation.Target` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
+| `evaluation.app.evaluation.EvaluatedIndex` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 | `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
 | `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 

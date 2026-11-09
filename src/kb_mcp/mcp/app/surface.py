@@ -60,7 +60,7 @@ UNTRUSTED = (
 )
 
 
-class Guide(Record):
+class ServedPrompt(Record):
     """A prompt: its name, what it asks, its arguments, the tools it needs, its text.
 
     ``arguments`` gives each argument's name and description; every one is required.
@@ -80,7 +80,7 @@ class Surface(Record):
     tools: tuple[Tool, ...]
     instructions: str
     descriptions: dict[Tool, str]
-    guides: tuple[Guide, ...]
+    guides: tuple[ServedPrompt, ...]
 
 
 def scoped(library: Library, scope: str) -> tuple[str, str]:
@@ -101,7 +101,7 @@ def scoped(library: Library, scope: str) -> tuple[str, str]:
         raise UnanswerableError(message) from None
 
 
-def guides(library: Library) -> tuple[Guide, ...]:
+def guides(library: Library) -> tuple[ServedPrompt, ...]:
     """Give every prompt, each rendering its text from canonical values alone."""
 
     def brief(ref: str) -> str:
@@ -140,7 +140,7 @@ def guides(library: Library) -> tuple[Guide, ...]:
 
     scope = "space:KEY or project:KEY, as status() names them"
     return (
-        Guide(
+        ServedPrompt(
             name="brief",
             description="Summarise one document: purpose, facts, decisions, status, dates.",
             arguments=(
@@ -149,7 +149,7 @@ def guides(library: Library) -> tuple[Guide, ...]:
             needs=("read",),
             render=brief,
         ),
-        Guide(
+        ServedPrompt(
             name="changes",
             description="Summarise what changed in a space or a project since a date, by theme.",
             arguments=(
@@ -159,7 +159,7 @@ def guides(library: Library) -> tuple[Guide, ...]:
             needs=("search",),
             render=changes,
         ),
-        Guide(
+        ServedPrompt(
             name="overview",
             description="Say how a space or a project is organised, and what to read first.",
             arguments=(("scope", scope),),

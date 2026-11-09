@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import SearchMode, Settings
-    from kb_mcp.evaluation.app.evaluation import Target
+    from kb_mcp.evaluation.app.evaluation import EvaluatedIndex
     from kb_mcp.evaluation.domain.evaluation import Question
     from kb_mcp.search.adapters.reranking import Reranked
 
@@ -88,7 +88,7 @@ class Arm(Record):
 
 
 def measured(
-    target: Target,
+    target: EvaluatedIndex,
     settings: Settings,
     questions: Sequence[Question],
     arms: Arms,

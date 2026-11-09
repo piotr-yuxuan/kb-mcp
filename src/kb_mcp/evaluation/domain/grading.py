@@ -46,10 +46,11 @@ class Quote(BaseModel):
     text: str = Field(min_length=1, max_length=LONGEST_ANSWER)
 
 
-class Answer(BaseModel):
+class AgentAnswer(BaseModel):
     """An agent's answer: whether the base holds it, the answer, its sources and quotes."""
 
-    model_config = STRICT
+    # Its schema's title, which the prompt gives agents, as before plan 052.
+    model_config = STRICT | ConfigDict(title="Answer")
 
     found: bool
     answer: str = Field(max_length=LONGEST_ANSWER)
@@ -95,7 +96,7 @@ class Graded(Record):
 
 
 def grade(
-    answer: Answer,
+    answer: AgentAnswer,
     question: Question,
     resolve: Callable[[str], str | None],
     body: Callable[[str], str],
@@ -136,7 +137,7 @@ class Difference(Record):
     adjusted: float  # by Holm, over the measures compared
 
 
-class Verdict(Record):
+class GradeVerdict(Record):
     """Whether ``ask`` stays among the default tools, and each measure's difference."""
 
     keeps_ask: bool
@@ -154,7 +155,7 @@ def interval(differences: Sequence[float], seed: int = SEED) -> tuple[float, flo
     return float(np.quantile(means, tail)), float(np.quantile(means, 1 - tail))
 
 
-def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> Verdict:
+def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> GradeVerdict:
     """Judge surface B, with ``ask``, against A, without, from paired runs.
 
     ``pairs`` gives, for each measure (``success``, ``calls``, ``tokens``), A's and B's
@@ -177,6 +178,6 @@ def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> Verdict:
         for name, each in pairs.items()
     }
     success = differences["success"]
-    return Verdict(
+    return GradeVerdict(
         keeps_ask=not (success.difference < 0 and success.adjusted < ALPHA), differences=differences
     )

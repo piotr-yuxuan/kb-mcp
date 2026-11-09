@@ -21,9 +21,9 @@ from kb_mcp.evaluation.app import evaluation
 from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,
     HEADER,
+    EvaluatedIndex,
     EvaluationError,
     GoldenError,
-    Target,
     evaluate,
     read_golden,
     record,
@@ -366,9 +366,9 @@ def test_the_record_names_its_test_and_golden_file() -> None:
     assert re.fullmatch(r"[0-9a-f]{64}", str(kept["golden_sha256"]))
 
 
-def targets(*embedders: Embedder) -> list[Target]:
+def targets(*embedders: Embedder) -> list[EvaluatedIndex]:
     """Evaluate each model with the chunking of sections alone."""
-    return [Target(embedder, "sections") for embedder in embedders]
+    return [EvaluatedIndex(embedder, "sections") for embedder in embedders]
 
 
 def ticking() -> Callable[[], float]:
@@ -564,7 +564,7 @@ def test_each_target_s_scores_are_measured_by_its_chunking_ask_s_among_them(
     One question of three has evidence, so that Evidence@ask is measured too.
     """
     settings = Settings(data_dir=data, model="tiny")
-    targets = [Target(tiny(), "sections"), Target(tiny(), "windows")]
+    targets = [EvaluatedIndex(tiny(), "sections"), EvaluatedIndex(tiny(), "windows")]
     runs = evaluate(settings, golden(data), targets, ticking(), MOMENT)
     points = {
         tuple(
@@ -594,7 +594,7 @@ def test_each_target_s_span_events_and_question_times_name_its_chunking(
     data: Path, telemetry: InMemory
 ) -> None:
     """Its span and its events, and its questions' times, each question once a mode."""
-    targets = [Target(tiny(), "sections"), Target(tiny(), "windows")]
+    targets = [EvaluatedIndex(tiny(), "sections"), EvaluatedIndex(tiny(), "windows")]
     questions = golden(data)
     with capture_logs() as events:
         evaluate(Settings(data_dir=data, model="tiny"), questions, targets, ticking(), MOMENT)
@@ -627,7 +627,7 @@ def test_without_evidence_found_at_ask_is_measured_and_evidence_at_ask_is_not(
 ) -> None:
     """A golden file whose questions have no evidence: no point of Evidence@ask."""
     without = GOLDEN.replace('  evidence: {"4002": "leave for a meal"}\n', "")
-    targets = [Target(tiny(), "sections")]
+    targets = [EvaluatedIndex(tiny(), "sections")]
     evaluate(
         Settings(data_dir=data, model="tiny"), golden(data, without), targets, ticking(), MOMENT
     )

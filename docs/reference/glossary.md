@@ -369,7 +369,7 @@ What `serve` offers an agent to call: `ask`, `search`, `read`, `browse` and `sta
 prompt is a template that it serves, which calls them.
 
 - In the code: [`Library`](../../src/kb_mcp/mcp/app/tools.py),
-  [`Guide`](../../src/kb_mcp/mcp/app/surface.py).
+  [`ServedPrompt`](../../src/kb_mcp/mcp/app/surface.py).
 - User-facing: `ask`, `search`, `read`, `browse`, `status`.
 
 ### hit

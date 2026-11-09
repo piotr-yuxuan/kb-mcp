@@ -32,7 +32,7 @@ class Depthed(Record):
     tail_ms: int  # a search's 95th percentile, in whole milliseconds
 
 
-class Verdict(Record):
+class BarVerdict(Record):
     """The bar's clauses at one depth, and the adjusted p-value of its gain."""
 
     depth: int
@@ -55,7 +55,7 @@ class Verdict(Record):
 class Decision(Record):
     """The bar's verdicts, depth by depth, and the default depth; None: reranking off."""
 
-    verdicts: tuple[Verdict, ...]
+    verdicts: tuple[BarVerdict, ...]
     depth: int | None
     # Each qualifying depth's p-value against the best of them, on MRR@10.
     against_best: Mapping[int, float] = Field(default_factory=dict)
@@ -75,7 +75,7 @@ def default_reranking(plain: Depthed, arms: Mapping[int, Depthed]) -> Decision |
     pvalues = [paired_test(plain.reciprocal, arms[depth].reciprocal) for depth in BAR_DEPTHS]
     mean = {depth: round(fmean(arm.reciprocal), 3) for depth, arm in {0: plain, **arms}.items()}
     verdicts = tuple(
-        Verdict(
+        BarVerdict(
             depth=depth,
             adjusted=adjusted,
             beats=mean[depth] > mean[0] and round(adjusted, 4) < ALPHA,

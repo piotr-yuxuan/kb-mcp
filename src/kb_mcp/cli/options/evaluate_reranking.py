@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from argcomplete.completers import FilesCompleter
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.eval_agents import SEED
+from kb_mcp.cli.domain.evaluate_agents import SEED
 from kb_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,

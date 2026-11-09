@@ -13,9 +13,9 @@ from kb_mcp.evaluation.app.evaluation import read_golden
 from kb_mcp.evaluation.app.reranked import Counted
 from kb_mcp.evaluation.domain import reranking as bar
 from kb_mcp.evaluation.domain.reranking import (
+    BarVerdict,
     Decision,
     Depthed,
-    Verdict,
     default_reranking,
 )
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -311,8 +311,8 @@ def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
 ) -> None:
     """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
     verdicts = (
-        Verdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
-        Verdict(
+        BarVerdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
+        BarVerdict(
             depth=20,
             adjusted=0.004,
             beats=True,

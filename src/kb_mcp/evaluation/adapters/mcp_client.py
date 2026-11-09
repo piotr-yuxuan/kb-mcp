@@ -27,7 +27,7 @@ class ServerError(Exception):
     """A server that did not start, or stopped before it answered; the message says how."""
 
 
-class Listing(Record):
+class ToolListing(Record):
     """What a server lists: its instructions, and each tool's name, description and schema."""
 
     instructions: str
@@ -68,12 +68,12 @@ def started(server: Sequence[str]) -> Client:
     return Client(command)
 
 
-def listed(server: Sequence[str], deadline_s: float) -> Listing:
+def listed(server: Sequence[str], deadline_s: float) -> ToolListing:
     """Start the server, and give its instructions and tools as it lists them.
 
     Raises TimeoutError past ``deadline_s`` seconds, and ServerError.
     """
-    found: list[Listing] = []
+    found: list[ToolListing] = []
 
     async def session() -> None:
         with anyio.fail_after(deadline_s):
@@ -84,7 +84,7 @@ def listed(server: Sequence[str], deadline_s: float) -> Listing:
                     tool.model_dump(mode="json", by_alias=True, exclude_none=True, include=fields)
                     for tool in tools
                 ]
-                found.append(Listing(instructions=client.instructions or "", tools=dumped))
+                found.append(ToolListing(instructions=client.instructions or "", tools=dumped))
 
     finished(session)
     return found[0]

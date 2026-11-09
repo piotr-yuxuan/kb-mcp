@@ -41,15 +41,7 @@ DOCS_ALONE = "A word of the docs alone"
 ITEM = re.compile(r'(?:`(?P<name>[^`]+)`|"(?P<phrase>[^"]+)")(?: \(kept in (?P<kept>[^)]+)\))?')
 # The names that classes or type aliases of two modules or more share, as plan 052 found
 # them: each of its steps takes some out, and the last deletes this.
-SHARED = frozenset(
-    {
-        "Evaluated",
-        "Outcome",
-        "Run",
-        "Target",
-        "Verdict",
-    }
-)
+SHARED: frozenset[str] = frozenset()
 
 
 class Retired(NamedTuple):
