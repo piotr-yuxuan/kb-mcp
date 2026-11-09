@@ -266,7 +266,7 @@ def test_a_call_of_runs_off_this_machine_needs_its_own_consent(
     off_this_machine: bool,
     consented: bool,
 ) -> None:
-    """Given to call, the flag reaches its server; needed and not given, no server starts."""
+    """Needed and given, the flag reaches the server; needed and not given, none starts."""
     if off_this_machine:
         remote(world)
     out = world.root / "runs"
@@ -292,7 +292,8 @@ def test_a_call_of_runs_off_this_machine_needs_its_own_consent(
         assert 'stop, and answer with "found": false' in said
         assert "--allow" not in said
     else:
-        assert started == [[*server, *flag, "--tools", ",".join(run["tools"])]]
+        passed = flag if off_this_machine else []
+        assert started == [[*server, *passed, "--tools", ",".join(run["tools"])]]
 
 
 def test_a_call_prints_serve_s_answer_alone_and_logs_five_fields(

@@ -350,7 +350,8 @@ class Called(Record):
 def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) -> Called:
     """Make one call of a run: start its server, call the tool, log the call, give its answer.
 
-    ``consented``, this call's consent to remote embeddings, reaches its server alone.
+    ``consented``, this call's consent to remote embeddings, reaches its server alone,
+    and only when the runs need it.
     Refused, before any server starts: a run not there, arguments not one JSON object, a
     tool not of the run's surface, runs that need the consent without it, a call past
     the run's bound. The log line holds the tool, the arguments, the answer's estimated
@@ -388,7 +389,7 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
         started = time.monotonic()
         server = [
             *runs.server,
-            *([EMBEDDINGS.flag] if consented else []),
+            *([EMBEDDINGS.flag] if runs.remote_embeddings and consented else []),
             "--tools",
             ",".join(run.tools),
         ]
