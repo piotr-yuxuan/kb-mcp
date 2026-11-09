@@ -41,6 +41,7 @@ What a source reads, named in the plural, which is also a folder of its raw stor
 read one way: `listed`, `searched` or `in place`. Not "kind".
 
 - In the code: [`ResourceType`](../../src/kb_mcp/sources/declaration.py),
+  [names.py](../../src/kb_mcp/sources/atlassian/fetch/domain/names.py),
   [`Source.resource_types`](../../src/kb_mcp/sources/declaration.py),
   [`Reading`](../../src/kb_mcp/sources/declaration.py).
 

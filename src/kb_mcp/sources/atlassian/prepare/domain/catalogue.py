@@ -30,6 +30,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Page,
     Space,
 )
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, ISSUE, JIRA, PAGE
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
@@ -40,19 +41,19 @@ if TYPE_CHECKING:
 
 # The front matter's type of each kind of document.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {
-    Page: "page",
-    BlogPost: "blogpost",
-    Issue: "issue",
+    Page: PAGE,
+    BlogPost: BLOGPOST,
+    Issue: ISSUE,
 }
 # Each type with its source, as the front matter names them.
 SOURCE_TYPES = frozenset((kind.source, name) for kind, name in TYPES.items())
 # Keys that one source alone has, always.
 ONLY = {
-    "space": "confluence",
-    "version": "confluence",
-    "key": "jira",
-    "project": "jira",
-    "issue_type": "jira",
+    "space": CONFLUENCE,
+    "version": CONFLUENCE,
+    "key": JIRA,
+    "project": JIRA,
+    "issue_type": JIRA,
 }
 
 

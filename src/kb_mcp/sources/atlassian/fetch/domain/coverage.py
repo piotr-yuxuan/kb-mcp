@@ -16,10 +16,11 @@ from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
 from kb_mcp.kernel.record import Record
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, FIRST_FETCH, Period
 
 # The rule of a target's key, by source.
-KEYS = {"confluence": SPACE_KEY, "jira": PROJECT_KEY}
+KEYS = {CONFLUENCE: SPACE_KEY, JIRA: PROJECT_KEY}
 # What a run made of a target's coverage: grown to its window's end, ended at a failure,
 # or left as it was.
 type CoverageChange = Literal["extended", "capped", "held"]
@@ -53,7 +54,7 @@ class Target(Record):
 
     def __str__(self) -> str:
         """Name the target as the user does: ``space ENG``, ``project PLAT``."""
-        return f"{'space' if self.source == 'confluence' else 'project'} {self.key}"
+        return f"{'space' if self.source == CONFLUENCE else 'project'} {self.key}"
 
     @property
     def searched_by_time(self) -> bool:
@@ -61,7 +62,7 @@ class Target(Record):
 
         A space is listed whole.
         """
-        return self.source == "jira"
+        return self.source == JIRA
 
 
 class Coverage(Record):

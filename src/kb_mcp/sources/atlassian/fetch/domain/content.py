@@ -17,6 +17,7 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
 from kb_mcp.kernel.record import Record
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOSTS, CONFLUENCE, ISSUES, JIRA, PAGES
 
 # A path on the site, never another host's: one slash, no second one, no backslash, no
 # control character.
@@ -132,7 +133,7 @@ class FetchedDocument(Record):
 class ConfluenceDocument(FetchedDocument):
     """A page or a blog post, versioned within its space."""
 
-    source: ClassVar[str] = "confluence"
+    source: ClassVar[str] = CONFLUENCE
 
     space_id: str
     version: int
@@ -153,7 +154,7 @@ class ConfluenceDocument(FetchedDocument):
 class BlogPost(ConfluenceDocument):
     """A Confluence blog post."""
 
-    resource_type: ClassVar[str] = "blogposts"
+    resource_type: ClassVar[str] = BLOGPOSTS
 
 
 class Page(ConfluenceDocument):
@@ -163,7 +164,7 @@ class Page(ConfluenceDocument):
     space.
     """
 
-    resource_type: ClassVar[str] = "pages"
+    resource_type: ClassVar[str] = PAGES
 
     parent_id: str | None = None
     parent_type: str | None = None
@@ -172,8 +173,8 @@ class Page(ConfluenceDocument):
 class Issue(FetchedDocument):
     """A Jira issue; its id stays when it moves, its key does not."""
 
-    source: ClassVar[str] = "jira"
-    resource_type: ClassVar[str] = "issues"
+    source: ClassVar[str] = JIRA
+    resource_type: ClassVar[str] = ISSUES
 
     key: str
     project: str  # the project's key
@@ -189,6 +190,11 @@ class Issue(FetchedDocument):
         require(ISSUE_KEY, self.key, "key")
         require(PROJECT_KEY, self.project, "project")
         return self
+
+
+# The documents' classes: Confluence's, each listed per space, then every one.
+CONFLUENCE_CLASSES: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
+DOCUMENT_CLASSES: tuple[type[Page | BlogPost | Issue], ...] = (*CONFLUENCE_CLASSES, Issue)
 
 
 class Listed(Record):

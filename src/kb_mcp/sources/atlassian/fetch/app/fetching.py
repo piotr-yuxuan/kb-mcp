@@ -43,7 +43,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     Unreadable,
 )
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.content import CONFLUENCE_CLASSES, BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
     CoverageChange,
@@ -61,6 +61,7 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     too_many_gone,
 )
 from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, ISSUES, JIRA, PAGES
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     MAX_FILE_MB_FLAG,
@@ -87,8 +88,6 @@ MAX_FOLDERS = 1000
 # Documents absent from their listing that one run probes, at most; the rest wait.
 MAX_PROBES = 200
 HTTP_NOT_FOUND = 404
-# The kinds of Confluence documents that a space lists.
-KINDS: tuple[type[Page | BlogPost], ...] = (Page, BlogPost)
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
@@ -196,23 +195,23 @@ class Fetching:
         """
         self.held |= {target: "after --until" for target, w in self.windows.items() if w is None}
         confluence = bool(spaces) and self.reachable(
-            "confluence", confluence_v2.current_user_request(), confluence_v2.is_signed_in
+            CONFLUENCE, confluence_v2.current_user_request(), confluence_v2.is_signed_in
         )
         jira = bool(projects) and self.reachable(
-            "jira", jira_v3.myself_request(), jira_v3.is_signed_in
+            JIRA, jira_v3.myself_request(), jira_v3.is_signed_in
         )
         answered_spaces = spaces if confluence else ()
         answered_projects = projects if jira else ()
         with task("targets", len(answered_spaces) + len(answered_projects)) as targets:
             for key in targets.each(answered_spaces, str):
-                target = Target(source="confluence", key=key)
+                target = Target(source=CONFLUENCE, key=key)
                 window = self.windows[target]
                 if window is not None and self.space(target, window):
                     self.covered[target] = window.period
             if spaces and not self.plan:
                 self.probe_absent()
             for key in targets.each(answered_projects, str):
-                target = Target(source="jira", key=key)
+                target = Target(source=JIRA, key=key)
                 window = self.windows[target]
                 if window is not None and self.project(target, window):
                     self.covered[target] = window.period
@@ -316,7 +315,7 @@ class Fetching:
         known = {key: stone for key, stone in self.tombstones.items() if stone.space_id == space_id}
         absent: dict[tuple[str, str], str] = {}
         stored = 0
-        for document_class in KINDS:
+        for document_class in CONFLUENCE_CLASSES:
             before = self.store.listed_ids(space_id, document_class) & self.store.stored_ids(
                 document_class
             )
@@ -357,7 +356,7 @@ class Fetching:
                         for k in probes.each(order, lambda key: key[1])
                         if (a := self.probe(k, kept))
                     }
-                if too_many_gone(answers, stored) and not self.reachable("confluence", *canary):
+                if too_many_gone(answers, stored) and not self.reachable(CONFLUENCE, *canary):
                     answers = {}  # the site stopped answering: believe none of these answers
                 now = after_probes(known, absent, answers, self.now())
                 others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
@@ -394,7 +393,7 @@ class Fetching:
         wanted: list[str | None] = []
         for entry in pages:
             try:
-                page = confluence_v2.document(Fields(entry, "pages"), Page)
+                page = confluence_v2.document(Fields(entry, PAGES), Page)
             except RepresentationError as error:
                 self.report.failed("confluence pages in the tree", error)
                 continue
@@ -511,8 +510,8 @@ class Fetching:
         counted: set[Listed] = set()
         for entry in entries:
             try:
-                listed = jira_v3.listed(Fields(entry, "issues"))
-                files = jira_v3.listed_attachments(Fields(entry, "issues"))
+                listed = jira_v3.listed(Fields(entry, ISSUES))
+                files = jira_v3.listed_attachments(Fields(entry, ISSUES))
             except RepresentationError:
                 continue  # counted by documents() already
             if listed.updated not in period or self.store.has(listed) or listed in counted:
@@ -690,8 +689,8 @@ class Targets(Record):
 
         Raises PeriodError when --since does not come before the windows' end.
         """
-        named = [Target(source="confluence", key=key) for key in self.spaces]
-        named += [Target(source="jira", key=key) for key in self.projects]
+        named = [Target(source=CONFLUENCE, key=key) for key in self.spaces]
+        named += [Target(source=JIRA, key=key) for key in self.projects]
         end = min(self.until, now) if self.until else now  # never past what a run can see
         return {target: fetch_window(coverage, target, self.since, end) for target in named}
 
@@ -701,7 +700,7 @@ class Targets(Record):
         Each is fetched on its own, in this order, over the same period; a source without
         targets is left out.
         """
-        apart = {"confluence": replace(self, projects=[]), "jira": replace(self, spaces=[])}
+        apart = {CONFLUENCE: replace(self, projects=[]), JIRA: replace(self, spaces=[])}
         return {source: each for source, each in apart.items() if each.spaces or each.projects}
 
     @property

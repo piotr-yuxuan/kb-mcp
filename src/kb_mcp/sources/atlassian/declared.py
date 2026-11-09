@@ -12,6 +12,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     EPOCH,
@@ -149,13 +150,15 @@ def described(options: Mapping[str, object], settings: Mapping[str, object]) -> 
 
 
 CONFLUENCE = Source(
-    name="confluence",
+    name=names.CONFLUENCE,
     help="Confluence, on the Atlassian site: the pages and blog posts of its spaces,"
     " with their files",
     resource_types=(
-        ResourceType(name="pages", help="a space's pages", read="listed", options=(SPACE, *PERIOD)),
         ResourceType(
-            name="blogposts",
+            name=names.PAGES, help="a space's pages", read="listed", options=(SPACE, *PERIOD)
+        ),
+        ResourceType(
+            name=names.BLOGPOSTS,
             help="a space's blog posts",
             read="listed",
             options=(SPACE, *PERIOD),
@@ -171,11 +174,11 @@ CONFLUENCE = Source(
     described=described,
 )
 JIRA = Source(
-    name="jira",
+    name=names.JIRA,
     help="Jira, on the Atlassian site: the issues of its projects, with their comments and files",
     resource_types=(
         ResourceType(
-            name="issues",
+            name=names.ISSUES,
             help="a project's issues",
             read="searched",
             options=(PROJECT, *PERIOD),

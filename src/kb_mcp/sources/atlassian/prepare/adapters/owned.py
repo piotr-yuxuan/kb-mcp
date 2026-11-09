@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.adapters.mirror_files import regular_files
 from kb_mcp.sources.atlassian.fetch.domain.content import ConfluenceDocument
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.prepare.domain.layout import ASSET_NAME, ASSETS, TREE
 
 if TYPE_CHECKING:
@@ -19,8 +20,8 @@ if TYPE_CHECKING:
 
 # The documents of each Atlassian source, by its name, relative to <data>/docs.
 ATLASSIAN = {
-    "confluence": ("confluence/*/*.md", "confluence/*/blog/*.md"),
-    "jira": ("jira/*/*.md",),
+    CONFLUENCE: (f"{CONFLUENCE}/*/*.md", f"{CONFLUENCE}/*/blog/*.md"),
+    JIRA: (f"{JIRA}/*/*.md",),
 }
 
 

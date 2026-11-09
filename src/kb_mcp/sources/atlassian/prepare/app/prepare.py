@@ -41,7 +41,13 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     Unreadable,
     reason,
 )
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, ConfluenceDocument, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    DOCUMENT_CLASSES,
+    BlogPost,
+    ConfluenceDocument,
+    Issue,
+    Page,
+)
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
 from kb_mcp.sources.atlassian.prepare.adapters.owned import attached, owned, unlinked
 from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
@@ -68,13 +74,12 @@ if TYPE_CHECKING:
     from kb_mcp.mirror.adapters.conversions import Conversions
     from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
-KINDS: tuple[type[Page | BlogPost | Issue], ...] = (Page, BlogPost, Issue)
 # The kinds that each source prepares, by its name, in the order that it is prepared, as
 # each kind names its source: Confluence's pages and blog posts, with each space's tree,
 # then Jira's issues.
 PREPARED: dict[str, tuple[type[Page | BlogPost | Issue], ...]] = {
-    source: tuple(kind for kind in KINDS if kind.source == source)
-    for source in dict.fromkeys(kind.source for kind in KINDS)
+    source: tuple(kind for kind in DOCUMENT_CLASSES if kind.source == source)
+    for source in dict.fromkeys(kind.source for kind in DOCUMENT_CLASSES)
 }
 # Each source by all of its kinds, which a prepare takes whole: it removes the files of them
 # all (``owned``), so a prepare of some of them would remove the files of the others.
@@ -240,7 +245,9 @@ def place(
         )
         gone = {}
     for found in (
-        item for kind in KINDS for item in readable(store.latest(kind), problems[kind.source])
+        item
+        for kind in DOCUMENT_CLASSES
+        for item in readable(store.latest(kind), problems[kind.source])
     ):
         stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
@@ -357,7 +364,7 @@ def mirror(
     log = structlog.get_logger()
     source = SOURCE_OF[kinds]
     # The problems found, by the source they belong to: the catalogue's are Confluence's.
-    found: dict[str, list[Problem]] = {kind.source: [] for kind in KINDS}
+    found: dict[str, list[Problem]] = {kind.source: [] for kind in DOCUMENT_CLASSES}
     problems = found[source]
     with TRACER.start_as_current_span("prepare.read"):
         catalogue, damaged, times = read_catalogue(store, found[ConfluenceDocument.source])

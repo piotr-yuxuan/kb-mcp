@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror_layout import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -32,7 +33,7 @@ NONE = "<p>None.</p>"
 def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
     """Return where a page or a blog post of the space with this key is mirrored."""
     name = "-".join(part for part in (document.id, slug(document.title)) if part)
-    folder = PurePosixPath("confluence", space)
+    folder = PurePosixPath(CONFLUENCE, space)
     if isinstance(document, BlogPost):
         folder /= "blog"
     return folder / f"{name}.md"
@@ -40,12 +41,12 @@ def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
 
 def issue_path(issue: Issue) -> PurePosixPath:
     """Return where an issue is mirrored."""
-    return PurePosixPath("jira", issue.project, f"{issue.key}.md")
+    return PurePosixPath(JIRA, issue.project, f"{issue.key}.md")
 
 
 def tree_path(space: str) -> PurePosixPath:
     """Return where the tree of the space with this key is."""
-    return PurePosixPath("confluence", space, TREE)
+    return PurePosixPath(CONFLUENCE, space, TREE)
 
 
 def asset_path(digest: str, filename: str) -> PurePosixPath:

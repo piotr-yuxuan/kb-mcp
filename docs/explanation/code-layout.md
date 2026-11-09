@@ -125,7 +125,8 @@ above. Plan 029 nested them so:
 - **`fetch/`** reaches a system and keeps the store it owns. For Confluence and Jira:
   the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
   store, a download's period, coverage, deletions and files kept; the records that the
-  fetch stores and the prepare reads, `content.py`; and the use cases, `fetching.py`,
+  fetch stores and the prepare reads, `content.py`, and their names, `names.py`; and the
+  use cases, `fetching.py`,
   `login.py` and `doctor.py`.
 - **`prepare/`** writes documents through the mirror, from its source's store or from a
   folder read in place. For Confluence and Jira: the site's HTML, the catalogue, the

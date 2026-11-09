@@ -33,6 +33,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
 )
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOSTS, CONFLUENCE, PAGES
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
@@ -347,7 +348,7 @@ class RawStore:
         }
 
     def _space(self, space_id: str) -> Path:
-        return self.root / "confluence" / "spaces" / _identifier(space_id, "space id")
+        return self.root / CONFLUENCE / "spaces" / _identifier(space_id, "space id")
 
     def put_space(
         self,
@@ -366,7 +367,7 @@ class RawStore:
         """
         self._check_writing()
         target = self._space(Fields(space, "space").text("id"))
-        for name, value in (("pages", pages), ("blogposts", blog_posts), ("folders", folders)):
+        for name, value in ((PAGES, pages), (BLOGPOSTS, blog_posts), ("folders", folders)):
             if type(value) is not list:
                 message = f"{name}: expected a list"
                 raise ValueError(message)
@@ -386,7 +387,7 @@ class RawStore:
     def spaces(self) -> list[Space | Unreadable]:
         """Read every space ever listed."""
         spaces: list[Space | Unreadable] = []
-        for folder in _named(self.root / "confluence" / "spaces", IDENTIFIER):
+        for folder in _named(self.root / CONFLUENCE / "spaces", IDENTIFIER):
             where = str((folder / "space.json").relative_to(self.root))
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
@@ -421,7 +422,7 @@ class RawStore:
     def put_users(self, users: list[object]) -> None:
         """Merge users, as received, into those kept from earlier runs, by account id."""
         self._check_writing()
-        path = self.root / "confluence" / "users.json"
+        path = self.root / CONFLUENCE / "users.json"
         kept = _decode(path) if path.exists() else []
         if type(kept) is not list or type(users) is not list:
             message = "users: expected a list"
@@ -434,7 +435,7 @@ class RawStore:
 
     def users(self) -> list[SiteUser | Unreadable]:
         """Read every user kept."""
-        return self._entries(self.root / "confluence" / "users.json", confluence_v2.person)
+        return self._entries(self.root / CONFLUENCE / "users.json", confluence_v2.person)
 
     def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Unreadable]:
         if not path.exists():

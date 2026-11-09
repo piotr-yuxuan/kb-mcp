@@ -8,6 +8,7 @@ from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, http, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError, SiteClient, SiteError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 from kb_mcp.sources.stages import FAILED, SIGN_IN, Verdict
 
 if TYPE_CHECKING:
@@ -40,8 +41,8 @@ def access(settings: Settings) -> list[Verdict]:
     with client:
         reader = SiteClient(client)
         for name, request, signed_in in (
-            ("confluence", confluence_v2.current_user_request(), confluence_v2.is_signed_in),
-            ("jira", jira_v3.myself_request(), jira_v3.is_signed_in),
+            (CONFLUENCE, confluence_v2.current_user_request(), confluence_v2.is_signed_in),
+            (JIRA, jira_v3.myself_request(), jira_v3.is_signed_in),
         ):
             try:
                 user = Fields(reader.json(request), "user")
