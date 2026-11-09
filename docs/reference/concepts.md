@@ -531,7 +531,9 @@ left, whatever their endings. No source depends on another. Each unit gives an
   transcript, or a mirror that changed since the index;
 - an ending: done; failed; sign in again; not run, for a unit that a dry run leaves
   alone, that an interruption reached before it started, or whose unit before it on its
-  source did not end done; or interrupted.
+  source did not end done; or interrupted. A unit of a dry run that finds a problem, or a
+  sign-in that no longer holds, ends failed or sign in again all the same, so that its
+  exit status says so.
 
 A run may also end with an ending of its own: before any unit acts, declined (the
 question asked before it writes is answered otherwise than yes), refused (its
