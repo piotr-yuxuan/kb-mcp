@@ -14,12 +14,12 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    sources: Sequence[Declared],
+    sources: Sequence[Source],
 ) -> None:
     """Add ``prepare`` to the command, for every source of the registry.
 

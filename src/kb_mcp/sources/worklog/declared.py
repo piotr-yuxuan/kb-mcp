@@ -7,22 +7,22 @@ and ``meetings/``. Read in place, it has no fetcher.
 
 from __future__ import annotations
 
-from kb_mcp.sources.declaration import Declared, ResourceType
+from kb_mcp.sources.declaration import ResourceType, Source
 
-WORKLOG = Declared(
+WORKLOG = Source(
     name="worklog",
-    summary="The user's work log: org files read in place, never written",
-    types=(
-        ResourceType(name="entries", summary="the entries of todo.org", read="in place"),
-        ResourceType(name="days", summary="the days of todo.org", read="in place"),
-        ResourceType(name="meetings", summary="the meetings of todo.org", read="in place"),
+    help="The user's work log: org files read in place, never written",
+    resource_types=(
+        ResourceType(name="entries", help="the entries of todo.org", read="in place"),
+        ResourceType(name="days", help="the days of todo.org", read="in place"),
+        ResourceType(name="meetings", help="the meetings of todo.org", read="in place"),
         ResourceType(
             name="transcripts",
-            summary="the transcripts of transcripts/ and meetings/",
+            help="the transcripts of transcripts/ and meetings/",
             read="in place",
         ),
     ),
     settings=("path", "archives"),
-    table="kb_mcp.sources.worklog.settings:WorklogSource",
+    table_path="kb_mcp.sources.worklog.settings:WorklogTable",
     preparers=("kb_mcp.sources.worklog.prepare.app.preparer",),
 )

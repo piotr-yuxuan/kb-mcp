@@ -50,7 +50,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
-    from kb_mcp.sources.atlassian.prepare.app.preparer import Prepared
+    from kb_mcp.sources.atlassian.prepare.app.preparer import AtlassianPrepared
 
 SITE = "https://site.example.invalid"
 FETCHED = datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -993,7 +993,7 @@ def issue_damaged(sandbox: Sandbox) -> None:
     (folder / jira_v3.ISSUE).write_text("{}", "utf-8")
 
 
-def prepared(sandbox: Sandbox, source: str) -> tuple[Prepared, list[dict[str, object]]]:
+def prepared(sandbox: Sandbox, source: str) -> tuple[AtlassianPrepared, list[dict[str, object]]]:
     """Prepare one source as its role does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:

@@ -23,19 +23,19 @@ from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.sources import FETCH, PREPARE, RANKED
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.roles import Fetcher, Preparer, Result, Run
+from kb_mcp.sources.stages import Fetcher, Preparer, Result, SourceRun
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.cli.domain.sources import Outcome
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.cli.domain.sources import RowOutcome
+    from kb_mcp.sources.declaration import Source
 
 
 TRACER = trace.get_tracer(__name__)
 
 
-class Recorded(Record):
+class EventNames(Record):
     """What a step records, each name written out, so that a search for a page's name finds it."""
 
     start: str
@@ -45,13 +45,13 @@ class Recorded(Record):
 
 
 RECORDED = {
-    FETCH: Recorded(
+    FETCH: EventNames(
         start="fetch.start",
         source="fetch.source",
         interrupted="fetch.interrupted",
         end="fetch.end",
     ),
-    PREPARE: Recorded(
+    PREPARE: EventNames(
         start="prepare.start",
         source="prepare.source",
         interrupted="prepare.interrupted",
@@ -64,15 +64,15 @@ class SourcesRefusedError(ValueError):
     """What a run cannot go on with, found before its first row; the message names it."""
 
 
-class Planned(Record):
+class PlannedRow(Record):
     """A row to run: its source's run, its role's preflight and what does the step."""
 
-    run: Run
-    preflight: Callable[[Run], str | None]
-    act: Callable[[Run], Result]
+    run: SourceRun
+    preflight: Callable[[SourceRun], str | None]
+    act: Callable[[SourceRun], Result]
 
 
-def loaded[R: (Fetcher, Preparer)](declared: Declared, path: str, role: type[R]) -> R:
+def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, role: type[R]) -> R:
     """Load a role by the module path that its source's declaration names.
 
     Raises ``SourcesRefusedError``, naming the source and the path, for a path that does
@@ -91,26 +91,26 @@ def loaded[R: (Fetcher, Preparer)](declared: Declared, path: str, role: type[R])
     return found
 
 
-def planned(step: str, runs: Sequence[Run]) -> list[Planned]:
+def planned(step: str, runs: Sequence[SourceRun]) -> list[PlannedRow]:
     """Load the role of each run for this step: its source's fetcher, or each of its preparers."""
     if step == FETCH:
         fetchers = (
-            (run, loaded(run.declared, run.declared.fetcher, Fetcher))
+            (run, loaded(run.source, run.source.fetcher, Fetcher))
             for run in runs
-            if run.declared.fetcher is not None
+            if run.source.fetcher is not None
         )
         return [
-            Planned(run=run, preflight=each.preflight, act=each.fetch) for run, each in fetchers
+            PlannedRow(run=run, preflight=each.preflight, act=each.fetch) for run, each in fetchers
         ]
     preparers = (
-        (run, loaded(run.declared, path, Preparer))
-        for run in runs
-        for path in run.declared.preparers
+        (run, loaded(run.source, path, Preparer)) for run in runs for path in run.source.preparers
     )
-    return [Planned(run=run, preflight=each.preflight, act=each.prepare) for run, each in preparers]
+    return [
+        PlannedRow(run=run, preflight=each.preflight, act=each.prepare) for run, each in preparers
+    ]
 
 
-def run_each(step: str, runs: Sequence[Run]) -> Ran:
+def run_each(step: str, runs: Sequence[SourceRun]) -> Ran:
     """Run each source's role for this step; return a row each, and the status that they rank.
 
     Each run's ``dry_run`` is what its role reads, and the events follow the runs. Raises
@@ -125,7 +125,7 @@ def run_each(step: str, runs: Sequence[Run]) -> Ran:
     plans = planned(step, runs)
     refusal = next(
         (
-            f"source {each.run.declared.name!r}: {step}: {said}"
+            f"source {each.run.source.name!r}: {step}: {said}"
             for each in plans
             if (said := each.preflight(each.run))
         ),
@@ -135,10 +135,10 @@ def run_each(step: str, runs: Sequence[Run]) -> Ran:
         raise SourcesRefusedError(refusal)
     log = structlog.get_logger()
     recorded = RECORDED[step]
-    names = [each.run.declared.name for each in plans]
+    names = [each.run.source.name for each in plans]
     log.info(recorded.start, sources=names, dry_run=any(run.dry_run for run in runs))
     rows: list[Row] = []
-    outcomes: set[Outcome] = set()
+    outcomes: set[RowOutcome] = set()
     try:
         for each, source in zip(plans, names, strict=True):
             attributes = {"kb_mcp.source": source}

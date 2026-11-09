@@ -10,7 +10,7 @@ from kb_mcp.cli.domain.sources import chosen
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 # How a resource type is read, in the words of its source's group.
 READ = {
@@ -21,7 +21,7 @@ READ = {
 
 
 def source_groups(
-    parser: argparse.ArgumentParser, sources: Sequence[Declared]
+    parser: argparse.ArgumentParser, sources: Sequence[Source]
 ) -> dict[str, argparse._ArgumentGroup]:
     """Add a group per source to the help, what it is, what it reads and how; give each by name.
 
@@ -32,7 +32,7 @@ def source_groups(
         f"source {declared.name!r}: type {each.name!r}: read {each.read!r}:"
         f" not one of {', '.join(READ)}"
         for declared in sources
-        for each in declared.types
+        for each in declared.resource_types
         if each.read not in READ
     ]
     if unknown:
@@ -40,8 +40,8 @@ def source_groups(
     return {
         declared.name: parser.add_argument_group(
             declared.name,
-            f"{declared.summary}: "
-            + "; ".join(f"{each.name}, {READ[each.read]}" for each in declared.types)
+            f"{declared.help}: "
+            + "; ".join(f"{each.name}, {READ[each.read]}" for each in declared.resource_types)
             + ".",
         )
         for declared in sources
@@ -49,7 +49,7 @@ def source_groups(
 
 
 def add_source_options(
-    parser: argparse.ArgumentParser, sources: Sequence[Declared]
+    parser: argparse.ArgumentParser, sources: Sequence[Source]
 ) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
     """Add a group per source, with the options that it alone declares; then the others.
 
@@ -77,7 +77,7 @@ def add_source_options(
                 dest=flag,
                 metavar=flag.lstrip("-").replace("-", "_").upper(),
                 action="append" if option.setting else "store",
-                type=option.type,
+                type=option.parse,
                 help=option.help,
             )
             for flag, option in options.items()

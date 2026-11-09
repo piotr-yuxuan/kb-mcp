@@ -49,7 +49,7 @@ from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
 from kb_mcp.sources.atlassian.prepare.app import preparer
 from kb_mcp.sources.declaration import Option, ResourceType
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import Run
+from kb_mcp.sources.stages import SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.reference import Emitted
@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from opentelemetry.sdk.metrics.export import Metric
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
     from tests.conftest import InMemory
 
 # Each setting that chooses a source, as the declaration's functions take them.
@@ -208,7 +208,7 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
     """Of the sources taken: --since by Jira, under a registry whose Jira has no option."""
     plain = replace(
         JIRA,
-        types=(ResourceType(name="issues", summary="a project's issues", read="searched"),),
+        resource_types=(ResourceType(name="issues", help="a project's issues", read="searched"),),
         described=None,
     )
     registry = (CONFLUENCE, plain, WORKLOG)
@@ -222,11 +222,11 @@ def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -
     """A source's options are its fetch's: the parser offers none, and the summary reads none."""
     noted = ResourceType(
         name="notes",
-        summary="a folder's notes",
+        help="a folder's notes",
         read="in place",
         options=(Option(flag="--tag", help="a tag"),),
     )
-    registry = (CONFLUENCE, JIRA, replace(WORKLOG, types=(noted,)))
+    registry = (CONFLUENCE, JIRA, replace(WORKLOG, resource_types=(noted,)))
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
     assert "source confluence: spaces MFS" in fetch_described(given, CONFIGURED)
@@ -453,20 +453,22 @@ def test_a_first_fetch_without_since_fetches_the_last_week_of_each_target(
 def runs(
     settings: Settings,
     now: datetime,
-    *declared: Declared,
+    *declared: Source,
     options: Mapping[str, object] | None = None,
     dry_run: bool = False,
-) -> list[Run]:
+) -> list[SourceRun]:
     """Give a run of each source, at ``now``, as the command builds it from the settings.
 
     Each source's options are those of ``options`` that it declares, None when not given.
     """
     return [
-        Run(
-            declared=each,
+        SourceRun(
+            source=each,
             settings=settings,
-            table=getattr(settings.sources, each.name),
-            account=None if each.account is None else getattr(settings.accounts, each.account.name),
+            source_table=getattr(settings.sources, each.name),
+            account_table=None
+            if each.account is None
+            else getattr(settings.accounts, each.account.name),
             options={flag: (options or {}).get(flag) for flag in each.options},
             now=lambda: now,
             sleep=lambda _: None,
@@ -719,7 +721,7 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
 @pytest.mark.parametrize("step", ["fetch", "prepare"])
 @pytest.mark.parametrize("registry", [SOURCES, (WORKLOG,), (CONFLUENCE, WORKLOG)])
 def test_the_sources_offered_are_the_registry_s(
-    step: str, registry: tuple[Declared, ...], capsys: CaptureFixture[str]
+    step: str, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
     """Each name that the registry declares is taken; each other is refused by argparse.
 
@@ -908,7 +910,7 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
     run_each("fetch", runs(settings, FIRST, CONFLUENCE, options=SINCE))
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG)
     first = run_each("prepare", taken).sources[0].result
-    assert isinstance(first, preparer.Prepared)
+    assert isinstance(first, preparer.AtlassianPrepared)
     assert isinstance(first.mirrored, mirror_app.Outcome)
     settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
     with capture_logs() as logged:
@@ -919,7 +921,7 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
         ("worklog", "done"),
     ]
     result = ran.sources[0].result
-    assert isinstance(result, preparer.Prepared)
+    assert isinstance(result, preparer.AtlassianPrepared)
     mirrored, first = result.mirrored, first.mirrored
     assert isinstance(mirrored, mirror_app.Outcome)
     assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
@@ -939,13 +941,13 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     run_each("fetch", runs(settings, FIRST, CONFLUENCE, options=SINCE))
     taken = runs(settings, FIRST, CONFLUENCE)
     first = run_each("prepare", taken).sources[0].result
-    assert isinstance(first, preparer.Prepared)
+    assert isinstance(first, preparer.AtlassianPrepared)
     first = first.mirrored
     assert isinstance(first, mirror_app.Outcome)
     more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
     monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
     again = run_each("prepare", taken).sources[0].result
-    assert isinstance(again, preparer.Prepared)
+    assert isinstance(again, preparer.AtlassianPrepared)
     again = again.mirrored
     assert isinstance(again, mirror_app.Outcome)
     assert (again.converted, again.reused) == (first.converted, 0)

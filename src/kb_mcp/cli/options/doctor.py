@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
@@ -46,7 +46,7 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    sources: Sequence[Declared],
+    sources: Sequence[Source],
 ) -> None:
     """Add ``doctor`` to the command.
 

@@ -31,14 +31,14 @@ type Described = Callable[[Mapping[str, object], Mapping[str, object]], tuple[st
 class Option:
     """An option of a resource type: its flag, help and value's type, and any setting it replaces.
 
-    ``type`` reads the value as typed, as argparse's ``type`` does. ``setting``, the path
+    ``parse`` reads the value as typed, as argparse's ``type`` does. ``setting``, the path
     of a list that the flag replaces for one run, makes it repeat; without one, no setting
     holds the option.
     """
 
     flag: str
     help: str
-    type: Callable[[str], object] = str
+    parse: Callable[[str], object] = str
     setting: str | None = None
 
 
@@ -49,11 +49,11 @@ class ResourceType:
     A source's types are read whole: no role reads some of them until a plan chooses among
     them, and a role whose removals cover them all may refuse some, as Atlassian's preparer
     does. The name, the options and ``read`` are read so far, the last in the help of
-    ``fetch`` and ``prepare``, each source's group: plan 033 reads ``summary``, for help.
+    ``fetch`` and ``prepare``, each source's group: plan 033 reads ``help``.
     """
 
     name: str
-    summary: str
+    help: str
     read: Reading
     options: tuple[Option, ...] = ()
 
@@ -63,8 +63,8 @@ class Account:
     """What a source's fetcher signs in with: its name, its table, its login and its checks.
 
     ``name`` is its table, ``[accounts.<name>]``, which every source naming it shares.
-    ``table`` names the model by module path; ``settings`` are its settings, by name, in
-    their order, the first where it signs in. ``login`` names by module path, as ``table``
+    ``table_path`` names the model by module path; ``settings`` are its settings, by name, in
+    their order, the first where it signs in. ``login`` names by module path, as ``table_path``
     does, the run of ``kb-mcp login <name>``: a function of the settings, the browser's
     path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.roles``, or
     None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
@@ -75,7 +75,7 @@ class Account:
     """
 
     name: str
-    table: str
+    table_path: str
     settings: tuple[str, ...]
     login: str
     checks: str
@@ -89,14 +89,14 @@ class Account:
 
 
 @dataclass(frozen=True)
-class Declared:
+class Source:
     """A source: its name, what it is, the types it reads, its settings, table and roles.
 
     ``name`` is its table, ``[sources.<name>]``, its folder of the mirror and the front
-    matter's ``source``. ``summary`` opens its group in the help of ``fetch`` and
-    ``prepare``. ``types`` are all that it reads, whole. ``settings`` are its table's
+    matter's ``source``. ``help`` opens its group in the help of ``fetch`` and
+    ``prepare``. ``resource_types`` are all that it reads, whole. ``settings`` are its table's
     settings, by name, in their order: the first names what it covers, which makes it
-    configured. ``table`` is the Pydantic model of its table, by module path.
+    configured. ``table_path`` is the Pydantic model of its table, by module path.
     ``preparers`` name the modules that write its documents, in their order, and
     ``fetcher`` the one that brings its system's changes into its store, None for a
     source read in place. ``account``, if any, is what its fetcher signs in with.
@@ -104,10 +104,10 @@ class Declared:
     """
 
     name: str
-    summary: str
-    types: tuple[ResourceType, ...]
+    help: str
+    resource_types: tuple[ResourceType, ...]
     settings: tuple[str, ...]
-    table: str
+    table_path: str
     preparers: tuple[str, ...]
     fetcher: str | None = None
     account: Account | None = None
@@ -123,4 +123,4 @@ class Declared:
     @property
     def options(self) -> dict[str, Option]:
         """Give the options of its types by flag, each once, in their order."""
-        return {option.flag: option for each in self.types for option in each.options}
+        return {option.flag: option for each in self.resource_types for option in each.options}

@@ -28,10 +28,10 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from kb_mcp.cli.domain.command import Command
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
-def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Declared]) -> int:
+def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Source]) -> int:
     """Load the settings, with the flags given, run the chosen subcommand, write its result.
 
     The settings are loaded for every command observed, which reads those of

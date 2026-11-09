@@ -12,7 +12,7 @@ from kb_mcp.cli.app.sources import SourcesRefusedError, run_each
 from kb_mcp.cli.domain.sources import FETCH, PREPARE, chosen, given
 from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.roles import Run
+from kb_mcp.sources.stages import SourceRun
 
 if TYPE_CHECKING:
     import argparse
@@ -39,11 +39,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     step = arguments.command.name
     taken, _ = chosen(arguments, values_of(loaded))
     runs = [
-        Run(
-            declared=declared,
+        SourceRun(
+            source=declared,
             settings=settings,
-            table=getattr(settings.sources, declared.name),
-            account=(
+            source_table=getattr(settings.sources, declared.name),
+            account_table=(
                 None
                 if declared.account is None
                 else getattr(settings.accounts, declared.account.name)

@@ -99,9 +99,9 @@ A source is a declaration and the code that it names; [sources](sources.md) says
 
 | Module | What it holds | Imported by |
 |---|---|---|
-| `sources/declaration.py` | What a source declares: `Declared`, `ResourceType`, `Option`, `Account`, as dataclasses, since `--help` imports them | every declaration |
+| `sources/declaration.py` | What a source declares: `Source`, `ResourceType`, `Option`, `Account`, as dataclasses, since `--help` imports them | every declaration |
 | `sources/registry.py` | `SOURCES`, one line per source, and `refuse`, the rules of any registry | `cli`, whose entry takes a registry as a parameter |
-| `sources/roles.py` | The roles' interfaces, `Fetcher` and `Preparer`, what they take and give, `Run` and `Result`, and what a sign-in and its checks give, `SignedIn` and `Verdict` | each role, each account's sign-in and checks, and `cli`'s `run_each`, `login` and `doctor` |
+| `sources/stages.py` | The roles' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun` and `Result`, and what a sign-in and its checks give, `SignedIn` and `Verdict` | each role, each account's sign-in and checks, and `cli`'s `run_each`, `login` and `doctor` |
 
 The first two stay light for `--help`, and all three are pure, by contracts G and C, which
 name them. Each source's package holds:
@@ -147,7 +147,7 @@ checks the ids, in their order, against this table:
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above, and `search` and `sources`, side by side, never use each other. It is exhaustive: a new top-level package breaks it until it is placed in the order |
-| B | Within each context, and within each role of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `roles` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
+| B | Within each context, and within each role of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `stages` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
 | C | Pure rules, in any context (and the kernel), with the declarations and the modules beside the sources' packages, use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation, with their commands, `index` and `embed` among them, read the mirror, never a source: the index is built from the mirror alone |
@@ -210,7 +210,7 @@ table is one:
 | `kernel.output.Output` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `sources.declaration.Account` | G: `--help` imports it |
-| `sources.declaration.Declared` | G: `--help` imports it |
+| `sources.declaration.Source` | G: `--help` imports it |
 | `sources.declaration.Option` | G: `--help` imports it |
 | `sources.declaration.ResourceType` | G: `--help` imports it |
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |

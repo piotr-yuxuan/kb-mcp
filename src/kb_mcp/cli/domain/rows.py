@@ -7,7 +7,7 @@ command writes rows without importing what it does not run.
 
 from __future__ import annotations
 
-from kb_mcp.cli.domain.sources import Outcome
+from kb_mcp.cli.domain.sources import RowOutcome
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 
@@ -16,7 +16,7 @@ class Row(Record):
     """A source's row: its name, how it ended, and its result, None if it gave none."""
 
     source: str
-    outcome: Outcome
+    outcome: RowOutcome
     result: object | None
 
 

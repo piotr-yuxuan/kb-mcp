@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.roles import SignedIn
+    from kb_mcp.sources.stages import SignedIn
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, SignedIn | None]:

@@ -6,13 +6,13 @@ declaration is: ``--help`` imports it.
 
 from __future__ import annotations
 
-from kb_mcp.sources.declaration import Declared, ResourceType
+from kb_mcp.sources.declaration import ResourceType, Source
 
-MEMO = Declared(
+MEMO = Source(
     name="memo",
-    summary="Notes: a folder's text files, read in place, never written",
-    types=(ResourceType(name="notes", summary="the folder's *.txt files", read="in place"),),
+    help="Notes: a folder's text files, read in place, never written",
+    resource_types=(ResourceType(name="notes", help="the folder's *.txt files", read="in place"),),
     settings=("folder",),
-    table="kb_memo.settings:MemoSource",
+    table_path="kb_memo.settings:MemoTable",
     preparers=("kb_memo.prepare.app.preparer",),
 )

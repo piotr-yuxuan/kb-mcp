@@ -15,22 +15,22 @@ import structlog
 
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
-from kb_mcp.sources import roles
+from kb_mcp.sources import stages
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.prepare.app.prepare import KINDS, SOURCE_OF, Outcome, mirror
-from kb_mcp.sources.roles import Result
+from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.output import Summary
     from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-    from kb_mcp.sources.roles import Run
+    from kb_mcp.sources.stages import SourceRun
 
 # What a dry run says of these sources: a count needs a lookup without converting.
 NOT_COUNTED = "not counted: a dry run of this source converts nothing, and cannot tell"
 
 
-class Prepared(Result):
+class AtlassianPrepared(Result):
     """A prepare: how it ended, and what the mirror did, None when it did not run."""
 
     mirrored: Outcome | None
@@ -40,10 +40,10 @@ class Prepared(Result):
         return "" if self.mirrored is None else self.mirrored.text(summary)
 
 
-class NotCounted(Prepared):
+class NotCounted(AtlassianPrepared):
     """A dry run's prepare: nothing converted, so nothing counted, which its row says."""
 
-    outcome: roles.Outcome = "not run"
+    outcome: stages.Outcome = "not run"
     mirrored: None = None
 
     def text(self, _summary: Summary) -> str:
@@ -51,13 +51,13 @@ class NotCounted(Prepared):
         return f"{NOT_COUNTED}\n"
 
 
-def kinds_of(run: Run) -> tuple[type[Page | BlogPost | Issue], ...]:
+def kinds_of(run: SourceRun) -> tuple[type[Page | BlogPost | Issue], ...]:
     """Give the kinds that the declaration of the source that a run is for names by its types."""
-    names = {each.name for each in run.declared.types}
+    names = {each.name for each in run.source.resource_types}
     return tuple(kind for kind in KINDS if kind.kind in names)
 
 
-def preflight(run: Run) -> str | None:
+def preflight(run: SourceRun) -> str | None:
     """Refuse a declaration whose types are not all the kinds of one source, by its name.
 
     A prepare removes the files of all of them, those of a kind that it did not build too.
@@ -65,11 +65,11 @@ def preflight(run: Run) -> str | None:
     """
     if kinds_of(run) in SOURCE_OF:
         return None
-    named = ", ".join(each.name for each in run.declared.types)
+    named = ", ".join(each.name for each in run.source.resource_types)
     return f"types {named}: not all the kinds of one source"
 
 
-def prepare(run: Run) -> Prepared:
+def prepare(run: SourceRun) -> AtlassianPrepared:
     """Mirror the kinds of the run's source, unless a dry run, with the pandoc found now.
 
     Pandoc gone from PATH since the run began fails the prepare, which writes nothing:
@@ -82,8 +82,10 @@ def prepare(run: Run) -> Prepared:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
         structlog.get_logger().error("prepare.pandoc_missing", reason=str(error))
-        return Prepared(outcome="failed", mirrored=None)
-    return prepare_kinds(run.settings, run.account.site, pandoc, run.declared.name, kinds_of(run))
+        return AtlassianPrepared(outcome="failed", mirrored=None)
+    return prepare_kinds(
+        run.settings, run.account_table.site, pandoc, run.source.name, kinds_of(run)
+    )
 
 
 def prepare_kinds(
@@ -92,7 +94,7 @@ def prepare_kinds(
     pandoc: Pandoc,
     source: str,
     kinds: tuple[type[Page | BlogPost | Issue], ...],
-) -> Prepared:
+) -> AtlassianPrepared:
     """Mirror one source's documents, those of ``kinds``, from the raw store; say its problems.
 
     The data folder's cache of pandoc's conversions is open for this mirror alone, on the
@@ -114,4 +116,4 @@ def prepare_kinds(
             )
     if mirrored.problems:
         log.warning("prepare.nothing_removed", source=source, problems=len(mirrored.problems))
-    return Prepared(outcome="failed" if mirrored.problems else "done", mirrored=mirrored)
+    return AtlassianPrepared(outcome="failed" if mirrored.problems else "done", mirrored=mirrored)

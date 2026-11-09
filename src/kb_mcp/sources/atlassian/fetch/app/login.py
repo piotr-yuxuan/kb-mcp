@@ -17,7 +17,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     for_site,
     write_cookies,
 )
-from kb_mcp.sources.roles import SignedIn
+from kb_mcp.sources.stages import SignedIn
 
 if TYPE_CHECKING:
     from pathlib import Path

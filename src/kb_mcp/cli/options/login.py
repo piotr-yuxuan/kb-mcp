@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def in_the_browser(
@@ -44,7 +44,7 @@ def site_not_set(arguments: argparse.Namespace, settings: Mapping[str, object]) 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    sources: Sequence[Declared],
+    sources: Sequence[Source],
 ) -> None:
     """Add ``login`` to the command, naming a sign-in that the registered sources declare."""
     parser = subparsers.add_parser(

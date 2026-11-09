@@ -8,7 +8,7 @@ from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, http, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError, Site, SiteError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.roles import FAILED, SIGN_IN, Verdict
+from kb_mcp.sources.stages import FAILED, SIGN_IN, Verdict
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings

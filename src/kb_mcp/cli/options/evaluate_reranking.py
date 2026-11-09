@@ -23,7 +23,7 @@ from kb_mcp.kernel.reranking import BAR_DEPTHS, DEPTHS
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 
 def depth(value: str) -> int:
@@ -50,7 +50,7 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``eval-rerank`` to the command."""
     parser = subparsers.add_parser(

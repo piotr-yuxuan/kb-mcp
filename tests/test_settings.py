@@ -31,8 +31,8 @@ from kb_mcp.config.domain.settings import (
 )
 from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.settings import ConfluenceSource
-from kb_mcp.sources.worklog.settings import WorklogSource
+from kb_mcp.sources.atlassian.settings import ConfluenceTable
+from kb_mcp.sources.worklog.settings import WorklogTable
 from tests.composed import MODEL
 
 if TYPE_CHECKING:
@@ -216,7 +216,7 @@ def test_a_setting_s_kind_is_seen_through_none_and_annotated(annotation: object,
         list[str],
         frozenset[str],
         dict[str, str],
-        ConfluenceSource | None,
+        ConfluenceTable | None,
         SecretStr | int,
         tuple[int, ...],
         tuple[Path, ...],
@@ -240,7 +240,7 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
 
 def test_each_source_s_table_is_composed_under_sources_in_name_order() -> None:
     """Plan 030: ``[sources.<name>]``, in name order, with the core's settings in theirs."""
-    model = settings_model({"worklog": WorklogSource, "confluence": ConfluenceSource}, {})
+    model = settings_model({"worklog": WorklogTable, "confluence": ConfluenceTable}, {})
     assert list(model.model_fields) == list(Settings.model_fields)
     assert [path for path in setting_paths(model) if path[0] == "sources"] == [
         ("sources",),

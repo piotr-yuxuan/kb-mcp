@@ -19,7 +19,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
 from kb_mcp.sources.atlassian.fetch.app.download import Outcome, download, plan, read_targets
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
-from kb_mcp.sources.roles import Result
+from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -27,13 +27,13 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources import roles
+    from kb_mcp.sources import stages
     from kb_mcp.sources.atlassian.fetch.app.download import Targets
-    from kb_mcp.sources.roles import Run
+    from kb_mcp.sources.stages import SourceRun
 
 # How a download or its plan ended, by its status. A download that Ctrl-C stops raises
 # KeyboardInterrupt, so its status is never none here.
-FETCHED: dict[ExitStatus | None, roles.Outcome] = {
+FETCHED: dict[ExitStatus | None, stages.Outcome] = {
     ExitStatus.OK: "done",
     ExitStatus.FAILED: "failed",
     ExitStatus.SIGN_IN_AGAIN: "sign in",
@@ -52,22 +52,22 @@ class Fetched(Result):
         return "" if self.downloaded is None else self.downloaded.text(summary)
 
 
-def targets_of(run: Run) -> Targets:
-    """Read the targets of the source that ``run`` is for, by its kinds: spaces or projects.
+def targets_of(run: SourceRun) -> Targets:
+    """Read the targets of ``run``'s source, by its resource types: spaces or projects.
 
     Confluence's pages and blog posts are listed per space, Jira's issues searched per
     project; the period is its options', as ``read_targets`` reads them.
     """
-    kinds = {each.name for each in run.declared.types}
+    resource_types = {each.name for each in run.source.resource_types}
     return read_targets(
-        run.table.spaces if kinds & {Page.kind, BlogPost.kind} else (),
-        run.table.projects if Issue.kind in kinds else (),
+        run.source_table.spaces if resource_types & {Page.kind, BlogPost.kind} else (),
+        run.source_table.projects if Issue.kind in resource_types else (),
         run.options,
         run.now(),
     )
 
 
-def preflight(run: Run) -> str | None:
+def preflight(run: SourceRun) -> str | None:
     """Say why the fetch cannot start: an --until before --since, or a store's record not read.
 
     Those are the records that a download reads before its first request: what is
@@ -85,7 +85,7 @@ def preflight(run: Run) -> str | None:
     return None
 
 
-def fetch(run: Run) -> Fetched:
+def fetch(run: SourceRun) -> Fetched:
     """Download what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
@@ -95,7 +95,7 @@ def fetch(run: Run) -> Fetched:
     try:
         return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
     except (PeriodError, RepresentationError) as error:
-        structlog.get_logger().error("fetch.refused", source=run.declared.name, reason=str(error))
+        structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
         return Fetched(outcome="failed", downloaded=None)
 
 

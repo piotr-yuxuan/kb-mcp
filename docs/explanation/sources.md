@@ -19,8 +19,8 @@ not fit:
   server in front of every source avoids.
 
 So the roles vary apart: a fetcher by system, a preparer by format, and the serving side
-by kind of question. A [`Fetcher`](../../src/kb_mcp/sources/roles.py) and a
-[`Preparer`](../../src/kb_mcp/sources/roles.py) are an interface each; the serving side
+by kind of question. A [`Fetcher`](../../src/kb_mcp/sources/stages.py) and a
+[`Preparer`](../../src/kb_mcp/sources/stages.py) are an interface each; the serving side
 reads documents alone, and imports no source ([contract
 E](code-layout.md#the-contracts)). Their seams are data, not calls: the store that a
 fetcher keeps ([`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
@@ -38,7 +38,7 @@ source another ([the code's layout](code-layout.md#the-roles-within-a-source)).
 ## A source is a declaration
 
 A source is data that names the code of its roles
-([`Declared`](../../src/kb_mcp/sources/declaration.py)), and the three are declared alike:
+([`Source`](../../src/kb_mcp/sources/declaration.py)), and the three are declared alike:
 [`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py),
 [`JIRA`](../../src/kb_mcp/sources/atlassian/declared.py) and
 [`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py).
@@ -63,7 +63,7 @@ an API token without its email
 does not apply, and what its summary says.
 
 - **One fetcher may serve several sources.** Confluence and Jira name one fetcher, which
-  reads the kinds of the source that it runs for from `run.declared`
+  reads the kinds of the source that it runs for from `run.source`
   ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as their one
   preparer reads the kinds that it converts, and the source whose rows of the cache of
   conversions it reads ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
@@ -75,8 +75,8 @@ does not apply, and what its summary says.
 
 ## The roles' interfaces
 
-A role takes a [`Run`](../../src/kb_mcp/sources/roles.py), the source that it runs for and
-all that it reads, and gives a [`Result`](../../src/kb_mcp/sources/roles.py). Any object
+A role takes a [`SourceRun`](../../src/kb_mcp/sources/stages.py), the source that it runs for and
+all that it reads, and gives a [`Result`](../../src/kb_mcp/sources/stages.py). Any object
 with a role's methods is one, and each source's is the module of its role, its functions
 the methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
 it against the runtime-checkable protocol. A role may use the interfaces, the mirror,
@@ -106,7 +106,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   reason, the work log's
   [`Problem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) what it held back
   too, so `Result` holds none.
-- **Pandoc is the preparers' own.** `Run` holds no tool that a role alone needs, so each
+- **Pandoc is the preparers' own.** `SourceRun` holds no tool that a role alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`
   once the run began fails those rows alone; the run then exits as its rows rank, 1. The
@@ -171,21 +171,21 @@ names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model alr
 such as `json`, or that cannot be built by default
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py)). These are a programmer's
 errors, raised, not exits. A name is a table, a folder of the mirror, a command argument
-from plan 031 on and the front matter's `source`, so one source type has one instance: two
+from plan 031 on and the front matter's `source`, so each source is configured once: two
 Confluence sites or two work logs cannot be configured, and allowing them later (named
 instances, `docs/<instance>/`) moves an existing source's files once. A run that cannot
 load a role, whatever its import raises, exits 2, naming the declaration and the path
 ([`loaded`](../../src/kb_mcp/cli/app/sources.py)); a test loads every role of `SOURCES`
-([`test_each_fetcher_that_the_registry_names_loads_as_a_fetcher`](../../tests/test_roles.py)).
+([`test_each_fetcher_that_the_registry_names_loads_as_a_fetcher`](../../tests/test_stages.py)).
 
 `--help` imports the registry and the declarations, so contract G holds them to the
 standard library, and modules put directly in `sources/`, outside contracts B and J, are
 kept from effects and use cases by C
-([`test_help_imports_the_declarations_and_no_module_that_they_name`](../../tests/test_roles.py)).
+([`test_help_imports_the_declarations_and_no_module_that_they_name`](../../tests/test_stages.py)).
 Contract I stays a list of packages, held to the registry by a test
 ([`test_contract_i_lists_the_package_of_each_registered_source_once`](../../tests/test_code_layout.py)):
 Import Linter cannot read the registry, and the wildcard `kb_mcp.sources.*` would count
-`roles`, `declaration` and `registry` as sources, so that a source importing `roles` would
+`stages`, `declaration` and `registry` as sources, so that a source importing `stages` would
 break it. Each contract also carries its letter as its id, in the order of the layout
 page's table
 ([`test_each_contract_s_id_is_its_letter_on_the_layout_page_in_its_order`](../../tests/test_code_layout.py)),
@@ -204,9 +204,9 @@ each at its place among the fields
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py)), which
 [`Loaded`](../../src/kb_mcp/config/domain/settings.py) carries for all that reads a
 setting's path. So `config` imports no source: each table lives in its package
-([`ConfluenceSource`](../../src/kb_mcp/sources/atlassian/settings.py),
-[`JiraSource`](../../src/kb_mcp/sources/atlassian/settings.py),
-[`WorklogSource`](../../src/kb_mcp/sources/worklog/settings.py)), with the rules that only
+([`ConfluenceTable`](../../src/kb_mcp/sources/atlassian/settings.py),
+[`JiraTable`](../../src/kb_mcp/sources/atlassian/settings.py),
+[`WorklogTable`](../../src/kb_mcp/sources/worklog/settings.py)), with the rules that only
 it uses ([`site_address`](../../src/kb_mcp/sources/atlassian/settings.py)). The file, the
 environment (`KB_MCP_SOURCES__CONFLUENCE__SPACES`), the flags, layers, secrets and messages
 work as for the core's settings, and a table with a setting of a type of no known kind is
@@ -221,7 +221,7 @@ An [account](../reference/glossary.md#account), what a fetcher signs in with, is
 declaration
 ([`ATLASSIAN`](../../src/kb_mcp/sources/atlassian/declared.py), an
 [`Account`](../../src/kb_mcp/sources/declaration.py)) and a table in the package
-([`AtlassianAccount`](../../src/kb_mcp/sources/atlassian/settings.py)). Confluence and Jira
+([`AtlassianAccountTable`](../../src/kb_mcp/sources/atlassian/settings.py)). Confluence and Jira
 name `atlassian`: `[accounts.atlassian]` holds `site`, `email` and `api_token`, the last
 from `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` alone. So the core knows no Atlassian setting,
 and another sign-in is another account. `--site`, which

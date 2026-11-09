@@ -139,8 +139,8 @@ naming its path, never its value.
 ## Three roles, not a bundle
 
 A source is a declaration that names its roles, a fetcher, if any, and its preparers, each
-behind one interface ([`Fetcher`](../../src/kb_mcp/sources/roles.py),
-[`Preparer`](../../src/kb_mcp/sources/roles.py)), and the server reads documents alone,
+behind one interface ([`Fetcher`](../../src/kb_mcp/sources/stages.py),
+[`Preparer`](../../src/kb_mcp/sources/stages.py)), and the server reads documents alone,
 whichever source wrote them; [sources](sources.md#three-roles-not-a-bundle) say how.
 
 - **Why.** The roles vary apart: git is fetched once and prepared twice, persons are a
@@ -178,7 +178,7 @@ which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
   ([`test_contract_i_lists_the_package_of_each_registered_source_once`](../../tests/test_code_layout.py)).
 - **Cost.** A source of another distribution cannot register itself: until entry points
   come, it needs a line here. A declaration is what an entry point would name, so that
-  adding them changes the registry's module alone. One source type has one instance, its
+  adding them changes the registry's module alone. Each source is configured once, its
   name a table, a folder and the front matter's `source`.
 - **Rejected.** Entry points now: about 10 ms more on every `--help`, 95.9 ms against 106.3
   ms, on a command that a shell's completion runs at every Tab, for what no distribution

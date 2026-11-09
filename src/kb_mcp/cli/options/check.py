@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 # The core's settings, by path, in the model's order, before the accounts' and the
 # sources', then after them: check shows them all.
@@ -36,7 +36,7 @@ AFTER_THE_REGISTRY = (
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    sources: Sequence[Declared],
+    sources: Sequence[Source],
 ) -> None:
     """Add ``check`` to the command, which reads every setting of the registry's model."""
     parser = subparsers.add_parser(

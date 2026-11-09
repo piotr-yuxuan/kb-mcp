@@ -16,13 +16,13 @@ PROGRAM = "kb-mcp"
 OBSERVING = ("logs.dir", "telemetry.endpoint")
 # What a run does not apply of the values given, by setting, and why: a pure function of
 # the arguments and of every setting's value, by its path joined by dots.
-type Unapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[str, str]]
+type CommandUnapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[str, str]]
 # What a run will do, in lines of the summary written before it acts: a pure function of
 # the same.
-type Described = Callable[[argparse.Namespace, Mapping[str, object]], tuple[str, ...]]
+type CommandDescribed = Callable[[argparse.Namespace, Mapping[str, object]], tuple[str, ...]]
 # Why a run cannot go on, said before anything is asked, or None when it can: a pure
 # function of the same.
-type Refused = Callable[[argparse.Namespace, Mapping[str, object]], str | None]
+type CommandRefused = Callable[[argparse.Namespace, Mapping[str, object]], str | None]
 
 
 @dataclass(frozen=True)
@@ -73,9 +73,9 @@ class Command:
     dry_run: bool = False
     traced: bool = True
     observed: bool = True
-    unapplied: Unapplied | None = None
-    described: Described | None = None
-    refused: Refused | None = None
+    unapplied: CommandUnapplied | None = None
+    described: CommandDescribed | None = None
+    refused: CommandRefused | None = None
     programs: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
     unlogged: tuple[str, ...] = ()

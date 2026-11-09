@@ -39,7 +39,7 @@ SpaceKey = Annotated[str, matching(SPACE_KEY, "a space key, such as ENG or ~5f1a
 ProjectKey = Annotated[str, matching(PROJECT_KEY, "a project key, such as PLAT")]
 
 
-class AtlassianAccount(BaseModel):
+class AtlassianAccountTable(BaseModel):
     """The Atlassian account that Confluence and Jira sign in with, on its site."""
 
     model_config = TABLE
@@ -59,7 +59,7 @@ class AtlassianAccount(BaseModel):
     )
 
 
-class ConfluenceSource(BaseModel):
+class ConfluenceTable(BaseModel):
     """What to download from Confluence when no flag says."""
 
     model_config = TABLE
@@ -69,7 +69,7 @@ class ConfluenceSource(BaseModel):
     )
 
 
-class JiraSource(BaseModel):
+class JiraTable(BaseModel):
     """What to download from Jira when no flag says."""
 
     model_config = TABLE

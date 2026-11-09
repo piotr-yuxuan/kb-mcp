@@ -7,7 +7,7 @@ import shutil
 import sys
 from typing import TYPE_CHECKING
 
-from kb_mcp.sources.roles import FAILED, Verdict
+from kb_mcp.sources.stages import FAILED, Verdict
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

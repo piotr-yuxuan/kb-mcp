@@ -26,11 +26,13 @@ of their time.
 
 A provider of documents, declared once in the registry: `confluence`, `jira` or
 `worklog`. Its name is also its settings table, its folders and the front matter's
-`source`.
+`source`. Records before 052 call its declaration `Declared`; their `Source` is the
+work log's org text or the sync command's source.
 
-- In the code: [`Declared`](../../src/kb_mcp/sources/declaration.py),
+- In the code: [`Source`](../../src/kb_mcp/sources/declaration.py),
   [`SOURCES`](../../src/kb_mcp/sources/registry.py).
 - User-facing: `source`, `sources.confluence.spaces`.
+- Retires: `Declared`, "source type".
 
 ### resource type
 
@@ -39,7 +41,7 @@ What a source reads, named in the plural, which is also a folder of its raw stor
 read one way: `listed`, `searched` or `in place`. Not "kind".
 
 - In the code: [`ResourceType`](../../src/kb_mcp/sources/declaration.py),
-  [`Declared.types`](../../src/kb_mcp/sources/declaration.py),
+  [`Source.resource_types`](../../src/kb_mcp/sources/declaration.py),
   [`Reading`](../../src/kb_mcp/sources/declaration.py).
 
 ### document type
@@ -60,9 +62,10 @@ part in `fetch` by its fetcher, which brings what changed into its raw store, an
 `prepare` by its preparers, which write its documents into the mirror. Not "role", which
 a person keeps, nor "step".
 
-- In the code: [roles.py](../../src/kb_mcp/sources/roles.py),
-  [`Fetcher`](../../src/kb_mcp/sources/roles.py),
-  [`Preparer`](../../src/kb_mcp/sources/roles.py).
+- In the code: [stages.py](../../src/kb_mcp/sources/stages.py),
+  [`Fetcher`](../../src/kb_mcp/sources/stages.py),
+  [`Preparer`](../../src/kb_mcp/sources/stages.py).
+- Retires: `roles.py`.
 
 ### account
 
@@ -73,7 +76,7 @@ site user, and a person role holds one's id. Not "sign-in", nor "user" or "autho
 site user.
 
 - In the code: [`Account`](../../src/kb_mcp/sources/declaration.py),
-  [`AtlassianAccount`](../../src/kb_mcp/sources/atlassian/settings.py),
+  [`AtlassianAccountTable`](../../src/kb_mcp/sources/atlassian/settings.py),
   [`Person`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`Person.account_id`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py).
@@ -439,9 +442,9 @@ a bare "table" or "layer".
   [`Loaded`](../../src/kb_mcp/config/domain/settings.py),
   [`Entry`](../../src/kb_mcp/config/domain/settings.py),
   [`Kind`](../../src/kb_mcp/config/domain/settings.py),
-  [`ConfluenceSource`](../../src/kb_mcp/sources/atlassian/settings.py),
-  [`JiraSource`](../../src/kb_mcp/sources/atlassian/settings.py),
-  [`WorklogSource`](../../src/kb_mcp/sources/worklog/settings.py).
+  [`ConfluenceTable`](../../src/kb_mcp/sources/atlassian/settings.py),
+  [`JiraTable`](../../src/kb_mcp/sources/atlassian/settings.py),
+  [`WorklogTable`](../../src/kb_mcp/sources/worklog/settings.py).
 - User-facing: `config.toml`, `KB_MCP_DATA_DIR`.
 
 ### data directory

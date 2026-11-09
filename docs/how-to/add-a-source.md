@@ -13,7 +13,7 @@ shows, and pandoc on `PATH`: `prepare` refuses a run without it, whichever sourc
 ## 1. Choose its name
 
 The name is a table, `[sources.notes]`, a folder of the mirror, `docs/notes/`, and the
-front matter's `source`, so one source type has one instance. It is lower-case letters and
+front matter's `source`, so the source is configured once. It is lower-case letters and
 digits, beginning with a letter, and not `assets`
 ([`refuse`](../../src/kb_mcp/sources/registry.py)).
 
@@ -69,7 +69,7 @@ from pydantic import BaseModel, Field
 from kb_mcp.config.domain.settings import TABLE, LocalPath
 
 
-class NotesSource(BaseModel):
+class NotesTable(BaseModel):
     """The folder of the notes, read in place and never written."""
 
     model_config = TABLE
@@ -82,7 +82,7 @@ class NotesSource(BaseModel):
 
 ## 4. Write its declaration
 
-The declaration is data ([`Declared`](../../src/kb_mcp/sources/declaration.py)), in the
+The declaration is data ([`Source`](../../src/kb_mcp/sources/declaration.py)), in the
 standard library alone, since `--help` imports it: it names the table and the roles by
 module path. Each [resource type](../reference/glossary.md#resource-type) says what the source reads and how
 ([`ResourceType`](../../src/kb_mcp/sources/declaration.py)). A source that signs in also
@@ -100,24 +100,24 @@ declaration is: ``--help`` imports it.
 
 from __future__ import annotations
 
-from kb_mcp.sources.declaration import Declared, ResourceType
+from kb_mcp.sources.declaration import ResourceType, Source
 
-NOTES = Declared(
+NOTES = Source(
     name="notes",
-    summary="Notes: a folder's text files, read in place, never written",
-    types=(ResourceType(name="notes", summary="the folder's *.txt files", read="in place"),),
+    help="Notes: a folder's text files, read in place, never written",
+    resource_types=(ResourceType(name="notes", help="the folder's *.txt files", read="in place"),),
     settings=("folder",),
-    table="kb_mcp.sources.notes.settings:NotesSource",
+    table_path="kb_mcp.sources.notes.settings:NotesTable",
     preparers=("kb_mcp.sources.notes.prepare.app.preparer",),
 )
 ```
 
 ## 5. Write its preparer
 
-A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/roles.py)): `preflight`,
+A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/stages.py)): `preflight`,
 what it cannot go on with, read before any source starts, which `prepare` says after the
 source's name and the step, and `prepare`, which writes the
-documents through the mirror and gives a [`Result`](../../src/kb_mcp/sources/roles.py), its
+documents through the mirror and gives a [`Result`](../../src/kb_mcp/sources/stages.py), its
 counts and how they read as text. Mind what the writer and the front matter ask:
 
 - **Write every document, each time.** The writer leaves a file whose bytes have not
@@ -163,19 +163,19 @@ from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, sync
 from kb_mcp.mirror.domain.mirror import FrontMatter
 from kb_mcp.mirror.domain.mirror_layout import one_line
-from kb_mcp.sources.roles import Result
+from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.roles import Run
+    from kb_mcp.sources.stages import SourceRun
 
 # The source's name, which is its folder of the mirror too, as the registry's rule has it.
 SOURCE = "notes"
 
 
-class Prepared(Result):
+class NotesPrepared(Result):
     """A prepare: how it ended, and the files it changed, None in a dry run, which writes none."""
 
     changes: Changes | None
@@ -196,17 +196,17 @@ def owned(docs: Path) -> set[PurePosixPath]:
     return regular_files(docs, documents(docs, (f"{SOURCE}/*.md",)))
 
 
-def preflight(run: Run) -> str | None:
+def preflight(run: SourceRun) -> str | None:
     """Refuse a folder of notes that is not one, by its setting, before any source starts."""
-    return None if run.table.folder.is_dir() else f"sources.{SOURCE}.folder: not a folder"
+    return None if run.source_table.folder.is_dir() else f"sources.{SOURCE}.folder: not a folder"
 
 
-def prepare(run: Run) -> Prepared:
+def prepare(run: SourceRun) -> NotesPrepared:
     """Write a document per note and remove those of notes gone, unless a dry run."""
     if run.dry_run:
-        return Prepared(outcome="not run", changes=None)
+        return NotesPrepared(outcome="not run", changes=None)
     wanted: dict[PurePosixPath, bytes | Path] = {}
-    for path in sorted(run.table.folder.glob("*.txt")):
+    for path in sorted(run.source_table.folder.glob("*.txt")):
         text = path.read_text("utf-8", errors="replace")
         when = datetime.fromtimestamp(path.stat().st_mtime, UTC)
         identifier = sha256(path.name.encode()).hexdigest()[:16]
@@ -232,7 +232,9 @@ def prepare(run: Run) -> Prepared:
             fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
-    return Prepared(outcome="done", changes=sync(run.settings.docs, wanted, owned, remove=True))
+    return NotesPrepared(
+        outcome="done", changes=sync(run.settings.docs, wanted, owned, remove=True)
+    )
 ```
 
 ## 6. Register it
@@ -332,7 +334,7 @@ def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None
 ```
 
 Some tests name the registry whole, or give every setting by its path, so they name a new
-source too: those of `tests/test_registry.py`, `tests/test_roles.py`, `tests/test_settings.py`,
+source too: those of `tests/test_registry.py`, `tests/test_stages.py`, `tests/test_settings.py`,
 `tests/test_cli.py`, `tests/test_sources.py`, `tests/test_summary.py` and `tests/test_docs.py`
 that do fail until they do, each naming what it lacks, such as
 `KeyError: 'sources.notes.folder'`. Run them all, and give each its line:
@@ -409,13 +411,13 @@ Remove `~/notes-try` once you have seen it.
 ## A source that fetches
 
 A source that reaches a system also has a fetcher: `fetch/app/fetcher.py`, a module with
-`preflight` and `fetch` ([`Fetcher`](../../src/kb_mcp/sources/roles.py)), its declaration's
+`preflight` and `fetch` ([`Fetcher`](../../src/kb_mcp/sources/stages.py)), its declaration's
 `fetcher`, which keeps its system's responses raw, for its preparer to read. Preparing may
 use what fetching keeps, never the reverse (contract J). One that signs in names an
 [`Account`](../../src/kb_mcp/sources/declaration.py), whose table is `[accounts.<name>]`, read
-by `run.account`. [Confluence and Jira](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)
+by `run.account_table`. [Confluence and Jira](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)
 are the worked example: one fetcher, reading the kinds of the source that it runs for from
-`run.declared`. No other source keeps a store yet: its place under the data directory is a
+`run.source`. No other source keeps a store yet: its place under the data directory is a
 plan's to add, since the data guard judges each
 ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)).
 

@@ -16,7 +16,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_c
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.declaration import Account
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import SignedIn, Verdict
+from kb_mcp.sources.stages import SignedIn, Verdict
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.test_cli import logged_as
@@ -197,7 +197,7 @@ def drive_checks(settings: Settings) -> list[Verdict]:
 
 DRIVE = Account(
     name="drive",
-    table=f"{__name__}:DriveAccount",
+    table_path=f"{__name__}:DriveAccount",
     settings=("folder",),
     login=f"{__name__}:drive_signed_in",
     checks=f"{__name__}:drive_checks",

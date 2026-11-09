@@ -56,7 +56,7 @@ argcomplete](trade-offs.md#argparse-with-argcomplete)). With no arguments at all
 parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is observed:
 [`early`](../../src/kb_mcp/observability/app/observed.py) sends warnings
 to stderr until the settings are read, and `main` imports the
-[`ENTRY`](../../src/kb_mcp/cli/main.py) shared by every observed command.
+[`ENTRY_MODULE`](../../src/kb_mcp/cli/main.py) shared by every observed command.
 
 ### 2. Settings, the guard and the summary
 
@@ -122,7 +122,7 @@ settings loaded.
 ### 3. A row per source
 
 [`run`](../../src/kb_mcp/cli/commands/sources.py) turns the settings into
-a [`Run`](../../src/kb_mcp/sources/roles.py) for each source taken, a small frozen
+a [`SourceRun`](../../src/kb_mcp/sources/stages.py) for each source taken, a small frozen
 record: its declaration, the settings, its table and its account's, its options'
 values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
 configured, so no run is of it.
@@ -292,7 +292,7 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
 through [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
-whatever the download did. It runs for Confluence here, and reads from `run.declared` the
+whatever the download did. It runs for Confluence here, and reads from `run.source` the
 kinds that it converts: Jira's issues are placed too, so that a link to one reaches its
 file, and only pages and blog posts are built.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
@@ -475,7 +475,7 @@ result is whole ([`Report.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/roles.py). `index`
+its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/stages.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).

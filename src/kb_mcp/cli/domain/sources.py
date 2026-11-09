@@ -22,15 +22,15 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Iterable, Mapping
 
-    from kb_mcp.sources.declaration import Account, Declared
+    from kb_mcp.sources.declaration import Account, Source
 
 # The commands over sources, whose names a run reads.
 FETCH, PREPARE = "fetch", "prepare"
 # How a row ended, as it says.
-type Outcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
+type RowOutcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
 # How the run ends, by the first of these outcomes that it had, else OK: interrupted, then
 # to sign in again, then failed.
-RANKED: tuple[tuple[Outcome, ExitStatus], ...] = (
+RANKED: tuple[tuple[RowOutcome, ExitStatus], ...] = (
     ("interrupted", ExitStatus.INTERRUPTED),
     ("sign in", ExitStatus.SIGN_IN_AGAIN),
     ("failed", ExitStatus.FAILED),
@@ -47,10 +47,10 @@ def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, obje
 
 def chosen_to_fetch(
     arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> tuple[tuple[Declared, ...], dict[str, str]]:
+) -> tuple[tuple[Source, ...], dict[str, str]]:
     """Return the sources that a fetch takes, in their order, and why each other is left out."""
     named = set(arguments.source)
-    taken: list[Declared] = []
+    taken: list[Source] = []
     left: dict[str, str] = {}
     for declared in arguments.sources:
         if declared.fetcher is None:
@@ -66,10 +66,10 @@ def chosen_to_fetch(
 
 def chosen_to_prepare(
     arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> tuple[tuple[Declared, ...], dict[str, str]]:
+) -> tuple[tuple[Source, ...], dict[str, str]]:
     """Return the sources that a prepare takes, in their order, and why each other is left out."""
     named = set(arguments.source)
-    taken: list[Declared] = []
+    taken: list[Source] = []
     left: dict[str, str] = {}
     for declared in arguments.sources:
         if named and declared.name not in named:
@@ -83,14 +83,14 @@ def chosen_to_prepare(
 
 def chosen(
     arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> tuple[tuple[Declared, ...], dict[str, str]]:
+) -> tuple[tuple[Source, ...], dict[str, str]]:
     """Return what the command that the arguments name takes, and why each other is left out."""
     choose = chosen_to_fetch if arguments.command.name == FETCH else chosen_to_prepare
     return choose(arguments, settings)
 
 
 def accounts_to_check(
-    sources: Iterable[Declared], settings: Mapping[str, object]
+    sources: Iterable[Source], settings: Mapping[str, object]
 ) -> dict[str, Account]:
     """Give each account for ``doctor`` to check, by its name: those that this machine uses.
 
@@ -105,7 +105,7 @@ def accounts_to_check(
     }
 
 
-def source_line(declared: Declared, settings: Mapping[str, object]) -> str:
+def source_line(declared: Source, settings: Mapping[str, object]) -> str:
     """Say a source taken, with the value of each of its settings."""
     values = {
         path: ", ".join(value) if isinstance(value := settings[path], tuple) else str(value)

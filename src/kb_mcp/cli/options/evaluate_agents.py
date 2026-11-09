@@ -24,7 +24,7 @@ from kb_mcp.cli.options._common import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 RUN = "kb_mcp.cli.commands.evaluate_agents"
 
@@ -39,7 +39,7 @@ def positive(value: str) -> int:
 
 def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
-    _sources: Sequence[Declared],
+    _sources: Sequence[Source],
 ) -> None:
     """Add ``eval-agents`` and its four steps to the command."""
     parser = subparsers.add_parser(

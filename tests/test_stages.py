@@ -3,7 +3,7 @@
 The expectations come from the plan's "A source's declaration, and the roles'
 interfaces": a declaration names its fetcher, if any, and its preparers by module path,
 which ``--help`` never imports; one fetcher and one preparer serve Confluence and Jira,
-each reading from ``run.declared`` the source that it runs for, so its kinds and its
+each reading from ``run.source`` the source that it runs for, so its kinds and its
 rows of the cache of conversions; the work log, read in place, has no fetcher;
 ``preflight`` says what a role cannot go on with before any source starts; each
 preparer that converts finds pandoc itself, so that pandoc gone fails its result alone;
@@ -39,7 +39,7 @@ from kb_mcp.sources.atlassian.fetch.app.fetcher import Fetched
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.roles import Fetcher, Preparer, Run
+from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from kb_mcp.sources.worklog.prepare.app.prepare import Outcome, Planned
 from tests.composed import MODEL
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Declared
+    from kb_mcp.sources.declaration import Source
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
@@ -67,10 +67,10 @@ NAMED = frozenset(
     path.partition(":")[0]
     for each in SOURCES
     for path in (
-        each.table,
+        each.table_path,
         *each.preparers,
         *(() if each.fetcher is None else (each.fetcher,)),
-        *(() if each.account is None else (each.account.table,)),
+        *(() if each.account is None else (each.account.table_path,)),
     )
 )
 
@@ -139,23 +139,23 @@ def stored(settings: Settings) -> Settings:
 
 
 def run_of(
-    declared: Declared,
+    declared: Source,
     settings: Settings,
     options: Mapping[str, object] | None = None,
     *,
     dry_run: bool = False,
-) -> Run:
+) -> SourceRun:
     """Give a run of a declaration's roles, its tables from the settings, at FIRST.
 
     Each option that it declares is held, as ``fetch``'s command gives them: None when not
     among ``options``.
     """
     account = declared.account
-    return Run(
-        declared=declared,
+    return SourceRun(
+        source=declared,
         settings=settings,
-        table=getattr(settings.sources, declared.name),
-        account=None if account is None else getattr(settings.accounts, account.name),
+        source_table=getattr(settings.sources, declared.name),
+        account_table=None if account is None else getattr(settings.accounts, account.name),
         options={**dict.fromkeys(declared.options), **(options or {})},
         now=lambda: FIRST,
         sleep=lambda _: None,
@@ -163,7 +163,7 @@ def run_of(
     )
 
 
-def fetcher_of(declared: Declared) -> Fetcher:
+def fetcher_of(declared: Source) -> Fetcher:
     """Load the fetcher that a declaration names, checked against its role."""
     assert declared.fetcher is not None
     fetcher = pkgutil.resolve_name(declared.fetcher)
@@ -171,7 +171,7 @@ def fetcher_of(declared: Declared) -> Fetcher:
     return fetcher
 
 
-def preparer_of(declared: Declared) -> Preparer:
+def preparer_of(declared: Source) -> Preparer:
     """Load the one preparer that a declaration names, checked against its role."""
     (path,) = declared.preparers
     preparer = pkgutil.resolve_name(path)
@@ -266,7 +266,7 @@ def test_help_imports_the_declarations_and_no_module_that_they_name(home: Path) 
             if line.startswith("import time:")
         }
         assert declared | {"kb_mcp.sources.registry"} <= imported
-        assert imported & (NAMED | {"kb_mcp.sources.roles"}) == set()
+        assert imported & (NAMED | {"kb_mcp.sources.stages"}) == set()
 
 
 def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(

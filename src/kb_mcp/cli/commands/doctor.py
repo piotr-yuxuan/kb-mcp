@@ -8,14 +8,14 @@ from kb_mcp.cli.app.doctor import doctor
 from kb_mcp.cli.domain.sources import accounts_to_check
 from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.roles import FAILED, SIGN_IN, WELL
+from kb_mcp.sources.stages import FAILED, SIGN_IN, WELL
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
-    from kb_mcp.sources.roles import Verdict
+    from kb_mcp.sources.stages import Verdict
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
