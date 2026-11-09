@@ -475,7 +475,7 @@ result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its counts, by its [`Result.text`](../../src/kb_mcp/sources/stages.py). `index`
+its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/outcome.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).

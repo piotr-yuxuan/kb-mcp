@@ -90,8 +90,8 @@ def prepare_memo(
 
 def changes_of(rows: list[dict[str, object]]) -> dict[str, int]:
     """Give the counts of the prepare's row, and check what the rows name: the memo, done."""
-    assert [(row["source"], row["outcome"]) for row in rows] == [("memo", "done")]
-    return rows[0]["result"]["changes"]
+    assert [(row["source"], row["ending"]) for row in rows] == [("memo", "done")]
+    return rows[0]["counts"]
 
 
 def files_of(docs: Path) -> dict[Path, tuple[bytes, int]]:
@@ -242,7 +242,7 @@ def test_a_dry_run_writes_nothing(
     given = ["prepare", "memo", "--dry-run", "--config", str(config), "--format", "json"]
     assert main(given, registry) == ExitStatus.OK
     rows = json.loads(capsys.readouterr().out)["sources"]
-    assert [(row["source"], row["outcome"]) for row in rows] == [("memo", "not run")]
+    assert [(row["source"], row["ending"]) for row in rows] == [("memo", "not run")]
     assert not (config.parent / "data").exists()
 
 

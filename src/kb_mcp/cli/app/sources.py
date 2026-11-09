@@ -15,7 +15,6 @@ own spans and events are recorded, as ``docs/reference/telemetry/fetch.md`` and
 from __future__ import annotations
 
 import pkgutil
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import structlog
@@ -24,8 +23,7 @@ from opentelemetry import trace
 from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.sources import FETCH, PREPARE
 from kb_mcp.kernel.exit_status import folded
-from kb_mcp.kernel.record import Record
-from kb_mcp.sources.stages import Fetcher, Preparer, Result, SourceRun
+from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -35,43 +33,16 @@ if TYPE_CHECKING:
 
 
 TRACER = trace.get_tracer(__name__)
-
-
-class EventNames(Record):
-    """What a stage records, each name written out, so that a search for a page's name finds it."""
-
-    start: str
-    source: str
-    interrupted: str
-    end: str
-
-
-RECORDED = {
-    FETCH: EventNames(
-        start="fetch.start",
-        source="fetch.source",
-        interrupted="fetch.interrupted",
-        end="fetch.end",
-    ),
-    PREPARE: EventNames(
-        start="prepare.start",
-        source="prepare.source",
-        interrupted="prepare.interrupted",
-        end="prepare.end",
-    ),
+# What each stage records, by name, written out so that a search for an event finds it:
+# its start, each source's row, Ctrl-C, its end.
+EVENTS = {
+    FETCH: ("fetch.start", "fetch.source", "fetch.interrupted", "fetch.end"),
+    PREPARE: ("prepare.start", "prepare.source", "prepare.interrupted", "prepare.end"),
 }
 
 
 class SourcesRefusedError(ValueError):
     """What a run cannot go on with, found before its first row; the message names it."""
-
-
-class PlannedRow(Record):
-    """A row to run: its source's run, its fetcher's or preparer's preflight, and its act."""
-
-    run: SourceRun
-    preflight: Callable[[SourceRun], str | None]
-    act: Callable[[SourceRun], Result]
 
 
 def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[R]) -> R:
@@ -93,70 +64,64 @@ def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[
     return found
 
 
-def planned(stage: str, runs: Sequence[SourceRun]) -> list[PlannedRow]:
+def planned(stage: str, runs: Sequence[SourceRun]) -> list[tuple[SourceRun, Fetcher | Preparer]]:
     """Load what each run takes part in this stage with: its fetcher, or each of its preparers."""
     if stage == FETCH:
-        fetchers = (
+        return [
             (run, loaded(run.source, run.source.fetcher, Fetcher))
             for run in runs
             if run.source.fetcher is not None
-        )
-        return [
-            PlannedRow(run=run, preflight=each.preflight, act=each.fetch) for run, each in fetchers
         ]
-    preparers = (
-        (run, loaded(run.source, path, Preparer)) for run in runs for path in run.source.preparers
-    )
     return [
-        PlannedRow(run=run, preflight=each.preflight, act=each.prepare) for run, each in preparers
+        (run, loaded(run.source, path, Preparer)) for run in runs for path in run.source.preparers
     ]
 
 
 def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
-    """Run each source's part in this stage; return a row each, and the status that they rank.
+    """Run each source's part in this stage; return a row each, and the status that they fold.
 
     Each run's ``dry_run`` is what its fetcher or preparer reads, and the events follow the
     runs. Raises ``SourcesRefusedError`` for one that does not load, and for what its
     ``preflight`` refuses, after its source's name and the stage, both before the first
     row. Ctrl-C ends the row it stops as interrupted, and each later one as not run; the
     run is interrupted even when Ctrl-C comes once every row has ended. The status is the
-    most severe of the rows' endings, as ``folded`` gives it. A stage's ``start`` and ``end``
-    say at INFO the sources planned and how each ended, its ``source`` each as it ends; its
-    ``interrupted``, a warning, which source Ctrl-C stopped.
+    most severe of the rows' endings, as ``folded`` gives it. A stage's ``start`` and
+    ``end`` say at INFO the sources planned and how each ended, its ``source`` each as it
+    ends; its ``interrupted``, a warning, which source Ctrl-C stopped.
     """
     plans = planned(stage, runs)
     refusal = next(
         (
-            f"source {each.run.source.name!r}: {stage}: {said}"
-            for each in plans
-            if (said := each.preflight(each.run))
+            f"source {run.source.name!r}: {stage}: {said}"
+            for run, each in plans
+            if (said := each.preflight(run))
         ),
         None,
     )
     if refusal is not None:
         raise SourcesRefusedError(refusal)
     log = structlog.get_logger()
-    recorded = RECORDED[stage]
-    names = [each.run.source.name for each in plans]
-    log.info(recorded.start, sources=names, dry_run=any(run.dry_run for run in runs))
+    started, row_event, interrupted, finished = EVENTS[stage]
+    names = [run.source.name for run, _ in plans]
+    log.info(started, sources=names, dry_run=any(run.dry_run for run in runs))
     rows: list[Row] = []
     own: list[Ending] = []  # the run's own ending, beside its rows'
     try:
-        for each, source in zip(plans, names, strict=True):
+        for (run, each), source in zip(plans, names, strict=True):
             attributes = {"kb_mcp.source": source}
-            with TRACER.start_as_current_span(recorded.source, attributes=attributes) as span:
-                result = each.act(each.run)
-                span.set_attribute("kb_mcp.outcome", result.outcome)
-                log.info(recorded.source, source=source, outcome=result.outcome)
-                rows.append(Row(source=source, outcome=result.outcome, result=result))
+            with TRACER.start_as_current_span(row_event, attributes=attributes) as span:
+                outcome = each.fetch(run) if stage == FETCH else each.prepare(run)
+                span.set_attribute("kb_mcp.ending", outcome.ending)
+                log.info(row_event, source=source, ending=outcome.ending)
+                rows.append(Row(source=source, **dict(outcome)))
     except KeyboardInterrupt:
         stopped = len(rows)
         own.append("interrupted")
-        log.warning(recorded.interrupted, source=names[stopped] if stopped < len(names) else None)
+        log.warning(interrupted, source=names[stopped] if stopped < len(names) else None)
         rows.extend(
-            Row(source=name, outcome="interrupted" if at == stopped else "not run", result=None)
+            Row(source=name, ending="interrupted" if at == stopped else "not run")
             for at, name in enumerate(names[stopped:], stopped)
         )
-    status = folded([*own, *(row.outcome for row in rows)])
-    log.info(recorded.end, status=int(status), sources=[f"{r.source}: {r.outcome}" for r in rows])
+    status = folded([*own, *(row.ending for row in rows)])
+    log.info(finished, status=int(status), sources=[f"{r.source}: {r.ending}" for r in rows])
     return Ran(exit_status=status, sources=tuple(rows))

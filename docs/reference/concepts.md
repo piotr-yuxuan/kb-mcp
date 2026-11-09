@@ -602,10 +602,10 @@ status; telemetry tags every span and event of a run with its run id.
 **In the code.** [`Run`](../../src/kb_mcp/observability/app/observed.py), one
 invocation, with its run id, log and trace; the event `run.start`, which logs the
 settings, secrets masked. The outcome:
-[`RunReport`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
-[`FetchOutcome`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
-[`AtlassianPrepareOutcome`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
-[`WorklogPrepareOutcome`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py),
+[`Outcome`](../../src/kb_mcp/kernel/outcome.py), with
+[`OutcomeWarning`](../../src/kb_mcp/kernel/outcome.py), whose counts are each
+stage's record, such as
+[`FetchCounts`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py); the index's
 [`IndexReport`](../../src/kb_mcp/search/app/indexing.py) and
 [`Filled`](../../src/kb_mcp/search/app/indexing.py). The ending:
 [`Ending`](../../src/kb_mcp/kernel/exit_status.py) and

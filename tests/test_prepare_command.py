@@ -23,6 +23,7 @@ from kb_mcp.mirror.adapters.pandoc import (
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
+from kb_mcp.sources.atlassian.prepare.app.preparer import NOT_COUNTED
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
@@ -53,6 +54,7 @@ NOTHING = (
     "  files unchanged: 0\n"
     "  files removed: 0\n"
     "  problems: 0\n"
+    "  warnings: 0\n"
 )
 
 
@@ -181,6 +183,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         "  files removed: 0\n"
         "  not shown, element: iframe: 1\n"
         "  problems: 0\n"
+        "  warnings: 0\n"
         f"jira: done\n{NOTHING}"
     )
 
@@ -259,7 +262,7 @@ def test_a_second_prepare_with_nothing_changed_runs_pandoc_on_nothing(
     )
     assert main(arguments(home, "--format", "json")) == 0
     first, _ = json.loads(capsys.readouterr().out)["sources"]
-    mirrored = first["result"]["mirrored"]
+    mirrored = first["counts"]
     assert (mirrored["converted"], mirrored["reused"]) == (0, CONVERSIONS)
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
 
@@ -408,17 +411,23 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
             "source": "confluence",
             "where": "confluence/pages/196845/000001",
             "reason": "space not listed",
-        }
-    ] * len(["confluence's prepare", "jira's"])
+        },
+        {
+            "level": "warning",
+            "source": "jira",
+            "where": "confluence/pages/196845/000001",
+            "reason": "confluence's, read here: space not listed",
+        },
+    ]
     (kept,) = logged_as(home, "prepare.nothing_removed")
     assert (kept["level"], kept["source"], kept["problems"]) == ("warning", "confluence", 1)
     assert main(arguments(home, "--format", "json")) == SOME_FAILED
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == SOME_FAILED
-    rows = [(row["source"], row["outcome"]) for row in document["sources"]]
+    rows = [(row["source"], row["ending"]) for row in document["sources"]]
     assert rows == [("confluence", "failed"), ("jira", "done")]
-    confluence = document["sources"][0]["result"]["mirrored"]
-    assert confluence["documents"] == 0
+    confluence = document["sources"][0]
+    assert confluence["counts"]["documents"] == 0
     assert confluence["problems"] == [
         {"where": "confluence/pages/196845/000001", "reason": "space not listed"}
     ]
@@ -474,18 +483,19 @@ def test_a_dry_run_counts_the_work_log_and_says_of_the_others_that_it_cannot(
     command += ["--data-dir", str(home / "data")]
     assert main(command) == 0
     out = capsys.readouterr().out
-    assert "confluence: not run\n  not counted: " in out
-    assert "jira: not run\n  not counted: " in out
-    assert "worklog: done\n  documents: " in out
+    assert "confluence: not run\n  problems: 0\n  warnings: 1\n" in out
+    assert "jira: not run\n  problems: 0\n  warnings: 1\n" in out
+    assert "worklog: not run\n  documents: " in out
     assert not (home / "data" / "docs").exists()
     assert main([*command, "--format", "json"]) == 0
     rows = json.loads(capsys.readouterr().out)["sources"]
-    assert [(row["source"], row["outcome"]) for row in rows] == [
+    assert [(row["source"], row["ending"]) for row in rows] == [
         ("confluence", "not run"),
         ("jira", "not run"),
-        ("worklog", "done"),
+        ("worklog", "not run"),
     ]
-    assert rows[0]["result"] == {"outcome": "not run", "mirrored": None}
+    assert (rows[0]["counts"], rows[0]["problems"]) == (None, [])
+    assert [each["reason"] for each in rows[0]["warnings"]] == [NOT_COUNTED]
 
 
 def test_what_a_fetch_reads_is_not_read_by_a_prepare(

@@ -830,8 +830,8 @@ def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:
         (f"transcripts/{original}", f"t-{sha(f'/transcripts/{original}')}"),
     ]
     assert len(warnings) == 1
-    assert f"transcripts/{copy}" in warnings[0]
-    assert f"transcripts/{original}" in warnings[0]
+    assert f"transcripts/{copy}" in f"{warnings[0].where}: {warnings[0].reason}"
+    assert f"transcripts/{original}" in f"{warnings[0].where}: {warnings[0].reason}"
 
 
 def test_two_files_of_one_id_take_the_same_ids_when_the_first_is_not_read() -> None:
@@ -893,9 +893,9 @@ def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
         "transcripts/misc/a.org": f"t-{sha('/transcripts/misc/a.org')}",
     }
     keeper = "transcripts/aa/a.org"
-    assert warnings == [
-        f"transcripts/F/transcripts/misc/a.org: same id as {keeper}; named by its whole path",
-        f"transcripts/misc/a.org: same id as {keeper}; named by its whole path",
+    assert [(each.where, each.reason) for each in warnings] == [
+        ("transcripts/F/transcripts/misc/a.org", f"same id as {keeper}; named by its whole path"),
+        ("transcripts/misc/a.org", f"same id as {keeper}; named by its whole path"),
     ]
 
 

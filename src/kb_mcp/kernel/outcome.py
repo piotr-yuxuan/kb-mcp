@@ -1,7 +1,7 @@
 """What a unit of a run gives: how it ended, its stage's counts, its problems, its warnings.
 
 A unit is a stage applied to one source, or over the whole. ``--format json`` writes its
-outcome as it is; ``said`` writes its problems and warnings as the command's text does.
+outcome as it is; ``text`` writes it as the command's text does.
 """
 
 from __future__ import annotations
@@ -36,7 +36,8 @@ class Outcome[C](Record):
     """How a unit ended, its stage's own record of counts, its problems and its warnings.
 
     ``counts`` is None for a unit that gave none: one that could not start, or that an
-    interruption reached. A problem ends its unit failed, or, in a dry run, not run.
+    interruption reached; else a record whose ``text`` writes it, short or detailed. A
+    problem ends its unit failed.
     """
 
     ending: Ending
@@ -52,8 +53,13 @@ class Outcome[C](Record):
             raise RefusedError(message)
         return self
 
-    def said(self, detail: Detail) -> str:
-        """Write how many problems and warnings; in detail, each by its place and reason."""
+    def text(self, detail: Detail) -> str:
+        """Write the counts, then how many problems and warnings; in detail, each of them.
+
+        A unit that gave nothing, no counts, problems or warnings, writes nothing.
+        """
+        if self.counts is None and not self.problems and not self.warnings:
+            return ""
         shown = (
             [("problem", each) for each in self.problems]
             + [("warning", each) for each in self.warnings]
@@ -61,7 +67,8 @@ class Outcome[C](Record):
             else []
         )
         return (
-            "".join(f"{kind}: {each.where}: {each.reason}\n" for kind, each in shown)
+            ("" if self.counts is None else self.counts.text(detail))
+            + "".join(f"{kind}: {each.where}: {each.reason}\n" for kind, each in shown)
             + f"problems: {len(self.problems)}\n"
             + f"warnings: {len(self.warnings)}\n"
         )

@@ -24,8 +24,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
+    from kb_mcp.kernel.outcome import Outcome
     from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianPrepareOutcome
+    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (
@@ -146,7 +147,7 @@ def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
 
 def prepared_source(
     store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str], source: str
-) -> AtlassianPrepareOutcome:
+) -> Outcome[AtlassianCounts]:
     """Mirror one source of ``store`` into ``docs``; give its outcome.
 
     It converts by ``convert`` through its rows of the cache beside ``docs``, the file
@@ -161,7 +162,7 @@ def prepared_source(
 
 def prepared_sources(
     store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
-) -> dict[str, AtlassianPrepareOutcome]:
+) -> dict[str, Outcome[AtlassianCounts]]:
     """Mirror ``store`` into ``docs``, each source as a run does; give its outcome by its name."""
     return {source: prepared_source(store, docs, site, convert, source) for source in PREPARED}
 

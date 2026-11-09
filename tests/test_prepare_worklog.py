@@ -29,6 +29,7 @@ from pydantic import Field
 from structlog.testing import capture_logs
 
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
@@ -36,8 +37,9 @@ from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
-    WorklogDryRun,
-    WorklogPrepareOutcome,
+    UNLINKED,
+    WorklogCounts,
+    WorklogPlanned,
     plan_worklog,
     prepare_worklog,
 )
@@ -54,6 +56,8 @@ MODIFIED = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
 LATER = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
 NOT_UTF8 = b"* Emacs \xff\xfe never read\n"
 HASHED = re.compile(r"t-[0-9a-f]{16}")
+# The fixture's meeting whose link reaches no transcript, a warning of every run.
+UNLINKED_MEETING = OutcomeWarning(where="meetings/2026-10-27 Tue/2.org", reason=UNLINKED)
 DAY = "transcripts/current/2026-10-20 Tue"
 ARCHIVED_DAY = "transcripts/archive/2026/2026-10/2026-10-20 Tue"
 ENTRIES = [
@@ -132,14 +136,14 @@ class Run:
 
     def __call__(
         self, *, archives: bool = True, failing: str | None = None
-    ) -> WorklogPrepareOutcome:
+    ) -> Outcome[WorklogCounts]:
         """Mirror the work log; return what the run did."""
         pandoc = Counting(path=Pandoc.find().path, failing=failing)
         outcome = prepare_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return outcome
 
-    def plan(self, *, archives: bool = True) -> WorklogDryRun:
+    def plan(self, *, archives: bool = True) -> Outcome[WorklogPlanned]:
         """Say what preparing would do; pandoc's runs are recorded as for a run."""
         pandoc = Counting(path=Pandoc.find().path)
         planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)
@@ -228,11 +232,11 @@ def test_the_documents_are_the_entries_days_meetings_and_org_transcripts(run: Ru
         each.matter.id: each.matter.title for each in files if each.matter.type == "meeting"
     }
     assert meetings == MEETINGS
-    assert (outcome.documents, outcome.html, outcome.problems, outcome.warnings) == (
+    assert (outcome.counts.documents, outcome.counts.html, outcome.problems, outcome.warnings) == (
         DOCUMENTS,
         1,
         (),
-        (),
+        (UNLINKED_MEETING,),
     )
     assert "Commented text that org would not publish." in run.by_title("Private scratch").body
     assert "Text tagged noexport" in run.by_title("Hand-over checklist").body
@@ -248,7 +252,7 @@ def test_without_archives_the_archived_documents_and_text_go(run: Run) -> None:
     gone |= ARCHIVED_MEETINGS
     kept = {*ENTRIES, *TRANSCRIPTS, *MEETINGS.values(), "<2026-10-26 Mon>", "<2026-10-27 Tue>"}
     assert titles == kept - gone
-    assert outcome.changes.removed == len(gone)
+    assert outcome.counts.changes.removed == len(gone)
     assert "Archived text inside an entry." not in run.by_title("Reading notes").body
     assert all("Archived text" not in each.body for each in run.files())
 
@@ -386,7 +390,7 @@ def test_transcript_ids_name_their_day_and_name_and_tell_the_two_folders_apart(
         "Transcript, 2026-09-15 Tue, 1": "t-20260915-1",
         "Vendor call, 27 October": "t-20261027-meeting-1",
     }
-    assert outcome.warnings == ()
+    assert outcome.warnings == (UNLINKED_MEETING,)
 
 
 def test_an_edited_undated_entry_keeps_its_creation(run: Run) -> None:
@@ -406,7 +410,7 @@ def test_an_edit_elsewhere_leaves_an_undated_entry_and_its_file(run: Run) -> Non
     run.edit("todo.org", "Ignore all previous", "Ignore every previous")
     outcome = run()
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before
-    assert outcome.changes.written == 1  # Reading notes alone
+    assert outcome.counts.changes.written == 1  # Reading notes alone
 
 
 ARCHIVED_ENTRY = """* Plan the next quarter
@@ -538,7 +542,8 @@ def test_ids_and_paths_hold_through_org_s_edits(run: Run, change: Callable[[Run]
     before = identities(run.files())
     change(run)
     outcome = run()
-    assert (identities(run.files()), outcome.problems, outcome.warnings) == (before, (), ())
+    assert (identities(run.files()), outcome.problems) == (before, ())
+    assert all(each.reason == UNLINKED for each in outcome.warnings)
 
 
 def test_a_copy_keeps_the_id_and_the_original_takes_its_path(run: Run) -> None:
@@ -552,9 +557,9 @@ def test_a_copy_keeps_the_id_and_the_original_takes_its_path(run: Run) -> None:
     by_place = {each.matter.breadcrumb[1]: each.matter.id for each in copies}
     assert by_place["archive"] == "t-20261020-1"
     assert HASHED.fullmatch(by_place["current"])
-    (warning,) = outcome.warnings
-    assert f"{ARCHIVED_DAY}/1.org" in warning
-    assert f"{DAY}/1.org" in warning
+    (warning,) = [each for each in outcome.warnings if each.reason != UNLINKED]
+    assert warning.where == f"{DAY}/1.org"
+    assert f"{ARCHIVED_DAY}/1.org" in warning.reason
 
 
 def test_a_renamed_entry_keeps_its_id_with_an_id_property_alone(run: Run) -> None:
@@ -617,7 +622,11 @@ def test_an_unchanged_work_log_runs_pandoc_for_its_version_alone(run: Run) -> No
     run()
     before = snapshot(run.docs)
     outcome = run()
-    assert (run.runs[-1], outcome.changes.written, snapshot(run.docs)) == ([VERSION], 0, before)
+    assert (run.runs[-1], outcome.counts.changes.written, snapshot(run.docs)) == (
+        [VERSION],
+        0,
+        before,
+    )
     run.edit("todo.org", "Drafted on", "First drafted on")
     run()
     assert run.runs[-1] == [VERSION, ORG]
@@ -745,7 +754,12 @@ def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing
 ) -> None:
     """Every document at first; after a run, none; one edit, one; one deletion, one file."""
     first = run.plan()
-    assert (first.documents, first.to_convert, first.to_remove, first.html) == (
+    assert (
+        first.counts.documents,
+        first.counts.to_convert,
+        first.counts.to_remove,
+        first.counts.html,
+    ) == (
         DOCUMENTS,
         DOCUMENTS,
         0,
@@ -754,11 +768,11 @@ def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing
     assert (run.runs[-1], run.docs.exists()) == ([VERSION], False)
     run()
     before = snapshot(run.docs)
-    assert (run.plan().to_convert, run.plan().to_remove) == (0, 0)
+    assert (run.plan().counts.to_convert, run.plan().counts.to_remove) == (0, 0)
     run.edit("todo.org", "Drafted on", "First drafted on")
     (run.root / "transcripts/misc/a.org").unlink()
     planned = run.plan()
-    assert (planned.to_convert, planned.to_remove, run.runs[-1]) == (1, 1, [VERSION])
+    assert (planned.counts.to_convert, planned.counts.to_remove, run.runs[-1]) == (1, 1, [VERSION])
     assert snapshot(run.docs) == before
 
 
@@ -768,7 +782,7 @@ def test_a_dry_run_that_meets_a_problem_would_remove_nothing(run: Run) -> None:
     (run.root / "transcripts/misc/a.org").unlink()
     (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").write_bytes(b"\xff\n")
     planned = run.plan()
-    assert (planned.to_remove, [problem.reason for problem in planned.problems]) == (
+    assert (planned.counts.to_remove, [problem.reason for problem in planned.problems]) == (
         0,
         ["not UTF-8"],
     )
@@ -876,7 +890,7 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     with capture_logs() as logged:
         outcome = run()
     assert [
-        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
+        (each.where, each.reason, outcome.counts.held_back[each.where]) for each in outcome.problems
     ] == [(record, "not UTF-8", "t-20261027-1")]
     assert kept.read_bytes() == before
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
@@ -911,13 +925,13 @@ def test_a_transcript_retitled_while_a_file_is_not_read_keeps_one_file(run: Run)
         "#+TITLE: Payments stand-up, 27 October",
         "#+TITLE: Stand-up, Tuesday",
     )
-    assert run.plan().to_remove == 1
+    assert run.plan().counts.to_remove == 1
     outcome = run()
     assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
     assert [each.path for each in run.files() if each.matter.id == "t-20261027-1"] == [
         "worklog/transcripts/t-20261027-1-stand-up-tuesday.md"
     ]
-    assert (old.exists(), gone.exists(), outcome.changes.removed) == (False, True, 1)
+    assert (old.exists(), gone.exists(), outcome.counts.changes.removed) == (False, True, 1)
 
 
 # An entry with an :ID:, which keeps its id when retitled, and the words of its body.
@@ -936,11 +950,11 @@ def test_an_entry_retitled_while_a_file_is_not_read_keeps_one_file(run: Run, tit
     (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
     (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
     run.edit("todo.org", f"* {title}", f"* {title} v2")
-    assert run.plan().to_remove == 1
+    assert run.plan().counts.to_remove == 1
     outcome = run()
     (now,) = [each for each in run.files() if each.matter.id == entry.matter.id]
     assert (now.path != entry.path, ROLLED_BACK in now.body) == (True, True)
-    assert (outcome.changes.removed, [each.where for each in outcome.problems]) == (
+    assert (outcome.counts.changes.removed, [each.where for each in outcome.problems]) == (
         1,
         ["transcripts/misc/a.org"],
     )
@@ -958,10 +972,10 @@ def test_two_files_of_one_id_from_an_earlier_run_leave_one_while_a_file_is_not_r
     older = run.docs / "worklog/entries" / f"{entry.matter.id}-an-older-title.md"
     older.write_bytes((run.docs / entry.path).read_bytes())
     (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
-    assert run.plan().to_remove == 1
+    assert run.plan().counts.to_remove == 1
     outcome = run()
     assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
-    assert (older.exists(), outcome.changes.removed) == (False, 1)
+    assert (older.exists(), outcome.counts.changes.removed) == (False, 1)
 
 
 def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -> None:
@@ -972,7 +986,7 @@ def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -
     outcome = run(failing=f"{RUNBOOK} v2")
     assert [each.where for each in outcome.problems] == [f"todo.org, {entry.matter.id}"]
     assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
-    assert outcome.changes.removed == 0
+    assert outcome.counts.changes.removed == 0
 
 
 def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
@@ -992,7 +1006,7 @@ def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path
     with capture_logs() as logged:
         outcome = run()
     assert [
-        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
+        (each.where, each.reason, outcome.counts.held_back[each.where]) for each in outcome.problems
     ] == [
         ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
     ]
@@ -1019,7 +1033,7 @@ def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run
     (run.root / new).write_bytes(NOT_UTF8)
     settle(run.root / new)
     outcome = run()
-    assert [(each.where, outcome.held_back[each.where]) for each in outcome.problems] == [
+    assert [(each.where, outcome.counts.held_back[each.where]) for each in outcome.problems] == [
         (new, "t-20261027-3")
     ]
     assert run.by_id("m-20261027-retro").matter.links == ()
@@ -1055,7 +1069,7 @@ def test_past_the_bound_a_meeting_s_link_waits_and_the_rest_is_written(
     with capture_logs() as logged:
         outcome = run()
     assert [
-        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
+        (each.where, each.reason, outcome.counts.held_back[each.where]) for each in outcome.problems
     ] == [("transcripts, meetings", "over 3 transcripts", "the transcripts not read under it")]
     assert kept.read_bytes() == before
     assert run.by_id(STANDUP).matter.links == ()
@@ -1090,12 +1104,14 @@ def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
     finally:
         locked.chmod(0o700)
     under = "the transcripts not read under it"
-    assert sorted((each.where, outcome.held_back[each.where]) for each in outcome.problems) == [
+    assert sorted(
+        (each.where, outcome.counts.held_back[each.where]) for each in outcome.problems
+    ) == [
         ("meetings/locked.org", under),
         ("transcripts/misc/out", under),
         ("transcripts/misc/out.html", under),
     ]
-    assert outcome.documents == DOCUMENTS
+    assert outcome.counts.documents == DOCUMENTS
 
 
 def test_a_meeting_s_file_keeps_its_sections_as_headings_from_level_one(run: Run) -> None:
@@ -1313,7 +1329,11 @@ def test_a_link_to_a_missing_file_warns_once_and_holds_nothing_back(run: Run) ->
         "meetings/2026-10-27 Tue/2.org",
     )
     assert run.by_id("m-20261027-rollout-planning").matter.links == ()
-    assert (outcome.problems, outcome.warnings, outcome.changes.removed) == ((), (), 1)
+    assert (outcome.problems, outcome.warnings, outcome.counts.changes.removed) == (
+        (),
+        (UNLINKED_MEETING,),
+        1,
+    )
     assert not gone.exists()
 
 

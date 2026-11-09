@@ -490,7 +490,7 @@ def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None
     """
     outcome = run_fetch(settings(tmp_path), targets(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "sign in again"
-    assert outcome.report.counts["runs: stopped, sign-in needed"] == 1
+    assert outcome.counts.counts["runs: stopped, sign-in needed"] == 1
     [report] = (tmp_path / "data" / "runs").iterdir()
     assert report.name == "20261022T090000Z-confluence.json"
     assert json.loads(report.read_text("utf-8"))["ending"] == "sign in again"
@@ -522,8 +522,8 @@ def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     chosen = saved_session(tmp_path, monkeypatch, fake)
     outcome = run_fetch(chosen, targets([], ["PRB"]), lambda: NOW, no_sleep)
     assert outcome.ending == "done"
-    assert outcome.report.counts["jira issues: fetched"] == 1
-    assert [what for what in outcome.report.counts if "confluence" in what] == []
+    assert outcome.counts.counts["jira issues: fetched"] == 1
+    assert [what for what in outcome.counts.counts if "confluence" in what] == []
     assert [url.path for url in fake.asked if url.path.startswith("/wiki/")] == []
     spans = {span.name for span in telemetry.spans.get_finished_spans()}
     assert "fetch.project" in spans
@@ -547,7 +547,7 @@ def test_a_run_with_a_failure_says_so_in_its_status(
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
     outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "failed"
-    assert outcome.report.failures == 1
+    assert outcome.counts.failures == 1
     [report] = chosen.runs.iterdir()
     assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
@@ -582,7 +582,7 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
         site = SiteClient(client, sleep=no_sleep)
         done = Fetching(site, store, CAP, lambda: NOW, windows=week(["ENG"], []))
         done.run(["ENG"], [])
-    assert done.failed_targets == ["space ENG: not found"]
+    assert done.problems == [Problem(where="space ENG", reason="not found")]
     assert done.report.counts["confluence spaces failed: not found"] == 1
     assert done.report.failures == 1
 
@@ -698,7 +698,7 @@ def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> N
 def test_a_project_that_jira_refuses_is_named_for_the_user(tmp_path: Path) -> None:
     """A JQL refused (an unknown project, say) names the key for stderr, not the report."""
     done = run(RawStore(tmp_path / "raw"), FakeSite(search_status=400))
-    assert done.failed_targets == ["project PRB: status 400"]
+    assert done.problems == [Problem(where="project PRB", reason="status 400")]
     assert done.report.counts["jira projects failed: status 400"] == 1
     assert "PRB" not in json.dumps(done.report.counts)
 

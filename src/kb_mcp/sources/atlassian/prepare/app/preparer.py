@@ -13,47 +13,21 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.exit_status import Ending
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES
-from kb_mcp.sources.atlassian.prepare.app.prepare import (
-    SOURCE_OF,
-    AtlassianPrepareOutcome,
-    prepare_atlassian,
-)
-from kb_mcp.sources.stages import Result
+from kb_mcp.sources.atlassian.prepare.app.prepare import SOURCE_OF, prepare_atlassian
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts
     from kb_mcp.sources.stages import SourceRun
 
 # What a dry run says of these sources: a count needs a lookup without converting.
 NOT_COUNTED = "not counted: a dry run of this source converts nothing, and cannot tell"
-
-
-class AtlassianPrepared(Result):
-    """A prepare: how it ended, and what the mirror did, None when it did not run."""
-
-    mirrored: AtlassianPrepareOutcome | None
-
-    def text(self, summary: Detail) -> str:
-        """Write the mirror's counts; nothing when it did not run."""
-        return "" if self.mirrored is None else self.mirrored.text(summary)
-
-
-class NotCounted(AtlassianPrepared):
-    """A dry run's prepare: nothing converted, so nothing counted, which its row says."""
-
-    outcome: Ending = "not run"
-    mirrored: None = None
-
-    def text(self, _summary: Detail) -> str:
-        """Say that a count needs what a dry run does not do."""
-        return f"{NOT_COUNTED}\n"
 
 
 def classes_of(run: SourceRun) -> tuple[type[Page | BlogPost | Issue], ...]:
@@ -78,20 +52,24 @@ def preflight(run: SourceRun) -> str | None:
     return f"types {named}: not all the resource types of one source"
 
 
-def prepare(run: SourceRun) -> AtlassianPrepared:
+def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
     """Prepare the resource types of the run's source, unless a dry run, with the pandoc found now.
+
+    A dry run ends not run, with no counts, and a warning that says why.
 
     Pandoc gone from PATH since the run began fails the prepare, which writes nothing:
     an error, ``prepare.pandoc_missing``. The site is the account's, so that links to its
     pages resolve and addresses are absolute.
     """
     if run.dry_run:
-        return NotCounted()
+        return Outcome(
+            ending="not run", warnings=(OutcomeWarning(where=run.source.name, reason=NOT_COUNTED),)
+        )
     try:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
         structlog.get_logger().error("prepare.pandoc_missing", reason=str(error))
-        return AtlassianPrepared(outcome="failed", mirrored=None)
+        return Outcome(ending="failed")
     return prepare_classes(
         run.settings, run.account_table.site, pandoc, run.source.name, classes_of(run)
     )
@@ -103,15 +81,15 @@ def prepare_classes(
     pandoc: Pandoc,
     source: str,
     document_classes: tuple[type[Page | BlogPost | Issue], ...],
-) -> AtlassianPrepared:
+) -> Outcome[AtlassianCounts]:
     """Prepare a source's documents of ``document_classes`` from the raw store; say its problems.
 
     The data folder's cache of pandoc's conversions is open for this mirror alone, on the
     rows of ``source``. What it could not mirror is a warning, ``prepare.not_mirrored``,
     by the source that it belongs to, its place and the reason, never its content, as is
     that the source then removed none of its files, ``prepare.nothing_removed``. What it
-    could not read of another source is said alike, since its own files may then link
-    around that source's document, and fails nothing of its own.
+    could not read of another source is a warning of its outcome, said alike, since its
+    own files may then link around that source's document, and fails nothing of its own.
     """
     log = structlog.get_logger()
     with conversions.opened(
@@ -120,11 +98,8 @@ def prepare_classes(
         outcome = prepare_atlassian(
             RawStore(settings.raw), settings.docs, site, cache, document_classes
         )
-    for name, problems in {source: outcome.problems, **outcome.elsewhere}.items():
-        for problem in problems:
-            log.warning(
-                "prepare.not_mirrored", source=name, where=problem.where, reason=problem.reason
-            )
+    for each in (*outcome.problems, *outcome.warnings):
+        log.warning("prepare.not_mirrored", source=source, where=each.where, reason=each.reason)
     if outcome.problems:
         log.warning("prepare.nothing_removed", source=source, problems=len(outcome.problems))
-    return AtlassianPrepared(outcome="failed" if outcome.problems else "done", mirrored=outcome)
+    return outcome

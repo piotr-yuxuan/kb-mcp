@@ -230,11 +230,11 @@ def test_a_plan_lists_and_decides_and_writes_nothing(
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     outcome = plan_fetch(chosen, first_week(["MFS"], ["PRB"]), lambda: FIRST, lambda _: None)
-    assert outcome.ending == "done"
-    assert outcome.report.counts["confluence pages: to fetch"] == len(["1001", "1002"])
-    assert outcome.report.counts["jira issues: to fetch"] == 1
-    assert outcome.report.counts["files: to download"] == 1
-    assert outcome.report.counts["files: bytes to download"] > 0
+    assert outcome.ending == "not run"
+    assert outcome.counts.counts["confluence pages: to fetch"] == len(["1001", "1002"])
+    assert outcome.counts.counts["jira issues: to fetch"] == 1
+    assert outcome.counts.counts["files: to download"] == 1
+    assert outcome.counts.counts["files: bytes to download"] > 0
     fetched = [url.path for url in fake.asked if "/pages/" in url.path or "/issue/" in url.path]
     assert fetched == []
     left = sorted(
@@ -1094,9 +1094,9 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     outcome = run_fetch(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
     assert RawStore(chosen.raw).coverage() == before
-    detailed = outcome.text("detailed")
+    detailed = outcome.counts.text("detailed")
     assert "space MFS: skipped, after --until; coverage held\n" in detailed
-    [window] = to_jsonable_python(outcome)["windows"]
+    [window] = to_jsonable_python(outcome)["counts"]["windows"]
     assert (window["start"], window["end"], window["reason"], window["coverage"]) == (
         None,
         None,
@@ -1162,5 +1162,5 @@ def test_a_dry_run_counts_once_an_issue_that_the_search_names_twice(
         lambda: RUN,
         lambda _: None,
     )
-    assert planned.report.counts["jira issues: to fetch"] == 1
-    assert planned.report.counts["files: to download"] == 1
+    assert planned.counts.counts["jira issues: to fetch"] == 1
+    assert planned.counts.counts["files: to download"] == 1

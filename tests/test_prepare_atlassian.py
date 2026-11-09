@@ -49,8 +49,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianPrepareOutcome
-    from kb_mcp.sources.atlassian.prepare.app.preparer import AtlassianPrepared
+    from kb_mcp.kernel.outcome import Outcome
+    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts
 
 SITE = "https://site.example.invalid"
 FETCHED = datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -140,7 +140,7 @@ class Sandbox:
         site: str | None = SITE,
         markdown: Callable[[str], str] | None = None,
         sources: Sequence[str] = ("confluence", "jira"),
-    ) -> dict[str, AtlassianPrepareOutcome]:
+    ) -> dict[str, Outcome[AtlassianCounts]]:
         """Mirror each source of the store, in order, through the cache; give its outcome.
 
         Pandoc writes the Markdown, unless another writer is given.
@@ -239,7 +239,8 @@ def digest(data: bytes) -> str:
 
 
 def each(
-    outcomes: dict[str, AtlassianPrepareOutcome], count: Callable[[AtlassianPrepareOutcome], object]
+    outcomes: dict[str, Outcome[AtlassianCounts]],
+    count: Callable[[Outcome[AtlassianCounts]], object],
 ) -> dict[str, object]:
     """Give a count of each source's outcome, by the source's name."""
     return {source: count(outcome) for source, outcome in outcomes.items()}
@@ -249,7 +250,7 @@ def test_the_mirror_writes_exactly_the_layouts_paths(sandbox: Sandbox) -> None:
     """Pages, the blog post, the issue, the tree and one asset per distinct file."""
     outcomes = sandbox.run()
     assert each(outcomes, lambda outcome: outcome.problems) == {"confluence": (), "jira": ()}
-    assert each(outcomes, lambda outcome: outcome.documents) == DOCUMENTS
+    assert each(outcomes, lambda outcome: outcome.counts.documents) == DOCUMENTS
     assert set(sandbox.files()) == {
         "confluence/MFS/100-home.md",
         "confluence/MFS/300-leaf.md",
@@ -374,9 +375,11 @@ def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(
     files = sandbox.files()
     times = {path: path.stat().st_mtime_ns for path in sandbox.docs.rglob("*")}
     outcomes = sandbox.run()
-    changes = each(outcomes, lambda outcome: (outcome.changes.written, outcome.changes.removed))
+    changes = each(
+        outcomes, lambda outcome: (outcome.counts.changes.written, outcome.counts.changes.removed)
+    )
     assert changes == {"confluence": (0, 0), "jira": (0, 0)}
-    assert each(outcomes, lambda outcome: outcome.changes.unchanged) == FILES
+    assert each(outcomes, lambda outcome: outcome.counts.changes.unchanged) == FILES
     assert sum(FILES.values()) == len(files)
     assert {path: path.stat().st_mtime_ns for path in sandbox.docs.rglob("*")} == times
     shutil.rmtree(sandbox.docs)
@@ -388,7 +391,7 @@ def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandb
     """Plan 039, criterion 5: each conversion of the first run is reused, no file written."""
     pandoc = Counting(path=Pandoc.find().path)
     first = sandbox.run(markdown=pandoc.markdown)
-    assert each(first, lambda outcome: (outcome.converted, outcome.reused)) == {
+    assert each(first, lambda outcome: (outcome.counts.converted, outcome.counts.reused)) == {
         source: (count, 0) for source, count in CONVERSIONS.items()
     }
     assert len(pandoc.runs) == sum(CONVERSIONS.values())
@@ -396,7 +399,9 @@ def test_a_second_run_with_nothing_changed_runs_pandoc_on_nothing(sandbox: Sandb
     with capture_logs() as events:
         second = sandbox.run(markdown=pandoc.markdown)
     assert pandoc.runs == []
-    assert each(second, lambda outcome: (outcome.converted, outcome.changes.written)) == {
+    assert each(
+        second, lambda outcome: (outcome.counts.converted, outcome.counts.changes.written)
+    ) == {
         "confluence": (0, 0),
         "jira": (0, 0),
     }
@@ -434,7 +439,7 @@ def test_a_run_with_a_problem_keeps_the_conversion_of_what_it_could_not_read(
     pandoc.runs.clear()
     with capture_logs() as mended:
         outcomes = sandbox.run(markdown=pandoc.markdown)
-    assert each(outcomes, lambda outcome: (outcome.problems, outcome.reused)) == {
+    assert each(outcomes, lambda outcome: (outcome.problems, outcome.counts.reused)) == {
         source: ((), count) for source, count in CONVERSIONS.items()
     }
     assert pandoc.runs == []
@@ -540,12 +545,14 @@ def test_a_mirror_through_a_warm_cache_writes_the_bytes_of_one_from_none(
     pandoc.runs.clear()
     warm = linked.run(site, pandoc.markdown)
     assert [outcome.problems for outcome in warm.values()] == [(), ()]
-    assert sum(outcome.converted for outcome in warm.values()) == len(pandoc.runs) == converted
+    assert (
+        sum(outcome.counts.converted for outcome in warm.values()) == len(pandoc.runs) == converted
+    )
     fresh = Sandbox(tmp_path / "fresh")
     shutil.copytree(linked.store.root, fresh.store.root)
     cold = fresh.run(site, pandoc.markdown)
-    assert each(cold, lambda outcome: (outcome.converted, outcome.reused)) == each(
-        warm, lambda outcome: (outcome.converted + outcome.reused, 0)
+    assert each(cold, lambda outcome: (outcome.counts.converted, outcome.counts.reused)) == each(
+        warm, lambda outcome: (outcome.counts.converted + outcome.counts.reused, 0)
     )
     assert linked.files() == fresh.files()
 
@@ -553,14 +560,16 @@ def test_a_mirror_through_a_warm_cache_writes_the_bytes_of_one_from_none(
 def test_deleting_the_cache_after_a_warm_mirror_changes_no_file(linked: Sandbox) -> None:
     """Plan 039, criterion 6: the next mirror converts everything again, and writes nothing."""
     linked.run()
-    assert each(linked.run(), lambda outcome: outcome.reused) == CONVERSIONS
+    assert each(linked.run(), lambda outcome: outcome.counts.reused) == CONVERSIONS
     files = linked.files()
     times = {path: path.stat().st_mtime_ns for path in linked.docs.rglob("*")}
     (linked.data / "conversions.sqlite").unlink()
     outcomes = linked.run()
-    assert each(outcomes, lambda outcome: outcome.converted) == CONVERSIONS
-    assert each(outcomes, lambda outcome: outcome.reused) == {"confluence": 0, "jira": 0}
-    changes = each(outcomes, lambda outcome: (outcome.changes.written, outcome.changes.removed))
+    assert each(outcomes, lambda outcome: outcome.counts.converted) == CONVERSIONS
+    assert each(outcomes, lambda outcome: outcome.counts.reused) == {"confluence": 0, "jira": 0}
+    changes = each(
+        outcomes, lambda outcome: (outcome.counts.changes.written, outcome.counts.changes.removed)
+    )
     assert changes == {"confluence": (0, 0), "jira": (0, 0)}
     assert linked.files() == files
     assert {path: path.stat().st_mtime_ns for path in linked.docs.rglob("*")} == times
@@ -587,7 +596,10 @@ def test_a_document_gone_from_the_store_loses_its_file_not_shared_assets(
     sandbox.run()
     shutil.rmtree(sandbox.store.root / "confluence" / "pages" / "300")
     outcomes = sandbox.run()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 1, "jira": 0}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 1,
+        "jira": 0,
+    }
     files = sandbox.files()
     assert "confluence/MFS/300-leaf.md" not in files
     assert f"assets/{digest(IMAGE)}.png" in files
@@ -644,7 +656,10 @@ def test_a_run_with_problems_reports_them_and_removes_nothing(sandbox: Sandbox) 
     assert reasons["confluence/pages/800/000001"] == "space not listed"
     assert reasons["confluence/blogposts/600/000002"] == "pandoc: exit status 9"
     after = sandbox.files()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 0}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 0,
+        "jira": 0,
+    }
     assert set(after) == set(before)
     assert after["jira/PRB/PRB-1.md"] != before["jira/PRB/PRB-1.md"]
     unchanged = ("100-home.md", "300-leaf.md", "blog/600-news.md", "_tree.md")
@@ -660,7 +675,7 @@ def test_a_run_counts_each_macro_that_it_shows_as_unsupported(sandbox: Sandbox) 
         home = page_responses("100", "Home", 2, f"<p>Home again.</p>{roadmap}{roadmap}", [])
         sandbox.store.put(Page, home, FETCHED, {})
     outcomes = sandbox.run()
-    assert each(outcomes, lambda outcome: outcome.unsupported) == {
+    assert each(outcomes, lambda outcome: outcome.counts.unsupported) == {
         "confluence": {"macro: roadmap": 2},
         "jira": {},
     }
@@ -702,7 +717,10 @@ def test_a_clean_run_removes_only_the_files_the_mirror_owns(sandbox: Sandbox) ->
         (sandbox.docs / relative).parent.mkdir(parents=True, exist_ok=True)
         (sandbox.docs / relative).write_text("left here", "utf-8")
     outcomes = sandbox.run()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 1, "jira": 1}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 1,
+        "jira": 1,
+    }
     files = sandbox.files()
     assert all(relative in files for relative in foreign)
     assert not [relative for relative in stale if relative in files]
@@ -718,7 +736,7 @@ def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
         (sandbox.docs / relative).parent.mkdir(parents=True, exist_ok=True)
         (sandbox.docs / relative).write_text("a work-log file", "utf-8")
     prepared = set(sandbox.files()) - set(worklog)
-    assert each(sandbox.run(), lambda outcome: outcome.changes.removed) == {
+    assert each(sandbox.run(), lambda outcome: outcome.counts.changes.removed) == {
         "confluence": 0,
         "jira": 0,
     }
@@ -827,13 +845,13 @@ def test_a_file_that_both_sources_attach_stays_while_either_wants_it(crossed: Sa
     crossed.run()
     for resource_type, document in (("pages", "300"), ("blogposts", "600")):
         shutil.rmtree(crossed.store.root / "confluence" / resource_type / document)
-    assert crossed.run(sources=("confluence",))["confluence"].changes.removed == len(
+    assert crossed.run(sources=("confluence",))["confluence"].counts.changes.removed == len(
         ["300-leaf.md", "blog/600-news.md"]
     )
     image = f"assets/{digest(IMAGE)}.png"
     assert image in crossed.files()
     shutil.rmtree(crossed.store.root / "jira" / "issues" / "10000")
-    assert crossed.run(sources=("jira",))["jira"].changes.removed == len(["PRB-1.md", image])
+    assert crossed.run(sources=("jira",))["jira"].counts.changes.removed == len(["PRB-1.md", image])
     assert image not in crossed.files()
 
 
@@ -875,14 +893,20 @@ def test_an_unreadable_issue_holds_back_jira_s_removals_and_every_attached_file_
     assert outcomes["confluence"].problems == ()
     where = [problem.where.rpartition("/")[0] for problem in outcomes["jira"].problems]
     assert where == ["jira/issues/10000"]
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 1, "jira": 0}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 1,
+        "jira": 0,
+    }
     files = sandbox.files()
     assert "confluence/MFS/300-leaf.md" not in files
     held = [*stale, "jira/PRB/PRB-1.md", f"assets/{digest(OTHER_IMAGE)}.png"]
     assert [relative for relative in held if relative not in files] == []
     snapshot.write_bytes(kept)
     outcomes = sandbox.run()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 1, "jira": 1}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 1,
+        "jira": 1,
+    }
     assert [relative for relative in stale if relative in sandbox.files()] == []
 
 
@@ -914,13 +938,19 @@ def test_a_file_that_a_kept_issue_links_stays_while_pandoc_fails_on_its_next_rev
     outcomes = sandbox.run(markdown=failing_on("Failing ideas"))
     assert outcomes["confluence"].problems == ()
     assert [problem.reason for problem in outcomes["jira"].problems] == ["pandoc: exit status 9"]
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 0}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 0,
+        "jira": 0,
+    }
     files = sandbox.files()
     assert files["jira/PRB/PRB-1.md"] == before["jira/PRB/PRB-1.md"]
     assert image in files
     assert image.removeprefix("assets/") in sandbox.text("jira/PRB/PRB-1.md")
     outcomes = sandbox.run()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 1}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 0,
+        "jira": 1,
+    }
     assert image not in sandbox.files()
 
 
@@ -946,7 +976,10 @@ def test_a_file_that_a_page_not_rebuilt_links_outlives_the_hold_of_its_source_s_
         "confluence/pages/300/000003"
     ]
     assert outcomes["jira"].problems == ()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {"confluence": 0, "jira": 0}
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
+        "confluence": 0,
+        "jira": 0,
+    }
     files = sandbox.files()
     assert files["confluence/MFS/300-leaf.md"] == before["confluence/MFS/300-leaf.md"]
     assert f"assets/{digest(IMAGE)}.png" in files
@@ -961,9 +994,9 @@ def test_a_file_that_the_source_not_prepared_links_stays_until_it_is_prepared(
     """
     sandbox.run()
     image = issue_with_the_next_image(sandbox, "Other ideas")
-    assert sandbox.run(sources=("confluence",))["confluence"].changes.removed == 0
+    assert sandbox.run(sources=("confluence",))["confluence"].counts.changes.removed == 0
     assert image in sandbox.files()
-    assert sandbox.run(sources=("jira",))["jira"].changes.removed == 1
+    assert sandbox.run(sources=("jira",))["jira"].counts.changes.removed == 1
     assert image not in sandbox.files()
 
 
@@ -975,7 +1008,7 @@ def test_a_file_that_a_stale_document_alone_links_goes_with_that_document(
     image = f"assets/{digest(OTHER_IMAGE)}.png"
     shutil.rmtree(sandbox.store.root / "jira" / "issues" / "10000")
     outcomes = sandbox.run()
-    assert each(outcomes, lambda outcome: outcome.changes.removed) == {
+    assert each(outcomes, lambda outcome: outcome.counts.changes.removed) == {
         "confluence": 0,
         "jira": len(["PRB-1.md", image]),
     }
@@ -995,7 +1028,9 @@ def issue_damaged(sandbox: Sandbox) -> None:
     (folder / jira_v3.ISSUE).write_text("{}", "utf-8")
 
 
-def prepared(sandbox: Sandbox, source: str) -> tuple[AtlassianPrepared, list[dict[str, object]]]:
+def prepared(
+    sandbox: Sandbox, source: str
+) -> tuple[Outcome[AtlassianCounts], list[dict[str, object]]]:
     """Prepare one source as its preparer does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
@@ -1007,20 +1042,21 @@ def test_a_prepare_of_jira_says_what_it_could_not_read_of_confluence(crossed: Sa
     """The space unreadable changes Jira's file: its link to Leaf falls back on the site.
 
     So Jira's prepare, which has no problem of its own and whose row is done, says each
-    of Confluence's, by Confluence, and that it removed nothing is not said.
+    of Confluence's as a warning, and that it removed nothing is not said.
     """
     crossed.run()
     _, linked_body = load(crossed.text("jira/PRB/PRB-1.md"), "issue")
     assert "[the leaf](../../confluence/MFS/300-leaf.md)" in linked_body
     space_damaged(crossed)
     done, warned = prepared(crossed, "jira")
-    assert (done.outcome, done.mirrored.problems) == ("done", ())
+    assert (done.ending, done.problems) == ("done", ())
     _, body = load(crossed.text("jira/PRB/PRB-1.md"), "issue")
     assert f"[the leaf]({SITE}/wiki/spaces/MFS/pages/300/Leaf)" in body
-    theirs = done.mirrored.elsewhere["confluence"]
+    theirs = done.warnings
     assert theirs
+    assert all(each.reason.startswith("confluence's, read here: ") for each in theirs)
     assert [(each["event"], each["source"], each["where"], each["reason"]) for each in warned] == [
-        ("prepare.not_mirrored", "confluence", problem.where, problem.reason) for problem in theirs
+        ("prepare.not_mirrored", "jira", warning.where, warning.reason) for warning in theirs
     ]
 
 
@@ -1029,20 +1065,21 @@ def test_a_prepare_of_confluence_says_what_it_could_not_read_of_jira(crossed: Sa
     crossed.run()
     issue_damaged(crossed)
     done, warned = prepared(crossed, "confluence")
-    assert (done.outcome, done.mirrored.problems) == ("done", ())
-    (theirs,) = done.mirrored.elsewhere["jira"]
+    assert (done.ending, done.problems) == ("done", ())
+    (theirs,) = done.warnings
     assert theirs.where.startswith("jira/issues/10000/")
+    assert theirs.reason.startswith("jira's, read here: ")
     assert [(each["event"], each["source"], each["where"]) for each in warned] == [
-        ("prepare.not_mirrored", "jira", theirs.where)
+        ("prepare.not_mirrored", "confluence", theirs.where)
     ]
-    assert "problems of jira, read here: 1\n" in done.text("short")
+    assert "warnings: 1\n" in done.text("short")
 
 
 def test_a_prepare_of_a_source_with_no_problem_anywhere_says_nothing(crossed: Sandbox) -> None:
     """Nothing is said of another source when its documents all read."""
     done, warned = prepared(crossed, "jira")
-    assert (done.mirrored.elsewhere, warned) == ({}, [])
-    assert "read here" not in done.text("short")
+    assert (done.warnings, warned) == ((), [])
+    assert "warnings: 0\n" in done.text("short")
 
 
 def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:
@@ -1059,7 +1096,7 @@ def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:
     assert [each["pruned"] for each in events_named(events, "prepare.written")] == [1]
     pandoc.runs.clear()
     jira = sandbox.run(markdown=pandoc.markdown, sources=("jira",))["jira"]
-    assert (jira.converted, jira.reused, pandoc.runs) == (0, CONVERSIONS["jira"], [])
+    assert (jira.counts.converted, jira.counts.reused, pandoc.runs) == (0, CONVERSIONS["jira"], [])
 
 
 def test_a_cache_of_plan_039_s_columns_is_replaced_once_and_everything_converted(
@@ -1088,7 +1125,7 @@ def test_a_cache_of_plan_039_s_columns_is_replaced_once_and_everything_converted
     assert events_named(events, "prepare.cache_replaced") == [
         {"reason": "SQLITE_ERROR", "log_level": "warning"}
     ]
-    assert each(outcomes, lambda outcome: (outcome.converted, outcome.reused)) == {
+    assert each(outcomes, lambda outcome: (outcome.counts.converted, outcome.counts.reused)) == {
         source: (count, 0) for source, count in CONVERSIONS.items()
     }
     assert sandbox.files() == files

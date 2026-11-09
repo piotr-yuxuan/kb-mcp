@@ -257,7 +257,8 @@ goes on, with the exit status it would have had.
 What reads a run's output follows:
 
 - **JSON.** A result's `steps`, each with its `step`, are `sources`, each with its `source`,
-  `outcome` and `result`, whose `downloaded` and `mirrored` stay. `index`'s `report` gives
+  `ending`, `problems`, `warnings` and `counts`, which holds what `downloaded` and
+  `mirrored` held. `index`'s `report` gives
   the documents held by type, their sections and the files skipped, then the documents
   `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
   when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,

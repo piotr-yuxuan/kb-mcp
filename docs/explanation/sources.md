@@ -77,7 +77,7 @@ does not apply, and what its preview says.
 ## The stages' interfaces
 
 A fetcher or a preparer takes a [`SourceRun`](../../src/kb_mcp/sources/stages.py), the source that it runs for and
-all that it reads, and gives a [`Result`](../../src/kb_mcp/sources/stages.py). Any object
+all that it reads, and gives an [`Outcome`](../../src/kb_mcp/kernel/outcome.py). Any object
 with an interface's methods is one, and each source's is a module, its functions the
 methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
 it against the runtime-checkable protocol. It may use the interfaces, the mirror,
@@ -103,8 +103,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 - **A result** is a record, which `--format json` writes as every result, and whose `text`
   its row writes ([`text`](../../src/kb_mcp/cli/commands/sources.py)). Each keeps its
   own problems: a [`Problem`](../../src/kb_mcp/kernel/outcome.py) has a place and a
-  reason, and the work log's result says by that place what each held back, so `Result`
-  holds none.
+  reason, and the work log's counts say by that place what each held back.
 - **Pandoc is the preparers' own.** `SourceRun` holds no tool that one of them alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`

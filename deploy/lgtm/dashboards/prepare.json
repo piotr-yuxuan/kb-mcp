@@ -331,7 +331,7 @@
             "uid": "tempo"
           },
           "queryType": "traceql",
-          "query": "{ resource.service.name = \"kb-mcp\" && name = \"prepare.source\" } | select(span.kb_mcp.source, span.kb_mcp.outcome)",
+          "query": "{ resource.service.name = \"kb-mcp\" && name = \"prepare.source\" } | select(span.kb_mcp.source, span.kb_mcp.ending)",
           "limit": 20,
           "tableType": "traces"
         }

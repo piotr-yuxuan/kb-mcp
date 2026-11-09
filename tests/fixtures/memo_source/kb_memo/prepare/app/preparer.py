@@ -13,13 +13,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter
 from kb_mcp.mirror.domain.mirror_text import one_line
-from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,20 +31,12 @@ if TYPE_CHECKING:
 SOURCE = "memo"
 
 
-class MemoPrepared(Result):
-    """A prepare: how it ended, and the files it changed, None in a dry run, which writes none."""
+class MemoCounts(Changes):
+    """The files that a prepare changed."""
 
-    changes: Changes | None
-
-    @override
-    def text(self, summary: Detail) -> str:
-        """Write the files that it changed, whichever the detail; nothing in a dry run."""
-        done = self.changes
-        return (
-            ""
-            if done is None
-            else f"written: {done.written}\nunchanged: {done.unchanged}\nremoved: {done.removed}\n"
-        )
+    def text(self, _detail: Detail) -> str:
+        """Write the files that it changed, whichever the detail."""
+        return f"written: {self.written}\nunchanged: {self.unchanged}\nremoved: {self.removed}\n"
 
 
 def owned(docs: Path) -> set[PurePosixPath]:
@@ -57,10 +49,10 @@ def preflight(run: SourceRun) -> str | None:
     return None if run.source_table.folder.is_dir() else f"sources.{SOURCE}.folder: not a folder"
 
 
-def prepare(run: SourceRun) -> MemoPrepared:
+def prepare(run: SourceRun) -> Outcome[MemoCounts]:
     """Write a document per note and remove those of notes gone, unless a dry run."""
     if run.dry_run:
-        return MemoPrepared(outcome="not run", changes=None)
+        return Outcome(ending="not run")
     wanted: dict[PurePosixPath, bytes | Path] = {}
     for path in sorted(run.source_table.folder.glob("*.txt")):
         text = path.read_text("utf-8", errors="replace")
@@ -88,6 +80,5 @@ def prepare(run: SourceRun) -> MemoPrepared:
             fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
-    return MemoPrepared(
-        outcome="done", changes=write_changed(run.settings.docs, wanted, owned, remove=True)
-    )
+    changes = write_changed(run.settings.docs, wanted, owned, remove=True)
+    return Outcome(ending="done", counts=MemoCounts(**dict(changes)))

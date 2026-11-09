@@ -8,16 +8,15 @@ that a command writes rows without importing what it does not run.
 
 from __future__ import annotations
 
-from kb_mcp.kernel.exit_status import Ending, ExitStatus
+from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.kernel.record import Record
 
 
-class Row(Record):
-    """A source's row: its name, how it ended, and its result, None if it gave none."""
+class Row(Outcome):
+    """A source's row: its outcome, and the name of its source."""
 
     source: str
-    outcome: Ending
-    result: object | None
 
 
 class Ran(Record):

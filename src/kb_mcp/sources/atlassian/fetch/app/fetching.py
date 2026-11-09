@@ -25,10 +25,9 @@ from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
 from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.exit_status import Ending
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
@@ -71,6 +70,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.kernel.exit_status import Ending
     from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, FetchedDocument, Listed
@@ -119,12 +119,18 @@ BYTES = METER.create_counter(
 )
 
 
-class RunReport(Record):
-    """What a run did, by count; it names nothing that the site served."""
+class FetchCounts(Record):
+    """What a fetch did, by count, and each target's window; it names nothing that the site served.
+
+    ``windows`` holds each target's window, and what became of its coverage, once the
+    fetch ends; ``dry_run`` says whether the fetch only planned.
+    """
 
     model_config = ConfigDict(frozen=False)
 
     counts: Counter[str] = Field(default_factory=Counter)
+    windows: tuple[TargetFetchWindow, ...] = ()
+    dry_run: bool = False
 
     def add(self, what: str, number: int = 1) -> None:
         """Count something that happened."""
@@ -144,6 +150,35 @@ class RunReport(Record):
         """Count what failed."""
         return sum(number for what, number in self.counts.items() if " failed: " in what)
 
+    def text(self, detail: Detail) -> str:
+        """Write the documents fetched by type and the files, or a dry run's; then failures.
+
+        Detailed, and a dry run, begin with each target's window, why it starts there, and
+        what became of its coverage. Short also says how a run stopped, if it did; detailed
+        gives every count of what the run did, or would do. The failures come last.
+        """
+        windows = self.windows if detail == "detailed" or self.dry_run else ()
+        said = [
+            f"{each.target}: "
+            + (
+                f"skipped, {each.reason}"
+                if each.start is None or each.end is None
+                else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
+            )
+            + ("" if each.coverage is None else f"; coverage {each.coverage}")
+            for each in windows
+        ]
+        shown = [
+            (what, number)
+            for what, number in sorted(self.counts.items())
+            if detail == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
+        ]
+        return (
+            "".join(f"{line}\n" for line in said)
+            + "".join(f"{what}: {number}\n" for what, number in shown)
+            + f"failures: {self.failures}\n"
+        )
+
 
 def label(document_class: type[FetchedDocument]) -> str:
     """Name a resource type in the report, as ``confluence pages``."""
@@ -159,16 +194,16 @@ class Fetching:
     names the targets whose listing was read whole, with the period fetched, so that
     their coverage can grow, and ``first_failed`` the update time of each one's earliest
     document found and not stored whole; ``held``, the targets skipped and those read
-    whole whose coverage stays as it was, and why. ``failed_targets`` names the user's
-    own keys that failed, for the command to show; they never enter the report.
+    whole whose coverage stays as it was, and why. ``problems`` names the user's own
+    keys that failed, and why, for the command to show; they never enter the counts.
     """
 
     site: SiteClient
     store: RawStore
     max_file_bytes: int
     now: Callable[[], datetime]
-    report: RunReport = field(default_factory=RunReport)
-    failed_targets: list[str] = field(default_factory=list)
+    report: FetchCounts = field(default_factory=FetchCounts)
+    problems: list[Problem] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
     windows: Mapping[Target, FetchWindow | None] = field(default_factory=dict)
     plan: bool = False
@@ -273,7 +308,7 @@ class Fetching:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
                 if space is None:
-                    self.failed_targets.append(f"space {key}: not found")
+                    self.problems.append(Problem(where=f"space {key}", reason="not found"))
                     self.report.add("confluence spaces failed: not found")
                     span.set_status(StatusCode.ERROR, "not found")
                     return False
@@ -283,7 +318,7 @@ class Fetching:
                     pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
                     posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.failed_targets.append(f"space {key}: {error}")
+                self.problems.append(Problem(where=f"space {key}", reason=str(error)))
                 self.report.failed("confluence spaces", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
@@ -435,7 +470,7 @@ class Fetching:
                     search = jira_v3.search_request(key, start, end)
                     entries = self.collect(search, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.failed_targets.append(f"project {key}: {error}")
+                self.problems.append(Problem(where=f"project {key}", reason=str(error)))
                 self.report.failed("jira projects", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
@@ -775,66 +810,24 @@ def windows_of(
     )
 
 
-class FetchOutcome(Record):
-    """What a run did, the user's keys that failed, and how the run ended.
-
-    ``windows`` holds each target's window, and what became of its coverage; ``dry_run``
-    says whether the run only planned.
-    """
-
-    report: RunReport
-    failed_targets: list[str]
-    ending: Ending
-    windows: tuple[TargetFetchWindow, ...] = ()
-    dry_run: bool = False
-
-    def text(self, summary: Detail) -> str:
-        """Write the documents fetched by type and the files, or a dry run's; then failures.
-
-        Detailed, and a dry run, begin with each target's window, why it starts there, and
-        what became of its coverage. Short also says how a run stopped, if it did; detailed
-        gives every count of what the run did, or would do. The failures come last.
-        """
-        windows = self.windows if summary == "detailed" or self.dry_run else ()
-        said = [
-            f"{each.target}: "
-            + (
-                f"skipped, {each.reason}"
-                if each.start is None or each.end is None
-                else f"from {each.start.isoformat()} to {each.end.isoformat()}, {each.reason}"
-            )
-            + ("" if each.coverage is None else f"; coverage {each.coverage}")
-            for each in windows
-        ]
-        shown = [
-            (what, number)
-            for what, number in sorted(self.report.counts.items())
-            if summary == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
-        ]
-        return (
-            "".join(f"{line}\n" for line in said)
-            + "".join(f"{what}: {number}\n" for what, number in shown)
-            + f"failures: {self.report.failures}\n"
-        )
-
-
 def plan_fetch(
     settings: Settings,
     targets: Targets,
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
-) -> FetchOutcome:
+) -> Outcome[FetchCounts]:
     """List and decide as a run would, and say what it would fetch; write nothing.
 
+    It ends not run, a dry run's, unless it failed or the sign-in no longer holds.
     Raises PeriodError when --since does not come before the windows' end.
     """
-    store, report = RawStore(settings.raw), RunReport()
+    store = RawStore(settings.raw)
     windows = targets.windows(store.coverage(), now())
-    planned = partial(FetchOutcome, windows=windows_of(windows, {}), dry_run=True)
+    report = FetchCounts(windows=windows_of(windows, {}), dry_run=True)
     try:
         client = choose_sign_in(settings).client()
     except SignInNeededError:
-        return planned(report=report, failed_targets=[], ending="sign in again")
+        return Outcome(ending="sign in again", counts=report)
     with client:
         run = Fetching(
             SiteClient(client, sleep=sleep),
@@ -848,15 +841,13 @@ def plan_fetch(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return planned(report=report, failed_targets=run.failed_targets, ending="sign in again")
+            return Outcome(ending="sign in again", counts=report, problems=tuple(run.problems))
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return planned(report=report, failed_targets=run.failed_targets, ending="failed")
-    return planned(
-        report=report,
-        failed_targets=run.failed_targets,
-        ending="failed" if report.failures else "done",
-    )
+            return Outcome(ending="failed", counts=report, problems=tuple(run.problems))
+    failed = report.failures or run.problems
+    ending = "failed" if failed else "not run"
+    return Outcome(ending=ending, counts=report, problems=tuple(run.problems))
 
 
 def run_fetch(
@@ -864,8 +855,8 @@ def run_fetch(
     targets: Targets,
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
-) -> FetchOutcome:
-    """Run a fetch of one source signed in as the settings say, and save its report.
+) -> Outcome[FetchCounts]:
+    """Run a fetch of one source signed in as the settings say, and save its counts.
 
     The targets are one source's, whose name ends the report's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
@@ -880,7 +871,7 @@ def run_fetch(
     does not come before the windows' end, StoreBusyError when another run writes, and
     ValueError for targets of no source or of both, all before anything is written.
     """
-    report, failed_targets = RunReport(), []
+    report, problems = FetchCounts(), []
     ending: Ending | None = None
     extensions: dict[Target, CoverageChange] = {}
     store, started, source = RawStore(settings.raw), now(), targets.source
@@ -899,10 +890,10 @@ def run_fetch(
                     windows=windows,
                     tombstones=store.tombstones() if targets.spaces else {},
                 )
-                failed_targets = run.failed_targets
+                problems = run.problems
                 try:
                     run.run(targets.spaces, targets.projects)
-                    ending = "failed" if report.failures else "done"
+                    ending = "failed" if report.failures or problems else "done"
                 except SignInNeededError:
                     ending = "sign in again"
                 except TooManyFailuresError:
@@ -938,9 +929,5 @@ def run_fetch(
             }
             path = settings.runs / f"{stamp}-{source}.json"
             path.write_text(json.dumps(saved, indent=1), "utf-8")
-    return FetchOutcome(
-        report=report,
-        failed_targets=failed_targets,
-        ending=ending,
-        windows=windows_of(windows, extensions),
-    )
+    report.windows = windows_of(windows, extensions)
+    return Outcome(ending=ending, counts=report, problems=tuple(problems))

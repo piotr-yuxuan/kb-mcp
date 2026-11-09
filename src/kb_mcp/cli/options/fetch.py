@@ -67,13 +67,12 @@ def register(
         help="bring what changed in each source into its store",
         epilog=(
             "With --format json: exit_status, the run's; sources, a row per source taken,"
-            " in the registry's order, each with its source, its outcome (done, failed,"
-            " sign in, interrupted, not run) and its result, null when it gave none: its"
-            " outcome, and under downloaded, null when the fetch could not start: report,"
-            " the counts of what the fetch did, or with --dry-run would do; failed_targets,"
-            " the targets that failed; status, its exit status; windows, each target's: its"
-            " start, end and reason, and its coverage, extended, capped at a failure, held,"
-            " or null when not written; dry_run, whether the fetch only planned."
+            " in the registry's order, each with its source, its ending (done, failed,"
+            " sign in again, interrupted, not run), its problems and warnings, each with"
+            " where and reason, and its counts, null when it gave none: counts, what the"
+            " fetch did, or with --dry-run would do; windows, each target's: its start, end"
+            " and reason, and its coverage, extended, capped at a failure, held, or null"
+            " when not written; dry_run, whether the fetch only planned."
         ),
     )
     actions, flags = add_settings_options(parser)

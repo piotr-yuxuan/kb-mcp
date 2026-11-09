@@ -25,10 +25,9 @@ from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import trace
-from pydantic import Field
 
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
@@ -99,14 +98,11 @@ NAMED_ERRORS = (RefusedError, MarkupError, PandocFailedError)
 TRACER = trace.get_tracer(__name__)
 
 
-class AtlassianPrepareOutcome(Record):
-    """What a run did: documents prepared, conversions, files changed, placeholders, problems.
+class AtlassianCounts(Record):
+    """What a prepare did: documents prepared, conversions, files changed, placeholders.
 
     ``converted`` counts the conversions pandoc ran, ``reused`` those the cache gave: a
-    document's file and a space's tree are one each. ``problems`` are the source's own;
-    ``elsewhere`` holds, by source, those that it found reading another's, which fail
-    nothing of its own, though a link or an image of its files may then not reach that
-    source's document.
+    document's file and a space's tree are one each.
     """
 
     documents: int
@@ -114,16 +110,13 @@ class AtlassianPrepareOutcome(Record):
     reused: int
     changes: Changes
     unsupported: Counter[str]
-    problems: tuple[Problem, ...]
-    elsewhere: dict[str, tuple[Problem, ...]] = Field(default_factory=dict)
 
-    def text(self, summary: Detail) -> str:
-        """Write the counts of documents, of conversions run and reused, of files, of problems.
+    def text(self, detail: Detail) -> str:
+        """Write the counts of documents, of conversions run and reused, of files.
 
-        In detail, what the mirror does not show, by name, comes before the problems;
-        those of another source follow, when any.
+        In detail, what the mirror does not show, by name, follows.
         """
-        unsupported = sorted(self.unsupported.items()) if summary == "detailed" else []
+        unsupported = sorted(self.unsupported.items()) if detail == "detailed" else []
         return (
             f"documents: {self.documents}\n"
             f"converted by pandoc: {self.converted}\n"
@@ -131,13 +124,7 @@ class AtlassianPrepareOutcome(Record):
             f"files written: {self.changes.written}\n"
             f"files unchanged: {self.changes.unchanged}\n"
             f"files removed: {self.changes.removed}\n"
-            + "".join(f"not shown, {name}: {count}\n" for name, count in unsupported)
-            + f"problems: {len(self.problems)}\n"
-            + "".join(
-                f"problems of {name}, read here: {len(each)}\n"
-                for name, each in self.elsewhere.items()
-            )
-        )
+        ) + "".join(f"not shown, {name}: {count}\n" for name, count in unsupported)
 
 
 class Placed(Record):
@@ -335,7 +322,7 @@ def prepare_atlassian(
     site: str | None,
     conversions: Conversions,
     document_classes: tuple[type[Page | BlogPost | Issue], ...],
-) -> AtlassianPrepareOutcome:
+) -> Outcome[AtlassianCounts]:
     """Write the documents of ``document_classes``, one source's, from the raw store to ``docs``.
 
     ``document_classes`` are all of one source's, as ``PREPARED`` gives them; any other
@@ -346,7 +333,8 @@ def prepare_atlassian(
     the files they attach, and each space's tree when pages are among them. The source then
     removes its files that are no longer wanted, and prunes its conversions that this
     run did not use, unless it reports a problem, those that it found reading the other
-    source's coming back apart from its own. An attached file that no placed
+    source's coming back as warnings, which fail nothing of its own, though a link or an
+    image of its files may then not reach that source's document. An attached file that no placed
     document wants goes next, while no file left of either source links it and no
     problem was found, of either source: a document that cannot be read or placed wants
     none of its files, and a last good copy links what its document wanted. The task
@@ -447,12 +435,20 @@ def prepare_atlassian(
         reused=conversions.reused,
         pruned=pruned,
     )
-    return AtlassianPrepareOutcome(
-        documents=written,
-        converted=conversions.converted,
-        reused=conversions.reused,
-        changes=changes,
-        unsupported=unsupported,
+    return Outcome(
+        ending="failed" if problems else "done",
+        counts=AtlassianCounts(
+            documents=written,
+            converted=conversions.converted,
+            reused=conversions.reused,
+            changes=changes,
+            unsupported=unsupported,
+        ),
         problems=tuple(problems),
-        elsewhere={name: tuple(each) for name, each in found.items() if each and name != source},
+        warnings=tuple(
+            OutcomeWarning(where=each.where, reason=f"{name}'s, read here: {each.reason}")
+            for name, problems_of in found.items()
+            if name != source
+            for each in problems_of
+        ),
     )
