@@ -1,15 +1,8 @@
-"""``fetch``'s and ``prepare``'s run: each source's fetcher or preparers, as declared.
+"""``fetch``'s and ``prepare``'s run: each source's fetcher or preparers, as declared, a row each.
 
-The sources taken come as runs, one each, in the registry's order. Each fetcher or
-preparer is loaded by the module path that its source's declaration names; then each one's
-``preflight`` says
-what it cannot go on with, before the first row. Then each runs, a row for each, even when
-an earlier one failed, since the next reads what is on disk; Ctrl-C stops the run, and no
-later row runs. In a dry run each says what it would do. Each row is a span of the
-stage's, ``fetch.source`` or ``prepare.source``, naming its source, within which its
-fetcher's or preparer's
-own spans and events are recorded, as ``docs/reference/telemetry/fetch.md`` and
-``prepare.md`` say.
+Each row is a span of the stage's, ``fetch.source`` or ``prepare.source``, naming its
+source, within which its fetcher's or preparer's own spans and events are recorded, as
+``docs/reference/telemetry/fetch.md`` and ``prepare.md`` say; ``run_each`` says the rest.
 """
 
 from __future__ import annotations
