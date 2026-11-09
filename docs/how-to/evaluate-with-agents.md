@@ -31,8 +31,11 @@ it the mirror's text, never of a step before ([services](../reference/concepts.m
 that it starts itself to list the tools; it writes the consent into no file, and
 `runs.json` says, by `remote_embeddings`, that the calls need it. Each call is then
 refused, exit 2, unless given `--allow-remote-embeddings` on its own command line, which
-the prompts' bridge command does not hold: tell each subagent to add it, or keep the
-endpoint on this machine.
+the prompts' bridge command does not hold. The person running the evaluation, and only
+they, adds the flag to the bridge command in the instructions that they give each
+subagent, batch by batch; else keep the endpoint on this machine. A call refused for
+want of it names no flag: it tells the agent to stop and answer with `"found": false`,
+so that no model gives the consent.
 
 ## Prepare the runs
 

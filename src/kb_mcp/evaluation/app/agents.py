@@ -365,9 +365,11 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
         message = f"tool: not served on this run's surface, whose tools are {', '.join(run.tools)}"
         raise AgentsError(message)
     if runs.remote_embeddings and not consented:
+        # Said to the agent, which must not give the consent itself: no flag is named.
         message = (
-            f"{EMBEDDINGS.flag}: give it to each call, since the runs' embedding endpoint"
-            " is off this machine, where the mirror's text would go"
+            "consent: this call lacks the consent of the person running the evaluation to"
+            " send the mirror's text to an embedding endpoint off this machine; stop, and"
+            ' answer with "found": false'
         )
         raise AgentsError(message)
     log = directory / "calls" / f"{run.id}.jsonl"

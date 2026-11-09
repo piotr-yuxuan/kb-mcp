@@ -287,7 +287,10 @@ def test_a_call_of_runs_off_this_machine_needs_its_own_consent(
     server = json.loads((out / "runs.json").read_text("utf-8"))["server"]
     if refused:
         assert started == []
-        assert "--allow-remote-embeddings: give it to each call" in capsys.readouterr().err
+        said = capsys.readouterr().err
+        assert "lacks the consent of the person running the evaluation" in said
+        assert 'stop, and answer with "found": false' in said
+        assert "--allow" not in said
     else:
         assert started == [[*server, *flag, "--tools", ",".join(run["tools"])]]
 
