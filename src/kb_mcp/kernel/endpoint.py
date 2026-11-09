@@ -23,8 +23,14 @@ class Service:
     setting: str  # the setting that holds its address
     sends: str  # what it is sent, as a refusal names it
     flag: str | None  # the option that lets a run reach one off this machine; None: none may
-    start: str  # how to start it, said when it does not answer
+    start: str = ""  # how to start it, said when it does not answer
     form: str | None = None  # what its address must look like, as a refusal says it
+
+    def __post_init__(self) -> None:
+        """Refuse a form beside a flag: off this machine, the rule checks no form."""
+        if self.form and self.flag:
+            message = f"{self.name}: a form, or a flag, not both"
+            raise ValueError(message)
 
     @property
     def otherwise(self) -> str:
@@ -53,7 +59,6 @@ TELEMETRY = Service(
     setting="telemetry.endpoint",
     sends="what a run records",
     flag=None,
-    start="With podman: podman compose -f deploy/lgtm/compose.yaml up -d",
     form="an http address with a port and no path, such as http://127.0.0.1:4318",
 )
 

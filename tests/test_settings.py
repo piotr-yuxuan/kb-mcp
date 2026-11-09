@@ -1294,6 +1294,12 @@ def test_a_service_on_this_machine_only_is_refused_off_it_whatever_the_run_says(
     assert refused_endpoint("http://127.0.0.1:4318", service, remote_allowed=False) is None
 
 
+def test_a_service_reached_off_this_machine_takes_no_form() -> None:
+    """Off this machine, the rule checks no form: a service may not have both."""
+    with pytest.raises(ValueError, match="a form, or a flag, not both"):
+        Service(name="x", setting="x.url", sends="x", flag="--allow-x", form="an address")
+
+
 def test_only_a_service_with_a_form_needs_a_port_and_no_path() -> None:
     """The embedding endpoint's address goes up to its API's path."""
     assert refused_endpoint("http://127.0.0.1/v1", EMBEDDINGS, remote_allowed=False) is None
