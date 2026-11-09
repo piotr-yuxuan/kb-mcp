@@ -1,4 +1,4 @@
-"""Checks of the site and the sign-in that a download needs, each with a verdict."""
+"""Checks of the site and the sign-in that a fetch needs, each with a verdict."""
 
 from __future__ import annotations
 

@@ -26,7 +26,7 @@ spaces = ["ENG"]
 kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp index && kb-mcp embed
 ```
 
-The space was never downloaded: without `--since`, its first run would take its last 7
+The space was never fetched: without `--since`, its first run would take its last 7
 days, and `--since` reaches back to the start of the year. The search settings
 keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
 [`DEFAULT_MODEL`](../../src/kb_mcp/config/domain/settings.py).
@@ -220,7 +220,7 @@ Once the space is listed,
 [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks after the documents gone from their listing, and
 [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
-names the authors seen. Last, `download` extends the coverage of each target listed whole
+names the authors seen. Last, `run_fetch` extends the coverage of each target listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
 no `--since` and asks again for what failed, as `fetch.coverage` says; writes it, each
@@ -292,7 +292,7 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
 through [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
-whatever the download did. It runs for Confluence here, and reads from `run.source` the
+whatever the fetch did. It runs for Confluence here, and reads from `run.source` the
 kinds that it converts: Jira's issues are placed too, so that a link to one reaches its
 file, and only pages and blog posts are built.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,

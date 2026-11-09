@@ -49,7 +49,7 @@ flowchart LR
 ## The stages, each one command
 
 A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
-download of the spaces or projects that its table names
+fetch of the spaces or projects that its table names
 ([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)); `prepare`, each
 source's preparer, [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,

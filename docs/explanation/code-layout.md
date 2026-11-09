@@ -26,7 +26,7 @@ side, never use each other:
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; each source writes its
 documents through the mirror, which imports none of them, so that search and the sources
-sit side by side above it; a source's table and a download read the settings' rules, which
+sit side by side above it; a source's table and a fetch read the settings' rules, which
 check keys by the kernel's patterns. `observability` sits just above the kernel, so that
 every other context, the settings included, may log, trace and report progress through it,
 while it takes from the kernel only how a run reports: the command line hands it plain
@@ -124,7 +124,7 @@ holds the layers above. Plan 029 nested them so:
 
 - **`fetch/`** reaches a system and keeps the store it owns. For Confluence and Jira:
   the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
-  store, a download's period, coverage, deletions and files kept; the records that the
+  store, a fetch's period, coverage, deletions and files kept; the records that the
   fetch stores and the prepare reads, `content.py`, and their names, `names.py`; and the
   use cases, `fetching.py`,
   `login.py` and `doctor.py`.

@@ -3,7 +3,7 @@
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 source that a run is for from its declaration, by its kinds, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
-``fetch_targets`` downloads them, or plans their download, and says what went wrong.
+``fetch_targets`` fetches them, or plans their fetch, and says what went wrong.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from kb_mcp.sources.atlassian.fetch.app.fetching import Targets
     from kb_mcp.sources.stages import SourceRun
 
-# How a download or its plan ended, by its status. A download that Ctrl-C stops raises
+# How a fetch or its plan ended, by its status. A fetch that Ctrl-C stops raises
 # KeyboardInterrupt, so its status is never none here.
 FETCHED: dict[ExitStatus | None, stages.Outcome] = {
     ExitStatus.OK: "done",
@@ -48,12 +48,12 @@ BUSY = "another run is writing it; try again once that run ends"
 
 
 class Fetched(Result):
-    """A fetch: how it ended, and what the download did, None when it could not start."""
+    """A fetch: how it ended, and what it did, None when it could not start."""
 
     downloaded: FetchOutcome | None
 
     def text(self, summary: Detail) -> str:
-        """Write the download's counts; nothing when it could not start."""
+        """Write the fetch's counts; nothing when it could not start."""
         return "" if self.downloaded is None else self.downloaded.text(summary)
 
 
@@ -77,7 +77,7 @@ def targets_of(run: SourceRun) -> Targets:
 def preflight(run: SourceRun) -> str | None:
     """Say why the fetch cannot start: an --until before --since, or a store's record not read.
 
-    Those are the records that a download reads before its first request: what is
+    Those are the records that a fetch reads before its first request: what is
     covered, and for a fetch of spaces what answered as gone, which is Confluence's. So
     that one stops no fetch of projects.
     """
@@ -93,7 +93,7 @@ def preflight(run: SourceRun) -> str | None:
 
 
 def fetch(run: SourceRun) -> Fetched:
-    """Download what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
+    """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
     later fetch's start, or a record damaged since. It fails this fetch alone, an error,
@@ -114,7 +114,7 @@ def fetch_targets(
     *,
     dry_run: bool,
 ) -> Fetched:
-    """Download these targets, one source's, or plan their download; say what went wrong.
+    """Fetch these targets, one source's, or plan their fetch; say what went wrong.
 
     Another run writing the raw store fails the fetch before it starts, an error,
     ``fetch.store_busy``; each target that failed is a warning, ``fetch.target_failed``,
@@ -124,15 +124,15 @@ def fetch_targets(
     act = plan_fetch if dry_run else run_fetch
     source = targets.source
     try:
-        downloaded = act(settings, targets, now, sleep)
+        outcome = act(settings, targets, now, sleep)
     except StoreBusyError:
         structlog.get_logger().error(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
         return Fetched(outcome="failed", downloaded=None)
     log = structlog.get_logger()
-    for target in downloaded.failed_targets:
+    for target in outcome.failed_targets:
         log.warning("fetch.target_failed", target=target)
-    if downloaded.status == ExitStatus.SIGN_IN_AGAIN:
+    if outcome.status == ExitStatus.SIGN_IN_AGAIN:
         log.error("fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again)
-    return Fetched(outcome=FETCHED[downloaded.status], downloaded=downloaded)
+    return Fetched(outcome=FETCHED[outcome.status], downloaded=outcome)

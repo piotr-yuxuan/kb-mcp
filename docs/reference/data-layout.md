@@ -180,7 +180,7 @@ status from the space's listing, which is fresher; labels beyond the first page 
 
 ### A space's listings, and users
 
-Each run that downloads a space replaces that space's listings, each as received, every
+Each run that fetches a space replaces that space's listings, each as received, every
 result of every page of each list:
 
 ```
@@ -443,7 +443,7 @@ until the next `prepare` and `index` write them again from the raw store.
 Persons live in the index alone: deleting `<data>/index.sqlite` removes them, until the
 next `index` joins them again; `<data>/aliases.toml` stays until the user
 deletes it. Deleting every copy is deleting the data directory, the log folder and the
-folders of `eval-agents`, after which the mirror is downloaded again, as from a first
+folders of `eval-agents`, after which the mirror is fetched again, as from a first
 run.
 
 ### Links

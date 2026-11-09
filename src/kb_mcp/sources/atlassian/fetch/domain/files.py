@@ -1,4 +1,4 @@
-"""Which attached files a download keeps, and which keep their metadata only."""
+"""Which attached files a fetch keeps, and which keep their metadata only."""
 
 from __future__ import annotations
 

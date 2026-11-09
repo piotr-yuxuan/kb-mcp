@@ -40,7 +40,7 @@ Without `--yes`, each command writes on stderr each setting it reads, each sourc
 each it leaves out and why, and the command written in full, then asks `Proceed? [y/N]`, as
 every command that writes does.
 
-1. **`fetch`** downloads what changed of each configured source that has a fetcher,
+1. **`fetch`** brings what changed of each configured source that has a fetcher,
    Confluence's spaces then Jira's projects, a row each. Without `--since`, each space and
    project fetches what changed since its last fetch, and asks again for what failed; one
    never fetched takes its last 7 days, as the summary before the question says. `--since`

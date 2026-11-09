@@ -1,4 +1,4 @@
-"""Downloading the documents of spaces and projects updated in a period.
+"""Fetching the documents of spaces and projects updated in a period.
 
 Each space, project, round of probes and merge of users is a span of the run's trace;
 each document fetched is a trace of its own, ``fetch.document``, linked to the run's,
@@ -184,7 +184,7 @@ class Fetching:
     )
 
     def run(self, spaces: Sequence[str], projects: Sequence[str]) -> None:
-        """Download every space and project named, after checking that the session holds.
+        """Fetch every space and project named, after checking that the session holds.
 
         Raises SignInNeededError, before anything is written, when the session no longer
         holds. A source that does not answer at all (a site without Jira) is counted as a
@@ -671,7 +671,7 @@ class Fetching:
 
 
 class Targets(Record):
-    """What a run downloads: spaces and projects, from when, and the largest file kept.
+    """What a run fetches: spaces and projects, from when, and the largest file kept.
 
     ``since`` starts every target's window there; without it, each target catches up on
     what changed since its last fetch, as ``window`` rules. ``until`` ends the windows,
@@ -722,7 +722,7 @@ class Targets(Record):
 def read_targets(
     spaces: Sequence[str], projects: Sequence[str], options: Mapping[str, object], now: datetime
 ) -> Targets:
-    """Read what a run downloads of these spaces and projects from the period's options.
+    """Read what a run fetches of these spaces and projects from the period's options.
 
     ``options`` holds each by its flag, as typed, None when not given: --since and
     --until read as ``moment`` reads them, at ``now``; --max-file-mb not given is
@@ -872,11 +872,11 @@ def run_fetch(
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
 ) -> FetchOutcome:
-    """Run a download of one source signed in as the settings say, and save its report.
+    """Run a fetch of one source signed in as the settings say, and save its report.
 
     The targets are one source's, whose name ends the report's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
-    another download. Each target is fetched over its window. The coverage of every
+    another fetch. Each target is fetched over its window. The coverage of every
     target listed whole grows as ``Coverage.extended`` rules. The tombstones are
     Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
     the run stops, and a fetch of projects neither reads nor rewrites them.

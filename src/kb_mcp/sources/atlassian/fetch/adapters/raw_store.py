@@ -406,7 +406,7 @@ class RawStore:
         """Return the ids that a space's last listing names, read by id alone.
 
         An entry whose other fields the adapter would refuse still names its document,
-        so that deletions follow every document a download fetched. A listing that
+        so that deletions follow every document that a fetch fetched. A listing that
         cannot be read at all names none.
         """
         path = self._space(space_id) / f"{document_class.resource_type}.json"

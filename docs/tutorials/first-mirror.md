@@ -138,7 +138,7 @@ Signed in; the session is saved.
 
 ## 5. Look before you fetch
 
-Four commands, each one step, make the mirror and its index: `fetch` downloads the space
+Four commands, each one stage, make the mirror and its index: `fetch` brings the space
 into a store, `prepare` turns what the store holds into Markdown, `index` builds the search
 index of its words, and `embed` gives the index's pieces their vectors. A space that no
 run has fetched yet takes its last 7 days without `--since`; `--since all` takes the
@@ -243,7 +243,7 @@ vector store: 0.2 MB
 Run again, `index` reads only the files whose bytes changed, and `embed` embeds only the
 texts that changed; with nothing changed, each says `nothing written`.
 
-On macOS, `fetch` may not exit once its download is done: a known issue, which plan 013
+On macOS, `fetch` may not exit once its fetch is done: a known issue, which plan 013
 is to diagnose and fix, parked for now
 ([the roadmap](../work/README.md#plans) lists it).
 

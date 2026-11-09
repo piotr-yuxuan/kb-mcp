@@ -290,7 +290,7 @@ keeps out of the index.
 They share the site, the sign-in and the raw store, so `sources/atlassian/` stays one
 package, but each is a source: a row, a report and a set of files of its own.
 
-- **Fetched apart.** Each fetch is a download of its own source's targets
+- **Fetched apart.** Each fetch takes its own source's targets
   ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
   probes, projects and users keep their order across two runs, each with its own sign-in
   check, hold on the store and report, `<data>/runs/<time>-<source>.json`. The record of
@@ -303,7 +303,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   places every document, and converts only its own kinds
   ([`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)): pages and blog
   posts, with the spaces' trees, for Confluence; issues for Jira. Prepared in name order,
-  Confluence then Jira, after any download, every link is what one prepare of both would
+  Confluence then Jira, after any fetch, every link is what one prepare of both would
   make. `prepare confluence` prepares Confluence alone, so Jira's files whose links
   depend on Confluence's pages are rewritten only when Jira is prepared.
 - **What each owns.** Confluence writes and removes under `docs/confluence/`, Jira under

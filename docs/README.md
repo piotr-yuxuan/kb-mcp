@@ -19,7 +19,7 @@ the command and those who change its code, unless it is marked for contributors.
 ## How-to guides
 
 - [Mirror the site on a managed machine](how-to/sso-machine.md): the settings, the sign-in
-  in your browser and a first download, on the user's machine.
+  in your browser and a first fetch, on the user's machine.
 - [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
   name moved, its settings, data and variables, and what other programs keep of it.
 - [Bring every source up to date](how-to/refresh.md): `fetch`, `prepare`, `index` and

@@ -60,7 +60,7 @@ class AtlassianAccountTable(BaseModel):
 
 
 class ConfluenceTable(BaseModel):
-    """What to download from Confluence when no flag says."""
+    """What to fetch from Confluence when no flag says."""
 
     model_config = TABLE
 
@@ -70,7 +70,7 @@ class ConfluenceTable(BaseModel):
 
 
 class JiraTable(BaseModel):
-    """What to download from Jira when no flag says."""
+    """What to fetch from Jira when no flag says."""
 
     model_config = TABLE
 

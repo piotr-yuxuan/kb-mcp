@@ -2,7 +2,7 @@
 
 How to mirror Confluence and Jira on the user's machine, where you sign in through your
 company and the data must stay on the machine: the settings, a check of the machine, the
-sign-in in Chrome, a first download of last week's pages and issues with their pictures,
+sign-in in Chrome, a first fetch of last week's pages and issues with their pictures,
 then ending the session, and what may come back to the personal laptop. It needs uv and
 Google Chrome, and pandoc for the mirror.
 [Your first mirror](../tutorials/first-mirror.md) is the lesson of it all on any site,
@@ -28,7 +28,7 @@ Create `~/.config/kb-mcp/config.toml`:
 [accounts.atlassian]
 site = "https://<your-site>.atlassian.net"
 
-# Optional: what to download when no --space or --project is given.
+# Optional: what to fetch when no --space or --project is given.
 [sources.confluence]
 spaces = ["ENG", "OPS"]
 

@@ -1,1 +1,1 @@
-"""The Atlassian fetch's use cases: download, login, doctor."""
+"""The Atlassian fetch's use cases: fetching, login, doctor."""
