@@ -127,7 +127,7 @@ record: its declaration, the settings, its table and its account's, its options'
 values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
 configured, so no run is of it.
 
-[`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each role that a source's
+[`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each fetcher or preparer that a source's
 declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
 it can before any row: here an `--until` before `--since`, which the fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the

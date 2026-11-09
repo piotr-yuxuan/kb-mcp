@@ -1360,7 +1360,7 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
 
 
 def test_a_command_is_a_dry_run_by_its_runs_alone(tmp_path: Path, worklog: Path) -> None:
-    """Plan 030: one flag for a run, which each role reads: the events follow it."""
+    """Plan 030: one flag for a run, which each fetcher and preparer reads: the events follow it."""
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as dry:
         ran = run_each("prepare", runs(settings, FIRST, WORKLOG, dry_run=True))
