@@ -35,6 +35,8 @@ HEADING = re.compile(r"^(#{2,3}) (.+)$", re.MULTILINE)
 # A line under a term, with the lines that continue it, each indented by two spaces.
 LINE = re.compile(r"^- (In the code|User-facing|Retires):(.*(?:\n  .*)*)", re.MULTILINE)
 SPAN = re.compile(r"`([^`]+)`")
+# A name, not inside a longer word at an end of it that is a word character.
+WHOLE = r"(?:(?<=\W)|^|(?=\W)){}(?:(?=\W)|$|(?<=\W))"
 DOCS_ALONE = "A word of the docs alone"
 # An item of a "Retires:" line: a name in code or a phrase in quotes, then the files that
 # keep it, if any.
@@ -94,7 +96,7 @@ def test_each_term_says_where_it_lives_or_what_a_user_meets_of_it_once(
     """A term has its code, its user-facing names or the docs alone; each name is referenced.
 
     A user-facing name is a code span of the line, which a code span or a block of code of
-    a reference page holds. No two terms share a name.
+    a reference page holds, not inside a longer word. No two terms share a name.
     """
     code = [
         token.content
@@ -119,7 +121,7 @@ def test_each_term_says_where_it_lives_or_what_a_user_meets_of_it_once(
         problems.extend(
             f"{name}: `{each}` is in no reference page"
             for each in SPAN.findall(lines.get("User-facing", ""))
-            if not any(each in held for held in code)
+            if not any(re.search(WHOLE.format(re.escape(each)), held) for held in code)
         )
     assert problems == []
 
