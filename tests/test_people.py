@@ -949,6 +949,23 @@ def index(
     return status, capsys.readouterr().err
 
 
+def test_an_unused_alias_keeps_its_keys_in_index_s_json(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 052 renames no key of ``--format json``: an alias still says its key and target."""
+    (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
+    config = data.parent / "config.toml"
+    config.write_text('search_mode = "lexical"\n', encoding="utf-8")
+    given = ["index", "--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
+    assert main(given) == 0
+    (unused,) = json.loads(capsys.readouterr().out)["report"]["persons"]["unused"]
+    assert (sorted(unused), unused["key"], unused["target"]) == (
+        ["held", "key", "means", "name", "target"],
+        "jo placeholder",
+        "Robin Example",
+    )
+
+
 def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
