@@ -87,7 +87,7 @@ class Chunk(Record):
 
     path: str  # the document's
     number: int  # the section holding its middle, numbered from 1
-    start: int  # its span in that section's body, its heading line aside
+    start: int  # its range in the document's body
     end: int
     vector_key: str  # its vector's in the vector cache
 

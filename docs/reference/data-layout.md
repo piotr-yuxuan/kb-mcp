@@ -698,13 +698,13 @@ into a temporary file beside it that is then renamed into place. Its schema is d
 in 006's plan: the tables `documents` and `sections`, and the FTS5 table `section_words`,
 the words of each section's title, labels, breadcrumb, heading and body, whose content is
 `sections`; schema 3 (011) adds the
-table `chunks` (each chunk of a section's body, its span and its vector) and the meta
+table `chunks` (each chunk of a section's body, its range and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row
 `chunking`, how the chunks were cut (one of `kernel.chunking`'s names), empty without a
 model; an index without the row, 011's or 018's, was cut by `sections`. A chunk keeps
-the section that holds its middle and a span relative to that section's body, so that
-a window across sections needs no other schema. Plan 023 adds the column `key` to
+the section that holds its middle and its range in the document's body, so that a window
+may cross sections; before schema 7, its range was in that section's body. Plan 023 adds the column `key` to
 `chunks`, the key of the chunk's vector in the vector cache, which only pruning reads;
 an index built before it reads as any other, but cannot say what it reads of the store,
 and `SCHEMA` stays 3. Schema 4 (041) replaces the columns `author` and `assignee` of

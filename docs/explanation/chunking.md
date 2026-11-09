@@ -35,9 +35,8 @@ since plan 025, by the user's choice:
   "hierarchical": the passage that `ask` quotes is the chunk's section, or 2,400
   characters of it.
 
-A chunk belongs to the section that holds its middle, with a span relative to that
-section's body, so that a window across sections needs no other schema; an index built
-before plan 019 has no chunking recorded, and was cut by `sections`.
+A chunk belongs to the section that holds its middle, and its range is in the document's
+body, so that a window may cross sections; an index built before plan 019 has no chunking recorded, and was cut by `sections`.
 
 ## Tokens without a tokeniser
 

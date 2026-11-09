@@ -295,14 +295,15 @@ def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
 def test_each_chunk_is_embedded_with_its_title_and_heading() -> None:
     """The title, cut, then the heading unless it is the title, then the chunk's text."""
     title = "T" * 250
-    cut = sections(f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n")
+    body = f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n"
+    cut = sections(body)
     found = section_chunks(title, cut)
     assert [(index, text) for index, _, _, text in found] == [
         (0, f"{'T' * 200}\nFirst."),
         (1, f"{'T' * 200}\nSecond\nMore."),
     ]
     index, start, end, _ = found[1]
-    assert cut[index].body[start:end].strip() == "More."
+    assert (index, body[start:end].strip()) == (1, "More.")
 
 
 def test_a_blank_line_ending_right_at_the_limit_ends_the_chunk() -> None:

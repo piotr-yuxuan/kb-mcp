@@ -77,7 +77,8 @@ DUPLICATE = "another document has the same source and id"
 WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
-# plan 043, with persons; 7 from plan 054, with the tables chunks and section_words.
+# plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
+# section_words.
 SCHEMA = "7"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
@@ -216,9 +217,7 @@ ORDER BY s.number
 # Every chunk with its document, its section, and its span within the document's body; by
 # what no rowid changes, so that an updated index and a whole build give one matrix.
 CHUNKS = """
-SELECT d.rowid AS document, d.path, d.updated, s.number,
-       s.start + length(s.head) + p.start AS offset,
-       s.start + length(s.head) + p."end" AS finish, p.vector
+SELECT d.rowid AS document, d.path, d.updated, s.number, p.start, p."end", p.vector
 FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
 """
@@ -510,7 +509,7 @@ class Writer:
         return first
 
     def add_chunks(self, chunks: Iterable[tuple[int, int, int, str, bytes]]) -> None:
-        """Add chunks: each its section's rowid, its span in the section's body, its vector.
+        """Add chunks: each its section's rowid, its range in the body, its vector.
 
         Each vector comes with its key in the vector cache, which only pruning reads.
         """
@@ -1033,8 +1032,8 @@ class Reader:
             paths={row["document"]: row["path"] for row in rows},
             updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
             sections=tuple(row["number"] for row in rows),
-            offsets=tuple(row["offset"] for row in rows),
-            ends=tuple(row["finish"] for row in rows),
+            offsets=tuple(row["start"] for row in rows),
+            ends=tuple(row["end"] for row in rows),
             matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
         )
 

@@ -1,10 +1,10 @@
 """How a document is cut into the chunks that vectors stand for, by each chunking.
 
 ``CHUNKERS`` gives each chunking of ``kernel.chunking`` by its name: what it cuts a
-document into, as the index keeps each chunk, and the span that ``ask`` returns for a
-chunk found. A chunk belongs to the section that holds its middle, and its span is
-relative to that section's body (its heading line aside): a window that crosses sections
-needs no other schema. ``sections``, 011's, is the control. Nothing here reads a file or
+document into, as the index keeps each chunk, and the range that ``ask`` returns for a
+chunk found. A chunk belongs to the section that holds its middle, and its range is in
+the document's body, so that a window may cross sections. ``sections``, 011's, is the
+control. Nothing here reads a file or
 the index.
 """
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.chunking import Chunking
 
 # Each chunk of a document: the index in its sections of the one holding its middle, its
-# span relative to that section's body, and the text embedded.
+# range in the body, and the text embedded.
 type Cut = list[tuple[int, int, int, str]]
 # The characters of a chunk of a section that one vector stands for, at most: under the
 # 512 tokens of the smaller models' window, with the title, in English and French.
@@ -80,16 +80,16 @@ def chunks(text: str, limit: int = CHUNK) -> list[tuple[int, int]]:
 def section_chunks(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
     """Give the text to embed for each chunk of a document's sections.
 
-    Each is the section's index in ``cut``, the chunk's span in the section's body (its
-    heading line aside), and the text: the title (cut to EMBEDDED_TITLE characters), the
-    section's heading when it is not the title, and the chunk, one per line. A section
-    without a body has no chunk.
+    Each is the section's index in ``cut``, the chunk's range in the body, and the text:
+    the title (cut to EMBEDDED_TITLE characters), the section's heading when it is not
+    the title, and the chunk, one per line. A section without a body has no chunk.
     """
     found: list[tuple[int, int, int, str]] = []
     for index, section in enumerate(cut):
         heading = section.heading if section.heading != title else ""
+        offset = section.start + len(section.head)
         found += [
-            (index, start, end, "\n".join(line for line in lines if line))
+            (index, offset + start, offset + end, "\n".join(line for line in lines if line))
             for start, end in chunks(section.body)
             for lines in [(title[:EMBEDDED_TITLE], heading, section.body[start:end].strip())]
         ]
@@ -119,10 +119,9 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
             spaces = WHITE_SPACE.finditer(body, start + WINDOW - TENTH, end + 1)
             end = max((space.start() for space in spaces), default=end)
         index = bisect.bisect_right(starts, (start + end) // 2) - 1
-        offset = cut[index].start + len(cut[index].head)
         lines = (front.title[:EMBEDDED_TITLE], body[start:end].strip())
         text = "\n".join(line for line in lines if line)
-        found.append((index, start - offset, end - offset, text))
+        found.append((index, start, end, text))
         following = NOT_SPACE.search(body, end)
         if following is None:
             break
@@ -134,7 +133,7 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
 def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = CHUNK) -> Cut:
     """Give each chunk of a document's sections, embedded with where the chunk sits.
 
-    ChunkVectors are cut as ``chunks`` cuts them, of at most ``limit`` characters. The text is
+    Chunks are cut as ``chunks`` cuts them, of at most ``limit`` characters. The text is
     the title, the breadcrumb joined by " / ", the section's heading path, each cut to
     EMBEDDED_TITLE or EMBEDDED_PATH characters, and the chunk, one per line; an empty
     line is left out. A section's heading path joins by " > " its heading and those it
@@ -158,8 +157,9 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = CHUNK
         above.append((level, "" if said else section.heading))
         path = " > ".join(words for _, words in above if words)
         context = (front.title[:EMBEDDED_TITLE], place, path[:EMBEDDED_PATH])
+        offset = section.start + len(section.head)
         found += [
-            (index, start, end, "\n".join(line for line in lines if line))
+            (index, offset + start, offset + end, "\n".join(line for line in lines if line))
             for start, end in chunks(section.body, limit)
             for lines in [(*context, section.body[start:end].strip())]
         ]

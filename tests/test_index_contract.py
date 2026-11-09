@@ -59,7 +59,7 @@ class FilledChunk(Record):
     """A chunk of a document to fill: its section's number, span, key and vector."""
 
     number: int
-    start: int  # in the section's body, after its heading line
+    start: int  # in the document's body
     end: int
     key: str
     vector: tuple[float, ...]
@@ -145,7 +145,7 @@ def written(request: pytest.FixtureRequest, tmp_path: Path) -> Written:
 def chunk_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> FilledChunk:
     """Name the chunk holding ``text``, by where the first section holding it has it."""
     section = next(each for each in sections(body) if text in each.body)
-    start = section.body.index(text)
+    start = section.start + len(section.head) + section.body.index(text)
     return FilledChunk(
         number=section.number, start=start, end=start + len(text), key=key, vector=vector
     )
