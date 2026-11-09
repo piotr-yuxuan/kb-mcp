@@ -36,7 +36,7 @@ own evaluation.
 **Language matters too.** The leaderboard has an English benchmark (`MTEB(eng, v2)`)
 and a multilingual one (`MTEB(Multilingual, v2)`), and filters by language: with
 `fra-Latn`, only the tasks with French data count. Our content was in English and
-French; once the maintainer said that French was not needed for now, English retrieval
+French; once the user said that French was not needed for now, English retrieval
 decided.
 
 ### How the numbers were read
@@ -68,7 +68,7 @@ parameters outside the embedding table):
 | bge-small-en-v1.5 (plan 011's default) | 36.26 | 53.86 | 30.36 | |
 
 Qwen3-Embedding-0.6B led in English and multilingual retrieval, at about four times
-EmbeddingGemma's compute; EmbeddingGemma led in French. The maintainer chose Qwen3,
+EmbeddingGemma's compute; EmbeddingGemma led in French. The user chose Qwen3,
 also for its 32,768-token window, which leaves room for the chunking strategies to be
 compared next.
 
@@ -78,7 +78,7 @@ compared next.
   EmbeddingGemma 2, Google's card gave only overall means; Google's per-task submission
   to MTEB was withdrawn unmerged
   ([results#745](https://github.com/embeddings-benchmark/results/pull/745)), and the
-  leaderboard shows the maintainers' own rerun
+  leaderboard shows the benchmark team's own rerun
   ([results#793](https://github.com/embeddings-benchmark/results/pull/793)). Both
   agreed on retrieval, which put EmbeddingGemma 2 below its predecessor there, despite
   a slightly higher overall mean on the card.
@@ -268,10 +268,10 @@ paraphrases, written so that words cannot find their answers) would otherwise te
 reading in meaning's favour. Plan 019 wrote one for the chunking the same way
 ([chunking](chunking.md)).
 
-A rule written first binds the reading of the numbers, not the maintainer's choice.
-Once the numbers are known, the maintainer may weigh what the rule left out, such as
+A rule written first binds the reading of the numbers, not the user's choice.
+Once the numbers are known, the user may weigh what the rule left out, such as
 ranking against speed, provided the rule's verdict stays on record and the choice is
-said to be theirs; plan 018's bar said as much, leaving the decision to the maintainer
+said to be theirs; plan 018's bar said as much, leaving the decision to the user
 if it failed.
 The defaults since plan 025 are such a choice (below).
 
@@ -331,7 +331,7 @@ MRR@10 against lexical: semantic +0.054 (p = 0.197, adjusted 0.305), hybrid +0.0
 Against the bar, hybrid failed on all three counts: its gain was not significant; it
 lost 0.061 on identifier questions (keyword: 0.019, within the bar); and its 95th
 percentile was 212 ms on this CPU. **Words became the default again**, by the
-maintainer's word on that rule, until plan 025 (below).
+user's word on that rule, until plan 025 (below).
 
 Against plan 011's bge-small, question by question on the same set (from the two
 results files, with the script above): semantic +0.020 (p = 0.57; 31 questions better,
@@ -359,9 +359,9 @@ Neither rule chose `windows` and hybrid search. Plan 019's rule, which decides t
 chunking by the evidence that `ask` quotes, kept `sections`. Plan 018's bar, applied to
 `windows`, was met on the gain and on identifier and keyword questions but not on
 speed, so words would have stayed.
-Knowing these numbers, the maintainer made `windows` and hybrid search the defaults
+Knowing these numbers, the user made `windows` and hybrid search the defaults
 (plan 025), as ranking matters more to them than speed. The rules and their verdicts
-above stay as written: what changed is the choice made after them, the maintainer's.
+above stay as written: what changed is the choice made after them, the user's.
 
 ### Plan 022: reranking, on a laptop
 
@@ -389,7 +389,7 @@ questions, a request passed the run's deadline of 300 seconds three times.
 
 So no depth met the bar here: clauses 1 and 2, which hold for any machine, failed at
 10, 20 and 30, and clause 3, by this laptop's times, at every depth. Reranking is off by
-default, as the maintainer chose the more accurate results; a measure on the machine that
+default, as the user chose the more accurate results; a measure on the machine that
 serves agents, with its own questions, tells whether to turn it on there: a GPU, a
 later llama.cpp or another model may change the times, the scores of another corpus
 the ranks.
@@ -418,11 +418,10 @@ the ranks.
 - **Times are this laptop's.** Ollama ran on its CPU. The cold embedding of the 6,729
   pieces took 1,516 seconds (4.4 pieces a second, about 75 minutes for 20,000 pieces,
   past the gate of 30 minutes); plan 011's in-process int8 Qwen3 took 892 seconds on the
-  same machine. A laptop's GPU should be faster, by an estimate of 15 to 45
+  same machine. An laptop GPU should be faster, by an estimate of 15 to 45
   minutes for 20,000 pieces; nothing measured it yet. Later builds embed only what
   changed. A hybrid query, which embeds the question, took 266 ms at the 95th
-  percentile over `windows` on this CPU; the user's machine's time is for the next run to
-  say.
+  percentile over `windows` on this CPU; a GPU's time is for the next run to say.
 - **The work set decides.** Everything here rests on one invented corpus and the
   questions written with it. Your own documents and the questions agents really send
   are the evidence that should settle the default.
@@ -430,7 +429,7 @@ the ranks.
 ## Reproducing it
 
 Every step runs from a checkout of this repository, with `uv`, on any machine: this
-laptop, or another such as the user's machine, whose GPU should change the times. The
+laptop, or another such as one with a GPU, which should change the times. The
 sandbox's commands name `--config <missing-file>`, a path where no file is, so that the
 machine's settings file changes nothing: otherwise `prepare` would write its account's
 site into the mirror's addresses, and `embed`, `model check` and `eval` would take its model and
@@ -595,14 +594,14 @@ It measures the defaults, hybrid search over `windows` with `qwen3-embedding:0.6
 first not reranked, then reranked at depths 10, 20, 30 and 50: 110 texts scored for
 each of the 105 questions, 2.6 to 4.6 million tokens. By the estimate in
 [reranking](reranking.md#why-only-the-first-documents), that takes about 20 to 35
-minutes on the user's machine; on a laptop's CPU with llama.cpp 0.6.0, depths 10, 20 and 30
+minutes on a laptop's GPU; on a laptop's CPU with llama.cpp 0.6.0, depths 10, 20 and 30
 took 50, 64 and 74 minutes, a run each, and depth 50 could not end. The output has a
 table with a row per depth, `none` the order not reranked, the first ranking's Recall@N,
 a line per depth with each clause's verdict and each group's loss, each qualifying
 depth's p-value against the best, and the bar's last line, `By the bar, with this
 machine's times: turn reranking on, at depth N.` or `...: leave reranking off.` Its
-third clause reads the times of the machine that ran it: only the user's machine's run tells
-whether to turn reranking on there.
+third clause reads the times of the machine that ran it: only a run on the machine
+that serves agents tells whether to turn reranking on there.
 [The how-to](../how-to/reranking.md#measure-it) also gives a short measure, one depth
 on a sample of the questions, and what to check in each.
 

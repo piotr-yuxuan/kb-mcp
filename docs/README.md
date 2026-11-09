@@ -18,13 +18,13 @@ the command and those who change its code, unless it is marked for contributors.
 
 ## How-to guides
 
-- [Mirror the site on a managed machine](how-to/sso-machine.md): the settings, the sign-in
-  in your browser and a first fetch, on the user's machine.
+- [Fetch through SSO on a managed machine](how-to/sso-machine.md): the settings, the
+  sign-in in your browser and a first fetch, where the data must stay on the machine.
 - [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
   name moved, its settings, data and variables, and what other programs keep of it.
 - [Bring every source up to date](how-to/refresh.md): `fetch`, `prepare`, `index` and
   `embed`, each one stage, which you compose.
-- [Mirror the work log](how-to/work-log.md): a folder of org files written as Markdown into the mirror
+- [Add the work log](how-to/work-log.md): a folder of org files written as Markdown into the mirror
   beside Confluence and Jira, read in place, indexed and served to agents.
 - [Sign in with an API token kept by sops](how-to/api-token-with-sops.md): a token in
   place of the browser's session, encrypted at rest and given to the command in its
@@ -56,9 +56,8 @@ the command and those who change its code, unless it is marked for contributors.
 
 ## Reference
 
-- [Glossary](reference/glossary.md): each word of the program defined once, where it
-  lives in the code and what a user meets of it, and the names it retires; the other
-  pages link it.
+- [Concepts](reference/concepts.md): the program's concepts, each defined once, and the
+  code and the names that carry each.
 - [Commands](reference/commands.md): what the command and each subcommand say with
   `--help`, and the exit statuses; generated from the parser.
 - [Settings](reference/settings.md): each setting's key, variable, type, default and

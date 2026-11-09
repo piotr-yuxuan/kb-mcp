@@ -1,4 +1,4 @@
-# Mirror the work log
+# Add the work log
 
 Your work log, a folder of org files, is written as Markdown beside Confluence and Jira,
 under `<data>/docs/worklog/`, indexed with them, and served to agents. It is read in

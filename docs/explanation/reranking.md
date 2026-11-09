@@ -4,7 +4,7 @@ Search finds documents in two stages when reranking is on. The first is this pro
 own, by words, by meaning or both; the second sends the first documents it found, with
 the question, to a reranking server on this machine, and shows them in the order of the
 server's scores. Plan 022 added it, with a bar written before any run. It is off by
-default: on the sandbox it ranked worse, and the maintainer chose the more accurate results;
+default: on the sandbox it ranked worse, and the user chose the more accurate results;
 the bar's verdict, measured on the machine that serves agents with its own questions,
 tells whether to turn it on there, and at which depth.
 [The how-to](../how-to/reranking.md) sets it up, turns it on and measures it.
@@ -54,7 +54,7 @@ stage chooses, and the reranker reorders the first `rerank.depth` documents it f
   place `ask` quotes). 1,200 is plan 011's piece, and plan 019's 300-token window at
   four characters a token, so a search costs at most N such pairs whatever the
   chunking. With the prompt and the question, a pair is 225 to 400 tokens.
-- **The cost grows with N.** On the user's machine, by an estimate scaled from published
+- **The cost grows with N.** On a laptop's GPU, by an estimate scaled from published
   figures, as no measure existed: about 2,450 tokens a second, so a search reranking
   10 documents would take 0.9 to 1.6 seconds, 30 about 2.8 to 4.9, 50 about 4.6 to
   8.2. On a laptop's CPU with nixpkgs' llama.cpp 0.6.0, 30 texts as long as any took
@@ -89,7 +89,7 @@ Off, the default, the server is never asked.
 
 ## The bar, fixed before the run
 
-"Data-driven inspires me confidence", the maintainer said: the defaults follow a rule
+"Data-driven inspires me confidence", the user said: the defaults follow a rule
 written before any measure, applied by `eval-rerank` on the golden questions to depths
 10, 20, 30 and 50 exactly. A depth qualifies if:
 
@@ -98,12 +98,13 @@ written before any measure, applied by `eval-rerank` on the golden questions to 
    Holm's correction over the four depths;
 2. it loses at most 0.05 of MRR@10 on the questions of the groups `identifier` and
    `keyword`;
-3. on the user's machine, a search with it takes at most 5 seconds at the 95th percentile.
+3. on the machine that serves agents, a search with it takes at most 5 seconds at the
+   95th percentile.
 
 Among the depths that qualify, the smallest whose MRR@10 is not shown lower than the
 best's (the same test, p of 0.05 or more) is the depth to set as `rerank.depth`. If
 none qualifies, `eval-rerank` says to leave reranking off. The bar was written to decide
-the default; the maintainer chose first reranking on by default, then, with the measures,
+the default; the user chose first reranking on by default, then, with the measures,
 off, for the more accurate results, so its verdict is now advice: whether to turn it on
 on the machine measured. Values
 compare as reported: means to three decimals, a group's loss as the difference of its
@@ -119,7 +120,7 @@ loss to show, and `eval-rerank` says `n/a`.
   mean would then show, by chance, a loss past 0.02 about one time in three, and past
   0.05 about one time in six; and a real loss like hybrid's 0.061 on identifiers in
   plan 018 would still be caught more often than not.
-- **Clause 3** is the maintainer's figure ("Happy to wait 5s"), within the 10 seconds or so
+- **Clause 3** is the user's figure ("Happy to wait 5s"), within the 10 seconds or so
   for which a person keeps attention ([nielsen]). A query by meaning was asked 200 ms
   in plan 018, but it embeds ten words where a reranker reads N passages, and an
   agent's own turn takes seconds. By the estimate above, it admits a depth of about 30.
@@ -130,8 +131,8 @@ loss to show, and `eval-rerank` says `n/a`.
   small and written with its questions. "Not significant" means not shown.
 - **Which machine decides.** Ranks are the same on every machine; times are not. A run
   elsewhere reads clause 3 by its own times, and says so: its clauses 1 and 2 hold for
-  every machine, its verdict for that machine alone. The user's machine's run tells whether
-  to turn reranking on there.
+  every machine, its verdict for that machine alone. A run on the machine that serves
+  agents tells whether to turn reranking on there.
 
 Evidence@ask is reported beside, not a clause: under `ask`'s fixed budget it follows
 the order that MRR@10 measures, and a further noisy clause would refuse more harmless
@@ -150,7 +151,7 @@ benchmarking candidates here:
 | Jina v3 paper, MIRACL (18 languages) | jina-embeddings-v3 | 57.70 | **69.32** | 58.90 |
 | Hugging Face, MTEB(eng, v2) retrieval ([ettin]) | six models, mean | **0.5940** | 0.5526 | |
 
-- **Qwen3-Reranker-0.6B** (Apache 2.0), in the conversion that llama.cpp's maintainer
+- **Qwen3-Reranker-0.6B** (Apache 2.0), in the conversion that llama.cpp's project
   published as correct ([lc-16407]), 639 MB. The only published run over this
   program's own first ranking puts it 4 points above that ranking in English, where
   bge-reranker-v2-m3 falls 5 below; an independent run in English agrees on the order.
@@ -162,14 +163,14 @@ benchmarking candidates here:
   ([lc-20009]); both small rerankers lowered code retrieval.
 - **Larger is better, and slower.** Qwen3-Reranker-4B scores best in English (69.76 in
   Qwen's run, 0.6367 in Hugging Face's), but does about eight times the work per token:
-  even 10 documents would take some 7 to 13 seconds on the user's machine, past the 5. Within
-  the bound, the best is the 0.6B.
+  even 10 documents would take some 7 to 13 seconds on a laptop's GPU, past the 5.
+  Within the bound, the best is the 0.6B.
 - **Changing it** costs a server command and a setting, and a run of `eval-rerank`,
   since the bar's verdict belongs to a model; nothing stored depends on the reranker.
 
 ## Why a server of its own
 
-The maintainer wanted the model "on the side as a separate (local-only) component of the
+The user wanted the model "on the side as a separate (local-only) component of the
 system", never inside this program. llama.cpp's `llama-server` answers a rerank
 request of the shape that Jina's API made common, and applies Qwen3-Reranker's prompt;
 Ollama, which serves the embeddings by default, as any OpenAI-compatible API may, has

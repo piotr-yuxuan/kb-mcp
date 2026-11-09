@@ -22,7 +22,7 @@ your output shows other numbers, dates or paths, that is your site, not a fault.
 Clone the repository, then install the command from it:
 
 ```bash
-git clone https://github.com/piotr-yuxuan/kb-mcp.git ~/src/kb-mcp
+git clone https://github.com/piotr-yuxuan/atlassian-offline-mcp.git ~/src/kb-mcp
 ```
 
 ```bash
@@ -306,13 +306,13 @@ meaning, and an agent that answers from it and says how old its evidence is. Fro
   again for what failed, so that a run that failed leaves no hole
   ([refresh by hand](../explanation/trade-offs.md#refresh-by-hand)); more spaces, and
   Jira projects.
-- [Mirror the site on a managed machine](../how-to/sso-machine.md): single sign-on, the
-  data directory off synchronised folders, and ending the session.
+- [Fetch through SSO on a managed machine](../how-to/sso-machine.md): single sign-on,
+  the data directory off synchronised folders, and ending the session.
 - [Sign in with an API token kept by sops](../how-to/api-token-with-sops.md), where
   Chrome cannot sign in.
 - [VS Code Copilot](../how-to/agents.md#vs-code-copilot), and the mirror's files for
   agents that read files.
-- [Mirror the work log](../how-to/work-log.md) beside Confluence and Jira.
+- [Add the work log](../how-to/work-log.md) beside Confluence and Jira.
 - [Observe runs with Grafana](../how-to/observe-with-grafana.md), and what each command
   records, in [telemetry](../reference/telemetry/README.md).
 - [Internals](../explanation/internals.md): what each of these commands did, and why.

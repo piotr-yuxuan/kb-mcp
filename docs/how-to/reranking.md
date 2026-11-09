@@ -9,7 +9,7 @@ which you install and start, as you do Ollama or whichever OpenAI-compatible API
 the embeddings, and which this program reaches on this machine alone, never elsewhere.
 
 Reranking is off by default: on the sandbox's questions it ranked worse than search
-alone, and the maintainer chose the more accurate results. It can be turned on, and measured
+alone, and the user chose the more accurate results. It can be turned on, and measured
 on your own machine and questions to decide whether to (below).
 
 ## Install llama.cpp
@@ -112,9 +112,9 @@ questions, on the development laptop's CPU, reranking 10, 20 or 30 documents ran
 worse than the order not reranked: MRR@10 of 0.542 to 0.557, against 0.639, keyword
 questions losing about 0.2, and a search took 29 to 37 seconds at the median
 ([evaluating search](../explanation/search-evaluation.md#plan-022-reranking-on-a-laptop)).
-The maintainer chose the more accurate results, so it stays off until a measure on the
+The user chose the more accurate results, so it stays off until a measure on the
 machine that serves agents, with its own questions, says that it helps there
-([on the user's machine](#on-the-users-machine-with-your-own-mirror)).
+([on that machine](#on-the-machine-that-serves-agents-with-your-own-mirror)).
 
 To turn it on, in the settings file:
 
@@ -197,7 +197,7 @@ kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --depth 30 --sample 20
 
 It asks 20 questions, chosen by a fixed seed (`--seed` chooses another sample): each
 once in the order not reranked, then reranked at depth 30, 600 texts scored in all.
-One to two minutes on the user's machine by the estimate in the
+One to two minutes on a laptop's GPU by the estimate in the
 [explanation](../explanation/reranking.md#why-only-the-first-documents); on a laptop's
 CPU with llama.cpp 0.6.0, about 12 minutes, at 36 seconds a search.
 
@@ -228,7 +228,7 @@ kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml
 ```
 
 Every question, not reranked, then reranked at depths 10, 20, 30 and 50, 110 texts
-scored for each question: 20 to 35 minutes for 105 questions on the user's machine by the
+scored for each question: 20 to 35 minutes for 105 questions on a laptop's GPU by the
 estimate. On a laptop's CPU with llama.cpp 0.6.0, each depth took about an hour, and
 depth 50 could not end, one request passing the run's deadline of 300 seconds: the
 long measure is for the machine that serves agents.
@@ -251,12 +251,13 @@ best, and the last line, which says what to do:
 The verdict holds for the model, the server's version, the golden questions and the
 machine it was measured with: measure again when one of them changes.
 
-## On the user's machine, with your own mirror
+## On the machine that serves agents, with your own mirror
 
-The sandbox's verdict is not your corpus's, and a laptop's CPU is not the Mac's GPU:
-whether reranking helps your agents is for a measure on the Mac, with your mirror and
-your questions, to say. Everything below runs there, on the mirror that `prepare` keeps,
-and nothing of the corpus leaves the Mac.
+The sandbox's verdict is not your corpus's, and a laptop's CPU is not a Mac's GPU:
+whether reranking helps your agents is for a measure on the machine where kb-mcp
+serves them, here a Mac, with your mirror and your questions, to say. Everything below
+runs there, on the mirror that `prepare` keeps, and nothing of the corpus leaves that
+machine.
 
 1. **The two servers.** llama.cpp 0.7.0 or later, with Metal: Homebrew's
    (`brew install llama.cpp`), or llama.cpp's flake at its tag, as

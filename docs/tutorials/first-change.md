@@ -3,7 +3,7 @@
 For contributors. In this tutorial we add a subcommand, `count`, which prints how many
 documents the mirror holds of each source. On the way we run the checks that every
 change passes, watch two of them refuse a change, and set it right. `count` is for
-learning: the repository has no such command, and we put it aside at the end. Follow the
+learning: the repository has no such command, and we remove it at the end. Follow the
 steps in order: each shows what you should see. Counts that grow with the code, of files
 and of tests, are written `<n>`, and the time a run takes `<time>`; where your output
 shows other numbers, that is your clone's state, not a fault.
@@ -17,18 +17,26 @@ shows other numbers, that is your clone's state, not a fault.
 
 ## 1. Clone and install
 
-Clone the repository, unless your first mirror cloned it already, and go into it:
+Clone the repository, unless your first mirror cloned it already:
 
 ```bash
-git clone https://github.com/piotr-yuxuan/kb-mcp.git ~/src/kb-mcp
+git clone https://github.com/piotr-yuxuan/atlassian-offline-mcp.git ~/src/kb-mcp
+```
+
+The lesson runs in a throwaway worktree, a second folder of the same repository on a
+branch of its own, so that your checkout is never touched; the last step removes it.
+Add it, and go into it:
+
+```bash
+git -C ~/src/kb-mcp worktree add -b first-change ~/src/kb-mcp-first-change
 ```
 
 ```bash
-cd ~/src/kb-mcp
+cd ~/src/kb-mcp-first-change
 ```
 
 Every command from here on runs in that folder. Install the command and the tools that
-check it, Ruff, Import Linter and pytest, into the clone's own environment:
+check it, Ruff, Import Linter and pytest, into the worktree's own environment:
 
 ```bash
 uv sync
@@ -390,13 +398,24 @@ git diff --stat
 The page now lists `count` among the commands, with its help. Run the five checks of
 step 2 again: each passes, the tests of `count` among them.
 
-## 8. Put the change aside
+## 8. Remove the worktree
+
+Go back to your checkout, then remove the worktree, `count` with it, and its branch:
 
 ```bash
-git stash --include-untracked
+cd ~/src/kb-mcp
 ```
 
-The clone is as it was, and `git stash pop` brings `count` back.
+```bash
+git worktree remove --force ~/src/kb-mcp-first-change
+```
+
+```bash
+git branch -D first-change
+```
+
+`--force` removes a worktree whose changes were never committed, as here. Your
+checkout is as it was, and was never touched.
 
 ## What you have done
 

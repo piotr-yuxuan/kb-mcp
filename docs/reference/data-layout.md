@@ -53,17 +53,17 @@ reference](telemetry/README.md) gives the file's fields.
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** [The glossary](glossary.md) defines each word; this bullet says
+- **One vocabulary.** [The concepts](concepts.md) define each word; this bullet says
   which module holds which record. `sources.atlassian.fetch.domain.content` holds what
   the fetch of Confluence and Jira stores and their prepare reads: `Space`, `Folder`,
   `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment` (an
-  [attachment](glossary.md#attachment)), `Comment`, `SiteUser` (a site user, of an
-  [account](glossary.md#account)), and `Snapshot` (a [snapshot](glossary.md#snapshot),
-  with its rendered body). `Listed` is what a [listing](glossary.md#listing) says of a
+  [attachment](concepts.md#document)), `Comment`, `SiteUser` (a site user, of an
+  [account](concepts.md#person)), and `Snapshot` (a [snapshot](concepts.md#snapshot),
+  with its rendered body). `Listed` is what a [listing](concepts.md#scope) says of a
   document (its type, id, revision, update time and Confluence version), read apart from
   the rest of the entry, so that an entry whose other fields have changed still lets the
   document be fetched. `mirror.domain.mirror.FrontMatter` holds what the mirror says of
-  each [document](glossary.md#document). A fetched document knows where it is stored
+  each [document](concepts.md#document). A fetched document knows where it is stored
   (`source`, `resource_type`) and names its state (`revision`). Every layer above the adapters
   works with these types alone.
 - **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
@@ -102,7 +102,7 @@ it; every method that writes refuses to run outside it.
 
 ### Snapshots
 
-A [snapshot](glossary.md#snapshot) lies at:
+A [snapshot](concepts.md#snapshot) lies at:
 
 ```
 <data>/raw/<source>/<resource type>/<id>/<revision>/<file>.json
@@ -177,6 +177,23 @@ without an edit, labels changed, a page archived, a comment) leaves the stored s
 as it was, as does an edit of a page that this page includes; the mirror takes a page's
 status from the space's listing, which is fresher; labels beyond the first page that
 `include-labels` returns are not seen.
+
+Known faults, which no check guards: **a store that cannot be read reads as an empty
+one.** `prepare` keeps the files that it builds and, when it finds no problem, removes
+every other file of its source. A raw store that is missing, a regular file, a dangling
+link or unreadable yields no snapshot and no problem, so `prepare` removes every file of
+the Confluence and Jira sources from the mirror, with their attached files and their
+conversions, and exits 0; the next `index` then drops their documents. The work log
+alike: a folder that lists no file removes every work-log file, and a journal
+(`todo.org`) that is missing, not a regular file or empty removes the documents drawn
+from it. Check that `raw/` and the work log's folder are in place before a `prepare`;
+`kb-mcp fetch` fills the raw store again.
+
+**Some broken files end in a traceback, not a refusal.** A damaged vector store ends
+`embed` and `eval`; an attached file missing from the raw store ends `prepare`; one
+source's exception ends a `fetch` or `prepare` of several sources, the other sources'
+rows unreported; and a golden file that is not UTF-8 ends `eval`. Each traceback names
+the file, but it reads as a bug would.
 
 ### A space's listings, and users
 

@@ -6,8 +6,8 @@ each vector stands for, is the chunking: the setting `chunking`, which `embed` c
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
 setting. Plan 019 compared four, on plan 002's sandbox questions, by a rule set before
 the run, which kept `sections`. `windows` ranked best of the four, and is the default
-since plan 025, by the maintainer's choice:
-[the defaults](#the-defaults-the-maintainers-choice) say why.
+since plan 025, by the user's choice:
+[the defaults](#the-defaults-the-users-choice) say why.
 
 ## The four chunkings
 
@@ -19,7 +19,7 @@ since plan 025, by the maintainer's choice:
 | `small-to-big` | as `sections`, up to 128 tokens | as `section-paths` | its section, whole up to 2,400 characters, else 2,400 of it centred on the piece |
 
 - **`sections`** is plan 011's, the control: every other is measured against it.
-- **`windows`** ignores the headings: 300 tokens is the maintainer's figure and a fifth
+- **`windows`** ignores the headings: 300 tokens is the user's figure and a fifth
   of overlap the usual one; Chroma found 200 to 400 tokens strong even without overlap
   ([chroma]). Two windows in a row share 200 to 240 characters when no word passes 40,
   since a window ends at its last white space in its last tenth; a window starts
@@ -120,7 +120,7 @@ for `sections` and 52 for `section-paths`, and 27 for the part of `small-to-big`
 the others had not embedded; `windows` were embedded across two runs, the machine being
 busy.
 
-## The defaults: the maintainer's choice
+## The defaults: the user's choice
 
 Two rules, each written before its run, decided against `windows` and hybrid search.
 Plan 019's asked a chunking to quote the evidence significantly more often than
@@ -130,7 +130,7 @@ than 0.02 on identifier and keyword questions, and a 95th percentile within 200 
 `windows`, hybrid search met two of the three, as plan 019 recorded: it beat words
 significantly (MRR@10 0.639 against 0.539, adjusted p 0.0008) and did better on
 identifiers (0.674 against 0.616) and keywords (0.855 against 0.812); its 95th
-percentile, 266 ms, missed the third. Knowing these, the maintainer chose `windows`
+percentile, 266 ms, missed the third. Knowing these, the user chose `windows`
 and hybrid search as the defaults (plan 025): ranking matters more to them than speed,
 and 266 ms is good enough to them. Semantic search over `windows` scored higher still,
 on every measure of the table (MRR@10 0.674, Evidence@ask 0.500), in 256 ms at the 95th
@@ -151,7 +151,7 @@ MB against 38 MB. What it costs:
 
 - **Speed.** A hybrid query asks the model to embed the question first: its 95th
   percentile was 266 ms on this laptop's CPU, where words alone took 14 ms in plan
-  018's run. The user's machine's GPU is not measured yet; [reproducing
+  018's run. A GPU's time is not measured yet; [reproducing
   it](search-evaluation.md#reproducing-it) says how.
 - **A model by default.** `embed` needs the embedding endpoint, Ollama by default, and so
   does the MCP server unless `search_mode = "lexical"`: without it, `embed` stops, the

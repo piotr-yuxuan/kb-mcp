@@ -1,16 +1,16 @@
-# Mirror the site on a managed machine
+# Fetch through SSO on a managed machine
 
-How to mirror Confluence and Jira on the user's machine, where you sign in through your
-company and the data must stay on the machine: the settings, a check of the machine, the
-sign-in in Chrome, a first fetch of last week's pages and issues with their pictures,
-then ending the session, and what may come back to the personal laptop. It needs uv and
-Google Chrome, and pandoc for the mirror.
+How to fetch Confluence and Jira on a managed machine, where you sign in through your
+company's single sign-on and the data must stay on the machine: the settings, a check
+of the machine, the sign-in in Chrome, a first fetch of last week's pages and issues
+with their pictures, then ending the session, and what may leave the machine. It
+needs uv and Google Chrome, and pandoc for the mirror.
 [Your first mirror](../tutorials/first-mirror.md) is the lesson of it all on any site,
 with `fetch`, `prepare`, the index and an agent.
 
 ## 1. Install the command
 
-From a checkout of the repository on the user's machine (the checkout may live
+From a checkout of the repository on the managed machine (the checkout may live
 anywhere; only the data directory must stay out of synchronised folders):
 
 ```bash
@@ -152,9 +152,9 @@ session that they held: only the first step does.
 [security]: https://id.atlassian.com/manage-profile/security
 [devices]: https://support.atlassian.com/atlassian-account/docs/manage-recently-used-devices-for-your-atlassian-account/
 
-## What can come back to the personal laptop
+## What may leave the machine
 
 The run reports in `~/kb-mcp/runs/` hold counts and the paths of fields
 that a response no longer had, never titles, keys, names or content. They are what to
 bring back if something needs fixing. Nothing under `raw/` or `session/` ever leaves
-the user's machine.
+the managed machine.

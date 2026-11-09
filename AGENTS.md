@@ -3,19 +3,24 @@
 An offline mirror of Confluence, Jira Cloud and a work log, served to coding agents over
 MCP. The repository is meant to become public: never commit an employer's name, a site
 URL other than the sandbox's, identifiers or content. Fixtures come only from the sandbox
-site.
+site; `sandbox/corpus/` and `sandbox/jira/` are the fixtures of a fictional company,
+never this project's docs.
 
 ## Workflow
 
 Follow the `workflow:plans` skill with these parameters:
 
-- Plans are `docs/work/plans/NNN-slug.md`, tracked by git.
+- Plans are `docs/work/plans/NNN-slug.md`, tracked by git; parked ones are under
+  `docs/work/held/`. Records under `docs/work/` are history, never a contract.
 - Checks, run in full before each review and each merge:
   - `uv run ruff check` and `uv run ruff format --check`;
   - `uv run lint-imports`;
   - `uv run pytest -n auto`, on every core by pytest-xdist;
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
+- The words, each defined once, in [the concepts](docs/reference/concepts.md); until the
+  code is conformed to them, new code takes the names of each entry's "In the code"
+  paragraph.
 - The design: why each decision was taken and what it costs, in
   [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
   [the internals](docs/explanation/internals.md); the formats that the stages share, in

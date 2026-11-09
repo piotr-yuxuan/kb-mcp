@@ -21,11 +21,11 @@ at `http://127.0.0.1:11434/v1`. Without one, `embed` stops, and the index that
 `kb-mcp index` wrote by words, asking no endpoint, stays as it is; the server answers by
 words, saying why.
 
-Hybrid search over windows is the default by the maintainer's choice
+Hybrid search over windows is the default by the user's choice
 ([plan 025](../work/changelog/025-windows-and-hybrid.md)): on plan 002's sandbox
 questions it ranked better than hybrid search over sections or words alone, and ranking
 mattered more than speed.
-[The defaults](../explanation/chunking.md#the-defaults-the-maintainers-choice) give the
+[The defaults](../explanation/chunking.md#the-defaults-the-users-choice) give the
 measures, and the rules written before them that kept words and sections;
 [evaluating search](../explanation/search-evaluation.md), how they were made.
 
@@ -165,10 +165,10 @@ How an index cuts documents into the pieces it embeds is the setting `chunking`:
 `sections`, 011's pieces of each section, `section-paths` or `small-to-big`, which
 [chunking](../explanation/chunking.md) compares.
 
-`windows` is the default by the maintainer's choice: on the sandbox it ranked better
+`windows` is the default by the user's choice: on the sandbox it ranked better
 than `sections`, with half the pieces, where plan 019's rule, set before the measures,
 kept `sections`
-([the defaults](../explanation/chunking.md#the-defaults-the-maintainers-choice)). An
+([the defaults](../explanation/chunking.md#the-defaults-the-users-choice)). An
 edit re-embeds more windows than sections, as later windows shift.
 
 ```toml

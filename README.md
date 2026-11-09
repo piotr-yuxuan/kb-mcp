@@ -43,7 +43,5 @@ says what it will do and asks first, unless given `--yes`.
   mirror.
 - [Your first change](docs/tutorials/first-change.md), a tutorial for contributors: the
   checks, then a subcommand written test first.
-- [Move to kb-mcp](docs/how-to/move-to-kb-mcp.md), for a machine set up under the
-  program's former name: what a run finds of it, and the steps to move it.
 - [The map](docs/README.md) of every page, sorted by what you need from it: the
   tutorials, how-to guides, reference and explanation.
