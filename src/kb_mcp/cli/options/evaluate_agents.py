@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.evaluate_agents import MODELS, SEED, described
+from kb_mcp.cli.domain.evaluate_agents import MODELS, SAMPLE_SEED, described
 from kb_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
@@ -72,7 +72,7 @@ def register(
     sample = prepare.add_argument(
         "--sample", type=positive, help="this many questions, chosen by the seed; else all"
     )
-    seed = prepare.add_argument("--seed", type=int, default=SEED, help="the sample's seed")
+    seed = prepare.add_argument("--seed", type=int, default=SAMPLE_SEED, help="the sample's seed")
     prepare.add_argument(
         "--dry-run", action="store_true", help="say what would be prepared, and write nothing"
     )

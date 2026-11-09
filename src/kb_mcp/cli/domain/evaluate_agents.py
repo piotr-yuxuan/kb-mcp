@@ -26,7 +26,7 @@ PAST = 2
 SURFACES = ("A", "B")  # without ask, and with it
 # The agents' models, by the aliases that Claude Code's subagents take.
 MODELS = ("haiku", "sonnet")
-SEED = 11  # the sample's, unless given
+SAMPLE_SEED = 11  # the sample's, unless given
 
 
 def described(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> tuple[str, ...]:

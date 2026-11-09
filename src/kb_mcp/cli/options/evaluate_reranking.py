@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from argcomplete.completers import FilesCompleter
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.evaluate_agents import SEED
+from kb_mcp.cli.domain.evaluate_agents import SAMPLE_SEED
 from kb_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
@@ -81,7 +81,7 @@ def register(
     sample = parser.add_argument(
         "--sample", type=positive, help="this many questions, chosen by the seed; else all"
     )
-    seed = parser.add_argument("--seed", type=int, default=SEED, help="the sample's seed")
+    seed = parser.add_argument("--seed", type=int, default=SAMPLE_SEED, help="the sample's seed")
     parser.set_defaults(
         command=Command(
             "eval-rerank",

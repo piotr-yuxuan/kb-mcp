@@ -33,6 +33,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.observability.domain.log_files import STAMP
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
 from kb_mcp.search.adapters.reranking import EVALUATION, rerank, served
@@ -44,7 +45,6 @@ if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Summary
 
-STAMP = "%Y%m%dT%H%M%SZ"
 HEADER = (
     "| Depth | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Found@ask"
     " | Evidence@ask | Tokens | Search, median | Search, 95th |"
