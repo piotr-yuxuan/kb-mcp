@@ -10,7 +10,7 @@ from pydantic import ConfigDict, ValidationError, model_validator
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
-from kb_mcp.search.domain.search import ChunkVectors
+from kb_mcp.search.domain.search import Chunk, ChunkVectors
 
 # A value that no message may hold.
 UNSHOWN = "a-value-never-shown"
@@ -106,11 +106,8 @@ def test_chunks_compare_by_identity() -> None:
     matrix = np.zeros((1, 2), dtype=np.float32)
     fields = {
         "documents": (1,),
-        "paths": {1: "jira/PRB/PRB-1.md"},
+        "chunks": (Chunk(path="jira/PRB/PRB-1.md", number=1, start=0, end=4, vector_key="k"),),
         "updated": {},
-        "sections": (1,),
-        "offsets": (0,),
-        "ends": (4,),
     }
     first, second = ChunkVectors(**fields, matrix=matrix), ChunkVectors(**fields, matrix=matrix)
     assert first != second

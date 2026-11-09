@@ -254,13 +254,12 @@ class VectorReader(Protocol):
 
     def nearest(
         self, vector: NDArray[np.float32], filters: Filters, depth: int
-    ) -> dict[str, tuple[Score, int, int, int]]:
+    ) -> dict[str, tuple[Score, Chunk]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
         A document is as near as its best chunk, of chunks tied the first by section
         number and start. Each path comes with its score, the cosine of that chunk, then
-        the chunk's section number, and its start and end in the body. Ties go to the
-        newest update, then the path, before the cut.
+        the chunk. Ties go to the newest update, then the path, before the cut.
         """
 
 

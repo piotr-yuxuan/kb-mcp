@@ -217,7 +217,7 @@ ORDER BY s.number
 # Every chunk with its document, its section, and its span within the document's body; by
 # what no rowid changes, so that an updated index and a whole build give one matrix.
 CHUNKS = """
-SELECT d.rowid AS document, d.path, d.updated, s.number, p.start, p."end", p.vector
+SELECT d.rowid AS document, d.path, d.updated, s.number, p.start, p."end", p.key, p.vector
 FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
 """
@@ -1029,29 +1029,30 @@ class Reader:
         matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_cache.LAYOUT)
         return ChunkVectors(
             documents=tuple(row["document"] for row in rows),
-            paths={row["document"]: row["path"] for row in rows},
+            chunks=tuple(
+                Chunk(
+                    path=row["path"],
+                    number=row["number"],
+                    start=row["start"],
+                    end=row["end"],
+                    vector_key=row["key"],
+                )
+                for row in rows
+            ),
             updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
-            sections=tuple(row["number"] for row in rows),
-            offsets=tuple(row["start"] for row in rows),
-            ends=tuple(row["end"] for row in rows),
             matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
         )
 
     def nearest(
         self, vector: NDArray[np.float32], filters: Filters, depth: int
-    ) -> dict[str, tuple[Score, int, int, int]]:
+    ) -> dict[str, tuple[Score, Chunk]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
-        Each path comes with its score, then its best chunk's section number, and its
-        start and end in the body.
+        Each path comes with its score, then its best chunk.
         """
         kept = self.kept(filters)
         allowed = None if kept is None else set(json.loads(kept))
-        chunks = self._searched(self)
-        return {
-            path: (score, chunks.sections[index], chunks.offsets[index], chunks.ends[index])
-            for path, (score, index) in chunks.nearest(vector, allowed, depth).items()
-        }
+        return self._searched(self).nearest(vector, allowed, depth)
 
     def heading(self, path: str, number: int) -> str:
         """Give the heading of a document's section."""

@@ -442,12 +442,12 @@ def test_nearest_gives_a_document_its_best_chunk(written: Written) -> None:
     with index.reading() as reader:
         found = reader.nearest(query(EAST), Filters(), 10)
         assert list(found) == [path]
-        score, number, start, end = found[path]
+        score, chunk = found[path]
         assert score.relevance == pytest.approx(1.0, abs=EPSILON)
         assert score.updated == compass.updated
-        assert (number, reader.text(path, start, end)) == (2, "east text")
-        _, number, start, end = reader.nearest(query(UP), Filters(), 10)[path]
-        assert (number, reader.text(path, start, end)) == (3, "up text")
+        assert (chunk.number, reader.text(path, chunk.start, chunk.end)) == (2, "east text")
+        _, chunk = reader.nearest(query(UP), Filters(), 10)[path]
+        assert (chunk.number, reader.text(path, chunk.start, chunk.end)) == (3, "up text")
 
 
 def test_of_a_document_s_tied_chunks_the_first_in_its_body_is_its_best(written: Written) -> None:
@@ -460,8 +460,8 @@ def test_of_a_document_s_tied_chunks_the_first_in_its_body_is_its_best(written: 
     path = location(compass)
     index = written([FilledDocument(front=compass, body=NEAR_BODY, chunks=chunks)], EMBEDDED)
     with index.reading() as reader:
-        _, number, start, end = reader.nearest(query(NORTH), Filters(), 10)[path]
-        assert (number, reader.text(path, start, end)) == (2, "east text")
+        _, chunk = reader.nearest(query(NORTH), Filters(), 10)[path]
+        assert (chunk.number, reader.text(path, chunk.start, chunk.end)) == (2, "east text")
 
 
 def test_nearest_orders_documents_and_cuts_at_its_depth(
@@ -791,8 +791,8 @@ def test_a_fill_adds_and_removes_chunks_and_names_the_model(written: Written) ->
         assert reader.embedded() == other
         assert reader.chunks() == [east[0]]
         assert reader.keys() == {"k-east"}
-        _, number, start, end = reader.nearest(query(NORTH), Filters(), 10)[COMPASS_PATH]
-        assert (number, reader.text(COMPASS_PATH, start, end)) == (2, "east text")
+        _, chunk = reader.nearest(query(NORTH), Filters(), 10)[COMPASS_PATH]
+        assert (chunk.number, reader.text(COMPASS_PATH, chunk.start, chunk.end)) == (2, "east text")
 
 
 def test_a_chunk_that_names_no_section_is_refused(written: Written) -> None:

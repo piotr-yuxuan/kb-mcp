@@ -611,6 +611,28 @@ def test_an_evaluation_index_without_keys_holds_the_prune_back(
     assert ("warning", "index.prune_skipped") in said(err)
 
 
+def test_an_evaluation_index_of_schema_6_holds_the_prune_back(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 054: an evaluated index of the former tables, until eval builds it again.
+
+    Its vectors are not deleted, though this version cannot read which they are.
+    """
+    windows = evaluated(data, data / "vectors.sqlite", "windows")
+    with closing(sqlite3.connect(windows)) as connection:
+        keys = {row[0] for row in connection.execute("SELECT key FROM chunks")}
+        connection.execute('ALTER TABLE chunks RENAME COLUMN "end" TO stop')
+        connection.execute("ALTER TABLE chunks RENAME TO pieces")
+        connection.execute("ALTER TABLE section_words RENAME TO chunks")
+        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
+        connection.commit()
+    status, result, err = held_back(data, capsys)
+    assert (status, result["outcome"], result["file"]) == (0, "held back", str(windows))
+    assert result["reason"] == UNREADABLE
+    assert ("warning", "index.prune_skipped") in said(err)
+    assert keys <= stored(data / "vectors.sqlite")
+
+
 def test_a_file_that_is_no_index_holds_the_prune_back(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:

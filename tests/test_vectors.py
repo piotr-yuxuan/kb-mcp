@@ -185,11 +185,11 @@ def test_chunks_are_read_by_path_section_and_start_whatever_their_rowids(data: P
         )
     with reading(data / "index.sqlite") as reader:
         chunks = reader.vectors()
-    assert [chunks.paths[each] for each in chunks.documents] == [
+    assert [chunk.path for chunk in chunks.chunks] == [
         *[location(first)] * 3,
         *[location(second)] * 2,
     ]
-    assert chunks.sections == (1, 2, 2, 1, 2)
+    assert [chunk.number for chunk in chunks.chunks] == [1, 2, 2, 1, 2]
     assert chunks.matrix.reshape(-1).tolist() == [2, 4, 1, 0, 3]
 
 
@@ -528,13 +528,13 @@ def test_an_index_names_the_store_s_key_of_each_chunk_s_vector(
 
 
 def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
-    """Without the column, its chunks and summary read as ever; its keys are refused."""
+    """Without the column, its summary reads as ever; its keys are refused."""
     build(data, counting())
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         connection.execute("ALTER TABLE chunks DROP COLUMN key")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
-        assert len(reader.vectors().documents) == reader.index_status().chunks > 0
+        assert reader.index_status().chunks > 0
         with pytest.raises(UnavailableIndexError, match="before chunks recorded their keys"):
             reader.keys()
 
@@ -549,16 +549,14 @@ def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: 
     with reading(data / "index.sqlite") as reader:
         chunks = reader.vectors()
         bounds = reader.bounds(path)
-        mine = [index for index, each in enumerate(chunks.documents) if chunks.paths[each] == path]
+        mine = [chunk for chunk in chunks.chunks if chunk.path == path]
         assert len(mine) == WINDOWS
-        for index in mine:
-            start, end = chunks.offsets[index], chunks.ends[index]
-            first, last = bounds[chunks.sections[index] - 1]
-            assert first <= (start + end) // 2 < last
-            assert reader.text(path, start, end) == body[start:end]
-            assert f"Rollback\n{body[start:end].strip()}" in embedder.texts
-    assert chunks.offsets[mine[0]] == 0
-    assert chunks.sections[mine[0]] == RELEASE
+        for chunk in mine:
+            first, last = bounds[chunk.number - 1]
+            assert first <= (chunk.start + chunk.end) // 2 < last
+            assert reader.text(path, chunk.start, chunk.end) == body[chunk.start : chunk.end]
+            assert f"Rollback\n{body[chunk.start : chunk.end].strip()}" in embedder.texts
+    assert (mine[0].start, mine[0].number) == (0, RELEASE)
 
 
 def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:

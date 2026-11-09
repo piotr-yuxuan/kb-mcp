@@ -17,13 +17,13 @@ import httpx
 import pytest
 
 from kb_mcp.kernel.endpoint import EMBEDDINGS
-from kb_mcp.mcp.app.tools import Library
+from kb_mcp.mcp.app.tools import Asked, Library, ranking
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning, Nearest
-from kb_mcp.search.domain.search import Filters, Score
+from kb_mcp.search.domain.search import Chunk, Filters, Score, plan_query
 from tests.answers import parts
 from tests.endpoint import DIGEST, URL, Scripted, connect_scripted, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -442,7 +442,7 @@ class Ordered(Meaning):
     """A search by meaning that ranks the documents it is given in that order."""
 
     def __init__(self, order: list[tuple[str, int, int, int]]) -> None:
-        """Rank these paths, each with its section number and its span in the body."""
+        """Rank these paths, each with its chunk's section number and range in the body."""
         super().__init__(connect_scripted())
         self.order = order
 
@@ -451,7 +451,10 @@ class Ordered(Meaning):
         del reader, query, filters
         return Nearest(
             found={
-                path: (Score(relevance=1.0 - rank / 100, updated=MOMENT), section, start, end)
+                path: (
+                    Score(relevance=1.0 - rank / 100, updated=MOMENT),
+                    Chunk(path=path, number=section, start=start, end=end, vector_key="k"),
+                )
                 for rank, (path, section, start, end) in enumerate(self.order)
             }
         )
@@ -487,3 +490,38 @@ def test_with_an_identifier_a_place_higher_by_meaning_shows_meaning(data: Path) 
     tools = Library(SqliteIndex(data / "index.sqlite"), data / "docs", ordered, "hybrid")
     shown = next(hit for hit in hits(tools.search("4002 revert release")) if MIXED in hit)
     assert "section 3 Plan" in shown
+
+
+RUNBOOK = "confluence/OPS/4001-rollback-runbook.md"
+PROJ_7 = "jira/PROJ/PROJ-7.md"
+
+
+@pytest.mark.parametrize("mode", ["semantic", "hybrid"])
+def test_a_ranking_holds_the_chunk_of_each_document_that_meaning_placed(
+    data: Path, mode: SearchMode
+) -> None:
+    """Plan 054, criterion 5: by meaning, the best chunk's section; by words, the best one.
+
+    For "PROJ-7 notes", meaning ranks the runbook, which words do not find, then the
+    notes, both after the issue named. Semantic: meaning places both. Hybrid: the
+    runbook alone, as words rank the notes higher than meaning does: they carry no
+    chunk, and their best section by words, the notes'. The issue named, pinned, carries
+    none, and no word of the query is in its body: section 1.
+    """
+    mixed, start, end = plan_of(data)
+    with reading(data / "index.sqlite") as reader:
+        runbook = Chunk(path=RUNBOOK, number=1, start=0, end=24, vector_key="k")
+        plan = Chunk(path=mixed, number=3, start=start, end=end, vector_key="k")
+        ordered = Ordered([(RUNBOOK, 1, 0, 24), (mixed, 3, start, end)])
+        planned = plan_query("PROJ-7 notes")
+        asked = Asked(
+            query="PROJ-7 notes", planned=planned, filters=Filters(), sort="relevance", mode=mode
+        )
+        ranked = ranking(reader, ordered, asked)
+    placed = {RUNBOOK: runbook, mixed: plan} if mode == "semantic" else {RUNBOOK: runbook}
+    assert (ranked.paths[0], ranked.chunks) == (PROJ_7, placed)
+    tools = Library(SqliteIndex(data / "index.sqlite"), data / "docs", ordered, mode)
+    sections = {each.path: each.section for each in tools.ranked("PROJ-7 notes", mode)[0]}
+    assert sections[RUNBOOK] == 1
+    assert sections[mixed] == (3 if mode == "semantic" else 2)
+    assert sections[PROJ_7] == 1

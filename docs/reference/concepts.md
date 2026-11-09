@@ -384,10 +384,15 @@ and reranking are calls to services; a reranker reads each candidate's title, he
 and the text about its best place. The evaluation scores rankings (MRR@10, Section@10).
 
 **In the code.** [`Ranking`](../../src/kb_mcp/mcp/app/tools.py), which holds the
-documents' paths and, for those that meaning placed, the section, start and end of the
-chunk; [`ranking`](../../src/kb_mcp/mcp/app/tools.py),
+documents' paths and, for those that meaning placed, their best
+[`Chunk`](../../src/kb_mcp/search/domain/search.py);
+[`ranking`](../../src/kb_mcp/mcp/app/tools.py),
 [`reranked`](../../src/kb_mcp/mcp/app/tools.py) and
-[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py).
+[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py). Where the code
+differs: the section by words of a document is found as a page or the reranker reads it
+([`snippet_of`](../../src/kb_mcp/mcp/app/tools.py),
+[`place_of`](../../src/kb_mcp/mcp/app/tools.py)), not held by the ranking, since finding
+it for every document ranked would cost a query of the words per document.
 
 ### tool
 

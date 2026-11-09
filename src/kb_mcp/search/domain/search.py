@@ -353,34 +353,33 @@ class ChunkVectors(Record):
     __hash__ = object.__hash__
 
     documents: tuple[int, ...]  # each chunk's document, by rowid
-    paths: Mapping[int, str]  # each document's path, by rowid
+    chunks: tuple[Chunk, ...]
     updated: Mapping[str, datetime]  # each document's update, by path
-    sections: tuple[int, ...]  # each chunk's section number
-    offsets: tuple[int, ...]  # where each chunk starts in its document's body
-    ends: tuple[int, ...]  # where each chunk ends in its document's body
     matrix: NDArray[np.float32]  # one row per chunk
 
     def nearest(
         self, query: NDArray[np.float32], kept: Collection[int] | None, limit: int
-    ) -> dict[str, tuple[Score, int]]:
+    ) -> dict[str, tuple[Score, Chunk]]:
         """Score the documents nearest a query by their best chunk, at most ``limit``.
 
         Only the documents in ``kept`` count, when it is given. Each path comes with its
-        score, the cosine of its best chunk, and that chunk's index. Ties, as between
-        documents of one text, go to the newest update, then the path, before the cut.
+        score, the cosine of its best chunk, and that chunk. Ties, as between documents
+        of one text, go to the newest update, then the path, before the cut.
         """
-        best: dict[str, int] = {}  # each document's best chunk
+        best: dict[str, int] = {}  # each document's best chunk, by its row
         similarity = self.matrix @ query.reshape(-1) if self.documents else np.empty(0)
         for index in np.argsort(-similarity, kind="stable"):
-            document = self.documents[index]
-            if kept is None or document in kept:
-                best.setdefault(self.paths[document], int(index))
+            if kept is None or self.documents[index] in kept:
+                best.setdefault(self.chunks[index].path, int(index))
         chosen = sorted(
             best.items(),
             key=lambda item: (-similarity[item[1]], -self.updated[item[0]].timestamp(), item[0]),
         )[:limit]
         return {
-            path: (Score(relevance=float(similarity[index]), updated=self.updated[path]), index)
+            path: (
+                Score(relevance=float(similarity[index]), updated=self.updated[path]),
+                self.chunks[index],
+            )
             for path, index in chosen
         }
 
