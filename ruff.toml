@@ -27,6 +27,6 @@ max-complexity = 10
 runtime-evaluated-base-classes = [
   "kb_mcp.kernel.record.Record",
   "kb_mcp.mirror.adapters.pandoc.Pandoc",
-  "kb_mcp.mirror.domain.mirror.Problem",
+  "kb_mcp.kernel.outcome.Outcome",
   "kb_mcp.sources.stages.Result",
 ]

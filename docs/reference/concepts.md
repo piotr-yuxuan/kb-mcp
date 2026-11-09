@@ -614,10 +614,7 @@ settings, secrets masked. The outcome:
 [`Check.state`](../../src/kb_mcp/sources/stages.py),
 [`ExitStatus`](../../src/kb_mcp/kernel/exit_status.py) and
 [`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py). The problem:
-[`Problem`](../../src/kb_mcp/mirror/domain/mirror.py),
-[`WorklogProblem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py),
-[`Unreadable`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-[`UnreadFile`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py) and
+[`Problem`](../../src/kb_mcp/kernel/outcome.py), and the index's
 [`IndexReport.skipped`](../../src/kb_mcp/search/app/indexing.py).
 
 ### store
@@ -780,8 +777,8 @@ store's own records.
 
 - **In the code.**
   [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-  [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and
-  [`Unreadable`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
+  [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and,
+  for what its adapter refuses, a [`Problem`](../../src/kb_mcp/kernel/outcome.py).
 
 ### snapshot
 

@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.sources.worklog.prepare.adapters import files
 
 CONTENT = "words of the file that must never show"
@@ -167,9 +168,9 @@ def test_links_are_followed_inside_the_work_log_alone(tmp_path: Path, worklog: P
     assert "transcripts/linked.org" in paths(listing)
     assert "transcripts/misc/a.org" in paths(listing)  # the folder itself, before its link
     assert "transcripts/linked folder/a.org" not in paths(listing)
-    assert sorted(listing.problems, key=lambda problem: problem.path) == [
-        files.UnreadFile(path="transcripts/out folder", reason="links outside the work log"),
-        files.UnreadFile(path="transcripts/out.org", reason="links outside the work log"),
+    assert sorted(listing.problems, key=lambda problem: problem.where) == [
+        Problem(where="transcripts/out folder", reason="links outside the work log"),
+        Problem(where="transcripts/out.org", reason="links outside the work log"),
     ]
     assert all(CONTENT not in problem.reason for problem in listing.problems)
 
@@ -182,7 +183,7 @@ def test_a_linked_todo_file_outside_is_named_and_not_listed(tmp_path: Path) -> N
     listing = files.listed(root, archives=True)
     assert (paths(listing), listing.problems) == (
         [],
-        (files.UnreadFile(path="todo.org", reason="links outside the work log"),),
+        (Problem(where="todo.org", reason="links outside the work log"),),
     )
 
 
@@ -204,7 +205,7 @@ def test_past_the_bound_the_first_transcripts_are_kept(
         "transcripts/archive/2026/2026-09/2026-09-15 Tue/1.org",
     ]
     assert listing.problems == (
-        files.UnreadFile(path="transcripts, meetings", reason="over 3 transcripts"),
+        Problem(where="transcripts, meetings", reason="over 3 transcripts"),
     )
 
 
@@ -213,7 +214,7 @@ def test_a_folder_that_is_not_there_is_a_problem(tmp_path: Path) -> None:
     listing = files.listed(tmp_path / "absent", archives=True)
     assert (listing.paths, listing.problems) == (
         (),
-        (files.UnreadFile(path=".", reason="not a folder"),),
+        (Problem(where=".", reason="not a folder"),),
     )
 
 

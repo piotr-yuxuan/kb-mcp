@@ -12,6 +12,7 @@ import httpx
 import pytest
 from structlog.testing import capture_logs
 
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
@@ -22,7 +23,6 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     StoredSnapshot,
-    Unreadable,
 )
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
@@ -424,7 +424,7 @@ def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path)
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(changed_labels=True))
     results = {
-        item.where if isinstance(item, Unreadable) else item.snapshot.document.id: item
+        item.where if isinstance(item, Problem) else item.snapshot.document.id: item
         for item in store.latest(Page)
     }
     assert set(results) == {"1001", "confluence/pages/1002/000003"}

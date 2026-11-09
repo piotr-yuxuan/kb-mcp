@@ -28,12 +28,13 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, Problem
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -66,28 +67,21 @@ if TYPE_CHECKING:
 TRACER = trace.get_tracer(__name__)
 
 
-class WorklogProblem(Problem):
-    """A file of the work log not read, or a document not converted, and what it held back.
-
-    ``where`` is the path from the work log's folder, or a document's file and id, never
-    its content; ``held_back``, what keeps its last copy for it: for a file not read, as
-    the domain's function ``held_back`` says; for a conversion, the document's id.
-    """
-
-    held_back: str
-
-
 class Read(Record):
     """The work log's documents to write, in order, and the HTML transcripts left out.
 
     The documents are those read that draw on no file not read. Problems stop removals
     but of a written document's old files; warnings, such as two transcripts of one id,
-    do not.
+    do not. A problem's ``where`` is the path from the work log's folder, or a
+    document's file and id, never its content; ``held_back`` gives, by that place, what
+    keeps its last copy for it: for a file not read, as the domain's function
+    ``held_back`` says; for a conversion, the document's id.
     """
 
     documents: tuple[WorklogDocument, ...]
     html: int
-    problems: tuple[WorklogProblem, ...]
+    problems: tuple[Problem, ...]
+    held_back: dict[str, str]
     warnings: tuple[str, ...]
 
 
@@ -101,7 +95,8 @@ class WorklogPrepareOutcome(Record):
     documents: int
     changes: Changes
     html: int
-    problems: tuple[WorklogProblem, ...]
+    problems: tuple[Problem, ...]
+    held_back: dict[str, str]
     warnings: tuple[str, ...]
 
     def text(self, summary: Detail) -> str:
@@ -128,7 +123,8 @@ class WorklogDryRun(Record):
     to_convert: int
     to_remove: int
     html: int
-    problems: tuple[WorklogProblem, ...]
+    problems: tuple[Problem, ...]
+    held_back: dict[str, str]
     warnings: tuple[str, ...]
 
     def text(self, summary: Detail) -> str:
@@ -163,7 +159,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     """
     with TRACER.start_as_current_span("worklog.read"):
         org_files = files.listed(folder, archives=archives)
-        unread = [(each.path, each.reason) for each in org_files.problems]
+        unread = [(each.where, each.reason) for each in org_files.problems]
         org_texts: list[OrgText] = []
         for relative in org_files.paths:
             try:
@@ -174,15 +170,12 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         # A file linking out is a problem, never listed: its path names it all the same.
         # A folder not listed, though its name may end in .org, names none.
         out = [
-            PurePosixPath(each.path)
+            PurePosixPath(each.where)
             for each in org_files.problems
             if each.reason == files.LINKS_OUT
         ]
         ids, warnings = transcript_ids([*org_files.paths, *out], archives=archives)
-        problems = [
-            WorklogProblem(where=where, reason=reason, held_back=held_back(where, ids))
-            for where, reason in unread
-        ]
+        problems = [Problem(where=where, reason=reason) for where, reason in unread]
         named = transcripts(org_texts, ids, archives=archives)
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=ids)
@@ -206,6 +199,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         documents=tuple(documents_read),
         html=org_files.html,
         problems=tuple(problems),
+        held_back={where: held_back(where, ids) for where, _ in unread},
         warnings=tuple(warnings),
     )
 
@@ -265,7 +259,7 @@ def prepare_worklog(
     log = structlog.get_logger()
     kept, placed = existing(docs)
     read = read_worklog(folder, archives=archives)
-    problems = list(read.problems)
+    problems, held = list(read.problems), dict(read.held_back)
     converter = pandoc.org_converter()
     ready: dict[PurePosixPath, tuple[FrontMatter, str]] = {}
     with (
@@ -287,13 +281,9 @@ def prepare_worklog(
                 try:
                     body = pandoc.org_markdown(document.text)
                 except PandocFailedError as error:
-                    problems.append(
-                        WorklogProblem(
-                            where=f"{document.file.path}, {document.id}",
-                            reason=str(error),
-                            held_back=document.id,
-                        )
-                    )
+                    where = f"{document.file.path}, {document.id}"
+                    problems.append(Problem(where=where, reason=str(error)))
+                    held[where] = document.id
                     DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **typed})
                     continue
                 outcome = "mirrored"
@@ -360,6 +350,7 @@ def prepare_worklog(
         changes=changes,
         html=read.html,
         problems=tuple(problems),
+        held_back=held,
         warnings=read.warnings,
     )
 
@@ -402,5 +393,6 @@ def plan_worklog(
         to_remove=to_remove,
         html=read.html,
         problems=read.problems,
+        held_back=read.held_back,
         warnings=read.warnings,
     )

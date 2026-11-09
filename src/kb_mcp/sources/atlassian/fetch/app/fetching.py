@@ -28,6 +28,7 @@ from pydantic import ConfigDict, Field
 from kb_mcp.kernel.exit_status import Ending
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
@@ -37,11 +38,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.http import (
     SiteError,
     TooManyFailuresError,
 )
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
-    REPRESENTATIONS,
-    RawStore,
-    Unreadable,
-)
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import REPRESENTATIONS, RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
 from kb_mcp.sources.atlassian.fetch.domain.content import CONFLUENCE_CLASSES, BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
@@ -344,7 +341,7 @@ class Fetching:
         span ``fetch.probes``.
         """
         canary = (confluence_v2.current_user_request(), confluence_v2.is_signed_in)
-        kept = {each.id for each in self.store.spaces() if not isinstance(each, Unreadable)}
+        kept = {each.id for each in self.store.spaces() if not isinstance(each, Problem)}
         with TRACER.start_as_current_span("fetch.probes"):
             for space_id, (absent, stored, before) in self.absent.items():
                 known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}

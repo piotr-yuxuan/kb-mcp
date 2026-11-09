@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.domain.content import (
@@ -104,13 +105,6 @@ class StoredSnapshot(Record):
     snapshot: Snapshot
     fetched_at: datetime
     blobs: Mapping[str, str]
-
-
-class Unreadable(Record):
-    """Something stored that its adapter refuses: where it is, and why, without content."""
-
-    where: str  # the path within the store, with an index for an entry of a listing
-    reason: str
 
 
 def _write_synced(path: Path, data: bytes) -> None:
@@ -317,12 +311,10 @@ class RawStore:
         own = {key: digest for key, digest in blobs.items() if key in known}
         return StoredSnapshot(folder=folder, snapshot=snapshot, fetched_at=fetched_at, blobs=own)
 
-    def latest(
-        self, document_class: type[FetchedDocument]
-    ) -> Iterator[StoredSnapshot | Unreadable]:
+    def latest(self, document_class: type[FetchedDocument]) -> Iterator[StoredSnapshot | Problem]:
         """Yield the newest stored snapshot of each document of a type, or why it is not.
 
-        A snapshot that its adapter now refuses is yielded as ``Unreadable``, and the
+        A snapshot that its adapter now refuses is yielded as ``Problem``, and the
         others still follow.
         """
         for item in _named(
@@ -334,9 +326,7 @@ class RawStore:
             try:
                 yield self._read(document_class, revisions[-1])
             except UNREADABLE as error:
-                yield Unreadable(
-                    where=str(revisions[-1].relative_to(self.root)), reason=reason(error)
-                )
+                yield Problem(where=str(revisions[-1].relative_to(self.root)), reason=reason(error))
 
     @staticmethod
     def responses(folder: Path) -> dict[str, object]:
@@ -384,20 +374,20 @@ class RawStore:
             return None
         return Fields(_decode(path), LISTED_AT).time("listed_at")
 
-    def spaces(self) -> list[Space | Unreadable]:
+    def spaces(self) -> list[Space | Problem]:
         """Read every space ever listed."""
-        spaces: list[Space | Unreadable] = []
+        spaces: list[Space | Problem] = []
         for folder in _named(self.root / CONFLUENCE / "spaces", IDENTIFIER):
             where = str((folder / "space.json").relative_to(self.root))
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
             except UNREADABLE as error:
-                spaces.append(Unreadable(where=where, reason=reason(error)))
+                spaces.append(Problem(where=where, reason=reason(error)))
         return spaces
 
     def listed(
         self, space_id: str, document_class: type[Page | BlogPost]
-    ) -> list[Page | BlogPost | Unreadable]:
+    ) -> list[Page | BlogPost | Problem]:
         """Read the pages, or the blog posts, last listed in a space."""
         path = self._space(space_id) / f"{document_class.resource_type}.json"
         return self._entries(path, partial(confluence_v2.document, document_class=document_class))
@@ -415,7 +405,7 @@ class RawStore:
         except UNREADABLE:
             return set()
 
-    def folders(self, space_id: str) -> list[Folder | Unreadable]:
+    def folders(self, space_id: str) -> list[Folder | Problem]:
         """Read the folders last listed in a space."""
         return self._entries(self._space(space_id) / "folders.json", confluence_v2.folder)
 
@@ -433,24 +423,24 @@ class RawStore:
                 merged[Fields(user, f"{name}[{index}]").text("accountId")] = user
         _replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
 
-    def users(self) -> list[SiteUser | Unreadable]:
+    def users(self) -> list[SiteUser | Problem]:
         """Read every site user kept."""
         return self._entries(self.root / CONFLUENCE / "users.json", confluence_v2.person)
 
-    def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Unreadable]:
+    def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Problem]:
         if not path.exists():
             return []
         where = str(path.relative_to(self.root))
         try:
             entries = Fields.each(_decode(path), where)
         except UNREADABLE as error:
-            return [Unreadable(where=where, reason=reason(error))]
-        results: list[T | Unreadable] = []
+            return [Problem(where=where, reason=reason(error))]
+        results: list[T | Problem] = []
         for index, entry in enumerate(entries):
             try:
                 results.append(read(entry))
             except UNREADABLE as error:
-                results.append(Unreadable(where=f"{where}[{index}]", reason=reason(error)))
+                results.append(Problem(where=f"{where}[{index}]", reason=reason(error)))
         return results
 
     def stored_ids(self, document_class: type[FetchedDocument]) -> set[str]:

@@ -875,9 +875,9 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     (run.root / record).write_bytes(NOT_UTF8)
     with capture_logs() as logged:
         outcome = run()
-    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
-        (record, "not UTF-8", "t-20261027-1")
-    ]
+    assert [
+        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
+    ] == [(record, "not UTF-8", "t-20261027-1")]
     assert kept.read_bytes() == before
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
     assert "one edited word only" in run.by_title("WAITING Notes").body
@@ -991,7 +991,9 @@ def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path
     record.symlink_to(outside)
     with capture_logs() as logged:
         outcome = run()
-    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
+    assert [
+        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
+    ] == [
         ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
     ]
     assert kept.read_bytes() == before
@@ -1017,7 +1019,9 @@ def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run
     (run.root / new).write_bytes(NOT_UTF8)
     settle(run.root / new)
     outcome = run()
-    assert [(each.where, each.held_back) for each in outcome.problems] == [(new, "t-20261027-3")]
+    assert [(each.where, outcome.held_back[each.where]) for each in outcome.problems] == [
+        (new, "t-20261027-3")
+    ]
     assert run.by_id("m-20261027-retro").matter.links == ()
     assert one_way(run.files()) == []
     (run.root / new).write_text("#+TITLE: Retro\nSam Sample: Done.\n", "utf-8")
@@ -1050,9 +1054,9 @@ def test_past_the_bound_a_meeting_s_link_waits_and_the_rest_is_written(
     monkeypatch.setattr(files, "TRANSCRIPT_COUNT", 3)
     with capture_logs() as logged:
         outcome = run()
-    assert [(each.where, each.reason, each.held_back) for each in outcome.problems] == [
-        ("transcripts, meetings", "over 3 transcripts", "the transcripts not read under it")
-    ]
+    assert [
+        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
+    ] == [("transcripts, meetings", "over 3 transcripts", "the transcripts not read under it")]
     assert kept.read_bytes() == before
     assert run.by_id(STANDUP).matter.links == ()
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
@@ -1086,7 +1090,7 @@ def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
     finally:
         locked.chmod(0o700)
     under = "the transcripts not read under it"
-    assert sorted((each.where, each.held_back) for each in outcome.problems) == [
+    assert sorted((each.where, outcome.held_back[each.where]) for each in outcome.problems) == [
         ("meetings/locked.org", under),
         ("transcripts/misc/out", under),
         ("transcripts/misc/out.html", under),

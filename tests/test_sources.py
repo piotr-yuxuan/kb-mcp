@@ -31,6 +31,7 @@ from kb_mcp.cli.app.sources import run_each
 from kb_mcp.cli.domain.sources import chosen, fetch_described, given
 from kb_mcp.cli.main import main, parser
 from kb_mcp.kernel.exit_status import Ending, ExitStatus
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
 from kb_mcp.mirror.adapters.pandoc import (
@@ -573,11 +574,7 @@ def problem_prepared() -> atlassian_prepare.AtlassianPrepareOutcome:
         reused=0,
         changes=Changes(written=0, unchanged=0, removed=0),
         unsupported=Counter(),
-        problems=(
-            atlassian_prepare.Problem(
-                where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
-            ),
-        ),
+        problems=(Problem(where="confluence/pages/1001/000001", reason="pandoc: exit status 9"),),
     )
 
 
@@ -677,7 +674,7 @@ def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
     """On stderr at the default level, one worklog.problem: where, why, what it held back.
 
     "It should be flagged and reported loudly in logs" (the user, 2026-10-29, plan 044):
-    the run exits 1; its JSON gives the problem's held_back, and none at the row's top.
+    the run exits 1; its JSON gives the problem, and by its place what it held back.
     """
     where = "transcripts/current/2026-10-27 Tue/1.org"
     (worklog / where).write_bytes(b"* Caf\xe9\n")
@@ -688,11 +685,8 @@ def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
     (said,) = [line for line in captured.err.splitlines() if "worklog.problem" in line]
     assert all(part in said for part in (where, "not UTF-8", "held_back=t-20261027-1"))
     (row,) = [each for each in json.loads(captured.out)["sources"] if each["source"] == "worklog"]
-    assert row["result"]["mirrored"]["problems"] == [
-        {"where": where, "reason": "not UTF-8", "held_back": "t-20261027-1"}
-    ]
-    assert "held_back" not in row["result"]
-    assert "held_back" not in row["result"]["mirrored"]
+    assert row["result"]["mirrored"]["problems"] == [{"where": where, "reason": "not UTF-8"}]
+    assert row["result"]["mirrored"]["held_back"] == {where: "t-20261027-1"}
 
 
 def test_the_text_gives_a_row_per_source_then_its_counts(

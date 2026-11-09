@@ -84,7 +84,7 @@ The site's responses and its HTML change without notice. So that a change stays 
   print them.
 - **Raw first.** The raw store keeps responses exactly as received, reading only what
   names their folder. A response whose other fields have changed is therefore kept; it
-  reads as `Unreadable` until its adapter is fixed, and then `prepare` reads it again
+  reads as a `Problem` until its adapter is fixed, and then `prepare` reads it again
   without fetching anything.
 - **HTML likewise.** The site's markup (class names, data attributes, macro names) is
   known to one module of 005, as named constants. Markup it does not know becomes a
@@ -163,7 +163,7 @@ The store's interface for snapshots:
 - `has(document)`; `read(document)`, which returns a `StoredSnapshot` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
   `ValueError` or an `OSError` for a damaged file); and `latest(document_class)`, which yields
-  the newest snapshot of each document of its type as a `StoredSnapshot`, or as an `Unreadable`
+  the newest snapshot of each document of its type as a `StoredSnapshot`, or as a `Problem`
   (where it is, and the refused field's path or the error's class) when it cannot be
   read. The others still follow.
 - `StoredSnapshot` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
@@ -215,7 +215,7 @@ were listed (`listed_at(space_id)`); other spaces' are kept. Of each listing ent
 reads only the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
-adapter refuses comes back as an `Unreadable` at its index, and the others are read.
+adapter refuses comes back as a `Problem` at its index, and the others are read.
 
 Listings give 005 the whole tree, titles and breadcrumbs, even of pages whose bodies are
 outside the period fetched, folders included (`Page.parent_type` says whether a parent

@@ -66,7 +66,7 @@ def prepare(run: SourceRun) -> WorklogPrepared:
             "worklog.problem",
             where=problem.where,
             reason=problem.reason,
-            held_back=problem.held_back,
+            held_back=done.held_back[problem.where],
         )
     for warning in done.warnings:
         log.warning("worklog.same_id", reason=warning)

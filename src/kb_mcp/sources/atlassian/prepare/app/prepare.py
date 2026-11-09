@@ -28,18 +28,18 @@ from opentelemetry import trace
 from pydantic import Field
 
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import Problem, ref_of
+from kb_mcp.mirror.domain.mirror import ref_of
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
     RawStore,
     StoredSnapshot,
-    Unreadable,
     reason,
 )
 from kb_mcp.sources.atlassian.fetch.domain.content import (
@@ -162,12 +162,12 @@ class Placed(Record):
         return ref_of(document.key if isinstance(document, Issue) else None, document.id)
 
 
-def readable[T](items: Iterable[T | Unreadable], problems: list[Problem]) -> list[T]:
+def readable[T](items: Iterable[T | Problem], problems: list[Problem]) -> list[T]:
     """Keep what the raw store could read, and report each item it could not."""
     kept: list[T] = []
     for item in items:
-        if isinstance(item, Unreadable):
-            problems.append(Problem(where=item.where, reason=item.reason))
+        if isinstance(item, Problem):
+            problems.append(item)
         else:
             kept.append(item)
     return kept
