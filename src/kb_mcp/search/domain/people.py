@@ -62,7 +62,9 @@ def written_key(name: str) -> str:
     diacritical marks of U+0300 to U+036F, as filters drop them, and casefolded again;
     its runs of white space made one space, trimmed; its annotation after one space,
     trimmed within its brackets, so that "Kim(late)" and "Kim ( late )" write one. A
-    kana's voicing mark, which makes another letter, stays.
+    kana's voicing mark, which makes another letter, stays. The filters fold a value
+    otherwise (``mcp.app.tools.canonical``): composed before they casefold it, its
+    brackets as written, since a value is no name.
     """
     decomposed = unicodedata.normalize("NFKD", name.casefold())
     plain = "".join(char for char in decomposed if not "\u0300" <= char <= "\u036f").casefold()

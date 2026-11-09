@@ -485,11 +485,12 @@ def canonical(reader: SearchReader, name: str, value: str | None) -> str | None:
 
     Values compare as hits show them, their spaces collapsed, composed and casefolded,
     then decomposed without the combining diacritical marks of U+0300 to U+036F and
-    casefolded again: a Hangul syllable keeps its letters, a kana its voicing mark. One
-    value alone matching is taken; else the value given, then one that a hit shows
-    alike, the most used first. Refuse a value that no document has, or that several
-    have but for accents alone, listing the valid ones: those holding it first, the
-    most used first.
+    casefolded again: a Hangul syllable keeps its letters, a kana its voicing mark; its
+    brackets stay as written, where a name's key writes an annotation alike
+    (``people.written_key``). One value alone matching is taken; else the value given,
+    then one that a hit shows alike, the most used first. Refuse a value that no
+    document has, or that several have but for accents alone, listing the valid ones:
+    those holding it first, the most used first.
     """
     if value is None:
         return None
