@@ -65,8 +65,9 @@ names given choose among those that a command can take
 [sources](sources.md#three-stages-not-a-bundle) says why a source is put together so.
 
 - **Writes** what each stage writes, as the sections below say.
-- **One row's failure** stops no other: each role reads what is on disk, and the next
-  command reads what the last one left, so that the work log is mirrored while the site asks
+- **One row's failure** stops no other: each fetcher or preparer reads what is on disk, and
+  the next command reads what the last one left, so that the work log is prepared while the
+  site asks
   to sign in again. What can be refused is refused before the first row: a space or
   project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),

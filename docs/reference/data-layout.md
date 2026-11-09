@@ -301,7 +301,7 @@ nothing in them depends on when they were prepared.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
 - `_tree.md`: one nested list item per page and folder of the listings, linking the
-  mirrored file, or naming the page as "not yet mirrored" when its body was not
+  page's file, or naming the page as "not yet mirrored" when its body was not
   downloaded.
 
 Each document starts with front matter written by `mirror.adapters.markdown.dump` and
@@ -335,7 +335,7 @@ order or type, by name.
 | `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
-| `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
+| `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
 | `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
@@ -347,7 +347,7 @@ markup, maps it to `StoredSnapshot.blobs`. An image of another page's attachment
 include) has a file only when that page is stored; otherwise the mirror keeps a
 placeholder; a backfill that reaches the other page fills it.
 
-A Confluence document is mirrored in the space whose freshest listing (by `listed_at`)
+A Confluence document goes in the space whose freshest listing (by `listed_at`)
 names it, which after a move is not the space its snapshot names; the front matter, the
 tree and the path all take that space. A document with a confirmed tombstone is left
 out, unless a listing taken after its first answer of gone names it again. The files of

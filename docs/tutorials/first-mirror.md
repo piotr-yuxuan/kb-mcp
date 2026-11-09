@@ -2,7 +2,7 @@
 
 In this tutorial we mirror one Confluence space on your machine, build its search index,
 and ask Claude Code a question that it answers from the mirror, citing the page and the
-date it was mirrored. Follow the steps in order: each shows what you should see. Where
+date it was fetched. Follow the steps in order: each shows what you should see. Where
 your output shows other numbers, dates or paths, that is your site, not a fault.
 
 ## What you need

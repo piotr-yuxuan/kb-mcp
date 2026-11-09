@@ -384,7 +384,7 @@ class Settings(BaseSettings):
 
     @property
     def conversions(self) -> Path:
-        """Pandoc's conversions so far, by their input, kept across mirrors."""
+        """Pandoc's conversions so far, by their input, kept across prepares."""
         return self.data_dir / "conversions.sqlite"
 
     @property

@@ -2,7 +2,7 @@
 
 The work log's declaration names this module, a ``Preparer``: ``preflight`` refuses a
 work log that is not a folder before any source starts, and ``prepare`` finds pandoc,
-then mirrors the folder, or in a dry run counts what mirroring it would do, and says the
+then prepares the folder, or in a dry run counts what preparing it would do, and says the
 problems, as the work log's events do.
 """
 

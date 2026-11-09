@@ -290,7 +290,7 @@ Create `tests/test_notes_source.py`, its expectations from what a source must do
 notes here are invented; so are any other fixture's, or come from the sandbox:
 
 ```python
-"""The notes: a folder's text files, mirrored, found, and gone with their file."""
+"""The notes: a folder's text files, prepared, found, and gone with their file."""
 
 from __future__ import annotations
 

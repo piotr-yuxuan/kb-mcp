@@ -1,6 +1,6 @@
 # Mirror the work log
 
-Your work log, a folder of org files, is mirrored as Markdown beside Confluence and Jira,
+Your work log, a folder of org files, is written as Markdown beside Confluence and Jira,
 under `<data>/docs/worklog/`, indexed with them, and served to agents. It is read in
 place, never written, and never through git: its folder may be a git repository or
 under a synchronised folder, as the data directory may not be.
@@ -43,7 +43,7 @@ kb-mcp check
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`
 and `DONE` are known, and another keyword stays in the title. `COMMENT` and `noexport`
-subtrees are mirrored too: they are your notes.
+subtrees are prepared too: they are your notes.
 
 ### The journal: days and meetings
 
@@ -233,7 +233,7 @@ Its first run embeds the whole mirror.
   leaves search; until `embed`, an edited document is found by its words alone. Each
   piece's vector is kept in `<data>/vectors.sqlite` by its model and its text, so
   `embed` embeds again only the pieces whose text changed, then prunes the vectors of
-  text no longer mirrored, unless an evaluation's index reads them.
+  text no longer in the mirror, unless an evaluation's index reads them.
 
 ## 6. Search it
 

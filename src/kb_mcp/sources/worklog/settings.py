@@ -26,6 +26,6 @@ class WorklogTable(BaseModel):
         default=True,
         description=(
             "Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the"
-            " subtrees tagged ARCHIVE are mirrored too."
+            " subtrees tagged ARCHIVE are prepared too."
         ),
     )

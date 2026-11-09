@@ -141,7 +141,7 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
 
 
 def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
-    """Resolve a golden file's ref to a mirrored path, or refuse it, naming ``where`` it is."""
+    """Resolve a golden file's ref to a path of the mirror, or refuse it, naming ``where`` it is."""
     path = resolve(ref)
     if path is None:
         message = f"{where}: {ref!r} is not mirrored"

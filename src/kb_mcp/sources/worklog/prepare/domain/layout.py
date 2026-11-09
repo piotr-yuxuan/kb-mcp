@@ -20,7 +20,7 @@ WORKLOG_OWNED = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
 
 
 def worklog_path(document_type: str, identifier: str, title: str) -> PurePosixPath:
-    """Return where a document of the work log, of this type, id and title, is mirrored.
+    """Return where a document of the work log, of this type, id and title, goes in the mirror.
 
     An entry's or a transcript's file is its id and its title's slug; a day's or a
     meeting's, its id alone.

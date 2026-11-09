@@ -319,7 +319,7 @@ document's file:
   is a small [`Construct`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py),
   such as a [`Macro`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py) or a
   [`HtmlLink`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), whose links to
-  mirrored documents become relative; markup that no construct knows stays, as a
+  documents of the mirror become relative; markup that no construct knows stays, as a
   placeholder that names it.
 - [`document_html`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py) lays
   out the title, the body and the attachments (and an issue's comments).

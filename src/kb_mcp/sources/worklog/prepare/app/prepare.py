@@ -92,7 +92,7 @@ class Read(Record):
 
 
 class WorklogPrepareOutcome(Record):
-    """What a run did: documents mirrored, files changed, HTML transcripts left out.
+    """What a run did: documents prepared, files changed, HTML transcripts left out.
 
     Problems stop removals but of a written document's old files; warnings, such as two
     transcripts of one id, do not.
@@ -367,7 +367,7 @@ def prepare_worklog(
 def plan_worklog(
     folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
 ) -> WorklogDryRun:
-    """Say what mirroring the work log would do, converting and writing nothing.
+    """Say what preparing the work log would do, converting and writing nothing.
 
     A document is to convert when no file holds its revision; a file is to remove when no
     document read has its path, unless a problem was found, as a run would then keep it,

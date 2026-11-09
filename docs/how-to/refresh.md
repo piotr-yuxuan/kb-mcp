@@ -104,7 +104,7 @@ source not taken, such as `--project` with `fetch confluence`, is said not appli
 Confluence's pages are rewritten only when Jira is prepared, and what they attach stays
 until then. `index` digests the whole mirror, and reads each file that changed, whichever
 source wrote it: `prepare worklog`, then `index`, refreshes the work log alone, and search
-still finds every page and issue mirrored.
+still finds every page and issue of the mirror.
 
 ## 4. Search by words alone
 

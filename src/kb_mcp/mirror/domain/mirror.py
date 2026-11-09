@@ -99,7 +99,7 @@ class Link(Record):
 
 
 class FrontMatter(Record):
-    """The front matter of one mirrored document, its fields in the order they are written.
+    """The front matter of one document of the mirror, its fields in the order they are written.
 
     Every text is one line, so that the front matter stays a simple YAML mapping. A key
     that does not apply to a source (``key`` for Confluence, ``space`` for Jira) is None.

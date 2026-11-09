@@ -297,7 +297,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   what answered as gone is Confluence's: a fetch of projects neither reads nor rewrites
   it, so that one damaged stops no run without Confluence.
 - **Each placing both.** A page links an issue, and an issue a page, through one map of
-  mirrored documents
+  the mirror's documents
   ([`LinkTargets.documents`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)),
   and both attach files in `docs/assets/`. So each prepare reads the whole raw store and
   places every document, and converts only its own kinds

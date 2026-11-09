@@ -99,7 +99,7 @@ TRACER = trace.get_tracer(__name__)
 
 
 class AtlassianPrepareOutcome(Record):
-    """What a run did: documents mirrored, conversions, files changed, placeholders, problems.
+    """What a run did: documents prepared, conversions, files changed, placeholders, problems.
 
     ``converted`` counts the conversions pandoc ran, ``reused`` those the cache gave: a
     document's file and a space's tree are one each. ``problems`` are the source's own;
@@ -140,7 +140,7 @@ class AtlassianPrepareOutcome(Record):
 
 
 class Placed(Record):
-    """A stored snapshot, and the file where its document is mirrored."""
+    """A stored snapshot, and its document's file in the mirror."""
 
     stored: StoredSnapshot
     path: PurePosixPath
@@ -220,7 +220,7 @@ def place(
     times: Mapping[str, datetime],
     problems: Mapping[str, list[Problem]],
 ) -> tuple[list[Placed], dict[PurePosixPath, PurePosixPath | None]]:
-    """Read the newest snapshot of every document, and say where each is mirrored.
+    """Read the newest snapshot of every document, and say where each goes in the mirror.
 
     A page or a blog post goes to the space whose freshest listing names it, before the
     one its snapshot names, everywhere the mirror uses its space; one whose space is not
@@ -406,7 +406,7 @@ def prepare_atlassian(
         spaces = catalogue.spaces.values() if Page in document_classes else ()
         for space in spaces:
             tree = tree_path(space.key)
-            # Only the files built: a page whose file failed is not yet mirrored.
+            # Only the files built: a page whose file failed has no file yet.
             links = {
                 each.document.id: posixpath.relpath(each.path, tree.parent)
                 for each in placed

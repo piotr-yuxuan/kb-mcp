@@ -1,4 +1,4 @@
-"""Pandoc's conversions so far, kept across mirrors by their input, in one SQLite file.
+"""Pandoc's conversions so far, kept across prepares by their input, in one SQLite file.
 
 A conversion is a row of the source whose prepare asked for it, keyed there by the
 SHA-256 of the UTF-8 bytes of its converter's name, a NUL, then the HTML converted. With

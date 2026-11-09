@@ -470,7 +470,7 @@ class Image(Construct):
 
 
 class HtmlLink(Construct):
-    """A link: relative when it leads to a mirrored document, else as readers follow it."""
+    """A link: relative when it leads to a document of the mirror, else as readers follow it."""
 
     @override
     def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
@@ -583,7 +583,7 @@ def normalise(html: str, context: RenderContext) -> str:
     rest of the invisible ones go once parsed, entities included. The body is parsed as a
     document's, so that lxml never sets a text it has not cleaned. Raises
     ``MarkupError`` for a body the parser cannot read whole, such as one nested deeper
-    than its limit, rather than mirroring part of it.
+    than its limit, rather than writing part of it.
     """
     parser = HTMLParser(huge_tree=True)
     try:

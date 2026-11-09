@@ -2,7 +2,7 @@
 
 A snapshot holds one document and its comments; the listings of its space give its
 place in the tree, its fresher status and the names of the folders above it, and the
-users give its people's names. The front matter of a mirrored document is built here
+users give its people's names. The front matter of a document of the mirror is built here
 from all of them, as the table of ``docs/reference/data-layout.md`` says.
 """
 
@@ -134,8 +134,8 @@ class Catalogue(Record):
         """Lay out a space's tree as plain HTML: its pages and folders as a nested list.
 
         Siblings come by title, then id; a node whose parent is not listed is at the top.
-        A page links its mirrored file, which ``links`` gives by page id, or says it is
-        not yet mirrored; a folder is its title alone. A node on a loop is under no root,
+        A page links its file in the mirror, which ``links`` gives by page id, or says
+        "not yet mirrored"; a folder is its title alone. A node on a loop is under no root,
         so it is left out.
         """
         pages = [

@@ -31,7 +31,7 @@ NONE = "<p>None.</p>"
 
 
 def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
-    """Return where a page or a blog post of the space with this key is mirrored."""
+    """Return where a page or a blog post of the space with this key goes in the mirror."""
     name = "-".join(part for part in (document.id, slug(document.title)) if part)
     folder = PurePosixPath(CONFLUENCE, space)
     if isinstance(document, BlogPost):
@@ -40,7 +40,7 @@ def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
 
 
 def issue_path(issue: Issue) -> PurePosixPath:
-    """Return where an issue is mirrored."""
+    """Return where an issue goes in the mirror."""
     return PurePosixPath(JIRA, issue.project, f"{issue.key}.md")
 
 
@@ -50,7 +50,7 @@ def tree_path(space: str) -> PurePosixPath:
 
 
 def asset_path(digest: str, filename: str) -> PurePosixPath:
-    """Return where an attached file is mirrored: its digest and its name's extension."""
+    """Return where an attached file goes in the mirror: its digest and its name's extension."""
     extension = PurePosixPath(filename).suffix.removeprefix(".").lower()
     if EXTENSION.fullmatch(extension):
         return PurePosixPath(ASSETS, f"{digest}.{extension}")

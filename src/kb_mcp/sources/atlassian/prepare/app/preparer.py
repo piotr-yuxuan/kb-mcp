@@ -2,9 +2,9 @@
 
 Both declarations name this module, a ``Preparer``: ``prepare`` reads from the
 declaration of the source that a run is for the kinds that it converts, and the source
-whose rows of the cache of conversions it reads, finds pandoc, then mirrors those kinds
-alone; a dry run leaves the mirror as it is, and says that it counts nothing.
-``prepare_classes`` mirrors and says what it could not.
+whose rows of the cache of conversions it reads, finds pandoc, then writes the documents
+of those classes alone; a dry run leaves the mirror as it is, and says that it counts
+nothing. ``prepare_classes`` writes them and says what it could not.
 """
 
 from __future__ import annotations
@@ -117,14 +117,14 @@ def prepare_classes(
     with conversions.opened(
         settings.conversions, pandoc.html_converter, pandoc.markdown, source=source
     ) as cache:
-        mirrored = prepare_atlassian(
+        outcome = prepare_atlassian(
             RawStore(settings.raw), settings.docs, site, cache, document_classes
         )
-    for name, problems in {source: mirrored.problems, **mirrored.elsewhere}.items():
+    for name, problems in {source: outcome.problems, **outcome.elsewhere}.items():
         for problem in problems:
             log.warning(
                 "prepare.not_mirrored", source=name, where=problem.where, reason=problem.reason
             )
-    if mirrored.problems:
-        log.warning("prepare.nothing_removed", source=source, problems=len(mirrored.problems))
-    return AtlassianPrepared(outcome="failed" if mirrored.problems else "done", mirrored=mirrored)
+    if outcome.problems:
+        log.warning("prepare.nothing_removed", source=source, problems=len(outcome.problems))
+    return AtlassianPrepared(outcome="failed" if outcome.problems else "done", mirrored=outcome)
