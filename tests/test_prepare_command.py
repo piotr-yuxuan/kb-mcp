@@ -228,7 +228,7 @@ CONVERSIONS = 3
 def test_the_command_mirrors_both_of_confluence_s_kinds(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A blog post is Confluence's as a page is: mirrored, and counted under its row."""
+    """A blog post is Confluence's as a page is: prepared, and counted under its row."""
     store = RawStore(home / "data" / "raw")
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), LISTED[:1], [POST_LISTED], [])
