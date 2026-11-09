@@ -10,7 +10,7 @@ from pydantic import ConfigDict, ValidationError, model_validator
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
-from kb_mcp.search.domain.search import Pieces
+from kb_mcp.search.domain.search import ChunkVectors
 
 # A value that no message may hold.
 UNSHOWN = "a-value-never-shown"
@@ -101,8 +101,8 @@ def test_a_refusal_among_other_errors_stays_pydantic_s_error() -> None:
     assert UNSHOWN not in str(caught.value)
 
 
-def test_pieces_compare_by_identity() -> None:
-    """Two indexes' pieces are never equal: an array has no truth value to compare by."""
+def test_chunks_compare_by_identity() -> None:
+    """Two indexes' chunks are never equal: an array has no truth value to compare by."""
     matrix = np.zeros((1, 2), dtype=np.float32)
     fields = {
         "documents": (1,),
@@ -112,7 +112,7 @@ def test_pieces_compare_by_identity() -> None:
         "offsets": (0,),
         "ends": (4,),
     }
-    first, second = Pieces(**fields, matrix=matrix), Pieces(**fields, matrix=matrix)
+    first, second = ChunkVectors(**fields, matrix=matrix), ChunkVectors(**fields, matrix=matrix)
     assert first != second
-    by_pieces = {first: "first", second: "second"}
-    assert (by_pieces[first], by_pieces[second]) == ("first", "second")
+    by_chunks = {first: "first", second: "second"}
+    assert (by_chunks[first], by_chunks[second]) == ("first", "second")

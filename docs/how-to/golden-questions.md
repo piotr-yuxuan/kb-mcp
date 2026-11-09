@@ -32,7 +32,7 @@ what `<data>/vectors.sqlite` lacks, and measures every mode on each:
 - `ask`'s first answer: Found@ask, the share of the expected documents among its
   passages, and Evidence@ask, the share whose evidence their passage holds. Its budget
   is fixed, so this is evidence per token handed over;
-- each index's costs: its pieces, the characters of the texts that it embeds and their
+- each index's costs: its chunks, the characters of the texts that it embeds and their
   tokens at four characters each, the texts embedded in this run, the seconds it took,
   the tokens that the endpoint reported, its bytes, and the times of `search` and
   `ask`.

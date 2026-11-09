@@ -104,7 +104,7 @@ is about 0.07 to 0.12 (see *Power*, below), while the candidates differ on the
 leaderboard by a few points over thousands of queries. A home-made comparison would
 mostly measure noise, cost a download and a cold embedding per candidate, and tune the
 choice to questions that we wrote ourselves. Our own runs serve another purpose: to
-check that the chosen model works in our pipeline (prompts, pieces, fusion) and to
+check that the chosen model works in our pipeline (prompts, chunks, fusion) and to
 choose the way of searching.
 
 ## Measuring on our own corpus
@@ -298,13 +298,13 @@ Two small models, run in process with onnxruntime on this laptop (x86_64, 16 thr
 
 Hybrid beat lexical with both models (adjusted p = 0.015 and 0.025) and lost nothing
 on identifier and keyword questions: hybrid became the default. The cold embedding of
-6,729 pieces took 142 and 161 seconds. The full tables per group are in
+6,729 chunks took 142 and 161 seconds. The full tables per group are in
 `docs/work/changelog/011-search-strategies.md`.
 
 ### Plan 018: Qwen3 through Ollama
 
 The same 105 questions and the same mirror (1,474 documents, 7,344 sections, 6,729
-pieces), with `qwen3-embedding:0.6b` through Ollama 0.40.3 on the same laptop, on its
+chunks), with `qwen3-embedding:0.6b` through Ollama 0.40.3 on the same laptop, on its
 CPU (Ollama does not use its integrated GPU):
 
 | Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Query, median | Query, 95th |
@@ -416,10 +416,10 @@ the ranks.
   public benchmarks are none of these. Neither result overrides the other: they answer
   different questions, with different power.
 - **Times are this laptop's.** Ollama ran on its CPU. The cold embedding of the 6,729
-  pieces took 1,516 seconds (4.4 pieces a second, about 75 minutes for 20,000 pieces,
+  chunks took 1,516 seconds (4.4 chunks a second, about 75 minutes for 20,000 chunks,
   past the gate of 30 minutes); plan 011's in-process int8 Qwen3 took 892 seconds on the
   same machine. An laptop GPU should be faster, by an estimate of 15 to 45
-  minutes for 20,000 pieces; nothing measured it yet. Later builds embed only what
+  minutes for 20,000 chunks; nothing measured it yet. Later builds embed only what
   changed. A hybrid query, which embeds the question, took 266 ms at the 95th
   percentile over `windows` on this CPU; a GPU's time is for the next run to say.
 - **The work set decides.** Everything here rests on one invented corpus and the
@@ -515,7 +515,7 @@ plan 019's rule kept:
 uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
 ```
 
-The first run embeds each chunking's pieces that the vector store lacks, which took 31
+The first run embeds each chunking's chunks that the vector store lacks, which took 31
 minutes for `sections` on this laptop's CPU; a later run embeds only what changed, and
 the sandbox run of all four chunkings took 6 minutes once every vector was kept.
 

@@ -11,7 +11,7 @@ and vectors in one use, hence ``SearchIndex``, the two interfaces together, whos
 reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
 mirror; ``Held`` what it holds of them, ``Change`` what an update changes, all of it or
 none, and ``Updated`` what that did. ``IndexedBody`` is a document as the index holds it,
-and ``Piece`` a piece of one that a vector stands for.
+and ``Chunk`` a chunk of one that a vector stands for.
 """
 
 from __future__ import annotations
@@ -82,8 +82,8 @@ class IndexedBody(Record):
     body: str
 
 
-class Piece(Record):
-    """A piece of a document that a vector stands for, as ``search.domain.chunking`` cuts it."""
+class Chunk(Record):
+    """A chunk of a document that a vector stands for, as ``search.domain.chunking`` cuts it."""
 
     path: str  # the document's
     number: int  # the section holding its middle, numbered from 1
@@ -126,7 +126,7 @@ class Updated(Record):
     of its path, or ``removed``; each other put is ``added``. ``skipped`` gives every
     file that the index lacks, a put whose source and id an earlier file by path holds
     among them, and a copied document so pushed out. ``awaiting`` counts the documents
-    that want a piece by the index's chunking and hold none, of an index that names a
+    that want a chunk by the index's chunking and hold none, of an index that names a
     model, else None.
     """
 
@@ -247,16 +247,16 @@ class WordsReader(Protocol):
 
 
 class VectorReader(Protocol):
-    """One use's reads of the pieces and their vectors: what search by meaning asks."""
+    """One use's reads of the chunks and their vectors: what search by meaning asks."""
 
     def embedded(self) -> Embedded | None:
         """Name the model of the index's vectors, or None when it has no model."""
 
-    def pieces(self) -> list[Piece]:
-        """Give every piece that has its vector, by path, section number and start."""
+    def chunks(self) -> list[Chunk]:
+        """Give every chunk that has its vector, by path, section number and start."""
 
     def keys(self) -> set[str]:
-        """Give the vector store's keys of the pieces' vectors: what the index reads of it.
+        """Give the vector store's keys of the chunks' vectors: what the index reads of it.
 
         Raises UnavailableIndexError for an index that cannot say which vectors it reads,
         such as one with no model: a prune must then keep them all.
@@ -267,9 +267,9 @@ class VectorReader(Protocol):
     ) -> dict[str, tuple[Score, int, int, int]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
-        A document is as near as its best piece, of pieces tied the first by section
-        number and start. Each path comes with its score, the cosine of that piece, then
-        the piece's section number, and its start and end in the body. Ties go to the
+        A document is as near as its best chunk, of chunks tied the first by section
+        number and start. Each path comes with its score, the cosine of that chunk, then
+        the chunk's section number, and its start and end in the body. Ties go to the
         newest update, then the path, before the cut.
         """
 
@@ -292,7 +292,7 @@ class WordsIndex(Protocol):
         """Change the index, all of it or none; give what it did, or None if it changed meanwhile.
 
         Unless the change is whole, the index must still be the build ``expected_build``
-        read. A document replaced or removed takes its pieces with it; each copied keeps
+        read. A document replaced or removed takes its chunks with it; each copied keeps
         its own. Of two documents of one source and id, the first by the parts of its
         path is held, and the other skipped. Raises DamagedIndexError when a table of the
         index in place cannot be read, and TimeoutError when another run's change holds
@@ -301,7 +301,7 @@ class WordsIndex(Protocol):
 
 
 class VectorIndex(Protocol):
-    """The pieces of the words index's documents, by their vectors."""
+    """The chunks of the words index's documents, by their vectors."""
 
     def reading(self) -> AbstractContextManager[VectorReader]:
         """Open one use, and give its reader.
@@ -314,13 +314,13 @@ class VectorIndex(Protocol):
         self,
         expected_build: str,
         model: Embedded,
-        add: Mapping[Piece, NDArray[np.float32]],
-        remove: Collection[Piece],
+        add: Mapping[Chunk, NDArray[np.float32]],
+        remove: Collection[Chunk],
     ) -> str | None:
-        """Add pieces with their vectors and remove others, all or none, naming the model.
+        """Add chunks with their vectors and remove others, all or none, naming the model.
 
         Give the new build, or None when the index is no longer the build
-        ``expected_build`` read. Each piece names its section by its document's path and
+        ``expected_build`` read. Each chunk names its section by its document's path and
         number; one that names none is a defect, and raises ValueError. Raises
         DamagedIndexError and TimeoutError as ``WordsIndex.update`` does.
         """

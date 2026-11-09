@@ -149,7 +149,7 @@ Lists the documents of a space or a project in tree order, or those under a pare
 ### status
 
 Says what the mirror holds, when its index was built, and whether it searches by
-meaning: the model, the pieces, and the chunking that cut them. A line counts the
+meaning: the model, the chunks, and the chunking that cut them. A line counts the
 persons, those in more than one source and those by name alone, of no account, then
 names the keys that names of several accounts share, five at most, then how many more,
 each with the persons holding it, such as `people: 42, 12 in more than one source, 9 by

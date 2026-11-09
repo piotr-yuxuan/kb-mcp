@@ -1,7 +1,7 @@
 {
   "uid": "kb-mcp-embed",
   "title": "embed",
-  "description": "The embed runs in the time range: the pieces they added, removed and refused, the embeddings, and the prunes of the vector store.",
+  "description": "The embed runs in the time range: the chunks they added, removed and refused, the embeddings, and the prunes of the vector store.",
   "tags": [
     "kb-mcp"
   ],
@@ -211,7 +211,7 @@
         "h": 8
       },
       "type": "bargauge",
-      "title": "Pieces by outcome",
+      "title": "Chunks by outcome",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_index_pieces_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"embed\"}[$__range]))",
+          "expr": "sum by (kb_mcp_outcome) (last_over_time(kb_mcp_index_chunks_total{job=\"kb-mcp\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"embed\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{kb_mcp_outcome}}"

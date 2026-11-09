@@ -157,7 +157,7 @@ FIRST_DETAILED = (
 def test_by_words_alone_the_command_shows_documents_and_sections(
     data: Path, capsys: CaptureFixture[str], summary: str, shown: str
 ) -> None:
-    """Short gives the counts; detailed, the documents by type and the index too; no pieces."""
+    """Short gives the counts; detailed, the documents by type and the index too; no chunks."""
     write(data / "docs", page("196845", "Kafka"), BODY)
     config = data.parent / "config.toml"
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
@@ -566,7 +566,7 @@ def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data
 
 
 def test_people_are_not_embedded_so_a_rebuild_with_new_people_embeds_nothing(data: Path) -> None:
-    """A piece embeds its document's title, breadcrumb and text alone, never its people."""
+    """A chunk embeds its document's title, breadcrumb and text alone, never its people."""
     write(data / "docs", issue("PROJ-9", "Broker rebalance"))
     embedding = Embedding(tiny(), data / "v.db")
     first = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
@@ -1620,9 +1620,9 @@ def test_nothing_changed_writes_nothing_and_says_so(
 def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Criterion 3: 1 replaced; every other document's rows, rowids and pieces as they were.
+    """Criterion 3: 1 replaced; every other document's rows, rowids and chunks as they were.
 
-    The edited document has no pieces, awaiting vectors, and its new words find it; the
+    The edited document has no chunks, awaiting vectors, and its new words find it; the
     index stays in SQLite's rollback journal.
     """
     embedded(data)
@@ -1645,7 +1645,7 @@ def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
 def test_a_removed_file_leaves_no_row_and_full_text_search_whole(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Criterion 4: its document, labels, people, sections and pieces gone; FTS5 checks out.
+    """Criterion 4: its document, labels, people, sections and chunks gone; FTS5 checks out.
 
     A word that it alone held finds nothing, and its label is no value any more.
     """
@@ -1711,7 +1711,7 @@ def test_an_index_that_cannot_be_updated_is_rebuilt_whole_saying_why(
     """Criterion 7: without digests, at another schema, cut otherwise, or --rebuild: whole.
 
     ``index.whole`` says why, the summary too; nothing is copied; exit 0; the index then
-    holds every document with its digest, under this code's ``WORDS``, and no pieces.
+    holds every document with its digest, under this code's ``WORDS``, and no chunks.
     """
     embedded(data)
     if made is not None:

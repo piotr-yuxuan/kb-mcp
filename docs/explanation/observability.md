@@ -75,9 +75,9 @@ failures of earlier runs make longer. `serve` has no trace of its own, as a serv
 run for days: each message of its protocol is one.
 
 `embed` and `eval` stay one trace each, which grows with what they embed: a span
-`embeddings <model>` and its `POST` for each batch of 32 pieces, about 520 bytes of OTLP
+`embeddings <model>` and its `POST` for each batch of 32 chunks, about 520 bytes of OTLP
 a batch, measured, a retry adding a `POST`. Tempo's limit is so passed near 300,000
-pieces embedded in one run, some 50,000 documents at the sandbox's 5.5 pieces a
+chunks embedded in one run, some 50,000 documents at the sandbox's 5.5 chunks a
 document; a first index of 20,000 documents sends about 2 MB. Past the limit, the
 trace is lost or cut short: a trace per batch, linked to the run's, as for documents,
 would then be the remedy.

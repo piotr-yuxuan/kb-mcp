@@ -235,8 +235,8 @@ What reads a run's output follows:
   `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
   when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,
   why the index was rebuilt whole, if it was; its `model` and `pruned` are null. `embed`'s
-  result by meaning gives `index`, `model`, `pieces` and `documents`, those that the index
-  holds, `skipped`, the files that it lacks, `added` and `removed`, the pieces,
+  result by meaning gives `index`, `model`, `chunks` and `documents`, those that the index
+  holds, `skipped`, the files that it lacks, `added` and `removed`, the chunks,
   `embedded`, `found` and `refused`, `unchanged`, and `pruned`.
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,

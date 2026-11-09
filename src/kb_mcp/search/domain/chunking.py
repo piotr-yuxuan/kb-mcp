@@ -1,8 +1,8 @@
-"""How a document is cut into the pieces that vectors stand for, by each chunking.
+"""How a document is cut into the chunks that vectors stand for, by each chunking.
 
 ``CHUNKERS`` gives each chunking of ``kernel.chunking`` by its name: what it cuts a
-document into, as the index keeps each piece, and the span that ``ask`` returns for a
-piece found. A piece belongs to the section that holds its middle, and its span is
+document into, as the index keeps each chunk, and the span that ``ask`` returns for a
+chunk found. A chunk belongs to the section that holds its middle, and its span is
 relative to that section's body (its heading line aside): a window that crosses sections
 needs no other schema. ``sections``, 011's, is the control. Nothing here reads a file or
 the index.
@@ -26,19 +26,19 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.chunking import Chunking
 
-# Each piece of a document: the index in its sections of the one holding its middle, its
+# Each chunk of a document: the index in its sections of the one holding its middle, its
 # span relative to that section's body, and the text embedded.
 type Cut = list[tuple[int, int, int, str]]
-# The characters of a piece of a section that one vector stands for, at most: under the
+# The characters of a chunk of a section that one vector stands for, at most: under the
 # 512 tokens of the smaller models' window, with the title, in English and French.
-PIECE = 1200
+CHUNK = 1200
 BLANK_LINE = re.compile(r"\n[ \t]*\n")
 NOT_SPACE = re.compile(r"\S")
 # A backslash escape of Markdown, before any ASCII punctuation.
 ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
-# Characters of a document's title that each embedded piece begins with.
+# Characters of a document's title that each embedded chunk begins with.
 EMBEDDED_TITLE = 200
-# Characters of the breadcrumb, and of the heading path, that a piece is embedded with.
+# Characters of the breadcrumb, and of the heading path, that a chunk is embedded with.
 EMBEDDED_PATH = 200
 # A window: its length, how far each starts after the last one's start, and the end of
 # it where it may stop at a white space instead.
@@ -46,17 +46,17 @@ WINDOW = 300 * CHARACTERS_PER_TOKEN
 STEP = 240 * CHARACTERS_PER_TOKEN
 TENTH = WINDOW // 10
 WHITE_SPACE = re.compile(r"\s")
-# A piece of small-to-big, at most, and the unit returned for it, at most.
+# A chunk of small-to-big, at most, and the unit returned for it, at most.
 SMALL = 128 * CHARACTERS_PER_TOKEN
 PASSAGE_CHARS = 2400
 
 
-def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
-    """Cut a section's text into pieces of at most ``limit`` characters, as spans.
+def chunks(text: str, limit: int = CHUNK) -> list[tuple[int, int]]:
+    """Cut a section's text into chunks of at most ``limit`` characters, as spans.
 
-    A piece ends at the last blank line that fits; a paragraph longer than the limit is
+    A chunk ends at the last blank line that fits; a paragraph longer than the limit is
     cut at its last line break that fits, else its last space, else at the limit. A
-    piece starts at its first character that is not white space, so none is blank.
+    chunk starts at its first character that is not white space, so none is blank.
     """
     breaks = [found.end() for found in BLANK_LINE.finditer(text)]
     spans: list[tuple[int, int]] = []
@@ -68,7 +68,7 @@ def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
             # The last blank line that fits, found by halves: a long section stays linear.
             at = bisect.bisect_right(breaks, end) - 1
             fitting = breaks[at] if at >= 0 else 0
-            # A line break or space just past the limit ends a piece that fits it exactly.
+            # A line break or space just past the limit ends a chunk that fits it exactly.
             line, space = (text.rfind(each, start + 1, end + 1) for each in ("\n", " "))
             cuts = (fitting, line, space) if fitting > start else (line, space)
             end = next((cut for cut in cuts if cut > start), end)
@@ -77,20 +77,20 @@ def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
     return spans
 
 
-def section_pieces(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
-    """Give the text to embed for each piece of a document's sections.
+def section_chunks(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
+    """Give the text to embed for each chunk of a document's sections.
 
-    Each is the section's index in ``cut``, the piece's span in the section's body (its
+    Each is the section's index in ``cut``, the chunk's span in the section's body (its
     heading line aside), and the text: the title (cut to EMBEDDED_TITLE characters), the
-    section's heading when it is not the title, and the piece, one per line. A section
-    without a body has no piece.
+    section's heading when it is not the title, and the chunk, one per line. A section
+    without a body has no chunk.
     """
     found: list[tuple[int, int, int, str]] = []
     for index, section in enumerate(cut):
         heading = section.heading if section.heading != title else ""
         found += [
             (index, start, end, "\n".join(line for line in lines if line))
-            for start, end in pieces(section.body)
+            for start, end in chunks(section.body)
             for lines in [(title[:EMBEDDED_TITLE], heading, section.body[start:end].strip())]
         ]
     return found
@@ -131,12 +131,12 @@ def windows(front: FrontMatter, cut: Sequence[Section]) -> Cut:
     return found
 
 
-def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE) -> Cut:
-    """Give each piece of a document's sections, embedded with where the piece sits.
+def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = CHUNK) -> Cut:
+    """Give each chunk of a document's sections, embedded with where the chunk sits.
 
-    Pieces are cut as ``pieces`` cuts them, of at most ``limit`` characters. The text is
+    ChunkVectors are cut as ``chunks`` cuts them, of at most ``limit`` characters. The text is
     the title, the breadcrumb joined by " / ", the section's heading path, each cut to
-    EMBEDDED_TITLE or EMBEDDED_PATH characters, and the piece, one per line; an empty
+    EMBEDDED_TITLE or EMBEDDED_PATH characters, and the chunk, one per line; an empty
     line is left out. A section's heading path joins by " > " its heading and those it
     sits under: the nearest heading before it with fewer #, that one's own, and so on.
     The title, which the mirror writes first as a heading of level 1, escaped as
@@ -160,39 +160,39 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
         context = (front.title[:EMBEDDED_TITLE], place, path[:EMBEDDED_PATH])
         found += [
             (index, start, end, "\n".join(line for line in lines if line))
-            for start, end in pieces(section.body, limit)
+            for start, end in chunks(section.body, limit)
             for lines in [(*context, section.body[start:end].strip())]
         ]
     return found
 
 
 def around(
-    piece: tuple[int, int], section: tuple[int, int], size: int = PASSAGE_CHARS
+    chunk: tuple[int, int], section: tuple[int, int], size: int = PASSAGE_CHARS
 ) -> tuple[int, int]:
-    """Give a piece's section whole when it fits ``size`` characters, else ``size`` about it.
+    """Give a chunk's section whole when it fits ``size`` characters, else ``size`` about it.
 
-    The ``size`` characters are centred on the piece's middle, then moved to stay within
+    The ``size`` characters are centred on the chunk's middle, then moved to stay within
     the section. Every span, given or returned, is in the document's body.
     """
     first, last = section
-    start = max(first, min((piece[0] + piece[1]) // 2 - size // 2, last - size))
+    start = max(first, min((chunk[0] + chunk[1]) // 2 - size // 2, last - size))
     return section if last - first <= size else (start, start + size)
 
 
 class Chunker(Record):
-    """A chunking: the pieces it cuts a document into, and the unit returned for one."""
+    """A chunking: the chunks it cuts a document into, and the unit returned for one."""
 
     cut: Callable[[FrontMatter, Sequence[Section]], Cut]
-    # From a piece's span and that of the section holding it, both in the body, the span
+    # From a chunk's span and that of the section holding it, both in the body, the span
     # that ``ask`` returns.
     quoted_span: Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]]
 
 
 CHUNKERS: Mapping[Chunking, Chunker] = {
     "sections": Chunker(
-        cut=lambda front, cut: section_pieces(front.title, cut), quoted_span=lambda piece, _: piece
+        cut=lambda front, cut: section_chunks(front.title, cut), quoted_span=lambda chunk, _: chunk
     ),
-    "windows": Chunker(cut=windows, quoted_span=lambda piece, _: piece),
-    "section-paths": Chunker(cut=section_paths, quoted_span=lambda piece, _: piece),
+    "windows": Chunker(cut=windows, quoted_span=lambda chunk, _: chunk),
+    "section-paths": Chunker(cut=section_paths, quoted_span=lambda chunk, _: chunk),
     "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), quoted_span=around),
 }

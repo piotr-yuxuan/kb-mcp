@@ -600,7 +600,7 @@ def command(
 def test_an_evaluation_index_without_keys_holds_the_prune_back(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Built before pieces recorded their keys: nothing deleted, the file named, exit 0."""
+    """Built before chunks recorded their keys: nothing deleted, the file named, exit 0."""
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
         connection.execute("ALTER TABLE chunks DROP COLUMN key")
@@ -759,7 +759,7 @@ def kept_whole(data: Path) -> str:
 
 
 def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
-    """A page of its pieces overwritten: the file is named, and nothing is deleted."""
+    """A page of its chunks overwritten: the file is named, and nothing is deleted."""
     pruned(refreshed(indexing(data)))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
@@ -948,7 +948,7 @@ def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: Mo
     assert "; space not reclaimed: disk is full\n" in embed_command.text(indexed, "detailed")
 
 
-def test_pieces_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path) -> None:
+def test_chunks_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path) -> None:
     """They have no vector to keep: the build is whole enough, and the prune runs."""
     path = write(data / "docs", page("196845", "Rollback"), BODY)
     refused = Scripted(refused={"Rollback\nRelease\nThe deploy of the seller service."})

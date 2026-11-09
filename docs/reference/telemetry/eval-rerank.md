@@ -14,7 +14,7 @@ of its own.
 | `eval.refused` | error | `reason` | The golden file is refused, by the field at fault: exit 2 |
 | `eval.not_evaluated` | error | `reason` | A model fails, the reranking server does not answer, or a search falls back, by words or not reranked, which would measure another arm: exit 1 |
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed for the model |
-| `index.built` | info | `documents`, `sections`, `skipped`, `pieces`, `embedded`, `people` | The model's index is complete, its people joined without aliases |
+| `index.built` | info | `documents`, `sections`, `skipped`, `chunks`, `embedded`, `people` | The model's index is complete, its people joined without aliases |
 | `rerank.request` | debug | `model`, `texts`, `characters`, `tokens` | A reranking: how many texts, how long in all, the tokens that the server counted; never their text |
 | `rerank.fallback` | warning | `kind`, `reason` | A reranking fails, of kind `unanswered`, `refused` or `bad_answer`: the search keeps its order, which stops the evaluation |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for a list of models: the embedding endpoint's, the reranking server's |
@@ -26,7 +26,7 @@ of its own.
 |---|---|---|---|
 | `index.files` | internal | | The mirror's files read and indexed by words |
 | `index.join` | internal | | The documents' people joined into persons, once the files are read |
-| `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
+| `index.embed` | internal | | The chunks by meaning: their vectors read from the vector store, or embedded |
 | `search.lexical` | internal | | A search by words |
 | `search.semantic` | internal | | A search by meaning |
 | `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type`, `gen_ai.usage.input_tokens` | An embedding by the GenAI conventions, its attempts included, and the tokens that the endpoint counted, if it did |
@@ -39,7 +39,7 @@ of its own.
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
 | `kb_mcp.index.files` | counter | `{file}` | `kb_mcp.outcome` | The mirror's files, `indexed` or `skipped` |
-| `kb_mcp.index.pieces` | counter | `{piece}` | `kb_mcp.outcome` | The pieces by meaning, `indexed` with a vector or `refused` one |
+| `kb_mcp.index.chunks` | counter | `{chunk}` | `kb_mcp.outcome` | The chunks by meaning, `indexed` with a vector or `refused` one |
 | `kb_mcp.rerank.fallbacks` | counter | `{fallback}` | `kb_mcp.rerank.fallback` | The searches not reranked, by the failure's kind |
 | `gen_ai.client.operation.duration` | histogram | `s` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type` | Each embedding and each reranking, its attempts and waits included, by the GenAI conventions |
 | `gen_ai.client.token.usage` | histogram | `{token}` | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `gen_ai.token.type` | The tokens that each answer of an embedding or a reranking counted, `input` by type, when the server counts them, by the GenAI conventions |

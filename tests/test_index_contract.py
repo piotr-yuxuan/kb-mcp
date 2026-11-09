@@ -24,8 +24,8 @@ from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
     Change,
+    Chunk,
     IndexedBody,
-    Piece,
     Put,
     SearchReader,
     Skipped,
@@ -55,8 +55,8 @@ NORTHISH_COSINE = 0.8
 EPSILON = 1e-6
 
 
-class FilledPiece(Record):
-    """A piece of a document to fill: its section's number, span, key and vector."""
+class FilledChunk(Record):
+    """A chunk of a document to fill: its section's number, span, key and vector."""
 
     number: int
     start: int  # in the section's body, after its heading line
@@ -66,11 +66,11 @@ class FilledPiece(Record):
 
 
 class FilledDocument(Record):
-    """A document to write, with its pieces, if any."""
+    """A document to write, with its chunks, if any."""
 
     front: FrontMatter
     body: str
-    pieces: tuple[FilledPiece, ...] = ()
+    chunks: tuple[FilledChunk, ...] = ()
 
 
 def digest(body: str) -> str:
@@ -106,10 +106,10 @@ def change(
     )
 
 
-def filled(documents: Sequence[FilledDocument]) -> dict[Piece, NDArray[np.float32]]:
-    """Give the documents' parts as a fill takes them: each piece, by path, with its vector."""
+def filled(documents: Sequence[FilledDocument]) -> dict[Chunk, NDArray[np.float32]]:
+    """Give the documents' parts as a fill takes them: each chunk, by path, with its vector."""
     return {
-        Piece(
+        Chunk(
             path=location(document.front),
             number=part.number,
             start=part.start,
@@ -117,14 +117,14 @@ def filled(documents: Sequence[FilledDocument]) -> dict[Piece, NDArray[np.float3
             vector_key=part.key,
         ): np.array(part.vector, dtype=np.float32)
         for document in documents
-        for part in document.pieces
+        for part in document.chunks
     }
 
 
 def sqlite(
     folder: Path, documents: Sequence[FilledDocument], embedded: Embedded | None = None
 ) -> SearchIndex:
-    """Write the documents into a new SQLite index by a whole update; then fill their pieces."""
+    """Write the documents into a new SQLite index by a whole update; then fill their chunks."""
     index = sqlite_index.SqliteIndex(folder / "index.sqlite")
     done = index.update(change(put=documents, whole=True), None)
     assert done is not None
@@ -142,11 +142,11 @@ def written(request: pytest.FixtureRequest, tmp_path: Path) -> Written:
     return functools.partial(BACKENDS[request.param], tmp_path)
 
 
-def piece_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> FilledPiece:
-    """Name the piece holding ``text``, by where the first section holding it has it."""
+def chunk_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> FilledChunk:
+    """Name the chunk holding ``text``, by where the first section holding it has it."""
     section = next(each for each in sections(body) if text in each.body)
     start = section.body.index(text)
-    return FilledPiece(
+    return FilledChunk(
         number=section.number, start=start, end=start + len(text), key=key, vector=vector
     )
 
@@ -284,7 +284,7 @@ def test_the_summary_says_what_the_index_holds(written: Written) -> None:
     assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
     assert summary.newest_fetch == MOMENT
     assert summary.people.count == 1  # one author of both
-    assert (summary.model, summary.pieces, summary.chunking) == (None, 0, None)
+    assert (summary.model, summary.chunks, summary.chunking) == (None, 0, None)
 
 
 ACCOUNT = "acct-0001"
@@ -322,16 +322,16 @@ OUTSIDE = issue(
     people=(PersonRole(role="commenter", name=BO, at=(COMMENTED - timedelta(days=1),)),),
 )
 ALIKE_BODY = "# Alike\n\nThe same words here.\n"
-SAME_PIECE = (piece_of(ALIKE_BODY, "same words", "k", NORTH),)
+SAME_CHUNK = (chunk_of(ALIKE_BODY, "same words", "k", NORTH),)
 ALIKE = tuple(
-    FilledDocument(front=front, body=ALIKE_BODY, pieces=SAME_PIECE) for front in (INSIDE, OUTSIDE)
+    FilledDocument(front=front, body=ALIKE_BODY, chunks=SAME_CHUNK) for front in (INSIDE, OUTSIDE)
 )
 # The one role that goes alone, on a meeting of the same words, by her name alone.
 MEETING = replace(
     worklog_document("meeting", "m-20261020-review", "Alike", (ADA,)),
     updated=MOMENT - timedelta(days=1),
 )
-ATTENDED = (*ALIKE, FilledDocument(front=MEETING, body=ALIKE_BODY, pieces=SAME_PIECE))
+ATTENDED = (*ALIKE, FilledDocument(front=MEETING, body=ALIKE_BODY, chunks=SAME_CHUNK))
 
 
 @pytest.mark.parametrize(
@@ -429,17 +429,17 @@ NEAR_BODY = (
 )
 
 
-def test_nearest_gives_a_document_its_best_piece(written: Written) -> None:
-    """Its score is that piece's cosine; its section and its span in the body say where."""
+def test_nearest_gives_a_document_its_best_chunk(written: Written) -> None:
+    """Its score is that chunk's cosine; its section and its span in the body say where."""
     compass = page("2001", "Compass")
-    pieces = (
-        piece_of(NEAR_BODY, "north text", "k-north", NORTH),
-        piece_of(NEAR_BODY, "east text", "k-east", EAST),
-        piece_of(NEAR_BODY, "more words", "k-more", NORTHISH),
-        piece_of(NEAR_BODY, "up text", "k-up", UP),
+    chunks = (
+        chunk_of(NEAR_BODY, "north text", "k-north", NORTH),
+        chunk_of(NEAR_BODY, "east text", "k-east", EAST),
+        chunk_of(NEAR_BODY, "more words", "k-more", NORTHISH),
+        chunk_of(NEAR_BODY, "up text", "k-up", UP),
     )
     path = location(compass)
-    index = written([FilledDocument(front=compass, body=NEAR_BODY, pieces=pieces)], EMBEDDED)
+    index = written([FilledDocument(front=compass, body=NEAR_BODY, chunks=chunks)], EMBEDDED)
     with index.reading() as reader:
         found = reader.nearest(query(EAST), Filters(), 10)
         assert list(found) == [path]
@@ -451,15 +451,15 @@ def test_nearest_gives_a_document_its_best_piece(written: Written) -> None:
         assert (number, reader.text(path, start, end)) == (3, "up text")
 
 
-def test_of_a_document_s_tied_pieces_the_first_in_its_body_is_its_best(written: Written) -> None:
-    """By section number, then start, whatever order the pieces were written in."""
+def test_of_a_document_s_tied_chunks_the_first_in_its_body_is_its_best(written: Written) -> None:
+    """By section number, then start, whatever order the chunks were written in."""
     compass = page("2001", "Compass")
-    pieces = tuple(
-        piece_of(NEAR_BODY, text, f"k-{text}", NORTH)
+    chunks = tuple(
+        chunk_of(NEAR_BODY, text, f"k-{text}", NORTH)
         for text in ("up text", "more words", "east text")
     )
     path = location(compass)
-    index = written([FilledDocument(front=compass, body=NEAR_BODY, pieces=pieces)], EMBEDDED)
+    index = written([FilledDocument(front=compass, body=NEAR_BODY, chunks=chunks)], EMBEDDED)
     with index.reading() as reader:
         _, number, start, end = reader.nearest(query(NORTH), Filters(), 10)[path]
         assert (number, reader.text(path, start, end)) == (2, "east text")
@@ -468,11 +468,11 @@ def test_of_a_document_s_tied_pieces_the_first_in_its_body_is_its_best(written: 
 def test_nearest_orders_documents_and_cuts_at_its_depth(
     written: Written,
 ) -> None:
-    """The nearest first, each as near as its best piece; the rest cut at the depth."""
+    """The nearest first, each as near as its best chunk; the rest cut at the depth."""
     fronts = [page("2001", "Near"), page("2002", "Less"), page("2003", "Far")]
     body = "# Same\n\nthe text\n"
     documents = [
-        FilledDocument(front=front, body=body, pieces=(piece_of(body, "the text", key, vector),))
+        FilledDocument(front=front, body=body, chunks=(chunk_of(body, "the text", key, vector),))
         for front, key, vector in zip(
             fronts, ("k1", "k2", "k3"), (NORTH, NORTHISH, EAST), strict=True
         )
@@ -494,7 +494,7 @@ def test_a_tie_by_meaning_goes_to_the_newest_then_the_path(
     same = page("2003", "Same")
     body = "# Tied\n\nthe text\n"
     documents = [
-        FilledDocument(front=front, body=body, pieces=(piece_of(body, "the text", "k", NORTH),))
+        FilledDocument(front=front, body=body, chunks=(chunk_of(body, "the text", "k", NORTH),))
         for front in (older, newer, same)
     ]
     with written(documents, EMBEDDED).reading() as reader:
@@ -503,27 +503,27 @@ def test_a_tie_by_meaning_goes_to_the_newest_then_the_path(
         assert list(reader.nearest(query(NORTH), Filters(), 1)) == [location(newer)]
 
 
-def test_nothing_is_near_in_an_index_without_pieces(written: Written) -> None:
-    """A model named and no piece: no document, no key, and the model still named."""
+def test_nothing_is_near_in_an_index_without_chunks(written: Written) -> None:
+    """A model named and no chunk: no document, no key, and the model still named."""
     with written(BOTH, EMBEDDED).reading() as reader:
         assert reader.embedded() == EMBEDDED
         assert reader.nearest(query(NORTH), Filters(), 10) == {}
         assert reader.keys() == set()
 
 
-def test_an_index_names_its_model_and_the_keys_of_its_pieces(
+def test_an_index_names_its_model_and_the_keys_of_its_chunks(
     written: Written,
 ) -> None:
-    """Each key once, whatever pieces share it; the summary counts them with the model."""
-    other = (piece_of(UPGRADE_BODY, "broker", "k-broker", EAST),)
+    """Each key once, whatever chunks share it; the summary counts them with the model."""
+    other = (chunk_of(UPGRADE_BODY, "broker", "k-broker", EAST),)
     index = written(
-        (*ALIKE, FilledDocument(front=UPGRADE, body=UPGRADE_BODY, pieces=other)), EMBEDDED
+        (*ALIKE, FilledDocument(front=UPGRADE, body=UPGRADE_BODY, chunks=other)), EMBEDDED
     )
     with index.reading() as reader:
         assert reader.embedded() == EMBEDDED
         assert reader.keys() == {"k", "k-broker"}
         summary = reader.index_status()
-    assert (summary.model, summary.pieces, summary.chunking) == (EMBEDDED.model, 3, "sections")
+    assert (summary.model, summary.chunks, summary.chunking) == (EMBEDDED.model, 3, "sections")
 
 
 def test_an_index_by_words_alone_names_no_model_and_no_keys(
@@ -685,11 +685,11 @@ def test_of_two_files_of_one_source_and_id_the_first_by_its_path_s_parts_is_held
         assert reader.held().documents.keys() == {nested.path, UPGRADE_PATH}
 
 
-def test_a_document_replaced_or_removed_takes_its_pieces_with_it(written: Written) -> None:
+def test_a_document_replaced_or_removed_takes_its_chunks_with_it(written: Written) -> None:
     """Search by meaning no longer finds it, nor names its keys; the other keeps its own."""
-    other = (piece_of(UPGRADE_BODY, "broker", "k-broker", EAST),)
+    other = (chunk_of(UPGRADE_BODY, "broker", "k-broker", EAST),)
     index = written(
-        (*ALIKE, FilledDocument(front=UPGRADE, body=UPGRADE_BODY, pieces=other)), EMBEDDED
+        (*ALIKE, FilledDocument(front=UPGRADE, body=UPGRADE_BODY, chunks=other)), EMBEDDED
     )
     replaced = FilledDocument(front=INSIDE, body="# Alike\n\nOther words now.\n")
     done = index.update(change(put=[replaced], removed=[location(OUTSIDE)]), build_of(index))
@@ -700,7 +700,7 @@ def test_a_document_replaced_or_removed_takes_its_pieces_with_it(written: Writte
         assert list(reader.nearest(query(NORTH), Filters(), 10)) == [UPGRADE_PATH]
         assert reader.keys() == {"k-broker"}
         summary = reader.index_status()
-    assert (summary.pieces, summary.awaiting) == (1, 1)
+    assert (summary.chunks, summary.awaiting) == (1, 1)
 
 
 SAM = "Sam Sample"
@@ -761,26 +761,26 @@ def test_documents_come_back_with_their_front_matter_and_body(written: Written) 
 
 COMPASS = page("2001", "Compass")
 COMPASS_PATH = location(COMPASS)
-NORTHERN = piece_of(NEAR_BODY, "north text", "k-north", NORTH)
-EASTERN = piece_of(NEAR_BODY, "east text", "k-east", EAST)
+NORTHERN = chunk_of(NEAR_BODY, "north text", "k-north", NORTH)
+EASTERN = chunk_of(NEAR_BODY, "east text", "k-east", EAST)
 
 
-def test_a_fill_adds_and_removes_pieces_and_names_the_model(written: Written) -> None:
-    """Search by meaning finds what it added, not what it removed; ``pieces`` and ``keys`` too.
+def test_a_fill_adds_and_removes_chunks_and_names_the_model(written: Written) -> None:
+    """Search by meaning finds what it added, not what it removed; ``chunks`` and ``keys`` too.
 
     A fill of a build no longer held gives None and changes nothing.
     """
     index = written([FilledDocument(front=COMPASS, body=NEAR_BODY)])
     build = build_of(index)
     north, east = filled(
-        [FilledDocument(front=COMPASS, body=NEAR_BODY, pieces=(NORTHERN, EASTERN))]
+        [FilledDocument(front=COMPASS, body=NEAR_BODY, chunks=(NORTHERN, EASTERN))]
     ).items()
     done = index.fill(build, EMBEDDED, dict([north, east]), ())
     assert done is not None
     assert done != build
     with index.reading() as reader:
         assert reader.embedded() == EMBEDDED
-        assert reader.pieces() == [north[0], east[0]]
+        assert reader.chunks() == [north[0], east[0]]
         assert reader.keys() == {"k-north", "k-east"}
         assert list(reader.nearest(query(EAST), Filters(), 10)) == [COMPASS_PATH]
     assert index.fill(build, EMBEDDED, {}, [north[0]]) is None
@@ -790,50 +790,50 @@ def test_a_fill_adds_and_removes_pieces_and_names_the_model(written: Written) ->
     with index.reading() as reader:
         assert reader.build() == after
         assert reader.embedded() == other
-        assert reader.pieces() == [east[0]]
+        assert reader.chunks() == [east[0]]
         assert reader.keys() == {"k-east"}
         _, number, start, end = reader.nearest(query(NORTH), Filters(), 10)[COMPASS_PATH]
         assert (number, reader.text(COMPASS_PATH, start, end)) == (2, "east text")
 
 
-def test_a_piece_that_names_no_section_is_refused(written: Written) -> None:
+def test_a_chunk_that_names_no_section_is_refused(written: Written) -> None:
     """A fill of a section that the document lacks raises, and leaves the index as it was."""
     index = written([FilledDocument(front=COMPASS, body=NEAR_BODY)])
     build = build_of(index)
-    stray = Piece(path=COMPASS_PATH, number=9, start=0, end=1, vector_key="k")
+    stray = Chunk(path=COMPASS_PATH, number=9, start=0, end=1, vector_key="k")
     with pytest.raises(ValueError, match="names a section"):
         index.fill(build, EMBEDDED, {stray: query(NORTH)}, ())
     with index.reading() as reader:
-        assert (reader.build(), reader.embedded(), reader.pieces()) == (build, None, [])
+        assert (reader.build(), reader.embedded(), reader.chunks()) == (build, None, [])
 
 
-def test_a_document_replaced_has_no_pieces_until_filled(written: Written) -> None:
-    """Its pieces go with it; filled again, they come back, the other's as they were."""
+def test_a_document_replaced_has_no_chunks_until_filled(written: Written) -> None:
+    """Its chunks go with it; filled again, they come back, the other's as they were."""
     parts = (NORTHERN,)
     index = written(
         [
-            FilledDocument(front=COMPASS, body=NEAR_BODY, pieces=parts),
+            FilledDocument(front=COMPASS, body=NEAR_BODY, chunks=parts),
             FilledDocument(
                 front=UPGRADE,
                 body=UPGRADE_BODY,
-                pieces=(piece_of(UPGRADE_BODY, "broker", "k-broker", EAST),),
+                chunks=(chunk_of(UPGRADE_BODY, "broker", "k-broker", EAST),),
             ),
         ],
         EMBEDDED,
     )
     with index.reading() as reader:
-        held = reader.pieces()
+        held = reader.chunks()
     done = index.update(
         change(put=[FilledDocument(front=COMPASS, body=NEAR_BODY)]), build_of(index)
     )
     assert done is not None
     with index.reading() as reader:
-        assert [piece.path for piece in reader.pieces()] == [UPGRADE_PATH]
+        assert [chunk.path for chunk in reader.chunks()] == [UPGRADE_PATH]
         assert reader.keys() == {"k-broker"}
-    again = filled([FilledDocument(front=COMPASS, body=NEAR_BODY, pieces=parts)])
+    again = filled([FilledDocument(front=COMPASS, body=NEAR_BODY, chunks=parts)])
     assert index.fill(done.build, EMBEDDED, again, ())
     with index.reading() as reader:
-        assert reader.pieces() == held
+        assert reader.chunks() == held
         assert reader.keys() == {"k-north", "k-broker"}
 
 
@@ -842,10 +842,10 @@ TITLED = page("3002", "Titled")
 
 
 @pytest.mark.parametrize(("chunking", "waiting"), [("sections", 1), ("windows", 2)])
-def test_a_document_that_wants_no_piece_never_awaits(
+def test_a_document_that_wants_no_chunk_never_awaits(
     written: Written, chunking: Chunking, waiting: int
 ) -> None:
-    """Of the documents with no piece, those that the chunking cuts some text from await.
+    """Of the documents with no chunk, those that the chunking cuts some text from await.
 
     White space alone gives none; a title alone, none cut by sections, one by windows.
     Filled, the runbook awaits no more.
@@ -859,7 +859,7 @@ def test_a_document_that_wants_no_piece_never_awaits(
     with index.reading() as reader:
         assert reader.index_status().awaiting == waiting
         build = reader.build()
-    parts = filled([replace(documents[2], pieces=(piece_of(RUNBOOK_BODY, "ledger", "k", NORTH),))])
+    parts = filled([replace(documents[2], chunks=(chunk_of(RUNBOOK_BODY, "ledger", "k", NORTH),))])
     done = index.fill(build, replace(EMBEDDED, chunking=chunking), parts, ())
     assert done is not None
     with index.reading() as reader:

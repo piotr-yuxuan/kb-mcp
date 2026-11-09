@@ -56,8 +56,8 @@ kb-mcp index && kb-mcp embed
 ```
 
 `index` brings the index of the mirror's words up to the mirror, reading only the files
-that changed; `embed` then gives the index's pieces their vectors. The first `embed`
-embeds every piece of the mirror and keeps the vectors in `<data>/vectors.sqlite`, so
+that changed; `embed` then gives the index's chunks their vectors. The first `embed`
+embeds every chunk of the mirror and keeps the vectors in `<data>/vectors.sqlite`, so
 later runs embed only the texts that changed, and write nothing when nothing did. A
 running server reads the new index from its next call on.
 
@@ -98,7 +98,7 @@ search_mode = "lexical"  # words alone, as earlier versions searched: no model
 ```
 
 ```toml
-chunking = "sections"  # hybrid search over the pieces of earlier versions
+chunking = "sections"  # hybrid search over the chunks of earlier versions
 ```
 
 ## Choose another model
@@ -112,7 +112,7 @@ quarter of the compute.
 model = "embeddinggemma:300m"
 ```
 
-Then pull it, check it and run `embed`, which embeds every piece again for the new
+Then pull it, check it and run `embed`, which embeds every chunk again for the new
 model. Any model the endpoint serves can be named. The prefixes of `qwen3-embedding`,
 `embeddinggemma`, `embeddinggemma-2`, `nomic-embed-text`, `nomic-embed-text-v2-moe` and
 `snowflake-arctic-embed2` are known; texts for any other model are embedded as they are.
@@ -132,7 +132,7 @@ If the server needs a key, put it in the environment variable
 `KB_MCP_EMBEDDING_API_KEY`; the settings file refuses it. Such a server
 lists no digest of its models as Ollama does, so the vectors follow the model's name
 alone: after changing the weights behind a name, delete `<data>/vectors.sqlite`, then
-run `index --rebuild` and `embed`, as the index keeps each piece, whose key the name
+run `index --rebuild` and `embed`, as the index keeps each chunk, whose key the name
 alone makes.
 
 ## Reach an endpoint off this machine
@@ -160,13 +160,13 @@ machine defeats the check: do not point `embedding_url` at one.
 
 ## Choose the chunking
 
-How an index cuts documents into the pieces it embeds is the setting `chunking`:
+How an index cuts documents into the chunks it embeds is the setting `chunking`:
 `windows` by default, overlapping windows of 300 tokens across each document's body, or
-`sections`, 011's pieces of each section, `section-paths` or `small-to-big`, which
+`sections`, 011's chunks of each section, `section-paths` or `small-to-big`, which
 [chunking](../explanation/chunking.md) compares.
 
 `windows` is the default by the user's choice: on the sandbox it ranked better
-than `sections`, with half the pieces, where plan 019's rule, set before the measures,
+than `sections`, with half the chunks, where plan 019's rule, set before the measures,
 kept `sections`
 ([the defaults](../explanation/chunking.md#the-defaults-the-users-choice)). An
 edit re-embeds more windows than sections, as later windows shift.
@@ -176,7 +176,7 @@ chunking = "sections"
 ```
 
 Run `embed` after changing it: a chunking cuts other texts, so the first build embeds
-every piece again. `search`, `ask` and `status` follow the index, whatever the setting
+every chunk again. `search`, `ask` and `status` follow the index, whatever the setting
 says.
 
 ## Search by words alone

@@ -68,7 +68,7 @@ type SearchMode = Literal["lexical", "semantic", "hybrid"]
 # beating words significantly and holding identifiers, but its 95th percentile query
 # time missed 200 ms. Plan 025: the user chose hybrid, ranking mattering more than speed.
 DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
-# How index cuts documents into the pieces it embeds. Plan 019's rule kept sections, as
+# How index cuts documents into the chunks it embeds. Plan 019's rule kept sections, as
 # no chunking beat them on the evidence quoted; windows ranked significantly better, and
 # by plan 025 the user chose them.
 DEFAULT_CHUNKING: Chunking = "windows"
@@ -296,7 +296,7 @@ class Settings(BaseSettings):
     chunking: Chunking = Field(
         default=DEFAULT_CHUNKING,
         description=(
-            f"How embed cuts documents into the pieces it embeds: {', '.join(CHUNKINGS)};"
+            f"How embed cuts documents into the chunks it embeds: {', '.join(CHUNKINGS)};"
             " search follows the index. By default windows, which ranked best when the"
             " chunkings were compared."
         ),

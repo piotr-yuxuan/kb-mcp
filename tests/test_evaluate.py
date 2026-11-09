@@ -533,7 +533,7 @@ def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     assert run.asked["lexical"]["q1"] == Quoted(found=0.0, evidence=0.0)
     assert run.asked["lexical"]["q3"].found == 1.0
     assert set(run.ask_times) == {"lexical", "semantic", "hybrid"}
-    assert run.costs.pieces > 0
+    assert run.costs.chunks > 0
     assert run.costs.estimated == run.costs.characters // 4
     assert (
         run.costs.bytes == (data / "eval" / "indexes" / "sections" / "tiny.sqlite").stat().st_size

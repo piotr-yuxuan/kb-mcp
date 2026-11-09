@@ -77,7 +77,7 @@ SAID: dict[PruneOutcome, tuple[str, str, tuple[str, ...]]] = {
 class Written(Record):
     """What the index that a run wrote holds, as its prune reads it.
 
-    The files of the mirror that it skipped, its documents, and the keys of its pieces'
+    The files of the mirror that it skipped, its documents, and the keys of its chunks'
     vectors, which another run's index renamed into place since may read no longer.
     """
 

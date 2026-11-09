@@ -443,7 +443,7 @@ is:
   persons they mean;
 - the texts sent to the embedding endpoint, on this machine unless a run is given
   `--allow-remote-embeddings`, and to the reranking server when it is on, which are
-  pieces of the bodies; `<data>/vectors.sqlite` keeps vectors under a digest, never a
+  chunks of the bodies; `<data>/vectors.sqlite` keeps vectors under a digest, never a
   text;
 - the log folder, for 30 days: `serve.call` gives each tool call's arguments at DEBUG,
   a name given to a filter or in a query among them; `index.person_ambiguous` and
@@ -691,35 +691,35 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
 ## The index
 
 Owned by `index` (006), which writes the documents and their words, and `embed` (031),
-which writes the pieces' vectors; since plan 035 each writes only what changed
+which writes the chunks' vectors; since plan 035 each writes only what changed
 ([below](#updates)). `<data>/index.sqlite` holds the documents of `<data>/docs/` alone,
 the work log's among them, read with `mirror.adapters.markdown`, and each write goes
 into a temporary file beside it that is then renamed into place. Its schema is defined
-in 006's plan: the tables `documents` and `sections`, and the FTS5 table `chunks`, the
-words of each section's title, labels, breadcrumb, heading and body, whose content is
+in 006's plan: the tables `documents` and `sections`, and the FTS5 table `section_words`,
+the words of each section's title, labels, breadcrumb, heading and body, whose content is
 `sections`; schema 3 (011) adds the
-table `pieces` (each piece of a section's body, its span and its vector) and the meta
+table `chunks` (each chunk of a section's body, its span and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row
-`chunking`, how the pieces were cut (one of `kernel.chunking`'s names), empty without a
-model; an index without the row, 011's or 018's, was cut by `sections`. A piece keeps
+`chunking`, how the chunks were cut (one of `kernel.chunking`'s names), empty without a
+model; an index without the row, 011's or 018's, was cut by `sections`. A chunk keeps
 the section that holds its middle and a span relative to that section's body, so that
 a window across sections needs no other schema. Plan 023 adds the column `key` to
-`pieces`, the key of the piece's vector in the vector store, which only pruning reads;
+`chunks`, the key of the chunk's vector in the vector store, which only pruning reads;
 an index built before it reads as any other, but cannot say what it reads of the store,
 and `SCHEMA` stays 3. Schema 4 (041) replaces the columns `author` and `assignee` of
 `documents` with `people`, the front matter's people as JSON, from which a row gives
 its front matter back whole; and adds the table `people`, one row per person and role,
 and a commenter's one per comment with its time in `at` (null for the other roles),
 indexed by role and name, which the filters by person read. Each person is so in the
-index twice, as each label is. No piece's text holds the front matter's people
+index twice, as each label is. No chunk's text holds the front matter's people
 (`search.domain.chunking`), so a build over files of which only `people` changed embeds
 nothing new. Schema 5 (042) adds the column `links` to `documents`, the front matter's
 links as JSON, as `labels` is, so that a row still gives its front matter back whole; a
-participant is a row of the table `people`, without account or time. No piece's text
+participant is a row of the table `people`, without account or time. No chunk's text
 holds the links either. Schema 6 (043) joins the people into persons
 ([below](#persons)): the column `person` of `people`, and the tables `persons` and
-`person_names`; no piece's text holds a person. Plan 035 adds, at the same schema, as
+`person_names`; no chunk's text holds a person. Plan 035 adds, at the same schema, as
 023 did: the column `digest` of `documents`, the SHA-256 of its file's bytes; the table
 `skipped`, each file of the mirror that the index could not take, by its `path`, with
 its `digest`, null for a file that could not be read, and its `reason`, which holds no
@@ -727,9 +727,9 @@ content; and the meta rows `words`, the `search.domain.search.WORDS` of the code
 cut the sections, and `aliases`, the digest of what the alias file meant
 (`search.domain.people.aliases_digest`). The server's readers ignore them; an index
 built before them is served, rebuilt whole by the next `index`, and refused by `embed`
-until then. Schema 7 (054) renames the table `pieces` `chunks`, its column `stop`
-`end`, and the FTS5 table `chunks` `section_words`: an index of 6 is rebuilt whole by
-the next `index`, and `embed` then finds every vector in the vector store, no text
+until then. Schema 7 (054) gives the tables their names now: `chunks` was `pieces`, its
+column `end` was `stop`, and `section_words` was `chunks`; an index of 6 is rebuilt whole
+by the next `index`, and `embed` then finds every vector in the vector store, no text
 embedded having changed. An index of another schema is refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the index, as a new
 schema can come with a new format of the files; one cut by a chunking that this version
@@ -751,8 +751,8 @@ before it takes any lock; then it writes a new file beside the index, named by
 (`search.adapters.sqlite_index.Writer.update`):
 
 1. the index in place attached read-only, and every document copied whose file did not
-   change, with its labels, people, sections and pieces, their rowids kept, so that each
-   piece still names its section; each row of `people` without its person;
+   change, with its labels, people, sections and chunks, their rowids kept, so that each
+   chunk still names its section; each row of `people` without its person;
 2. the documents read added, their sections numbered after the largest copied, so that
    a document's sections stay consecutive; those gone left out;
 3. FTS5's index rebuilt from the sections (`rebuild`, then `optimize`);
@@ -766,28 +766,28 @@ Each file skipped is said at each run, whether it writes or not, and the run exi
 whole rebuild copies nothing and reads every file: with no index that this version
 reads, one without `words` or of another `words`, one damaged (a table of it that SQLite
 finds corrupt, in the update's read or its copy), or on `index --rebuild`, `index.whole`
-naming which. Its index has no pieces and no model's rows: the next `embed` takes their
+naming which. Its index has no chunks and no model's rows: the next `embed` takes their
 vectors back from the vector store.
 
 `embed` (`search.app.indexing.fill_and_prune`) reads the index in one use: what it holds of the
-mirror, the model it names, each document's front matter and body, and its pieces by
+mirror, the model it names, each document's front matter and body, and its chunks by
 path, section number, span and key. It reads no file of the mirror but to digest it,
 compares those digests with the index's, and when they differ warns,
 `embed.mirror_changed`, naming `kb-mcp index`, then goes on as it would have; it never
 reads the alias file. It stops, `index.not_built`, exit 1, before it opens the endpoint:
 with no index, naming `kb-mcp index`, or one at another schema, naming `prepare` first;
-with one without `words` or of another `words`, "run kb-mcp index first", as its pieces
+with one without `words` or of another `words`, "run kb-mcp index first", as its chunks
 would land on other sections; with one damaged, naming `kb-mcp index --rebuild`. It cuts
 each document's body again by this code's sections and the run's chunking, keys each
-piece by the model's fingerprint, adds the pieces wanted that the index does not hold,
+chunk by the model's fingerprint, adds the chunks wanted that the index does not hold,
 their vectors from the vector store, else from the model, and removes those it holds
-that none wants: a chunking or a model changed needs no rule of its own, a piece of
+that none wants: a chunking or a model changed needs no rule of its own, a chunk of
 another span or key being replaced and an identical one kept. Nothing to add or remove,
 and the same model: nothing is written, `embed.unchanged`. Else a copy of the index, by
-SQLite's backup, beside it, takes the pieces removed and added, each naming its section
+SQLite's backup, beside it, takes the chunks removed and added, each naming its section
 by path and number, the model's meta rows and a new `build`, its `built_at` kept, and is
 renamed into place (`search.adapters.sqlite_index.SqliteIndex.fill`). Between `index`
-and `embed`, a document added or changed has no pieces: search finds it by its words,
+and `embed`, a document added or changed has no chunks: search finds it by its words,
 not by its meaning, and `index` counts the documents awaiting vectors, those that the
 index's chunking cuts some text from; a page of white space alone, or of a title alone
 cut by sections, awaits none.
@@ -904,7 +904,7 @@ TOML strings:
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
 - A change takes effect at the next `index`, which writes a new build for it alone,
-  every document copied with its pieces and joined again; the next `embed` has nothing
+  every document copied with its chunks and joined again; the next `embed` has nothing
   to write.
 
 ### Models and vectors
@@ -921,18 +921,18 @@ SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty fro
 server that lists none), its dimensions, its query and document prefixes, and the
 adapter's format version. `<data>/vectors.sqlite` keeps the vectors embedded, keyed
 by the SHA-256 of that fingerprint and the text, committed in batches; deleting it costs
-no embedding at the next `embed` while the index holds its pieces, each with its vector,
+no embedding at the next `embed` while the index holds its chunks, each with its vector,
 but a full embedding of the mirror by the model once a whole rebuild of the index has
-dropped them, and of each evaluation's pieces at its next `eval`; it downloads nothing.
+dropped them, and of each evaluation's chunks at its next `eval`; it downloads nothing.
 A text that the endpoint refuses has no vector there, and is asked again at the next
 `embed`.
 
 After each `embed`, the store is pruned (plan 023) to the vectors that
 `<data>/index.sqlite` and the indexes under `<data>/eval/indexes/` read, by the keys
-their pieces record, and to those of the index that the `embed` wrote, should an `index`
+their chunks record, and to those of the index that the `embed` wrote, should an `index`
 have renamed another in place meanwhile: the files are the truth, so that deleting an
 evaluation's index lets the next prune drop its vectors, and `eval --model M` keeps a
-model's. A vector that no index on disk reads is deleted: an edited piece's old text, a
+model's. A vector that no index on disk reads is deleted: an edited chunk's old text, a
 deleted document's, a model replaced, a build interrupted before its index was renamed
 in. The prune is held back, deleting nothing, when the index lacks a file of the mirror
 or holds no document; when an index there cannot say which vectors it reads (built by

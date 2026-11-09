@@ -294,7 +294,7 @@ def test_tied_spellings_serve_a_whole_build_s_name_whichever_file_was_edited(
 
 
 def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data: Path) -> None:
-    """Criterion 15: joined by the alias, the pieces kept, and ``embed`` then writes nothing.
+    """Criterion 15: joined by the alias, the chunks kept, and ``embed`` then writes nothing.
 
     The file refused, ``index`` stops, the index in place; ``embed`` runs regardless.
     """

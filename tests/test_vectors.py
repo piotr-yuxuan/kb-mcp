@@ -1,4 +1,4 @@
-"""Vectors in the index: each piece embedded once per model, kept across builds (011, 018)."""
+"""Vectors in the index: each chunk embedded once per model, kept across builds (011, 018)."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from kb_mcp.search.app.indexing import (
     update_index,
 )
 from kb_mcp.search.app.meaning import Meaning
-from kb_mcp.search.domain.indexes import Piece, Put, UnavailableIndexError
+from kb_mcp.search.domain.indexes import Chunk, Put, UnavailableIndexError
 from kb_mcp.search.domain.search import Embedded, Filters, sections
 from tests.answers import parts
 from tests.endpoint import (
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from kb_mcp.search.adapters.embedding import ApiEmbedder
     from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned
-    from kb_mcp.search.domain.search import Pieces
+    from kb_mcp.search.domain.search import ChunkVectors
 
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 FILLER_PAGES = 5
@@ -132,21 +132,21 @@ def counting() -> Counting:
     return Counting(tiny())
 
 
-def test_an_index_with_a_model_holds_a_unit_vector_for_every_piece(data: Path) -> None:
-    """Every section has a piece here, each with the model's dimensions and unit length."""
+def test_an_index_with_a_model_holds_a_unit_vector_for_every_chunk(data: Path) -> None:
+    """Every section has a chunk here, each with the model's dimensions and unit length."""
     embedder = counting()
     build(data, embedder)
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() == Embedded(
             model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS
         )
-        pieces = reader.vectors()
-        assert len(pieces.documents) == reader.index_status().sections == len(embedder.texts)
-        assert np.allclose(np.linalg.norm(pieces.matrix, axis=1), 1)
+        chunks = reader.vectors()
+        assert len(chunks.documents) == reader.index_status().sections == len(embedder.texts)
+        assert np.allclose(np.linalg.norm(chunks.matrix, axis=1), 1)
     assert "Rollback\nRelease\nThe deploy of the seller service." in embedder.texts
 
 
-def test_a_rebuild_embeds_only_the_pieces_that_changed(data: Path) -> None:
+def test_a_rebuild_embeds_only_the_chunks_that_changed(data: Path) -> None:
     """One section edited: one text embedded; the vectors equal a fresh build's."""
     build(data, counting())
     write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "sellers"))
@@ -161,7 +161,7 @@ def test_a_rebuild_embeds_only_the_pieces_that_changed(data: Path) -> None:
         assert np.array_equal(reader.vectors().matrix, kept)
 
 
-def test_pieces_are_read_by_path_section_and_start_whatever_their_rowids(data: Path) -> None:
+def test_chunks_are_read_by_path_section_and_start_whatever_their_rowids(data: Path) -> None:
     """An updated index and a whole build number rows otherwise, and give one matrix."""
     embedded = Embedded(model="tiny", fingerprint="f", dimensions=1)
     first, second = page("1", "First"), page("2", "Second")
@@ -171,9 +171,9 @@ def test_pieces_are_read_by_path_section_and_start_whatever_their_rowids(data: P
             front: writer.add(Put(path=location(front), digest="d", front=front, sections=cut))
             for front in (second, first)
         }
-        # Each piece's vector says when it was written.
+        # Each chunk's vector says when it was written.
         written = [(second, 0, 0), (first, 1, 6), (first, 0, 4), (second, 1, 0), (first, 1, 0)]
-        writer.add_pieces(
+        writer.add_chunks(
             (
                 rows[front] + number,
                 start,
@@ -184,13 +184,13 @@ def test_pieces_are_read_by_path_section_and_start_whatever_their_rowids(data: P
             for at, (front, number, start) in enumerate(written)
         )
     with reading(data / "index.sqlite") as reader:
-        pieces = reader.vectors()
-    assert [pieces.paths[each] for each in pieces.documents] == [
+        chunks = reader.vectors()
+    assert [chunks.paths[each] for each in chunks.documents] == [
         *[location(first)] * 3,
         *[location(second)] * 2,
     ]
-    assert pieces.sections == (1, 2, 2, 1, 2)
-    assert pieces.matrix.reshape(-1).tolist() == [2, 4, 1, 0, 3]
+    assert chunks.sections == (1, 2, 2, 1, 2)
+    assert chunks.matrix.reshape(-1).tolist() == [2, 4, 1, 0, 3]
 
 
 def test_a_handle_reads_an_index_s_vectors_once_a_build(
@@ -201,7 +201,7 @@ def test_a_handle_reads_an_index_s_vectors_once_a_build(
     reads: list[str] = []
     read = sqlite_index.Reader.vectors
 
-    def slowly(reader: sqlite_index.Reader) -> Pieces:
+    def slowly(reader: sqlite_index.Reader) -> ChunkVectors:
         reads.append(reader.build())
         time.sleep(0.2)
         return read(reader)
@@ -293,7 +293,7 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
     """Plan 035, in the hybrid mode: nothing changed, ``index`` writes nothing, said so.
 
     It asks the endpoint nothing and leaves ``vectors.sqlite`` byte for byte; the index
-    keeps its pieces, so that search by meaning goes on; a page edited, its document
+    keeps its chunks, so that search by meaning goes on; a page edited, its document
     alone awaits vectors, which the summary counts, and the rest keep theirs.
     """
     scripted = Scripted()
@@ -304,7 +304,7 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
         kept, built = store.read_bytes(), index.read_bytes()
         asked = len(scripted.asked)
         with reading(index) as reader:
-            pieces = reader.index_status().pieces
+            chunks = reader.index_status().chunks
         capsys.readouterr()
         assert main(["index", *options]) == 0
         assert len(scripted.asked) == asked
@@ -321,7 +321,7 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
             capsys.readouterr().out
         )
         with reading(index) as reader:
-            assert 0 < reader.index_status().pieces < pieces
+            assert 0 < reader.index_status().chunks < chunks
 
 
 def test_the_command_embeds_with_the_settings_model(
@@ -333,7 +333,7 @@ def test_the_command_embeds_with_the_settings_model(
     with serving(Scripted()) as url:
         assert chained(data, capsys, url, *detailed) == 0
         out = capsys.readouterr().out
-        assert f"pieces by meaning in {(data / 'index.sqlite').resolve()}, {model}:" in out
+        assert f"chunks by meaning in {(data / 'index.sqlite').resolve()}, {model}:" in out
         assert " texts embedded now, 0 found in the vector store; 0 documents with a" in out
         assert main(["embed", "--yes", *config(data, "tiny", url), *detailed]) == 0
     assert f"nothing changed: {(data / 'index.sqlite').resolve()} holds " in (
@@ -341,14 +341,14 @@ def test_the_command_embeds_with_the_settings_model(
     )
 
 
-def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
+def test_the_command_in_short_counts_the_chunks_and_those_embedded_now(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Every piece added and embedded the first time; nothing written the next."""
+    """Every chunk added and embedded the first time; nothing written the next."""
     with serving(Scripted()) as url:
         assert chained(data, capsys, url) == 0
-        pieces, added, removed, embedded = capsys.readouterr().out.splitlines()[:4]
-        count = pieces.removeprefix("pieces: ")
+        chunks, added, removed, embedded = capsys.readouterr().out.splitlines()[:4]
+        count = chunks.removeprefix("chunks: ")
         assert int(count) > 0
         assert (added, removed, embedded) == (
             f"added: {count}",
@@ -357,7 +357,7 @@ def test_the_command_in_short_counts_the_pieces_and_those_embedded_now(
         )
         assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
     assert capsys.readouterr().out.splitlines()[:3] == [
-        pieces,
+        chunks,
         "nothing written",
         "embedded now: 0",
     ]
@@ -373,7 +373,7 @@ def test_the_command_reports_its_files_then_its_texts_to_embed(
     """
     with serving(Scripted()) as url:
         assert chained(data, capsys, url) == 0
-        pieces = int(capsys.readouterr().out.splitlines()[0].removeprefix("pieces: "))
+        chunks = int(capsys.readouterr().out.splitlines()[0].removeprefix("chunks: "))
         assert chained(data, capsys, url) == 0
         write(data / "docs", page("196845", "Rollback"), BODY.replace("payout", "refund"))
         assert chained(data, capsys, url) == 0
@@ -385,7 +385,7 @@ def test_the_command_reports_its_files_then_its_texts_to_embed(
     assert progress == sorted(
         [
             ("files", files, files),
-            ("texts to embed", pieces, pieces),
+            ("texts to embed", chunks, chunks),
             ("files", 1, 1),
             ("texts to embed", 1, 1),
         ]
@@ -398,7 +398,7 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     """Ollama not started: the fill fails, the index stays as it was, and the exit says why.
 
     By the error index.not_built, with its reason, which the run's log file holds too;
-    the index holds the document added since, awaiting vectors, and its others' pieces.
+    the index holds the document added since, awaiting vectors, and its others' chunks.
     """
     with serving(Scripted()) as url:
         assert chained(data, capsys, url) == 0
@@ -415,18 +415,18 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     assert str(failed["reason"]).startswith("no answer from the embedding endpoint")
     with reading(data / "index.sqlite") as reader:
         summary = reader.index_status()
-    assert (summary.awaiting, summary.pieces > 0) == (1, True)
+    assert (summary.awaiting, summary.chunks > 0) == (1, True)
 
 
-def test_a_piece_the_model_refuses_is_named_and_asked_again(
+def test_a_chunk_the_model_refuses_is_named_and_asked_again(
     data: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The others are embedded, the index replaced, the exit 1; the next run asks again.
 
     Refused again, that next run writes nothing.
 
-    The piece's document is named by the warning index.piece_refused, in the log file too.
-    Cut by sections, a piece a section, so that the piece refused is one section's.
+    The chunk's document is named by the warning index.chunk_refused, in the log file too.
+    Cut by sections, a chunk a section, so that the chunk refused is one section's.
     """
     monkeypatch.setenv("KB_MCP_CHUNKING", "sections")
     refused = "Rollback\nRelease\nThe deploy of the seller service."
@@ -434,10 +434,10 @@ def test_a_piece_the_model_refuses_is_named_and_asked_again(
     with serving(answers) as url:
         assert chained(data, capsys, url) == FAILED
         err = capsys.readouterr().err
-        assert ("warning", "index.piece_refused") in said(err)
+        assert ("warning", "index.chunk_refused") in said(err)
         assert "confluence/ENG/196845-rollback.md" in err
-        (piece,) = logged_as(data.parent / "home", "index.piece_refused")
-        assert (piece["level"], piece["path"]) == ("warning", "confluence/ENG/196845-rollback.md")
+        (chunk,) = logged_as(data.parent / "home", "index.chunk_refused")
+        assert (chunk["level"], chunk["path"]) == ("warning", "confluence/ENG/196845-rollback.md")
         with reading(data / "index.sqlite") as reader:
             assert len(reader.vectors().documents) == reader.index_status().sections - 1
         asked = sum(refused in each for each in answers.asked)
@@ -467,7 +467,7 @@ def chunked(data: Path, embedder: Counting, chunking: Chunking) -> None:
 
 
 def test_the_index_and_its_status_name_its_chunking(data: Path) -> None:
-    """The meta row says how the pieces were cut, sections unless told; so does status."""
+    """The meta row says how the chunks were cut, sections unless told; so does status."""
     build(data, counting())
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() == Embedded(
@@ -479,7 +479,7 @@ def test_the_index_and_its_status_name_its_chunking(data: Path) -> None:
             model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS, chunking="windows"
         )
         said = responses.status(reader.index_status(), data / "docs")
-    assert re.search(r"search by meaning: tiny, \d+ pieces cut by windows\n", said)
+    assert re.search(r"search by meaning: tiny, \d+ chunks cut by windows\n", said)
 
 
 def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> None:
@@ -496,7 +496,7 @@ def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> N
 
 
 @pytest.mark.parametrize("chunking", CHUNKINGS)
-def test_an_index_names_the_store_s_key_of_each_piece_s_vector(
+def test_an_index_names_the_store_s_key_of_each_chunk_s_vector(
     data: Path, chunking: Chunking
 ) -> None:
     """Its keys are the store's keys of the texts that its chunking embeds, and no other."""
@@ -508,14 +508,14 @@ def test_an_index_names_the_store_s_key_of_each_piece_s_vector(
 
 
 def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
-    """Without the column, its pieces and summary read as ever; its keys are refused."""
+    """Without the column, its chunks and summary read as ever; its keys are refused."""
     build(data, counting())
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         connection.execute("ALTER TABLE chunks DROP COLUMN key")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
-        assert len(reader.vectors().documents) == reader.index_status().pieces > 0
-        with pytest.raises(UnavailableIndexError, match="before pieces recorded their keys"):
+        assert len(reader.vectors().documents) == reader.index_status().chunks > 0
+        with pytest.raises(UnavailableIndexError, match="before chunks recorded their keys"):
             reader.keys()
 
 
@@ -527,18 +527,18 @@ def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: 
     chunked(data, embedder, "windows")
     path = "confluence/ENG/196845-rollback.md"
     with reading(data / "index.sqlite") as reader:
-        pieces = reader.vectors()
+        chunks = reader.vectors()
         bounds = reader.bounds(path)
-        mine = [index for index, each in enumerate(pieces.documents) if pieces.paths[each] == path]
+        mine = [index for index, each in enumerate(chunks.documents) if chunks.paths[each] == path]
         assert len(mine) == WINDOWS
         for index in mine:
-            start, end = pieces.offsets[index], pieces.ends[index]
-            first, last = bounds[pieces.sections[index] - 1]
+            start, end = chunks.offsets[index], chunks.ends[index]
+            first, last = bounds[chunks.sections[index] - 1]
             assert first <= (start + end) // 2 < last
             assert reader.text(path, start, end) == body[start:end]
             assert f"Rollback\n{body[start:end].strip()}" in embedder.texts
-    assert pieces.offsets[mine[0]] == 0
-    assert pieces.sections[mine[0]] == RELEASE
+    assert chunks.offsets[mine[0]] == 0
+    assert chunks.sections[mine[0]] == RELEASE
 
 
 def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:
@@ -595,7 +595,7 @@ def test_the_environment_s_chunking_replaces_the_file_s(
 
 
 def test_an_index_cut_by_a_chunking_this_version_lacks_is_refused(data: Path) -> None:
-    """Its pieces could be quoted by no unit known here: rebuilt, it is read again.
+    """Its chunks could be quoted by no unit known here: rebuilt, it is read again.
 
     The files are not in question, so the commands named are ``index``, then ``embed``.
     """
@@ -648,18 +648,18 @@ def snapshot(index: Path) -> tuple[bytes, int, str]:
         return index.read_bytes(), index.stat().st_mtime_ns, reader.build()
 
 
-def pieces_of(index: Path) -> list[Piece]:
-    """Give the pieces that an index holds, by path, section number and start."""
+def chunks_of(index: Path) -> list[Chunk]:
+    """Give the chunks that an index holds, by path, section number and start."""
     with reading(index) as reader:
-        return reader.pieces()
+        return reader.chunks()
 
 
-def whole_pieces(data: Path, chunking: Chunking = "sections") -> list[Piece]:
-    """Give the pieces of a whole build of the mirror as it is, by the tiny model."""
+def whole_chunks(data: Path, chunking: Chunking = "sections") -> list[Chunk]:
+    """Give the chunks of a whole build of the mirror as it is, by the tiny model."""
     whole = data.parent / "whole.sqlite"
     whole.unlink(missing_ok=True)
     build_index(data / "docs", whole, MOMENT, Embedding(tiny(), data.parent / "whole.db", chunking))
-    return pieces_of(whole)
+    return chunks_of(whole)
 
 
 ROLLBACK_PATH = "confluence/ENG/196845-rollback.md"
@@ -677,31 +677,31 @@ def test_nothing_changed_index_then_embed_write_nothing(data: Path) -> None:
     assert snapshot(data / "index.sqlite") == before
 
 
-def test_one_page_edited_embed_adds_its_pieces_alone(data: Path) -> None:
-    """Criterion 3: its pieces alone are added, the model embedding only what the store lacks.
+def test_one_page_edited_embed_adds_its_chunks_alone(data: Path) -> None:
+    """Criterion 3: its chunks alone are added, the model embedding only what the store lacks.
 
     Cut by sections: of its two sections, the one unchanged is found in the store.
     """
     filled_by(data)
-    others = [piece for piece in pieces_of(data / "index.sqlite") if piece.path != ROLLBACK_PATH]
+    others = [chunk for chunk in chunks_of(data / "index.sqlite") if chunk.path != ROLLBACK_PATH]
     write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
     answers = Scripted()
     filled = filled_by(data, answers)
     assert (filled.added, filled.removed, filled.embedded, filled.found) == (2, 0, 1, 1)
     (text,) = texts_asked(answers)
     assert "buyer" in text
-    held = pieces_of(data / "index.sqlite")
-    assert [piece for piece in held if piece.path != ROLLBACK_PATH] == others
-    assert held == whole_pieces(data)
+    held = chunks_of(data / "index.sqlite")
+    assert [chunk for chunk in held if chunk.path != ROLLBACK_PATH] == others
+    assert held == whole_chunks(data)
 
 
 def test_a_removed_page_s_vectors_are_pruned_by_the_next_embed(data: Path) -> None:
     """Criterion 4: after ``index``, then ``embed``, the vectors that it alone read are gone."""
     filled_by(data)
     keys = {
-        piece.vector_key
-        for piece in pieces_of(data / "index.sqlite")
-        if piece.path == ROLLBACK_PATH
+        chunk.vector_key
+        for chunk in chunks_of(data / "index.sqlite")
+        if chunk.path == ROLLBACK_PATH
     }
     (data / "docs" / ROLLBACK_PATH).unlink()
     filled = filled_by(data)
@@ -710,7 +710,7 @@ def test_a_removed_page_s_vectors_are_pruned_by_the_next_embed(data: Path) -> No
     with closing(sqlite3.connect(data / "v.db")) as connection:
         stored = {row[0] for row in connection.execute("SELECT key FROM vectors")}
     assert stored.isdisjoint(keys)
-    assert stored == {piece.vector_key for piece in pieces_of(data / "index.sqlite")}
+    assert stored == {chunk.vector_key for chunk in chunks_of(data / "index.sqlite")}
 
 
 def stored_keys(store: Path) -> set[str]:
@@ -723,7 +723,7 @@ def stored_keys(store: Path) -> set[str]:
 def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
     data: Path, chunking: Chunking
 ) -> None:
-    """Criterion 7: the pieces and model are a whole build's; no text of the store is embedded.
+    """Criterion 7: the chunks and model are a whole build's; no text of the store is embedded.
 
     Then back to the first chunking, likewise, the prune having left what it read.
     """
@@ -735,7 +735,7 @@ def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
         asked = {vector_store.vector_key(tiny().fingerprint, text) for text in texts_asked(answers)}
         assert asked.isdisjoint(before)
         assert filled.embedded == len(asked)
-        assert pieces_of(data / "index.sqlite") == whole_pieces(data, cut)
+        assert chunks_of(data / "index.sqlite") == whole_chunks(data, cut)
         with reading(data / "index.sqlite") as reader:
             embedded = reader.embedded()
         assert embedded is not None
@@ -765,7 +765,7 @@ def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
     filled = fill_and_prune(indexing(data, answers, "windows"))
     assert filled is not None
     assert (texts_asked(answers), filled.embedded) == ([], 0)
-    assert pieces_of(data / "index.sqlite") == whole_pieces(data, "windows")
+    assert chunks_of(data / "index.sqlite") == whole_chunks(data, "windows")
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
     assert {"chunks", "section_words"} <= tables
@@ -843,7 +843,7 @@ def test_embed_on_an_index_of_another_cut_stops_until_index_runs(
         assert main(["index", "--yes", *config(data, "tiny", url)]) == 0
         status, _ = embedded_at(data, url, capsys)
     assert status == 0
-    assert pieces_of(data / "index.sqlite")
+    assert chunks_of(data / "index.sqlite")
 
 
 def damage(index: Path, table: str) -> None:
@@ -877,9 +877,9 @@ def test_embed_on_a_damaged_index_stops_naming_a_rebuild(
 def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
     data: Path, monkeypatch: MonkeyPatch, *, rebuild: bool
 ) -> None:
-    """Criterion 8: an update, or a whole rebuild, in between: no piece on an old rowid.
+    """Criterion 8: an update, or a whole rebuild, in between: no chunk on an old rowid.
 
-    The fill starts again once, reads the new build, and its pieces are a whole build's.
+    The fill starts again once, reads the new build, and its chunks are a whole build's.
     """
     filled_by(data)
     write(data / "docs", page("196846", "Added"), BODY.replace("payout", "refund"))
@@ -898,7 +898,7 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
     filled = fill_and_prune(indexing(data))
     assert filled is not None
     assert len(builds) == len(set(builds)) == TWICE
-    assert pieces_of(data / "index.sqlite") == whole_pieces(data)
+    assert chunks_of(data / "index.sqlite") == whole_chunks(data)
 
 
 def test_an_index_written_at_each_attempt_stops_embed(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -931,7 +931,7 @@ def test_index_and_embed_started_together_take_turns(data: Path) -> None:
     assert filled is not None
     assert results[0] is not None
     filled_by(data)
-    assert pieces_of(data / "index.sqlite") == whole_pieces(data)
+    assert chunks_of(data / "index.sqlite") == whole_chunks(data)
 
 
 def test_a_lock_held_too_long_stops_embed_naming_it(data: Path, monkeypatch: MonkeyPatch) -> None:
@@ -959,7 +959,7 @@ def test_a_fill_that_fails_before_its_rename_leaves_the_index_as_it_was(
         raise RuntimeError
 
     with monkeypatch.context() as patch:
-        patch.setattr(Piece, "model_dump", fail)
+        patch.setattr(Chunk, "model_dump", fail)
         with pytest.raises(RuntimeError):
             fill_and_prune(indexing(data))
     assert (data / "index.sqlite").read_bytes() == before
@@ -987,11 +987,11 @@ def test_a_fill_killed_leaves_the_index_as_it_was(data: Path, capsys: CaptureFix
                 (
                     "import sys, time\n"
                     "from kb_mcp.cli.main import main\n"
-                    "from kb_mcp.search.domain.indexes import Piece\n"
+                    "from kb_mcp.search.domain.indexes import Chunk\n"
                     "def model_dump(self):\n"
                     "    print('filling', flush=True)\n"
                     "    time.sleep(60)\n"
-                    "Piece.model_dump = model_dump\n"
+                    "Chunk.model_dump = model_dump\n"
                     "sys.exit(main(['embed', '--yes']))\n"
                 ),
             ],
@@ -1012,7 +1012,7 @@ def test_a_fill_killed_leaves_the_index_as_it_was(data: Path, capsys: CaptureFix
         assert not (data / "index.sqlite-wal").exists()
         capsys.readouterr()
         assert main(["embed", "--yes", *options]) == 0
-    assert pieces_of(data / "index.sqlite")
+    assert chunks_of(data / "index.sqlite")
 
 
 def test_the_prune_keeps_what_embed_wrote_when_an_index_ran_since(

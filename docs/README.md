@@ -108,7 +108,7 @@ the command and those who change its code, unless it is marked for contributors.
 - [Local models](explanation/local-models.md): which model a laptop can run as an agent
   over the mirror, and why: what it must do, what fits in memory, what makes it fast or
   slow, and what the published measures say.
-- [Chunking](explanation/chunking.md): how documents are cut into pieces for search by
+- [Chunking](explanation/chunking.md): how documents are cut into chunks for search by
   meaning, and how the four chunkings were compared.
 - [Evaluating search](explanation/search-evaluation.md): how the embedding model was
   chosen, and how ranking by words, by meaning or by both is measured.

@@ -347,7 +347,7 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
 def test_embed_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No index; a piece refused during a prune; no endpoint; the mirror changed; then whole.
+    """No index; a chunk refused during a prune; no endpoint; the mirror changed; then whole.
 
     The mirror holds a few pages, one with a front matter refused, which the index lacks,
     and one whose second section the endpoint refuses to embed, cut by sections. The
@@ -379,7 +379,7 @@ def test_embed_records_as_documented(
     with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     assert main(["index", "--yes", *by_meaning(data, URL)]) == ExitStatus.OK
-    other = tmp_path / "other.sqlite"  # another run's index, with no pieces
+    other = tmp_path / "other.sqlite"  # another run's index, with no chunks
     build_index(data / "docs", other, MOMENT)
     lock = vector_store.lock_of(index)
     writing = held_meanwhile(lock, "index.lock_wait", emitted, lambda: other.replace(index))

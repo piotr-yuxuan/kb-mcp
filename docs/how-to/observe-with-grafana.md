@@ -75,7 +75,7 @@ dashboard each for `fetch`, `prepare`, `index`, `embed`, `serve`, `eval` and
   time spent, the requests to the site by status, the warnings and errors of every run
   from the logs, and the runs as traces.
 - **fetch, prepare, index, embed, eval**: over the last 24 hours, the runs, the time spent,
-  the documents, files, bytes or pieces by outcome, the work log's documents by type, the
+  the documents, files, bytes or chunks by outcome, the work log's documents by type, the
   time of requests, embeddings or conversions at the 95th percentile, then the runs'
   warnings and errors and their traces, with each source of a fetch or a prepare as a
   span. Each panel sums each run's last value, so a run counts once, whenever it ended.

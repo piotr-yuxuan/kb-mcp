@@ -2,7 +2,7 @@
 
 Four commands, each one stage, which you compose: `fetch` brings each source's changes into
 its store, `prepare` turns what each source holds into the Markdown mirror, `index` brings
-the index of the mirror's words up to the mirror, and `embed` gives the index's pieces their
+the index of the mirror's words up to the mirror, and `embed` gives the index's chunks their
 vectors, for search by meaning. Nothing runs them for you, and no command runs another.
 
 ## 1. Name the sources
@@ -71,10 +71,10 @@ every command that writes does.
    asks no endpoint, whatever `search_mode` says, and leaves `<data>/vectors.sqlite` as it
    is. Until `embed` runs, the documents added or changed have no vectors, and search
    finds them by words alone; its report says how many await them.
-4. **`embed`** gives the index's pieces their vectors. By default it needs Ollama on this
+4. **`embed`** gives the index's chunks their vectors. By default it needs Ollama on this
    machine, or any other OpenAI-compatible API, as [embeddings](embeddings.md) says: without
    them, it exits 1, and the index in place stays. It embeds what `<data>/vectors.sqlite`
-   lacks: every piece of the mirror the first time, then only the pieces whose text changed,
+   lacks: every chunk of the mirror the first time, then only the chunks whose text changed,
    as [building the index](embeddings.md#3-build-the-index) says. An endpoint off this
    machine needs `--allow-remote-embeddings`, and is refused without it. `embed` then prunes
    the vector store of what no index reads.

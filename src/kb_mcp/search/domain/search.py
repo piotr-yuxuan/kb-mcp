@@ -186,7 +186,7 @@ NUMBER = re.compile(r"([0-9]+)")
 # The version of what a whole build writes from the same files: how ``sections`` cuts a
 # body, how words are tokenized, a document's rows, how people are joined. It changes
 # with any of them, as an update copies the rows of the build before, ``embed`` numbers
-# its pieces by this code's cut, and a run with nothing changed keeps the old persons.
+# its chunks by this code's cut, and a run with nothing changed keeps the old persons.
 # ``tests/test_index.py`` pins what it writes, and names it in its failure.
 WORDS = "1"
 # Reciprocal rank fusion's constant: a document's share of a list is 1 / (FUSION + rank).
@@ -308,9 +308,9 @@ class IndexStatus(Record):
     newest_fetch: datetime | None
     people: PersonCounts
     model: str | None = None  # the model of the vectors, if any
-    pieces: int = 0
-    chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
-    awaiting: int = 0  # documents that want a piece by its chunking and hold none
+    chunks: int = 0
+    chunking: Chunking | None = None  # how the chunks were cut, if there are vectors
+    awaiting: int = 0  # documents that want a chunk by its chunking and hold none
 
 
 class Activity(Record):
@@ -326,7 +326,7 @@ class Activity(Record):
 
 
 class Embedded(Record):
-    """The model that embedded an index's pieces, and how they were cut, as the index records it."""
+    """The model that embedded an index's chunks, and how they were cut, as the index records it."""
 
     model: str
     fingerprint: str
@@ -334,32 +334,32 @@ class Embedded(Record):
     chunking: Chunking = "sections"
 
 
-class Pieces(Record):
-    """Every piece of an index with its unit vector: what a search by meaning looks through."""
+class ChunkVectors(Record):
+    """Every chunk of an index with its unit vector: what a search by meaning looks through."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     # By identity, as before: an array has no truth value to compare by.
     __eq__ = object.__eq__
     __hash__ = object.__hash__
 
-    documents: tuple[int, ...]  # each piece's document, by rowid
+    documents: tuple[int, ...]  # each chunk's document, by rowid
     paths: Mapping[int, str]  # each document's path, by rowid
     updated: Mapping[str, datetime]  # each document's update, by path
-    sections: tuple[int, ...]  # each piece's section number
-    offsets: tuple[int, ...]  # where each piece starts in its document's body
-    ends: tuple[int, ...]  # where each piece ends in its document's body
-    matrix: NDArray[np.float32]  # one row per piece
+    sections: tuple[int, ...]  # each chunk's section number
+    offsets: tuple[int, ...]  # where each chunk starts in its document's body
+    ends: tuple[int, ...]  # where each chunk ends in its document's body
+    matrix: NDArray[np.float32]  # one row per chunk
 
     def nearest(
         self, query: NDArray[np.float32], kept: Collection[int] | None, limit: int
     ) -> dict[str, tuple[Score, int]]:
-        """Score the documents nearest a query by their best piece, at most ``limit``.
+        """Score the documents nearest a query by their best chunk, at most ``limit``.
 
         Only the documents in ``kept`` count, when it is given. Each path comes with its
-        score, the cosine of its best piece, and that piece's index. Ties, as between
+        score, the cosine of its best chunk, and that chunk's index. Ties, as between
         documents of one text, go to the newest update, then the path, before the cut.
         """
-        best: dict[str, int] = {}  # each document's best piece
+        best: dict[str, int] = {}  # each document's best chunk
         similarity = self.matrix @ query.reshape(-1) if self.documents else np.empty(0)
         for index in np.argsort(-similarity, kind="stable"):
             document = self.documents[index]

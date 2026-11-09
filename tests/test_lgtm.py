@@ -255,7 +255,7 @@ def test_a_command_s_dashboard_charts_what_others_record_too_for_its_own_runs(
     Each selector of such an instrument names the command, ``kb_mcp_command``; or the query
     keeps its series, by ``and on (instance)``, to the runs of a series that names the
     command or that no other command records, as ``serve``'s keep to the runs that
-    served a call. Else an ``eval`` run's pieces, which it indexes, would count as an
+    served a call. Else an ``eval`` run's chunks, which it indexes, would count as an
     ``index`` run's, and with ``kb_mcp.run.duration``, which every command records, every
     run would count as the command's.
     """

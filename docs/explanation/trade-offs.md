@@ -385,10 +385,10 @@ afresh at each run
   meeting by the meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org
   does not escape
   ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)):
-  the longest title of the day that begins the path wins, but the day keeps a piece of
+  the longest title of the day that begins the path wins, but the day keeps a chunk of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
-  joins none, its pieces staying in the day. A meeting and a dated transcript are their
+  joins none, its chunks staying in the day. A meeting and a dated transcript are their
   day at midnight UTC, since plan 044: the work log gives the day of a meeting, never
   its time, so one day's documents tie when sorted by date, and come by path; a
   caption tool's offset, `00:05`, no longer dates a transcript at five past midnight. A
@@ -549,7 +549,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   A person's id is an opaque handle that protects nothing: hashing a known account id
   finds it again. One rebuild, at schema 6
   ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
-  embeds nothing new, no piece's text holding a person. Every request carries 58 more
+  embeds nothing new, no chunk's text holding a person. Every request carries 58 more
   estimated tokens, the filter in the schemas of `search` and `ask`: 2,529, within a
   standing budget raised from 2,500 to 2,600, as
   [the tests](../../tests/test_surface.py) measure it over stdio. An answer by `person`
@@ -596,10 +596,10 @@ digests every file, the SHA-256 of its bytes, and compares each with the digest 
 index records ([`change_of`](../../src/kb_mcp/search/app/indexing.py)). It then builds
 the new index beside the old one, as a whole build does: it copies from the old,
 attached read-only, every document whose file did not change, with its sections and
-pieces, reads the files added or changed, leaves out those gone, joins persons again
+chunks, reads the files added or changed, leaves out those gone, joins persons again
 over every document, and renames the file into place
 ([`Writer.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). `embed` fills
-the pieces that the index's documents want and it lacks, cut again from the text that
+the chunks that the index's documents want and it lacks, cut again from the text that
 the index holds, and removes those that none wants, in a copy of the index renamed in
 its turn ([`filling`](../../src/kb_mcp/search/app/indexing.py)). One lock beside the
 index, which both take from their check that the index is still the build they read
@@ -614,11 +614,11 @@ build, row for row, and ranks the golden questions alike
   002's mirror, a whole build took 3.3 to 3.7 s, 1.9 s of it reading and loading files;
   digesting them takes 0.024 s, and a new file holding a copy of every document but one,
   its full-text index rebuilt and its persons joined, 0.17 s, or 0.23 s with 3,003
-  pieces. Aside keeps what readers rely on since plan 006: the file in place is never
+  chunks. Aside keeps what readers rely on since plan 006: the file in place is never
   written, so each call reads one state, and a rename gives all of a new build or none
   of it, with no write-ahead log, whose `-wal` file a rename would pair with the new
   index, and no triggers. The digest, not the file's time, as copying or restoring the
-  folder changes times, not bytes. Copying the pieces keeps the vectors of the documents
+  folder changes times, not bytes. Copying the chunks keeps the vectors of the documents
   that did not change across `index`, which until then dropped every vector until the
   next `embed`. Persons are joined whole at each write, as one account fetched late can
   make a work-log name ambiguous
@@ -628,14 +628,14 @@ build, row for row, and ranks the golden questions alike
 - **Cost.** The copy grows with the index, not with the change: on 20,000 made-up
   issues, 3.4 s, 2.0 s of it the join, on top of reading the changed files, and the
   index's size free on disk beside it, as a whole build needs. Between `index` and
-  `embed`, a document added or changed has no pieces: search finds it by words and
+  `embed`, a document added or changed has no chunks: search finds it by words and
   misses it by meaning, and `index` counts the documents awaiting vectors.
   `prepare && embed`, leaving out `index`, is a wrong use: `embed` fills the index as
-  the last `index` left it, so a page that `prepare` removed keeps its words, pieces and
+  the last `index` left it, so a page that `prepare` removed keeps its words, chunks and
   vectors, and an edited one its old text, and the server serves both until the next
   `index`; `embed` warns of it, `embed.mirror_changed`, naming `kb-mcp index`, and exits
   as it would have, composing the commands staying the user's. `embed` stops on an
-  index that another version of the cut wrote, as its pieces would land on other
+  index that another version of the cut wrote, as its chunks would land on other
   sections: after an upgrade that changes the cut, plan 035's among them, `index` runs
   first and rebuilds the index whole, and the next `embed` takes the vectors back from
   the store. A damaged index is no longer healed by `embed`, which stops, naming

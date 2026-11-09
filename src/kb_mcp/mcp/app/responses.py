@@ -367,7 +367,7 @@ def status(state: IndexStatus, docs: Path) -> str:
         f"built: {stamp(state.built_at)}",
         f"documents: {counts(state.types)}; sections: {state.sections}",
         (
-            f"search by meaning: {state.model}, {state.pieces} pieces cut by {state.chunking}"
+            f"search by meaning: {state.model}, {state.chunks} chunks cut by {state.chunking}"
             if state.model
             else "search by meaning: off, the index holds no vectors; run kb-mcp embed"
         ),

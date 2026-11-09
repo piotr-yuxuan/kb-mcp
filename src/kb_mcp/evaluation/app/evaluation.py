@@ -160,14 +160,14 @@ class EvaluatedIndex:
 class Costs(Record):
     """What an evaluated index holds and cost, whatever the vector store held before."""
 
-    pieces: int
-    characters: int  # of the texts that the pieces embed
+    chunks: int
+    characters: int  # of the texts that the chunks embed
     tokens: int | None  # that the endpoint reported for the texts embedded in this run
     bytes: int  # of the index file
 
     @property
     def estimated(self) -> int:
-        """The tokens of the texts that the pieces embed, at the characters of a token."""
+        """The tokens of the texts that the chunks embed, at the characters of a token."""
         return self.characters // CHARACTERS_PER_TOKEN
 
 
@@ -181,7 +181,7 @@ class IndexMeasures(Record):
     embedded: int  # texts that the model embedded for this run
     seconds: float  # how long the index took to build, embedding included
     chunking: str = CONTROL
-    costs: Costs = Costs(pieces=0, characters=0, tokens=None, bytes=0)
+    costs: Costs = Costs(chunks=0, characters=0, tokens=None, bytes=0)
     per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
     groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
     ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question
@@ -312,7 +312,7 @@ def prepared(
     report = build_index(settings.docs, index, built_at, embedding)
     seconds = clock() - started
     costs = Costs(
-        pieces=report.pieces,
+        chunks=report.chunks,
         characters=report.characters,
         tokens=embedder.tokens,
         bytes=index.stat().st_size,
@@ -428,7 +428,7 @@ def built(run: IndexMeasures) -> str:
     reported = "none" if costs.tokens is None else f"{costs.tokens:,}"
     return (
         f"Index built in {run.seconds:.1f} s, {run.embedded} texts embedded for it;"
-        f" {costs.pieces:,} pieces of {costs.characters:,} characters, about"
+        f" {costs.chunks:,} chunks of {costs.characters:,} characters, about"
         f" {costs.estimated:,} tokens; tokens reported: {reported}; {costs.bytes:,} bytes."
     )
 

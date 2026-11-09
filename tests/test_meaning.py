@@ -109,9 +109,9 @@ def test_a_query_without_a_word_of_its_target_finds_it_by_meaning(
     assert lexical.startswith("Documents found: 0")
 
 
-def test_status_names_the_model_and_its_pieces(data: Path) -> None:
+def test_status_names_the_model_and_its_chunks(data: Path) -> None:
     """What the server can search by meaning is said where the agent looks."""
-    assert re.search(r"search by meaning: tiny, \d+ pieces", library(data, "lexical").status())
+    assert re.search(r"search by meaning: tiny, \d+ chunks", library(data, "lexical").status())
 
 
 def test_a_search_by_meaning_counts_the_nearest(data: Path) -> None:
@@ -168,7 +168,7 @@ def test_hybrid_shows_the_section_that_meaning_ranks_higher(data: Path) -> None:
 
 
 def test_hybrid_shows_by_meaning_a_document_that_only_meaning_finds(data: Path) -> None:
-    """No word found: the perks are shown, and their snippet stops where their piece does."""
+    """No word found: the perks are shown, and their snippet stops where their chunk does."""
     answer = library(data, "hybrid").search("holidays")
     assert answer.startswith("Documents found by words or meaning:")
     first = hits(answer)[0]
@@ -404,8 +404,8 @@ def test_searches_at_once_wait_for_one_connection(data: Path, *, fail: bool) -> 
         assert [titles(answer)[0] for answer in answers] == ["Handbook"] * 3
 
 
-def test_a_long_section_is_shown_at_the_piece_that_meaning_found(tmp_path: Path) -> None:
-    """The second piece of a section matches: the snippet starts there, not at the section."""
+def test_a_long_section_is_shown_at_the_chunk_that_meaning_found(tmp_path: Path) -> None:
+    """The second chunk of a section matches: the snippet starts there, not at the section."""
     docs = tmp_path / "docs"
     fillers(docs)
     body = "# Guide\n\n## Long\n\n" + "opening words " * 72 + "\n\n" + "leave " * 50 + "\n"
@@ -424,7 +424,7 @@ def test_ties_by_meaning_keep_the_newest_before_the_cut(tmp_path: Path) -> None:
     """A hundred and five documents of one text tie: the hundred newest are kept, newest first."""
     docs = tmp_path / "docs"
     fillers(docs)
-    # The newest has the highest id, so the order of pieces, by path, is oldest first.
+    # The newest has the highest id, so the order of chunks, by path, is oldest first.
     for number in range(105):
         updated = MOMENT - timedelta(days=105 - number)
         write(docs, page(str(7000 + number), "Recurring", updated=updated), "leave\n")

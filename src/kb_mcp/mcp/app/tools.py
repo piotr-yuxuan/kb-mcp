@@ -146,7 +146,7 @@ class Ranking(Record):
     paths: list[str]
     whole: bool  # every document matching the words is counted
     meaning: dict[str, tuple[int, int, int]]  # for each document shown by meaning, the
-    # section number of its best piece, and the piece's start and end in the body
+    # section number of its best chunk, and the chunk's start and end in the body
     counted: str = "found"  # what the count line calls the documents counted
     note: str = ""  # the sentences saying why meaning, or reranking, was not used
     pinned: int = 0  # the documents that the query names, first, by identifier
@@ -250,7 +250,7 @@ def place_of(
 ) -> tuple[int, tuple[int, int]]:
     """Give a document's section, by its number, and its best place there, as a span of the body.
 
-    A document ranked by meaning gives its best piece. One ranked by words gives the
+    A document ranked by meaning gives its best chunk. One ranked by words gives the
     occurrence of the question's rarest word with the most other words within UNIT / 2
     of it, in its best section for the question's words, or the start of its first.
     Words are found as the index finds them: without regard to case or accents, between
@@ -285,7 +285,7 @@ def passages(
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
     About each document's best place (``place_of``): by meaning, the unit of its best
-    piece, by the index's chunking; by words, its section whole up to UNIT characters,
+    chunk, by the index's chunking; by words, its section whole up to UNIT characters,
     else UNIT of it about the place, by ``around``, then cut to whole lines where a line
     break falls in the half that the cut shortens.
     """

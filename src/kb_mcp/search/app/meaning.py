@@ -39,7 +39,7 @@ class Nearest(Record):
     """The documents nearest a query, or why there are none to give."""
 
     found: dict[str, tuple[Score, int, int, int]]  # each path's score, then its best
-    # piece's section number, and its start and end in the body
+    # chunk's section number, and its start and end in the body
     reason: str = ""
 
 
@@ -60,7 +60,7 @@ class Meaning:
         self._failure = ("", 0.0)
 
     def nearest(self, reader: SearchReader, query: str, filters: Filters) -> Nearest:
-        """Find the documents passing the filters whose best piece is nearest the query."""
+        """Find the documents passing the filters whose best chunk is nearest the query."""
         embedded = reader.embedded()
         if embedded is None:
             return Nearest(found={}, reason=NO_VECTORS)

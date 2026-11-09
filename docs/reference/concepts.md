@@ -262,8 +262,8 @@ placed the document.
 
 **In the code.** [`Section`](../../src/kb_mcp/search/domain/search.py),
 [`sections`](../../src/kb_mcp/search/domain/search.py) and
-[`Pieces`](../../src/kb_mcp/search/domain/search.py);
-[`Piece`](../../src/kb_mcp/search/domain/indexes.py), a chunk;
+[`ChunkVectors`](../../src/kb_mcp/search/domain/search.py), the chunks with their vectors;
+[`Chunk`](../../src/kb_mcp/search/domain/indexes.py);
 [`Chunker`](../../src/kb_mcp/search/domain/chunking.py),
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py),
 [`Cut`](../../src/kb_mcp/search/domain/chunking.py) and
@@ -271,8 +271,8 @@ placed the document.
 [`place_of`](../../src/kb_mcp/mcp/app/tools.py),
 [`snippet_of`](../../src/kb_mcp/mcp/app/tools.py) and
 [`around`](../../src/kb_mcp/search/domain/chunking.py), which place the other ranges at
-a section. The index's table `pieces` holds the chunks, and its table `chunks` the
-sections' words.
+a section. The index's table `chunks` holds the chunks, and its table `section_words`
+the sections' words.
 
 ### person
 

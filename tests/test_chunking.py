@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.search.domain.chunking import CHUNKERS, section_pieces
+from kb_mcp.search.domain.chunking import CHUNKERS, section_chunks
 from kb_mcp.search.domain.search import sections
 from tests.mirrors import page
 
@@ -45,7 +45,7 @@ FRONT = page("196845", TITLE, breadcrumb=("Handbook", "Payments"))
 
 
 def absolute(cut: list[Section], index: int, start: int, end: int) -> tuple[int, int]:
-    """Give a piece's span in the body, from its section's index and its span in that body."""
+    """Give a chunk's span in the body, from its section's index and its span in that body."""
     offset = cut[index].start + len(cut[index].head)
     return offset + start, offset + end
 
@@ -104,10 +104,10 @@ def test_every_chunking_named_has_its_cut_and_unit() -> None:
     assert CHUNKINGS[0] == "sections"
 
 
-def test_sections_cuts_as_011_did_and_returns_the_piece() -> None:
-    """The control is 011's passages, unchanged; its unit is the piece."""
+def test_sections_cuts_as_011_did_and_returns_the_chunk() -> None:
+    """The control is 011's passages, unchanged; its unit is the chunk."""
     cut = sections(f"# {TITLE}\n\nFirst.\n\n## Second\n\nMore.\n")
-    assert CHUNKERS["sections"].cut(FRONT, cut) == section_pieces(TITLE, cut)
+    assert CHUNKERS["sections"].cut(FRONT, cut) == section_chunks(TITLE, cut)
     assert CHUNKERS["sections"].quoted_span((5, 9), (0, 40)) == (5, 9)
 
 
@@ -115,7 +115,7 @@ def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> Non
     """2,000 characters of five-letter words: spaces at 4, 9, ..., 1,199, then the rest."""
     body = "abcd " * 400
     cut = sections(body)
-    spans = [absolute(cut, *piece[:3]) for piece in CHUNKERS["windows"].cut(FRONT, cut)]
+    spans = [absolute(cut, *chunk[:3]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)]
     assert spans == [(0, 1199), (STEP, 2000)]
 
 
@@ -137,14 +137,14 @@ def test_a_window_ends_at_white_space_and_none_is_blank(
 ) -> None:
     """Hand-computed cases of the white space that ends windows and that they skip."""
     cut = sections(body)
-    assert [absolute(cut, *piece[:3]) for piece in CHUNKERS["windows"].cut(FRONT, cut)] == spans
+    assert [absolute(cut, *chunk[:3]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)] == spans
 
 
 def test_a_word_longer_than_the_last_tenth_is_cut_at_the_window_s_length() -> None:
     """No white space to stop at: the window ends inside the word."""
     body = "x" * 1300
     cut = sections(body)
-    spans = [absolute(cut, *piece[:3]) for piece in CHUNKERS["windows"].cut(FRONT, cut)]
+    spans = [absolute(cut, *chunk[:3]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)]
     assert spans == [(0, WINDOW), (STEP, 1300)]
 
 
@@ -166,7 +166,7 @@ def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> 
     for body in bodies():
         cut = sections(body)
         windows = CHUNKERS["windows"].cut(FRONT, cut)
-        spans = [absolute(cut, *piece[:3]) for piece in windows]
+        spans = [absolute(cut, *chunk[:3]) for chunk in windows]
         short_words = max((len(each) for each in body.split()), default=0) <= WORD
         assert not body[: spans[0][0] if spans else len(body)].strip()
         assert not body[spans[-1][1] if spans else 0 :].strip()
@@ -184,8 +184,8 @@ def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> 
             assert body[end].isspace() or run_around(body, end) > TENTH
 
 
-def test_small_to_big_pieces_hold_512_characters_and_cover_each_section_s_body() -> None:
-    """Over seeded bodies: pieces within their section, no character but white space left."""
+def test_small_to_big_chunks_hold_512_characters_and_cover_each_section_s_body() -> None:
+    """Over seeded bodies: chunks within their section, no character but white space left."""
     for body in bodies():
         cut = sections(body)
         found = CHUNKERS["small-to-big"].cut(FRONT, cut)
@@ -200,20 +200,20 @@ def test_small_to_big_pieces_hold_512_characters_and_cover_each_section_s_body()
             assert not "".join(left).strip()
 
 
-def test_a_unit_holds_its_piece_and_is_its_section_when_that_fits() -> None:
-    """Over seeded bodies: each small-to-big piece's unit, at most 2,400 characters."""
+def test_a_unit_holds_its_chunk_and_is_its_section_when_that_fits() -> None:
+    """Over seeded bodies: each small-to-big chunk's unit, at most 2,400 characters."""
     for body in bodies():
         cut = sections(body)
         for index, start, end, _ in CHUNKERS["small-to-big"].cut(FRONT, cut):
-            piece = absolute(cut, index, start, end)
+            chunk = absolute(cut, index, start, end)
             section = bounds(cut[index])
-            first, last = CHUNKERS["small-to-big"].quoted_span(piece, section)
-            assert section[0] <= first <= piece[0] < piece[1] <= last <= section[1]
+            first, last = CHUNKERS["small-to-big"].quoted_span(chunk, section)
+            assert section[0] <= first <= chunk[0] < chunk[1] <= last <= section[1]
             assert last - first == min(PASSAGE_CHARS, section[1] - section[0])
 
 
 @pytest.mark.parametrize(
-    ("piece", "section", "unit"),
+    ("chunk", "section", "unit"),
     [
         ((100, 600), (0, PASSAGE_CHARS), (0, PASSAGE_CHARS)),
         ((2500, 3000), (0, 5000), (1550, 3950)),
@@ -221,19 +221,19 @@ def test_a_unit_holds_its_piece_and_is_its_section_when_that_fits() -> None:
         ((4600, 5000), (0, 5000), (2600, 5000)),
     ],
 )
-def test_a_unit_is_centred_on_its_piece_within_its_section(
-    piece: tuple[int, int], section: tuple[int, int], unit: tuple[int, int]
+def test_a_unit_is_centred_on_its_chunk_within_its_section(
+    chunk: tuple[int, int], section: tuple[int, int], unit: tuple[int, int]
 ) -> None:
-    """2,400 characters about the piece's middle, moved back inside the section."""
-    assert CHUNKERS["small-to-big"].quoted_span(piece, section) == unit
+    """2,400 characters about the chunk's middle, moved back inside the section."""
+    assert CHUNKERS["small-to-big"].quoted_span(chunk, section) == unit
 
 
 def test_section_paths_cuts_as_sections_does() -> None:
-    """The same pieces as the control; only their texts differ."""
+    """The same chunks as the control; only their texts differ."""
     for body in bodies()[:300]:
         cut = sections(body)
-        control = [piece[:3] for piece in CHUNKERS["sections"].cut(FRONT, cut)]
-        assert [piece[:3] for piece in CHUNKERS["section-paths"].cut(FRONT, cut)] == control
+        control = [chunk[:3] for chunk in CHUNKERS["sections"].cut(FRONT, cut)]
+        assert [chunk[:3] for chunk in CHUNKERS["section-paths"].cut(FRONT, cut)] == control
 
 
 def test_a_heading_path_names_each_heading_a_section_sits_under() -> None:
@@ -250,7 +250,7 @@ def test_a_heading_path_names_each_heading_a_section_sits_under() -> None:
 
 
 def test_the_title_the_breadcrumb_and_the_path_are_each_cut() -> None:
-    """Each line that says where a piece sits holds 200 characters at most."""
+    """Each line that says where a chunk sits holds 200 characters at most."""
     front = page("1", "T" * 250, breadcrumb=("B" * 150, "C" * 150))
     cut = sections(f"Intro.\n\n## {'H' * 250}\n\nMore.\n")
     texts = [text for *_, text in CHUNKERS["small-to-big"].cut(front, cut)]
