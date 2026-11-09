@@ -25,6 +25,7 @@ from lxml.etree import ErrorTypes, LxmlError
 from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tostring
 from pydantic import Field, InstanceOf
 
+from kb_mcp.kernel.names import ISSUE_KEY
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror_text import one_line, visible
 
@@ -75,7 +76,7 @@ DOCUMENT_ADDRESSES = (
 )
 VIEW_PAGE = "/wiki/pages/viewpage.action"
 VIEW_PAGE_ID = "pageId"
-ISSUE_ADDRESS = re.compile(r"/browse/(?P<key>[A-Z][A-Z0-9_]+-[0-9]+)(?:[/?].*)?")
+ISSUE_ADDRESS = re.compile(rf"/browse/(?P<key>{ISSUE_KEY.pattern})(?:[/?].*)?")
 KEPT_SCHEMES = frozenset({"http", "https", "mailto"})
 WEB_PREFIXES = ("http://", "https://")
 
