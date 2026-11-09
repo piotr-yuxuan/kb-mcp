@@ -220,7 +220,9 @@ not. "Not significant" means "not shown", not "no difference".
 need: for each model, mode and question, the ranks of the question's expected documents
 within the first ten (`null` beyond). This prints them for hybrid against lexical, with
 the test that `eval` runs; two results files of the same golden file compare two models
-the same way, as the comparison with plan 011's model below was made:
+the same way, as the comparison with plan 011's model below was made. A results file
+written before plan 054 names its evaluated indexes `runs`, not `indexes`: read it so in
+these lines and those below.
 
 ```python
 import json, math, statistics, sys
@@ -543,7 +545,7 @@ The results file keeps each run's times in seconds, `[median, 95th]` by mode und
 milliseconds:
 
 ```bash
-uv run python -c 'import json, sys; [print(run["model"], run["chunking"], mode, round(times[1] * 1000), "ms") for run in json.load(open(sys.argv[1]))["runs"] for mode, times in run["times"].items()]' <data>/eval/results/<time>.json
+uv run python -c 'import json, sys; [print(run["model"], run["chunking"], mode, round(times[1] * 1000), "ms") for run in json.load(open(sys.argv[1]))["indexes"] for mode, times in run["times"].items()]' <data>/eval/results/<time>.json
 ```
 
 `eval` tests each mode against words alone, never two modes against each other. The
@@ -559,8 +561,8 @@ uv run python - <data>/eval/results/<time>.json <<'EOF'
 import json, sys
 from statistics import fmean
 from kb_mcp.evaluation.domain.evaluation import paired_test
-runs = json.load(open(sys.argv[1]))["runs"]
-ranks = next(run["ranks"] for run in runs if run["chunking"] == "windows")
+indexes = json.load(open(sys.argv[1]))["indexes"]
+ranks = next(run["ranks"] for run in indexes if run["chunking"] == "windows")
 mrr = {
     mode: [max((1 / rank for rank in each if rank), default=0.0) for each in by_question.values()]
     for mode, by_question in ranks.items()
