@@ -1004,14 +1004,12 @@ class Reader:
     def keys(self) -> set[str]:
         """Give the vector cache's keys of the chunks' vectors: what the index reads of it.
 
-        An index built by words alone names no vector, and one of this schema built before
-        chunks recorded their keys reads as any other: neither can say which vectors a
-        prune must keep, so raise UnavailableIndexError.
+        An index built by words alone names no vector, and cannot say which vectors a prune
+        must keep: raise UnavailableIndexError.
         """
-        columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(chunks)")}
         model = self._connection.execute("SELECT value FROM meta WHERE name = 'model'").fetchone()
-        if not model or not model[0] or "key" not in columns:
-            message = "built by words alone, or before chunks recorded their keys"
+        if not model or not model[0]:
+            message = "built by words alone"
             raise UnavailableIndexError(message)
         return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM chunks")}
 

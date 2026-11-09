@@ -600,7 +600,7 @@ def command(
 def test_an_evaluation_index_without_keys_holds_the_prune_back(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Built before chunks recorded their keys: nothing deleted, the file named, exit 0."""
+    """Its chunks without their keys, which it cannot read: nothing deleted, exit 0."""
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
         connection.execute("ALTER TABLE chunks DROP COLUMN key")

@@ -528,18 +528,6 @@ def test_an_index_names_the_store_s_key_of_each_chunk_s_vector(
     assert keys == {vector_cache.vector_key(tiny().fingerprint, text) for text in embedder.texts}
 
 
-def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
-    """Without the column, its summary reads as ever; its keys are refused."""
-    build(data, counting())
-    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
-        connection.execute("ALTER TABLE chunks DROP COLUMN key")
-        connection.commit()
-    with reading(data / "index.sqlite") as reader:
-        assert reader.index_status().chunks > 0
-        with pytest.raises(UnavailableIndexError, match="before chunks recorded their keys"):
-            reader.keys()
-
-
 def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: Path) -> None:
     """A window across sections: its section holds its middle, its span reads the body."""
     body = "# Rollback\n\nUndo the payout.\n\n## Release\n\n" + "The deploy goes out. " * 120
