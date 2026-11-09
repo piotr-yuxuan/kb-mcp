@@ -9,9 +9,9 @@ import pytest
 
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
+    FetchWindow,
     Target,
-    Window,
-    window,
+    fetch_window,
 )
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 
@@ -31,7 +31,7 @@ def covered() -> Coverage:
 
 def test_a_space_without_since_catches_up_on_its_covered_period() -> None:
     """No --since: from the covered start to now, the end pinned too; its listing is whole."""
-    assert window(covered(), SPACE, None, NOW) == Window(
+    assert fetch_window(covered(), SPACE, None, NOW) == FetchWindow(
         period=Period(COVERED, NOW), reason="covered start"
     )
 
@@ -39,8 +39,10 @@ def test_a_space_without_since_catches_up_on_its_covered_period() -> None:
 def test_a_run_with_since_starts_there() -> None:
     """--since wins over the coverage."""
     since = datetime(2026, 10, 25, tzinfo=UTC)
-    assert window(covered(), SPACE, since, NOW) == Window(period=Period(since, NOW), reason="given")
-    assert window(covered(), PROJECT, since, NOW) == Window(
+    assert fetch_window(covered(), SPACE, since, NOW) == FetchWindow(
+        period=Period(since, NOW), reason="given"
+    )
+    assert fetch_window(covered(), PROJECT, since, NOW) == FetchWindow(
         period=Period(since, NOW), reason="given"
     )
 
@@ -48,12 +50,12 @@ def test_a_run_with_since_starts_there() -> None:
 def test_a_since_that_does_not_come_before_the_end_is_refused() -> None:
     """An --until before --since, or at it, is refused, naming them."""
     with pytest.raises(PeriodError, match=r"^--until: must come after --since"):
-        window(covered(), SPACE, NOW, NOW)
+        fetch_window(covered(), SPACE, NOW, NOW)
 
 
 def test_a_target_never_covered_fetches_its_last_week() -> None:
     """Rather than refusing the run: seven days before the window's end, said first fetch."""
-    assert window(covered(), PROJECT, None, NOW) == Window(
+    assert fetch_window(covered(), PROJECT, None, NOW) == FetchWindow(
         period=Period(NOW - timedelta(days=7), NOW), reason="first fetch"
     )
 
@@ -63,7 +65,7 @@ def test_an_exact_project_catches_up_from_a_day_before_its_covered_end() -> None
     end = datetime(2026, 10, 27, 9, tzinfo=UTC)
     run = datetime(2026, 10, 28, 12, tzinfo=UTC)
     exact = Coverage(periods={PROJECT: Period(COVERED, end)}, exact=frozenset({PROJECT}))
-    assert window(exact, PROJECT, None, run) == Window(
+    assert fetch_window(exact, PROJECT, None, run) == FetchWindow(
         period=Period(datetime(2026, 10, 26, 9, tzinfo=UTC), run), reason="since the last fetch"
     )
 
@@ -71,7 +73,7 @@ def test_an_exact_project_catches_up_from_a_day_before_its_covered_end() -> None
 def test_a_project_recorded_before_034_catches_up_from_its_covered_start() -> None:
     """Its end may hide a failure: the whole period is searched again, once."""
     old = Coverage(periods={PROJECT: Period(COVERED, NOW - timedelta(days=1))})
-    assert window(old, PROJECT, None, NOW) == Window(
+    assert fetch_window(old, PROJECT, None, NOW) == FetchWindow(
         period=Period(COVERED, NOW), reason="covered start"
     )
 
@@ -80,8 +82,8 @@ def test_a_catch_up_that_would_start_at_or_after_the_end_skips_the_target() -> N
     """An --until before the catch-up's start: no window, rather than a refused run."""
     exact = Coverage(periods={PROJECT: Period(COVERED, NOW)}, exact=frozenset({PROJECT}))
     until = NOW - timedelta(days=1)
-    assert window(exact, PROJECT, None, until) is None
-    assert window(covered(), SPACE, None, COVERED) is None
+    assert fetch_window(exact, PROJECT, None, until) is None
+    assert fetch_window(covered(), SPACE, None, COVERED) is None
 
 
 def test_a_first_run_covers_its_period() -> None:
@@ -204,7 +206,7 @@ def test_a_failure_at_the_start_of_an_exact_entry_makes_it_inexact() -> None:
     fetched = Period(COVERED, NOW)
     after = exactly(COVERED, END).extended(PROJECT, fetched, COVERED)
     assert after == (before_034(COVERED, END), "capped")
-    assert window(after[0], PROJECT, None, NOW) == Window(
+    assert fetch_window(after[0], PROJECT, None, NOW) == FetchWindow(
         period=Period(COVERED, NOW), reason="covered start"
     )
 

@@ -44,7 +44,6 @@ ITEM = re.compile(r'(?:`(?P<name>[^`]+)`|"(?P<phrase>[^"]+)")(?: \(kept in (?P<k
 SHARED = frozenset(
     {
         "Answer",
-        "Document",
         "Embedded",
         "Entry",
         "Evaluated",
@@ -53,13 +52,10 @@ SHARED = frozenset(
         "Listing",
         "Outcome",
         "Part",
-        "Person",
         "Problem",
         "RefusedError",
-        "Report",
         "Row",
         "Run",
-        "Stored",
         "Summary",
         "Target",
         "Task",

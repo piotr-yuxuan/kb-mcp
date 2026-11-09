@@ -57,14 +57,14 @@ The site's responses and its HTML change without notice. So that a change stays 
   which module holds which record. `sources.atlassian.fetch.domain.content` holds what
   the fetch of Confluence and Jira stores and their prepare reads: `Space`, `Folder`,
   `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment` (an
-  [attachment](glossary.md#attachment)), `Comment`, `Person` (a site user, of an
+  [attachment](glossary.md#attachment)), `Comment`, `SiteUser` (a site user, of an
   [account](glossary.md#account)), and `Snapshot` (a [snapshot](glossary.md#snapshot),
   with its rendered body). `Listed` is what a [listing](glossary.md#listing) says of a
   document (its type, id, revision, update time and Confluence version), read apart from
   the rest of the entry, so that an entry whose other fields have changed still lets the
   document be fetched. `mirror.domain.mirror.FrontMatter` holds what the mirror says of
   each [document](glossary.md#document). A fetched document knows where it is stored
-  (`source`, `kind`) and names its state (`revision`). Every layer above the adapters
+  (`source`, `resource_type`) and names its state (`revision`). Every layer above the adapters
   works with these types alone.
 - **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
   and `sources.atlassian.fetch.adapters.jira_v3` hold all that the code knows of those
@@ -108,8 +108,8 @@ A [snapshot](glossary.md#snapshot) lies at:
 <data>/raw/<source>/<kind>/<id>/<revision>/<file>.json
 ```
 
-- `source` and `kind`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
-  `source` and `kind` of `Page`, `BlogPost` and `Issue`.
+- `source` and `resource_type`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
+  `source` and `resource_type` of `Page`, `BlogPost` and `Issue`.
 - `id`: the content id (Confluence) or the issue id (Jira, which stays when the key
   changes).
 - `revision`: the version number padded to six digits for Confluence (`000003`), the
@@ -150,7 +150,7 @@ only the store reads and writes:
 
 The store's interface for snapshots:
 
-- `put(kind, responses, fetched_at, blobs)`, with `kind` one of `Page`, `BlogPost` and
+- `put(document_class, responses, fetched_at, blobs)`, with `document_class` one of `Page`, `BlogPost` and
   `Issue`, refuses a snapshot without one of the kind's files (above), reads only the
   id and the revision (the kind's `identity`), stores the responses as received, and
   returns the folder. `blobs` maps attachment ids to digests
@@ -160,13 +160,13 @@ The store's interface for snapshots:
 - `add_blobs(document, blobs)` records files downloaded later, such as on a retry,
   replacing the record alone, whole. It, `has` and `read` take a `Document` or a
   `Listed`.
-- `has(document)`; `read(document)`, which returns a `Stored` or raises one of
+- `has(document)`; `read(document)`, which returns a `StoredSnapshot` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
   `ValueError` or an `OSError` for a damaged file); and `latest(kind)`, which yields the
-  newest snapshot of each document of a kind as a `Stored`, or as an `Unreadable`
+  newest snapshot of each document of a kind as a `StoredSnapshot`, or as an `Unreadable`
   (where it is, and the refused field's path or the error's class) when it cannot be
   read. The others still follow.
-- `Stored` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
+- `StoredSnapshot` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
   and `blobs`, the files of its own attachments only. An attachment absent from `blobs`
   was not downloaded: a media type not kept, over the size cap, or a failed download.
 - `responses(folder)` gives the responses as received, for adapters to read what the
@@ -343,7 +343,7 @@ order or type, by name.
 Images: an image in the rendered HTML names its attachment by
 `data-linked-resource-id` (the attachment id) or by the file name in its `src`, as
 plan 001 found on the sandbox; 005's HTML module, the one module that knows the site's
-markup, maps it to `Stored.blobs`. An image of another page's attachment (through an
+markup, maps it to `StoredSnapshot.blobs`. An image of another page's attachment (through an
 include) has a file only when that page is stored; otherwise the mirror keeps a
 placeholder; a backfill that reaches the other page fills it.
 

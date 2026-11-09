@@ -77,9 +77,9 @@ site user.
 
 - In the code: [`Account`](../../src/kb_mcp/sources/declaration.py),
   [`AtlassianAccountTable`](../../src/kb_mcp/sources/atlassian/settings.py),
-  [`Person`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
-  [`Person.account_id`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
-  [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py).
+  [`SiteUser`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
+  [`SiteUser.account_id`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
+  [`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py).
 - User-facing: `accounts.atlassian.site`, `users.json`, `account`.
 
 ### sign-in
@@ -90,10 +90,10 @@ profile under `<data>/session/`, or an API token.
 - In the code: [`SignIn`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   [`SavedSession`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
   [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
-  [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
-  [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py),
-  [`signed_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py),
-  [`signed_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py).
+  [`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
+  [`open_sign_in_window`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py),
+  [`is_signed_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py),
+  [`is_signed_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py).
 - User-facing: `login`, `sign in`.
 
 ### target
@@ -109,12 +109,13 @@ alias means.
 The period that one fetch asks of a target, its start included and its end excluded,
 and why it starts there.
 
-- In the code: [`Window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-  [`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-  [`TargetWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
+- In the code: [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+  [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+  [`TargetFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
   [`Period`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py).
 - User-facing: `windows`, a name of the fetch's JSON that chunking's `windows` also
   holds.
+- Retires: `Window`, `TargetWindow`.
 
 ### coverage
 
@@ -122,14 +123,15 @@ The period of a target over which every updated document is stored, and what a f
 did to it: extended, capped or held.
 
 - In the code: [`Coverage`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-  [`Extension`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py).
+  [`CoverageChange`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py).
 - User-facing: `coverage.json`, `fetch.coverage`.
+- Retires: `Extension`.
 
 ### run report
 
 One source's counts of one fetch, in `<data>/runs/<time>-<source>.json`.
 
-- In the code: [`Report`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py).
+- In the code: [`RunReport`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py).
 - User-facing: `runs/`.
 
 ### raw store
@@ -138,7 +140,7 @@ One source's counts of one fetch, in `<data>/runs/<time>-<source>.json`.
 "the store" alone, which the vector store and the conversion cache also are.
 
 - In the code: [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-  [`Stored`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
+  [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
   [`Unreadable`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
 - User-facing: `raw/`, `store.json`.
 
@@ -148,7 +150,7 @@ What a space lists of its pages, blog posts and folders, as received; each docum
 that it names is a listed document.
 
 - In the code: [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
-  [`Listed.type`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py).
+  [`Listed.document_class`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py).
 - User-facing: `listed_at.json`, `fetch.listed`.
 
 ### snapshot
@@ -158,7 +160,7 @@ state of a document.
 
 - In the code: [`Snapshot`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`REVISION`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
-  [`Document`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
+  [`FetchedDocument`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py).

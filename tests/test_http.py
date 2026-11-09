@@ -13,7 +13,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.http import (
     RETRIES,
     Request,
     SignInNeededError,
-    Site,
+    SiteClient,
     SiteError,
     TooManyFailuresError,
     refuse_plain_http,
@@ -42,7 +42,7 @@ class Clock:
         return self.now
 
 
-def site(*responses: httpx.Response, clock: Clock | None = None) -> tuple[Site, list[str]]:
+def site(*responses: httpx.Response, clock: Clock | None = None) -> tuple[SiteClient, list[str]]:
     """Return a site that answers with ``responses`` in turn, and the URLs it was asked."""
     asked: list[str] = []
     answers = iter(responses)
@@ -53,7 +53,7 @@ def site(*responses: httpx.Response, clock: Clock | None = None) -> tuple[Site, 
 
     clock = clock or Clock()
     http = httpx.Client(base_url=SITE, transport=httpx.MockTransport(handle))
-    return Site(http, sleep=clock.sleep, clock=clock.time), asked
+    return SiteClient(http, sleep=clock.sleep, clock=clock.time), asked
 
 
 def test_a_json_response_is_read_with_its_parameters() -> None:
@@ -145,7 +145,7 @@ def test_a_lost_connection_is_retried_then_named_by_its_class() -> None:
         raise httpx.ConnectError(message, request=request)
 
     http = httpx.Client(base_url=SITE, transport=httpx.MockTransport(handle))
-    reader = Site(http, sleep=clock.sleep, clock=clock.time)
+    reader = SiteClient(http, sleep=clock.sleep, clock=clock.time)
     with pytest.raises(SiteError, match=r"^ConnectError$"):
         reader.json(Request(path="/wiki/api/v2/spaces"))
     assert calls == RETRIES + 1
@@ -287,5 +287,5 @@ def test_a_request_over_plain_http_is_refused_before_it_is_sent() -> None:
         event_hooks={"request": [refuse_plain_http]},
     )
     with pytest.raises(SiteError, match="plain HTTP refused"):
-        Site(http_client, sleep=lambda _: None).json(Request(path="/a"))
+        SiteClient(http_client, sleep=lambda _: None).json(Request(path="/a"))
     assert sent == []

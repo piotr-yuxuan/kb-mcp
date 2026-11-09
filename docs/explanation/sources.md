@@ -95,7 +95,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   read in place has no fetcher: the work log's preparer reads its folder, and its
   `preflight` checks it.
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
-  fetcher plans ([`plan`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)), the
+  fetcher plans ([`plan_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)), the
   work log's preparer counts
   ([`plan_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)), and
   Atlassian's does not run.

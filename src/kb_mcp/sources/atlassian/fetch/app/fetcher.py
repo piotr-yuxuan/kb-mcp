@@ -15,8 +15,13 @@ import structlog
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sign_in
-from kb_mcp.sources.atlassian.fetch.app.download import Outcome, download, plan, read_targets
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
+from kb_mcp.sources.atlassian.fetch.app.fetching import (
+    FetchOutcome,
+    plan_fetch,
+    read_targets,
+    run_fetch,
+)
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 from kb_mcp.sources.stages import Result
@@ -28,7 +33,7 @@ if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.output import Summary
     from kb_mcp.sources import stages
-    from kb_mcp.sources.atlassian.fetch.app.download import Targets
+    from kb_mcp.sources.atlassian.fetch.app.fetching import Targets
     from kb_mcp.sources.stages import SourceRun
 
 # How a download or its plan ended, by its status. A download that Ctrl-C stops raises
@@ -45,7 +50,7 @@ BUSY = "another run is writing it; try again once that run ends"
 class Fetched(Result):
     """A fetch: how it ended, and what the download did, None when it could not start."""
 
-    downloaded: Outcome | None
+    downloaded: FetchOutcome | None
 
     def text(self, summary: Summary) -> str:
         """Write the download's counts; nothing when it could not start."""
@@ -60,8 +65,10 @@ def targets_of(run: SourceRun) -> Targets:
     """
     resource_types = {each.name for each in run.source.resource_types}
     return read_targets(
-        run.source_table.spaces if resource_types & {Page.kind, BlogPost.kind} else (),
-        run.source_table.projects if Issue.kind in resource_types else (),
+        run.source_table.spaces
+        if resource_types & {Page.resource_type, BlogPost.resource_type}
+        else (),
+        run.source_table.projects if Issue.resource_type in resource_types else (),
         run.options,
         run.now(),
     )
@@ -114,7 +121,7 @@ def fetch_targets(
     and a sign-in that no longer holds an error, ``fetch.sign_in_needed``, saying how to
     sign in again; both errors name the source, since each source's fetch can give them.
     """
-    act = plan if dry_run else download
+    act = plan_fetch if dry_run else run_fetch
     source = targets.source
     try:
         downloaded = act(settings, targets, now, sleep)
@@ -127,5 +134,5 @@ def fetch_targets(
     for target in downloaded.failed_targets:
         log.warning("fetch.target_failed", target=target)
     if downloaded.status == ExitStatus.SIGN_IN_AGAIN:
-        log.error("fetch.sign_in_needed", source=source, hint=sign_in(settings).again)
+        log.error("fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again)
     return Fetched(outcome=FETCHED[downloaded.status], downloaded=downloaded)

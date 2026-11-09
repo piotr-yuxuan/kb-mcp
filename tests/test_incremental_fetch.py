@@ -15,16 +15,16 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.main import main
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, Stored
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
-from kb_mcp.sources.atlassian.fetch.app.download import Targets, download, plan
+from kb_mcp.sources.atlassian.fetch.app.fetching import Targets, plan_fetch, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target, Window
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, FetchWindow, Target
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
 from tests.composed import MODEL
 from tests.mirrors import mirrored
 from tests.samples import v2_page, v2_space
-from tests.test_download import (
+from tests.test_fetching import (
     CAP,
     ISSUE,
     PAGES,
@@ -132,7 +132,7 @@ def run(
 ) -> int | None:
     """Run one download at ``now`` over the fake site, and return its status."""
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    return download(chosen, targets, lambda: now, lambda _: None).status
+    return run_fetch(chosen, targets, lambda: now, lambda _: None).status
 
 
 def first_week(spaces: list[str], projects: list[str]) -> Targets:
@@ -150,7 +150,7 @@ def stored_pages(chosen: Settings) -> dict[str, str]:
     return {
         item.snapshot.document.id: item.snapshot.document.revision
         for item in RawStore(chosen.raw).latest(Page)
-        if isinstance(item, Stored)
+        if isinstance(item, StoredSnapshot)
     }
 
 
@@ -230,7 +230,7 @@ def test_a_plan_lists_and_decides_and_writes_nothing(
     chosen = settings(tmp_path)
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    outcome = plan(chosen, first_week(["MFS"], ["PRB"]), lambda: FIRST, lambda _: None)
+    outcome = plan_fetch(chosen, first_week(["MFS"], ["PRB"]), lambda: FIRST, lambda _: None)
     assert outcome.status == 0
     assert outcome.report.counts["confluence pages: to fetch"] == len(["1001", "1002"])
     assert outcome.report.counts["jira issues: to fetch"] == 1
@@ -338,7 +338,7 @@ def test_a_page_on_its_way_is_probed_before_one_newly_absent(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     gone = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
-    monkeypatch.setattr("kb_mcp.sources.atlassian.fetch.app.download.MAX_PROBES", 1)
+    monkeypatch.setattr("kb_mcp.sources.atlassian.fetch.app.fetching.MAX_PROBES", 1)
     both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
     run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
     stones = RawStore(chosen.raw).tombstones()
@@ -856,7 +856,7 @@ def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
     old = [{"source": "jira", "key": "PRB", "start": START.isoformat(), "end": RUN.isoformat()}]
     (chosen.raw / "coverage.json").write_text(json.dumps(old), "utf-8")
     windows = catch_up([], ["PRB"]).windows(RawStore(chosen.raw).coverage(), NEXT)
-    assert windows == {PRB: Window(period=Period(START, NEXT), reason="covered start")}
+    assert windows == {PRB: FetchWindow(period=Period(START, NEXT), reason="covered start")}
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
     run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
@@ -884,7 +884,7 @@ def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
     assert after == Coverage(periods={PRB: Period(START, NEXT)})
     later = NEXT + timedelta(hours=6)
     assert catch_up([], ["PRB"]).windows(after, later) == {
-        PRB: Window(period=Period(START, later), reason="covered start")
+        PRB: FetchWindow(period=Period(START, later), reason="covered start")
     }
 
 
@@ -1015,10 +1015,12 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
     )
     targets = catch_up(["MFS"], ["PRB"])
     assert targets.windows(RawStore(chosen.raw).coverage(), NEXT) == {
-        Target(source="confluence", key="MFS"): Window(
+        Target(source="confluence", key="MFS"): FetchWindow(
             period=Period(NEXT - WEEK, NEXT), reason="first fetch"
         ),
-        PRB: Window(period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"),
+        PRB: FetchWindow(
+            period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"
+        ),
     }
     assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up(["MFS"], []), NEXT) == 0
     assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), NEXT) == 0
@@ -1090,7 +1092,7 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     early = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, until=FIRST - WEEK)
-    outcome = download(chosen, early, lambda: SECOND, lambda _: None)
+    outcome = run_fetch(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
     assert RawStore(chosen.raw).coverage() == before
     detailed = outcome.text("detailed")
@@ -1155,7 +1157,7 @@ def test_a_dry_run_counts_once_an_issue_that_the_search_names_twice(
     search = {"/rest/api/3/search/jql": lambda _: httpx.Response(200, json={"issues": entries})}
     monkeypatch.setattr(twice, "changes", lambda: search)
     monkeypatch.setattr(http, "client", lambda *_: twice.client())
-    planned = plan(
+    planned = plan_fetch(
         chosen,
         Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
         lambda: RUN,

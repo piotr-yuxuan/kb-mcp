@@ -10,7 +10,7 @@ import structlog
 from kb_mcp.sources.atlassian.fetch.adapters.browser import (
     SignInFailedError,
     disable_password_saving,
-    sign_in,
+    open_sign_in_window,
 )
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 PROFILE = "browser"
 
 
-def login(settings: Settings, site: str, chrome: Path | None, *, extensions: bool) -> None:
+def save_session(settings: Settings, site: str, chrome: Path | None, *, extensions: bool) -> None:
     """Open the sign-in window, wait for the user, and save the site's cookies.
 
     The browser profile and the cookies stay under ``Settings.session``, readable by the
@@ -37,15 +37,15 @@ def login(settings: Settings, site: str, chrome: Path | None, *, extensions: boo
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)
     disable_password_saving(profile)
-    cookies = sign_in(site, profile, chrome, extensions=extensions)
+    cookies = open_sign_in_window(site, profile, chrome, extensions=extensions)
     write_cookies(settings.session / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
 
 
-def signed_in(settings: Settings, chrome: Path | None, *, extensions: bool) -> SignedIn | None:
+def login(settings: Settings, chrome: Path | None, *, extensions: bool) -> SignedIn | None:
     """Sign in to the account's site; a sign-in that does not complete is an error, and None."""
     site = str(settings.accounts.atlassian.site)
     try:
-        login(settings, site, chrome, extensions=extensions)
+        save_session(settings, site, chrome, extensions=extensions)
     except SignInFailedError as error:
         structlog.get_logger().error("login.not_signed_in", reason=str(error))
         return None

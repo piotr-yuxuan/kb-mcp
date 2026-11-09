@@ -37,7 +37,7 @@ from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
     RawStore,
-    Stored,
+    StoredSnapshot,
     Unreadable,
     reason,
 )
@@ -141,7 +141,7 @@ class Outcome(Record):
 class Placed(Record):
     """A stored snapshot, and the file where its document is mirrored."""
 
-    stored: Stored
+    stored: StoredSnapshot
     path: PurePosixPath
 
     @property
@@ -171,7 +171,7 @@ def readable[T](items: Iterable[T | Unreadable], problems: list[Problem]) -> lis
     return kept
 
 
-def where(store: RawStore, stored: Stored) -> str:
+def where(store: RawStore, stored: StoredSnapshot) -> str:
     """Say where a snapshot is within the store."""
     return stored.folder.relative_to(store.root).as_posix()
 
@@ -250,7 +250,7 @@ def place(
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        stone = gone.get((document.kind, document.id))
+        stone = gone.get((document.resource_type, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
         named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)

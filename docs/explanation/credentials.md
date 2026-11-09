@@ -16,7 +16,7 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 | the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
 A run signs in by the token when one is set, else by the saved session
-([`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
+([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 Either opens what the account may read; the program only reads it, as
 [the wire](#on-the-wire) shows.
 
@@ -31,7 +31,7 @@ what the window sees and what it keeps:
   never your everyday one, so that your other sign-ins, saved passwords and extensions
   stay out of it
   ([`login`](../../src/kb_mcp/sources/atlassian/fetch/app/login.py),
-  [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py)).
+  [`open_sign_in_window`](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py)).
   Extensions stay off unless `--keep-extensions` lets them load, for a sign-in that
   needs one.
 - **Nothing remembered for you.** Password saving and autofill are turned off in that
@@ -143,14 +143,14 @@ redirect is never followed
 ## On the wire
 
 Every request that the program makes with the saved session or the token goes through
-one port, [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
+one port, [`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
 with the same rules whichever way the run signs in; the one other request that it makes
 to the site, `doctor`'s, carries neither, as the end of this section says:
 
 - **GET alone.** The port makes no other request, so the program changes nothing on the
   site, whatever its account may do
-  ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
-  [`test_a_run_sends_the_site_nothing_but_gets`](../../tests/test_download.py)).
+  ([`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
+  [`test_a_run_sends_the_site_nothing_but_gets`](../../tests/test_fetching.py)).
 - **https alone.** A request over plain http is refused before it is sent, so that
   neither cookie nor header travels in clear
   ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
@@ -162,7 +162,7 @@ to the site, `doctor`'s, carries neither, as the end of this section says:
   [`MEDIA_HOSTS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
   for an attached file; one elsewhere, such as to a sign-in page, means the session no
   longer holds
-  ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
+  ([`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
   [`test_a_redirect_to_the_media_host_is_followed`](../../tests/test_http.py),
   [`test_a_redirect_to_the_identity_provider_means_sign_in_is_needed`](../../tests/test_http.py)).
   The cookies kept are the site's alone, so the media host gets none, and the token's
@@ -182,7 +182,7 @@ inspects TLS, the operating system trusts its proxy's certificate, and the proxy
 every request, the cookies and the token's header included. `doctor` says whether the
 public certificate authorities verify the site, which they do not where TLS is inspected
 ([`verified_by_public_cas`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
-by a GET of its own, outside `Site`: on a client that trusts certifi's bundle of those
+by a GET of its own, outside `SiteClient`: on a client that trusts certifi's bundle of those
 authorities alone, and that carries no cookie and no token.
 
 ## What agents get

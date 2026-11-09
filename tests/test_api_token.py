@@ -23,7 +23,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from tests.endpoint import Scripted, serving
 from tests.test_cli import logged_as
-from tests.test_download import SITE, FakeSite
+from tests.test_fetching import SITE, FakeSite
 from tests.test_observed import said
 from tests.test_settings import user_log_folder
 
@@ -197,7 +197,9 @@ def test_login_with_a_token_signs_in_in_the_browser(
     if email is None:
         monkeypatch.delenv(EMAIL)
     signed_in: list[str] = []
-    monkeypatch.setattr(login_module, "login", lambda _, site, *__, **___: signed_in.append(site))
+    monkeypatch.setattr(
+        login_module, "save_session", lambda _, site, *__, **___: signed_in.append(site)
+    )
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE]
     assert main(["login", "atlassian", *options]) == 0
     assert signed_in == [SITE]

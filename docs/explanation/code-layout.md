@@ -125,7 +125,7 @@ above. Plan 029 nested them so:
 - **`fetch/`** reaches a system and keeps the store it owns. For Confluence and Jira:
   the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
   store, a download's period, coverage, deletions and files kept; the records that the
-  fetch stores and the prepare reads, `content.py`; and the use cases, `download.py`,
+  fetch stores and the prepare reads, `content.py`; and the use cases, `fetching.py`,
   `login.py` and `doctor.py`.
 - **`prepare/`** writes documents through the mirror, from its source's store or from a
   folder read in place. For Confluence and Jira: the site's HTML, the catalogue, the
@@ -216,7 +216,7 @@ table is one:
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |
 | `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
-| `sources.atlassian.fetch.app.download.Download` | It holds the raw store under its lock and the site's client |
+| `sources.atlassian.fetch.app.fetching.Fetching` | It holds the raw store under its lock and the site's client |
 | `evaluation.app.evaluation.Target` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 | `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
 | `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |

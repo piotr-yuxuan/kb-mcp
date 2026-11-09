@@ -85,9 +85,9 @@ def test_the_resource_types_are_the_plan_s_and_the_raw_store_s_kinds() -> None:
     assert [
         resource_type.name for resource_type in (*CONFLUENCE.resource_types, *JIRA.resource_types)
     ] == [
-        Page.kind,
-        BlogPost.kind,
-        Issue.kind,
+        Page.resource_type,
+        BlogPost.resource_type,
+        Issue.resource_type,
     ]
 
 
@@ -112,7 +112,9 @@ def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
 
 def test_each_source_prepares_the_kinds_that_its_declaration_names() -> None:
     """A type added to a declaration reaches its preparer, and the tests' store of each kind."""
-    assert {source: [kind.kind for kind in kinds] for source, kinds in PREPARED.items()} == {
+    assert {
+        source: [kind.resource_type for kind in kinds] for source, kinds in PREPARED.items()
+    } == {
         declared.name: [resource_type.name for resource_type in declared.resource_types]
         for declared in (CONFLUENCE, JIRA)
     }

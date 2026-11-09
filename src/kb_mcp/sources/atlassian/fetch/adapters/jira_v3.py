@@ -17,7 +17,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Comment,
     Issue,
     Listed,
-    Person,
+    SiteUser,
     Snapshot,
     time_revision,
 )
@@ -43,10 +43,10 @@ COMMENTS = "comments.json"
 CONTENT_PATH = "/rest/api/"
 
 
-def person(fields: Fields) -> Person:
+def person(fields: Fields) -> SiteUser:
     """Read a user; the email address, when there is one, is left behind."""
     with fields.refusals():
-        return Person(
+        return SiteUser(
             account_id=fields.text("accountId"), display_name=fields.optional_text("displayName")
         )
 
@@ -89,7 +89,7 @@ def issue(fields: Fields) -> Issue:
             author=None if reporter is None else person(reporter),
             created=values.time("created"),
             updated=values.time("updated"),
-            url=f"/browse/{key}",
+            site_path=f"/browse/{key}",
             labels=values.texts("labels"),
             key=key,
             project=values.object("project").text("key"),
@@ -170,7 +170,10 @@ def listed(fields: Fields) -> Listed:
     updated = fields.object("fields").time("updated")
     with fields.refusals():
         return Listed(
-            type=Issue, id=fields.text("id"), revision=time_revision(updated), updated=updated
+            document_class=Issue,
+            id=fields.text("id"),
+            revision=time_revision(updated),
+            updated=updated,
         )
 
 
@@ -215,6 +218,6 @@ def myself_request() -> Request:
     return Request(path="/rest/api/3/myself")
 
 
-def signed_in(response: Fields) -> bool:
+def is_signed_in(response: Fields) -> bool:
     """Say whether the user answered is someone."""
     return response.optional_text("accountId", absent=True) is not None

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from datetime import datetime
 
-    from kb_mcp.sources.atlassian.fetch.domain.content import Comment, Person
+    from kb_mcp.sources.atlassian.fetch.domain.content import Comment, SiteUser
 
 # The front matter's type of each kind of document.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {
@@ -99,7 +99,7 @@ class Catalogue(Record):
         pages = {key: page for key, page in self.listed.items() if isinstance(page, Page)}
         return {**folders, **pages}
 
-    def name(self, person: Person | None) -> str | None:
+    def name(self, person: SiteUser | None) -> str | None:
         """Name a person: by the display name given, else the users', else the account id."""
         if person is None:
             return None
@@ -228,7 +228,7 @@ def front_matter(
         updated=document.updated.astimezone(UTC),
         version=None if confluence is None else confluence.version,
         revision=document.revision,
-        url=None if site is None else site + document.url,
+        url=None if site is None else site + document.site_path,
         breadcrumb=catalogue.breadcrumb(document),
         fetched_at=fetched_at.astimezone(UTC),
     )

@@ -147,7 +147,7 @@ def jar(http: httpx.Client) -> list[dict[str, object]]:
     ]
 
 
-class Site:
+class SiteClient:
     """GETs on one site: paced, retried within bounds, stopped when sign-in is needed."""
 
     def __init__(

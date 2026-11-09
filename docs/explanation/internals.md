@@ -50,7 +50,7 @@ flowchart LR
 
 A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
 download of the spaces or projects that its table names
-([`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)); `prepare`, each
+([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)); `prepare`, each
 source's preparer, [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,
 [`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
@@ -79,19 +79,19 @@ names given choose among those that a command can take
 
 ## Fetch: from the site to the raw store
 
-[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads the
-site through one port, [`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
+[`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) reads the
+site through one port, [`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py),
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
-token ([`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
+token ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
 listings whole; for each Jira project, it searches the issues updated in its window. Then
 it fetches each document updated in the window whose revision the store lacks
-([`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
+([`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 its files first, the snapshot last
-([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
+([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 and counts what it fetches apart from what it lists. Without `--since`, each target
 fetches what changed since its last fetch
-([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
+([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
 project from a day before the end of the period it covers, which ends at its earliest
 document not stored whole, so that a run asks for that again; a space from the start of
 that period, its listing being read whole anyway; a target never fetched, its last 7

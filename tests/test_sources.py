@@ -43,7 +43,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
-from kb_mcp.sources.atlassian.fetch.app.download import Outcome, Report
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchOutcome, RunReport
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
 from kb_mcp.sources.atlassian.prepare.app import preparer
@@ -53,9 +53,9 @@ from kb_mcp.sources.stages import SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.reference import Emitted
-from tests.test_download import PAGES, SITE, FakeSite
+from tests.test_fetching import PAGES, SITE, FakeSite
+from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_question import QUESTION, Terminal
-from tests.test_refresh import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_worklog_mirror import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
@@ -514,7 +514,7 @@ def test_a_later_fetch_catches_up_on_an_old_page_edited_today_and_nothing_stored
     assert ran.exit_status == ExitStatus.OK
     fetched = ran.sources[0].result
     assert isinstance(fetched, fetcher.Fetched)
-    assert isinstance(fetched.downloaded, Outcome)
+    assert isinstance(fetched.downloaded, FetchOutcome)
     assert fetched.downloaded.report.counts["confluence pages: fetched"] == 1
     assert stored_pages(settings)["1003"] == "000004"
 
@@ -547,7 +547,7 @@ def test_ctrl_c_in_a_fetch_exits_130_and_no_later_source_runs(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """The first interrupted; the next not run, nothing of it asked; the event names the first."""
-    monkeypatch.setattr(fetcher, "download", interrupting)
+    monkeypatch.setattr(fetcher, "run_fetch", interrupting)
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
     with capture_logs() as logged:
@@ -1042,13 +1042,13 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
     assert [each["source"] for each in logged_as(logged, "prepare.interrupted")] == [None]
 
 
-def ending(*statuses: ExitStatus) -> Callable[..., Outcome]:
+def ending(*statuses: ExitStatus) -> Callable[..., FetchOutcome]:
     """Give a download that ends as told, once each, then stops as Ctrl-C would."""
     left = iter(statuses)
 
-    def download(*_: object) -> Outcome:
+    def download(*_: object) -> FetchOutcome:
         for status in left:
-            return Outcome(report=Report(), failed_targets=[], status=status)
+            return FetchOutcome(report=RunReport(), failed_targets=[], status=status)
         raise KeyboardInterrupt
 
     return download
@@ -1060,11 +1060,11 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     """A failed fetch and one to sign in again exit 3, whichever comes first; Ctrl-C, 130."""
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
-    monkeypatch.setattr(fetcher, "download", ending(ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
+    monkeypatch.setattr(fetcher, "run_fetch", ending(ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
     ran = run_each("fetch", taken)
     assert [row.outcome for row in ran.sources] == ["failed", "sign in"]
     assert ran.exit_status == ExitStatus.SIGN_IN_AGAIN
-    monkeypatch.setattr(fetcher, "download", ending(ExitStatus.SIGN_IN_AGAIN))
+    monkeypatch.setattr(fetcher, "run_fetch", ending(ExitStatus.SIGN_IN_AGAIN))
     ran = run_each("fetch", taken)
     assert [row.outcome for row in ran.sources] == ["sign in", "interrupted"]
     assert ran.exit_status == ExitStatus.INTERRUPTED
@@ -1123,10 +1123,10 @@ def test_a_busy_raw_store_fails_the_fetch_and_a_prepare_still_runs(
 ) -> None:
     """Another run writing the store: each fetch failed, said; each next row runs."""
 
-    def busy(*_: object) -> Outcome:
+    def busy(*_: object) -> FetchOutcome:
         raise StoreBusyError
 
-    monkeypatch.setattr(fetcher, "download", busy)
+    monkeypatch.setattr(fetcher, "run_fetch", busy)
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
     with capture_logs() as logged:

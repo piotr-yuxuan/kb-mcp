@@ -10,8 +10,8 @@ so that the next person to weigh it knows what was paid.
 ## Reads only
 
 Every request to the site is a GET, and nothing is ever written to Confluence or Jira.
-[`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one
-port for the session and the token, builds no other request ([`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
+[`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one
+port for the session and the token, builds no other request ([`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 and the server's tools are read-only too.
 
 - **Why.** A mirror needs nothing more, and a program that only reads can do the site no
@@ -32,7 +32,7 @@ server never fetches from the site.
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
   by hand cheap: without `--since`, a run fetches what changed since each target's last
-  fetch ([`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
+  fetch ([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
   so nobody keeps track of when the last run was, and a target never fetched takes its
   last 7 days rather than refusing the run. A project's search starts a day before its
   covered end, which stops at its first document not stored whole, so that what failed
@@ -68,7 +68,7 @@ server never fetches from the site.
 ## Cookies and API tokens
 
 A run signs in by the session saved from the user's own browser, or by an API token with
-its account's email: [`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
+its account's email: [`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
 takes the token when one is set, else the session.
 
 - **Why.** On a managed network, single sign-on in the user's own browser is the route. Chrome opens
@@ -100,7 +100,7 @@ the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
   maintainer's words. A response that a change breaks is still stored
-  ([`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+  ([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `prepare`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
   a download.

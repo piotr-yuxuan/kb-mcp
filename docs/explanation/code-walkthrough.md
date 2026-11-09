@@ -131,10 +131,10 @@ configured, so no run is of it.
 declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
 it can before any row: here an `--until` before `--since`, which the fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
-[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) of the
+[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the
 period's options, one space here.
-[`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
-asks [`window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
+asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 from the coverage that the raw store holds, for each target's window and why it starts
 there, here `given`; a `--since` that does not come before the windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
@@ -147,7 +147,7 @@ interrupted, then sign in, then failed; else 0.
 ### 4. The source and the site's port
 
 The fetcher's [`fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) calls
-[`download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), which
+[`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), which
 opens the [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
 under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
@@ -156,7 +156,7 @@ a second run stops at once with
 and its row fails while the next one runs.
 
 The sign-in comes from
-[`sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
+[`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
 [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py) when
 the environment gives a token, else the
 [`SavedSession`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)
@@ -171,17 +171,17 @@ header goes to the site's host alone
 [credentials](credentials.md#on-the-wire) say why.
 
 Every request then goes through
-[`Site`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one port
+[`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), the one port
 for the session and the token, and is a [`Request`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py):
 a path on the site and its parameters, with no host to send the sign-in elsewhere.
-[`Site.json`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) and
-[`Site.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) call
-[`Site.get`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), which
+[`SiteClient.json`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) and
+[`SiteClient.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) call
+[`SiteClient.get`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), which
 retries throttling and gateway errors within bounds, and stops the run once
 [`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 GETs in a row got no answer
 ([`Breaker`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)).
-[`Site.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) makes
+[`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) makes
 one GET, at least [`INTERVAL_S`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 after the last, and follows a redirect only to the site or to Atlassian's
 [`MEDIA_HOSTS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py). A 401,
@@ -189,37 +189,37 @@ or a redirect anywhere else, such as to a page to sign in, raises
 [`SignInNeededError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py):
 exit 3.
 
-One [`Download`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) runs
-the space. [`Download.run`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+One [`Fetching`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) runs
+the space. [`Fetching.run`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 first asks Confluence who is signed in
-([`Download.reachable`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)),
+([`Fetching.reachable`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 so that a session that no longer holds stops the run before anything is written. Then
-[`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) lists
-the space whole: [`Download.collect`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) lists
+the space whole: [`Fetching.collect`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 follows each paged listing to its end, by the Confluence adapter's
 [`listing_request`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py)
 and [`listing_page`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py).
 It stores the listings whole
 ([`RawStore.put_space`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 after noting what the last listing named and this one does not
-([`Download.track`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)).
-[`Download.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+([`Fetching.track`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)).
+[`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 then splits the documents listed. Updated within the window, and its revision not stored
 ([`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 a document is fetched by
-[`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
+[`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
 by the GETs of
 [`snapshot_requests`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
 the page in its storage format with its labels, the page as the site renders it, and
 its attachments. Updated within the window and its revision stored,
-[`Download.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 fetches only the files that its snapshot should have and lacks. The progress and the
 counts are of what is fetched, apart from what is listed, as `fetch.listed` says.
 
 Once the space is listed,
-[`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks after the documents gone from their listing, and
-[`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 names the authors seen. Last, `download` extends the coverage of each target listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
@@ -244,11 +244,11 @@ otherwise [`RepresentationError`](../../src/kb_mcp/kernel/fields.py) names
 its path and what was expected, never the value found, such as
 `document.json.version.number: expected an integer`.
 
-[`Download.documents`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.documents`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 reads a listing's entries so, through
-[`LISTED`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), counting and
+[`LISTED`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), counting and
 skipping an entry refused.
-[`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) reads
+[`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) reads
 a fetched snapshot through
 [`REPRESENTATIONS`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
 whose [`Representation`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
@@ -266,11 +266,11 @@ reading](trade-offs.md#strict-reading-a-module-per-representation)).
 
 ### 6. The snapshot
 
-[`Download.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) first
+[`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) first
 downloads the files that the snapshot's attachments name and that are kept
-([`Download.files`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py),
+([`Fetching.files`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
 [`skip_reason`](../../src/kb_mcp/sources/atlassian/fetch/domain/files.py)), each
-through [`Site.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
+through [`SiteClient.file`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 and stored once, by its SHA-256
 ([`RawStore.put_blob`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 Then [`RawStore.put`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
@@ -282,7 +282,7 @@ to `<data>/raw/confluence/pages/<id>/<revision>/`, so that a snapshot is complet
 absent. Its responses are never written again: the next run's
 [`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
 finds the revision and asks for none of them. Its files may still grow:
-[`Download.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py)
+[`Fetching.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 downloads the kept files that the snapshot lacks, one that failed, say, and adds them to
 its record
 ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
@@ -601,8 +601,8 @@ from each document fetched, and a call of a tool is one trace:
 |---|---|
 | `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
 | `fetch.source`, `prepare.source`, one a row | [`run_each`](../../src/kb_mcp/cli/app/sources.py) |
-| `fetch.space`, `fetch.probes`, `fetch.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
-| `fetch.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
+| `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
+| `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
 | `prepare.read`, `prepare.build`, `prepare.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
@@ -626,7 +626,7 @@ Each step has its tests, which say what the code must do in the requirement's wo
 [`test_summary.py`](../../tests/test_summary.py) and
 [`test_question.py`](../../tests/test_question.py) for step 2;
 [`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
-[`test_download.py`](../../tests/test_download.py),
+[`test_download.py`](../../tests/test_fetching.py),
 [`test_http.py`](../../tests/test_http.py) and
 [`test_raw_store.py`](../../tests/test_raw_store.py) for 4 to 6;
 [`test_adapters.py`](../../tests/test_adapters.py) and

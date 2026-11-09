@@ -54,7 +54,7 @@ class NotCounted(AtlassianPrepared):
 def kinds_of(run: SourceRun) -> tuple[type[Page | BlogPost | Issue], ...]:
     """Give the kinds that the declaration of the source that a run is for names by its types."""
     names = {each.name for each in run.source.resource_types}
-    return tuple(kind for kind in KINDS if kind.kind in names)
+    return tuple(kind for kind in KINDS if kind.resource_type in names)
 
 
 def preflight(run: SourceRun) -> str | None:

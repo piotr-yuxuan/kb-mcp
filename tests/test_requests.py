@@ -62,8 +62,8 @@ def test_a_v2_listing_follows_its_next_link() -> None:
 
 def test_an_anonymous_user_is_not_signed_in() -> None:
     """An expired session reads Confluence as anonymous, with no account id."""
-    assert confluence_v2.signed_in(Fields({"type": "known", "accountId": "a-1"}, "user"))
-    assert not confluence_v2.signed_in(Fields({"type": "anonymous"}, "user"))
+    assert confluence_v2.is_signed_in(Fields({"type": "known", "accountId": "a-1"}, "user"))
+    assert not confluence_v2.is_signed_in(Fields({"type": "anonymous"}, "user"))
 
 
 def test_a_search_names_the_project_quoted_and_the_dates() -> None:

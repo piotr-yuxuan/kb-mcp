@@ -21,20 +21,20 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
-from kb_mcp.sources.atlassian.fetch.app.download import (
-    Outcome,
-    Report,
+from kb_mcp.sources.atlassian.fetch.app.fetching import (
+    FetchOutcome,
+    RunReport,
     Targets,
-    download,
+    run_fetch,
 )
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.samples import v2_page
 from tests.test_cli import logged_as
-from tests.test_download import CAP, SITE, FakeSite, stamp
+from tests.test_fetching import CAP, SITE, FakeSite, stamp
+from tests.test_incremental_fetch import RefreshSite, run, settings
 from tests.test_observed import said
-from tests.test_refresh import RefreshSite, run, settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -201,10 +201,10 @@ def test_a_stopped_fetch_says_why_in_short(
         "confluence pages failed: status 503": 5,
         "runs: stopped, too many failures in a row": 1,
     }
-    stopped = Outcome(
-        report=Report(counts=Counter(counts)), failed_targets=[], status=ExitStatus.FAILED
+    stopped = FetchOutcome(
+        report=RunReport(counts=Counter(counts)), failed_targets=[], status=ExitStatus.FAILED
     )
-    monkeypatch.setattr(fetcher, "download", lambda *_: stopped)
+    monkeypatch.setattr(fetcher, "run_fetch", lambda *_: stopped)
     assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
     assert capsys.readouterr().out == (
         "confluence: failed\n"
@@ -358,7 +358,7 @@ def test_ctrl_c_exits_130_and_says_which_source_it_stopped(
     def interrupted(*_: object) -> None:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(fetcher, "download", interrupted)
+    monkeypatch.setattr(fetcher, "run_fetch", interrupted)
     options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == INTERRUPTED
     captured = capsys.readouterr()
@@ -393,7 +393,7 @@ SINCE = datetime(2026, 10, 20, tzinfo=UTC)
 
 def counted(
     tmp_path: Path, monkeypatch: MonkeyPatch, since: datetime | None, *, first_fetch: bool
-) -> tuple[Outcome, list[dict[str, object]], Settings]:
+) -> tuple[FetchOutcome, list[dict[str, object]], Settings]:
     """Run over a space of 50 pages: 7 changed in the window, of which 4 were stored first.
 
     The 4 changed on the 21st, stored by a run --since the 20th; 3 more on the 23rd; 43 on
@@ -421,7 +421,7 @@ def counted(
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite(listing=pages, posts={}).client())
     targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=since)
     with capture_logs() as events:
-        outcome = download(chosen, targets, lambda: COUNTED_AT, lambda _: None)
+        outcome = run_fetch(chosen, targets, lambda: COUNTED_AT, lambda _: None)
     return outcome, events, chosen
 
 
@@ -546,8 +546,8 @@ def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left
     """Jira has no project; the work log is read in place: each named, with why."""
     monkeypatch.setattr(
         fetcher,
-        "download",
-        lambda *_: Outcome(report=Report(), failed_targets=[], status=ExitStatus.OK),
+        "run_fetch",
+        lambda *_: FetchOutcome(report=RunReport(), failed_targets=[], status=ExitStatus.OK),
     )
     assert main(command(home, "--site", SITE, "--space", "MFS")) == 0
     captured = capsys.readouterr()

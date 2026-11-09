@@ -94,7 +94,7 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
     Neither is among the settings that its summary shows.
     """
-    monkeypatch.setattr(login_module, "login", lambda *_, **__: None)
+    monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--summary", summary]

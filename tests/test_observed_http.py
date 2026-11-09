@@ -33,11 +33,11 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     RETRIES,
     Request,
-    Site,
+    SiteClient,
     SiteError,
 )
 from tests.endpoint import REACHABLE, URL, Scripted, scripted
-from tests.test_download import PICTURE, SITE, FakeSite
+from tests.test_fetching import PICTURE, SITE, FakeSite
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
@@ -77,10 +77,10 @@ def site(
     handle: Callable[[httpx.Request], httpx.Response],
     cookies: Iterable[Mapping[str, str]] = (),
     hooks: Iterable[Callable[[httpx.Request], None]] = (),
-) -> Site:
+) -> SiteClient:
     """Give the site, through its own client, answered by ``handle``, never waiting."""
     client = http.client(SITE, cookies, hooks, transport=httpx.MockTransport(handle))
-    return Site(client, sleep=lambda _: None)
+    return SiteClient(client, sleep=lambda _: None)
 
 
 def test_a_request_is_a_client_span_named_after_its_method_by_the_http_conventions(

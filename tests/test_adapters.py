@@ -10,7 +10,7 @@ import pytest
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Folder, Page, Person
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Folder, Page, SiteUser
 from tests.samples import (
     ATTACHMENT_SIZE,
     PAGE_VERSION,
@@ -36,8 +36,8 @@ def test_a_page_is_read_with_its_version_labels_and_place() -> None:
     assert page.version == PAGE_VERSION
     assert page.updated == datetime(2026, 10, 20, 21, 52, 41, 371000, tzinfo=UTC)
     assert page.labels == ("probe",)
-    assert page.author == Person(account_id="account-1")
-    assert page.url == "/wiki/spaces/MFS/pages/196845/Probe+complex"
+    assert page.author == SiteUser(account_id="account-1")
+    assert page.site_path == "/wiki/spaces/MFS/pages/196845/Probe+complex"
 
 
 def test_a_page_revision_is_its_version_padded_to_six_digits() -> None:
@@ -172,16 +172,16 @@ def test_an_issue_is_read_with_its_offset_times_and_people() -> None:
     assert issue.updated == datetime(
         2026, 10, 20, 22, 37, 58, 27000, tzinfo=timezone(timedelta(hours=1))
     )
-    assert issue.author == Person(account_id="account-1", display_name="A Person")
+    assert issue.author == SiteUser(account_id="account-1", display_name="A Person")
     assert issue.assignee is None
-    assert issue.url == "/browse/PRB-1"
+    assert issue.site_path == "/browse/PRB-1"
 
 
 def test_an_issue_filed_for_its_reporter_reads_its_creator_apart() -> None:
     """The reporter is the author; who created the issue for them is its creator."""
     issue = jira_v3.issue(Fields(v3_issue(), "issue"))
-    assert issue.author == Person(account_id="account-1", display_name="A Person")
-    assert issue.creator == Person(account_id="account-2", display_name="Another Person")
+    assert issue.author == SiteUser(account_id="account-1", display_name="A Person")
+    assert issue.creator == SiteUser(account_id="account-2", display_name="Another Person")
 
 
 def test_an_issue_with_a_null_creator_has_none() -> None:
@@ -197,7 +197,7 @@ def test_an_issue_is_read_from_a_search_entry_of_the_fields_it_asked_for() -> No
     assert isinstance(fields, dict)
     asked = {name: fields[name] for name in jira_v3.ISSUE_FIELDS.split(",")}
     entry = {"id": "10000", "key": "PRB-1", "fields": asked}
-    assert jira_v3.issue(Fields(entry, "issues")).creator == Person(
+    assert jira_v3.issue(Fields(entry, "issues")).creator == SiteUser(
         account_id="account-2", display_name="Another Person"
     )
 
@@ -215,7 +215,7 @@ def test_an_issue_snapshot_has_its_rendered_body_attachments_and_comments() -> N
         "/rest/api/3/attachment/content/10000"
     ]
     assert [(item.id, item.author, item.html) for item in snapshot.comments] == [
-        ("10100", Person(account_id="account-2", display_name="Another Person"), "<p>Seen.</p>")
+        ("10100", SiteUser(account_id="account-2", display_name="Another Person"), "<p>Seen.</p>")
     ]
 
 

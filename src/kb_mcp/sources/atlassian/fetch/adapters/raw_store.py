@@ -27,7 +27,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Issue,
     Listed,
     Page,
-    Person,
+    SiteUser,
     Snapshot,
     Space,
 )
@@ -38,7 +38,7 @@ from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from kb_mcp.sources.atlassian.fetch.domain.content import Document
+    from kb_mcp.sources.atlassian.fetch.domain.content import FetchedDocument
 
 # The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"
@@ -69,7 +69,7 @@ class Representation(Record):
 
 
 CONFLUENCE_FILES = (confluence_v2.DOCUMENT, confluence_v2.VIEW, confluence_v2.ATTACHMENTS)
-REPRESENTATIONS: dict[type[Document], Representation] = {
+REPRESENTATIONS: dict[type[FetchedDocument], Representation] = {
     Page: Representation(
         files=CONFLUENCE_FILES,
         identity=confluence_v2.identity,
@@ -92,7 +92,7 @@ class StoreBusyError(RuntimeError):
     """Another run is writing the raw store."""
 
 
-class Stored(Record):
+class StoredSnapshot(Record):
     """A stored snapshot, read into the domain, with the store's record of it.
 
     ``blobs`` maps each downloaded attachment's id to its file's SHA-256; an attachment
@@ -212,17 +212,19 @@ class RawStore:
             message = "the raw store is written only inside RawStore.writing()"
             raise RuntimeError(message)
 
-    def folder(self, document: Document | Listed) -> Path:
+    def folder(self, document: FetchedDocument | Listed) -> Path:
         """Return where the snapshot of this document at this revision is, or would be."""
-        return self.root / document.source / document.kind / document.id / document.revision
+        return (
+            self.root / document.source / document.resource_type / document.id / document.revision
+        )
 
-    def has(self, document: Document | Listed) -> bool:
+    def has(self, document: FetchedDocument | Listed) -> bool:
         """Say whether this document's revision is stored."""
         return self.folder(document).is_dir()
 
     def put(
         self,
-        kind: type[Document],
+        document_class: type[FetchedDocument],
         responses: Mapping[str, object],
         fetched_at: datetime,
         blobs: Mapping[str, str],
@@ -235,7 +237,7 @@ class RawStore:
         revision stored already keeps its responses, and records the new blobs.
         """
         self._check_writing()
-        representation = REPRESENTATIONS[kind]
+        representation = REPRESENTATIONS[document_class]
         missing = [name for name in representation.files if name not in responses]
         if missing:
             message = f"a snapshot without {', '.join(missing)}"
@@ -249,7 +251,9 @@ class RawStore:
             message = "not plain JSON file names of responses"
             raise ValueError(message)
         self._check_blobs(blobs)
-        target = self.root / kind.source / kind.kind / identifier / revision
+        target = (
+            self.root / document_class.source / document_class.resource_type / identifier / revision
+        )
         if not target.is_dir():
             target.parent.mkdir(parents=True, exist_ok=True)
             hidden = Path(tempfile.mkdtemp(prefix=f".{revision}.", dir=target.parent))
@@ -266,7 +270,7 @@ class RawStore:
         self._merge_blobs(target, blobs)
         return target
 
-    def add_blobs(self, document: Document | Listed, blobs: Mapping[str, str]) -> None:
+    def add_blobs(self, document: FetchedDocument | Listed, blobs: Mapping[str, str]) -> None:
         """Record files downloaded after their snapshot was stored, such as on a retry."""
         self._check_writing()
         self._check_blobs(blobs)
@@ -299,31 +303,35 @@ class RawStore:
             raise RepresentationError(message)
         return record.time("fetched_at"), blobs
 
-    def read(self, document: Document | Listed) -> Stored:
+    def read(self, document: FetchedDocument | Listed) -> StoredSnapshot:
         """Read the stored snapshot of this document at this revision."""
-        kind = document.type if isinstance(document, Listed) else type(document)
-        return self._read(kind, self.folder(document))
+        document_class = document.document_class if isinstance(document, Listed) else type(document)
+        return self._read(document_class, self.folder(document))
 
-    def _read(self, kind: type[Document], folder: Path) -> Stored:
+    def _read(self, document_class: type[FetchedDocument], folder: Path) -> StoredSnapshot:
         fetched_at, blobs = self._read_record(folder)
-        snapshot = REPRESENTATIONS[kind].snapshot(self.responses(folder))
+        snapshot = REPRESENTATIONS[document_class].snapshot(self.responses(folder))
         # Only the snapshot's own attachments: a key of anything else names no file here.
         known = {attachment.id for attachment in snapshot.attachments}
         own = {key: digest for key, digest in blobs.items() if key in known}
-        return Stored(folder=folder, snapshot=snapshot, fetched_at=fetched_at, blobs=own)
+        return StoredSnapshot(folder=folder, snapshot=snapshot, fetched_at=fetched_at, blobs=own)
 
-    def latest(self, kind: type[Document]) -> Iterator[Stored | Unreadable]:
+    def latest(
+        self, document_class: type[FetchedDocument]
+    ) -> Iterator[StoredSnapshot | Unreadable]:
         """Yield the newest stored snapshot of each document of a kind, or why it is not.
 
         A snapshot that its adapter now refuses is yielded as ``Unreadable``, and the
         others still follow.
         """
-        for item in _named(self.root / kind.source / kind.kind, IDENTIFIER):
+        for item in _named(
+            self.root / document_class.source / document_class.resource_type, IDENTIFIER
+        ):
             revisions = _named(item, REVISION)
             if not revisions:
                 continue
             try:
-                yield self._read(kind, revisions[-1])
+                yield self._read(document_class, revisions[-1])
             except UNREADABLE as error:
                 yield Unreadable(
                     where=str(revisions[-1].relative_to(self.root)), reason=reason(error)
@@ -387,20 +395,20 @@ class RawStore:
         return spaces
 
     def listed(
-        self, space_id: str, kind: type[Page | BlogPost]
+        self, space_id: str, document_class: type[Page | BlogPost]
     ) -> list[Page | BlogPost | Unreadable]:
         """Read the pages, or the blog posts, last listed in a space."""
-        path = self._space(space_id) / f"{kind.kind}.json"
-        return self._entries(path, partial(confluence_v2.document, kind=kind))
+        path = self._space(space_id) / f"{document_class.resource_type}.json"
+        return self._entries(path, partial(confluence_v2.document, document_class=document_class))
 
-    def listed_ids(self, space_id: str, kind: type[Page | BlogPost]) -> set[str]:
+    def listed_ids(self, space_id: str, document_class: type[Page | BlogPost]) -> set[str]:
         """Return the ids that a space's last listing names, read by id alone.
 
         An entry whose other fields the adapter would refuse still names its document,
         so that deletions follow every document a download fetched. A listing that
         cannot be read at all names none.
         """
-        path = self._space(space_id) / f"{kind.kind}.json"
+        path = self._space(space_id) / f"{document_class.resource_type}.json"
         try:
             return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
         except UNREADABLE:
@@ -424,7 +432,7 @@ class RawStore:
                 merged[Fields(user, f"{name}[{index}]").text("accountId")] = user
         _replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
 
-    def users(self) -> list[Person | Unreadable]:
+    def users(self) -> list[SiteUser | Unreadable]:
         """Read every user kept."""
         return self._entries(self.root / "confluence" / "users.json", confluence_v2.person)
 
@@ -444,9 +452,11 @@ class RawStore:
                 results.append(Unreadable(where=f"{where}[{index}]", reason=reason(error)))
         return results
 
-    def stored_ids(self, kind: type[Document]) -> set[str]:
+    def stored_ids(self, document_class: type[FetchedDocument]) -> set[str]:
         """Return the ids of the documents of a kind that have a stored snapshot."""
-        folders = _named(self.root / kind.source / kind.kind, IDENTIFIER)
+        folders = _named(
+            self.root / document_class.source / document_class.resource_type, IDENTIFIER
+        )
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
@@ -500,13 +510,13 @@ class RawStore:
         stones: dict[tuple[str, str], Tombstone] = {}
         for item in Fields.each(_record_json(path), TOMBSTONES):
             with item.refusals():
-                kind, identifier = item.text("kind"), _identifier(item.text("id"), "id")
-                if kind not in {Page.kind, BlogPost.kind}:
+                resource_type, identifier = item.text("kind"), _identifier(item.text("id"), "id")
+                if resource_type not in {Page.resource_type, BlogPost.resource_type}:
                     message = f"{item.path}.kind: not a kind of Confluence document"
                     raise RepresentationError(message)
                 first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
                 stone = Tombstone(
-                    kind=kind,
+                    resource_type=resource_type,
                     id=identifier,
                     space_id=item.text("space"),
                     first_gone=first_gone,
@@ -520,7 +530,7 @@ class RawStore:
         self._check_writing()
         entries = [
             {
-                "kind": stone.kind,
+                "kind": stone.resource_type,
                 "id": stone.id,
                 "space": stone.space_id,
                 "first_gone": stone.first_gone.astimezone(UTC).isoformat()
