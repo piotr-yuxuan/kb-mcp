@@ -479,7 +479,7 @@ def test_a_command_s_described_lines_end_its_summary(
     """They are its own function's, of the arguments and the settings' values by path."""
 
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-        return (f"mirrors {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
+        return (f"fetches {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
 
     given = ["prepare", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
     arguments = parser().parse_args(given)
@@ -487,7 +487,7 @@ def test_a_command_s_described_lines_end_its_summary(
     with early():
         assert enter(arguments, given, SOURCES) == 0
     summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
-    assert summary.endswith(f"  mirrors {SITE}\n  as prepare\n")
+    assert summary.endswith(f"  fetches {SITE}\n  as prepare\n")
     assert len(runs) == 1
 
 

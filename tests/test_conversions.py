@@ -1,4 +1,4 @@
-"""Pandoc's conversions kept by their input across mirrors (plan 039, criteria 2 to 4 and 8).
+"""Pandoc's conversions kept by their input across prepares (plan 039, criteria 2 to 4 and 8).
 
 A run is one ``opened`` of the file, here in a data folder not made yet, for one source's
 rows, which plan 030 adds: Confluence's, unless a test names another. A key is
@@ -413,14 +413,14 @@ def test_damage_found_during_a_run_raises_and_deletes_the_file(
     run(path, Scripted(), TEXTS[:2])
     damaging = Scripted(meanwhile=lambda: damage(path))
 
-    def mirrored() -> None:
+    def prepare() -> None:
         with conversions.opened(path, damaging.converter, damaging.convert, source=SOURCE) as cache:
             for text in TEXTS[1:3]:
                 cache.markdown(text)
             cache.drop_unused(remove=True)
 
     with pytest.raises(sqlite3.DatabaseError) as raised:
-        mirrored()
+        prepare()
     assert raised.value.sqlite_errorname == name
     assert list(path.parent.iterdir()) == []
     with capture_logs() as events:

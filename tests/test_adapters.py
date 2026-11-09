@@ -239,7 +239,7 @@ def test_an_issue_without_a_description_has_an_empty_body() -> None:
 def test_an_issue_snapshot_missing_a_rendering_is_refused(
     responses: dict[str, object], path: str
 ) -> None:
-    """A rendering that is not there fails, rather than mirroring an empty body."""
+    """A rendering that is not there fails, rather than writing an empty body."""
     with pytest.raises(RepresentationError, match=f"^{path}"):
         jira_v3.snapshot(responses)
 

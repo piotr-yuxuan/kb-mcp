@@ -1,8 +1,8 @@
 """Test mirrors: documents written where the data layout puts them, with the shared codec.
 
 Values are made up. Filler documents speak lorem ipsum, so that no word under test is in
-half the sections of the index, where FTS5 would count it as worthless. ``mirrored``
-runs the mirror of each Atlassian source, and ``prepared_source`` of one, with a function
+half the sections of the index, where FTS5 would count it as worthless.
+``prepared_sources`` prepares each Atlassian source, and ``prepared_source`` one, with a function
 of a test's own in pandoc's place.
 """
 

@@ -806,7 +806,7 @@ def test_the_sources_named_are_the_rows_run(
 def test_a_source_not_named_is_not_mirrored_though_its_documents_are_stored(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """``prepare jira`` mirrors Jira alone; a Confluence file deleted stays so."""
+    """``prepare jira`` prepares Jira alone; a Confluence file deleted stays so."""
     config = settings_file(home, None, atlassian=True)
     main(command(home, config, "fetch", "--yes", "--since", "2026-10-02"))
     main(command(home, config, "prepare", "--yes"))
@@ -884,13 +884,13 @@ def test_a_second_prepare_reuses_every_conversion_and_the_work_log_adds_none(
         main(command(home, config, "prepare", "--yes", *output))
         rows.append(capsys.readouterr().out)
     first, second = (json.loads(row)["sources"][0] for row in rows[:2])
-    mirrored = first["result"]["mirrored"]
-    assert (first["source"], first["outcome"], mirrored["reused"]) == ("confluence", "done", 0)
-    converted = mirrored["converted"]
-    assert converted > mirrored["documents"] > 0  # a tree among them
+    outcome = first["result"]["mirrored"]
+    assert (first["source"], first["outcome"], outcome["reused"]) == ("confluence", "done", 0)
+    converted = outcome["converted"]
+    assert converted > outcome["documents"] > 0  # a tree among them
     again = second["result"]["mirrored"]
     assert (again["converted"], again["reused"]) == (0, converted)
-    documents = mirrored["documents"]
+    documents = outcome["documents"]
     assert (
         f"confluence: done\n  documents: {documents}\n"
         f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
@@ -923,9 +923,9 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
     ]
     result = ran.sources[0].result
     assert isinstance(result, preparer.AtlassianPrepared)
-    mirrored, first = result.mirrored, first.mirrored
-    assert isinstance(mirrored, atlassian_prepare.AtlassianPrepareOutcome)
-    assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
+    outcome, first = result.mirrored, first.mirrored
+    assert isinstance(outcome, atlassian_prepare.AtlassianPrepareOutcome)
+    assert (outcome.converted, outcome.reused) == (first.converted, 0)
     replaced = logged_as(logged, "prepare.cache_replaced")
     assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
 
@@ -1181,7 +1181,7 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
 ) -> None:
     """Each document counted by kind and outcome, each work-log span in the source's row.
 
-    Fresh, every entry, day, meeting and transcript is mirrored, each conversion timed by
+    Fresh, every entry, day, meeting and transcript is prepared, each conversion timed by
     kind; unchanged, all are kept and none timed. Each work-log span is in the row's
     ``prepare.source``, which names the source and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
@@ -1236,7 +1236,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
 
     Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
-    transcript read, none unread; each document mirrored, by its kind and path; a file
+    transcript read, none unread; each document prepared, by its kind and path; a file
     each written. Unchanged, each kept and none written. A dry run says each to convert
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.

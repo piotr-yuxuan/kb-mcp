@@ -1,4 +1,4 @@
-"""The work log mirrored end to end: plan 017's criteria 7 to 12, through its step.
+"""The work log prepared end to end: plan 017's criteria 7 to 12, through its preparer.
 
 The fixture, ``fixtures/worklog/``, is invented, as the plan's acceptance criteria
 describe it; Emacs's lock, autosave and backup files are added to each copy, since git
@@ -111,7 +111,7 @@ class Counting(Pandoc):
 
 
 @dataclass(frozen=True)
-class Mirrored:
+class MirrorFile:
     """A document's file: where, its front matter, its body."""
 
     path: str
@@ -123,7 +123,7 @@ class Mirrored:
 class Run:
     """The work log's step over a copy of the fixture, into a data folder of its own.
 
-    ``runs`` holds pandoc's runs of each mirroring, in order.
+    ``runs`` holds pandoc's runs of each prepare, in order.
     """
 
     root: Path
@@ -140,21 +140,21 @@ class Run:
         return outcome
 
     def plan(self, *, archives: bool = True) -> WorklogDryRun:
-        """Say what mirroring would do; pandoc's runs are recorded as for a run."""
+        """Say what preparing would do; pandoc's runs are recorded as for a run."""
         pandoc = Counting(path=Pandoc.find().path)
         planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return planned
 
-    def files(self) -> list[Mirrored]:
+    def files(self) -> list[MirrorFile]:
         """Read back every file of the work log's step, as search will."""
         found = sorted((self.docs / "worklog").rglob("*.md"))
         return [
-            Mirrored(path.relative_to(self.docs).as_posix(), *load(path.read_text("utf-8"), "x"))
+            MirrorFile(path.relative_to(self.docs).as_posix(), *load(path.read_text("utf-8"), "x"))
             for path in found
         ]
 
-    def by_title(self, title: str, kind: str | None = None) -> Mirrored:
+    def by_title(self, title: str, kind: str | None = None) -> MirrorFile:
         """Return the one file of this title, and of this type when given."""
         (found,) = [
             each
@@ -163,7 +163,7 @@ class Run:
         ]
         return found
 
-    def by_id(self, identifier: str) -> Mirrored:
+    def by_id(self, identifier: str) -> MirrorFile:
         """Return the file of this id."""
         (found,) = [each for each in self.files() if each.matter.id == identifier]
         return found
@@ -195,7 +195,7 @@ def run(tmp_path: Path) -> Run:
     return Run(root, tmp_path / "data" / "docs")
 
 
-def identities(files: list[Mirrored]) -> list[tuple[str, str, tuple[str, ...]]]:
+def identities(files: list[MirrorFile]) -> list[tuple[str, str, tuple[str, ...]]]:
     """Return each file's id, path and people: two files that swap contents differ."""
     return sorted(
         (each.matter.id, each.path, tuple(person.name for person in each.matter.people))
@@ -655,7 +655,7 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
 ) -> None:
     """Over 32 MiB, linking out, not UTF-8: by path, without content; nothing removed."""
     run()
-    mirrored = run.docs / run.by_title("Notes on the ledger").path
+    written = run.docs / run.by_title("Notes on the ledger").path
     (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").write_bytes(b"* Caf\xe9\n")
     outside = tmp_path / "elsewhere.org"
     outside.write_text("* Outside words\n", "utf-8")
@@ -673,7 +673,7 @@ def test_files_off_the_rules_are_named_by_path_and_a_link_inside_is_read(
         "transcripts/misc/big.org": "not a file of at most 32 MiB",
     }
     assert all("secret" not in reason and "Caf" not in reason for reason in reasons.values())
-    assert mirrored.exists()  # its last good copy stays while a problem is reported
+    assert written.exists()  # its last good copy stays while a problem is reported
     inside = [each for each in run.files() if each.matter.title == "WAITING Notes"]
     assert sorted(each.matter.breadcrumb for each in inside) == [("transcripts", "misc")] * len(
         {"a.org", "inside.org"}
@@ -792,7 +792,7 @@ def test_a_journal_file_not_read_holds_every_file_back(run: Run, name: str) -> N
 STANDUP = "m-20261027-payments-stand-up"
 
 
-def one_way(files: list[Mirrored]) -> list[tuple[str, str, str]]:
+def one_way(files: list[MirrorFile]) -> list[tuple[str, str, str]]:
     """Return each link, by its document, relation and ref, that the other does not return.
 
     A meeting's transcript names it by summary, and a transcript's summary by transcript;

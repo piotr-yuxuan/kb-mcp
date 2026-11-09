@@ -1,8 +1,8 @@
-"""The mirror end to end: a raw store built from documented responses, mirrored to files.
+"""The mirror end to end: a raw store built from documented responses, prepared to files.
 
 The expectations come from the "Markdown mirror" section of the data layout: the paths,
 the front matter's keys and values, the body's sections, the assets, the trees, and a
-run that changes nothing writing nothing. A run mirrors Confluence, then Jira, apart, as
+run that changes nothing writing nothing. A run prepares Confluence, then Jira, apart, as
 plan 030 has it: each places every document, and writes and removes its own files.
 """
 
@@ -717,13 +717,13 @@ def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
     for relative in worklog:
         (sandbox.docs / relative).parent.mkdir(parents=True, exist_ok=True)
         (sandbox.docs / relative).write_text("a work-log file", "utf-8")
-    mirrored = set(sandbox.files()) - set(worklog)
+    prepared = set(sandbox.files()) - set(worklog)
     assert each(sandbox.run(), lambda outcome: outcome.changes.removed) == {
         "confluence": 0,
         "jira": 0,
     }
     assert write_changed(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
-    assert set(sandbox.files()) == mirrored
+    assert set(sandbox.files()) == prepared
 
 
 def test_the_tree_links_only_files_that_were_built(sandbox: Sandbox) -> None:
