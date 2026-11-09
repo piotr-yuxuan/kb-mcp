@@ -14,14 +14,14 @@ fetched in the run's trace, in its space's or project's span.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `fetch.listed` | info | `target`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
+| `fetch.listed` | info | `target`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its fetch window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
 | `fetch.document` | debug | `id`, `kind`, `title` | A document is fetched, and its snapshot read |
 | `fetch.document_failed` | warning | `id`, `kind`, `reason` | A document cannot be fetched: the run goes on, and exits 1 |
 | `fetch.document_unread` | warning | `kind`, `reason` | A snapshot that its adapter refuses: stored as it came, without its files |
 | `fetch.file_skipped` | info | `id`, `file_name`, `reason` | An attached file is not downloaded, by its media type or its size |
 | `fetch.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
 | `fetch.target_failed` | warning | `target` | A space or a project named cannot be listed |
-| `fetch.coverage` | info | `target`, `outcome`, `reason` | A target finished or skipped: its coverage `extended` to its window's end, joined with it, or, for a project's entry from before plan 034 that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
+| `fetch.coverage` | info | `target`, `outcome`, `reason` | A target finished or skipped: its coverage `extended` to its fetch window's end, joined with it, or, for a project's entry from before plan 034 that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
 | `fetch.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only plans |
 | `fetch.source` | info | `source`, `outcome` | A source's row ended: `done`, `failed` or `sign in` |
 | `fetch.end` | info | `status`, `sources` | The run's exit status, and how each row ended |

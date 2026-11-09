@@ -218,12 +218,12 @@ Two more of the store's own records, each replaced whole:
   `sources.atlassian.fetch.domain.coverage.Target`), the one period over which every
   document updated is stored (`sources.atlassian.fetch.domain.coverage.Coverage`), and
   `"exact": true` on a project's entry written since plan 034. A run that listed a
-  target whole joins its window to that period when the two overlap or touch. A space's
-  period ends at the window's end whatever failed, since a run without `--since` starts
+  target whole joins its fetch window to that period when the two overlap or touch. A space's
+  period ends at the fetch window's end whatever failed, since a run without `--since` starts
   at its covered start and asks again for whatever failed inside. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
   snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
-  even below the old end, else at the window's end; a search entry that the adapter
+  even below the old end, else at the fetch window's end; a search entry that the adapter
   refuses leaves it as it was, and a failure at its very start makes it inexact. A run
   without `--since` searches an exact project from a day before its covered end, and an
   entry without `exact` from its covered start, which replaces it with an exact one.

@@ -135,8 +135,8 @@ it can before any row: here an `--until` before `--since`, which the fetcher's
 period's options, one space here.
 [`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-from the coverage that the raw store holds, for each target's window and why it starts
-there, here `given`; a `--since` that does not come before the windows' end raises
+from the coverage that the raw store holds, for each target's fetch window and why it
+starts there, here `given`; a `--since` that does not come before the fetch windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
 exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
@@ -204,14 +204,14 @@ It stores the listings whole
 after noting what the last listing named and this one does not
 ([`Fetching.track`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)).
 [`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
-then splits the documents listed. Updated within the window, and its revision not stored
+then splits the documents listed. Updated within the fetch window, and its revision not stored
 ([`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 a document is fetched by
 [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
 by the GETs of
 [`snapshot_requests`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py):
 the page in its storage format with its labels, the page as the site renders it, and
-its attachments. Updated within the window and its revision stored,
+its attachments. Updated within the fetch window and its revision stored,
 [`Fetching.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 fetches only the files that its snapshot should have and lacks. The progress and the
 counts are of what is fetched, apart from what is listed, as `fetch.listed` says.

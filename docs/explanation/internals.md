@@ -85,8 +85,8 @@ site through one port, [`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/a
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
 token ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
-listings whole; for each Jira project, it searches the issues updated in its window. Then
-it fetches each document updated in the window whose revision the store lacks
+listings whole; for each Jira project, it searches the issues updated in its fetch window.
+Then it fetches each document updated in the fetch window whose revision the store lacks
 ([`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 its files first, the snapshot last
 ([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),

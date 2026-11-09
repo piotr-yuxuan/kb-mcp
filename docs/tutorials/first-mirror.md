@@ -158,7 +158,7 @@ fetch, with these settings:
   accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
-After a progress bar, it ends with Confluence's row: the window of the space, from the
+After a progress bar, it ends with Confluence's row: the fetch window of the space, from the
 start of 2000 to now, and what it would fetch:
 
 ```text
