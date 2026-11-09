@@ -56,16 +56,16 @@ NOT_A_RERANKER = frozenset({404, 501})
 # the prompt: each is written otherwise.
 INERT = (("<|", "< |"), ("{query}", "(query)"), ("{document}", "(document)"))
 
-type Kind = Literal["unanswered", "refused", "bad_answer"]
+type RerankFailure = Literal["unanswered", "refused", "bad_answer"]
 
 
 class RerankError(ModelError):
     """Scores that the server did not give, and the kind of failure, which callers read."""
 
-    def __init__(self, message: str, kind: Kind) -> None:
+    def __init__(self, message: str, kind: RerankFailure) -> None:
         """Say why, and whether no answer came, the request was refused, or the answer was amiss."""
         super().__init__(message)
-        self.kind: Kind = kind
+        self.kind: RerankFailure = kind
 
 
 class Reranked(Record):

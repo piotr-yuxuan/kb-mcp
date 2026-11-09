@@ -307,7 +307,7 @@ One write of the index, with its build id. `WORDS` is the version of what a whol
 writes from the same files.
 
 - In the code: [`WORDS`](../../src/kb_mcp/search/domain/search.py),
-  [`Report`](../../src/kb_mcp/search/app/indexing.py).
+  [`IndexReport`](../../src/kb_mcp/search/app/indexing.py).
 - User-facing: `build`, `words`, `index.built`.
 
 ### section
@@ -324,7 +324,7 @@ How bodies are cut into pieces: `sections`, `windows`, `section-paths` or
 
 - In the code: [`Chunker`](../../src/kb_mcp/search/domain/chunking.py),
   [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py),
-  [`passages`](../../src/kb_mcp/search/domain/chunking.py).
+  [`section_pieces`](../../src/kb_mcp/search/domain/chunking.py).
 - User-facing: `chunking`.
 
 ### piece
@@ -332,8 +332,8 @@ How bodies are cut into pieces: `sections`, `windows`, `section-paths` or
 The text that one vector stands for.
 
 - In the code: [`Piece`](../../src/kb_mcp/search/domain/indexes.py),
-  [`Piece.key`](../../src/kb_mcp/search/domain/indexes.py),
-  [`key`](../../src/kb_mcp/search/adapters/vector_store.py).
+  [`Piece.vector_key`](../../src/kb_mcp/search/domain/indexes.py),
+  [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py).
 - User-facing: `pieces`, `key`.
 
 ### vector store
@@ -341,8 +341,8 @@ The text that one vector stands for.
 `<data>/vectors.sqlite`: each vector by its piece's key, which `embed` fills and prunes.
 
 - In the code: [`VectorStore`](../../src/kb_mcp/search/adapters/vector_store.py),
-  [`refresh`](../../src/kb_mcp/search/app/indexing.py),
-  [`Outcome`](../../src/kb_mcp/search/app/pruning.py).
+  [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py),
+  [`PruneOutcome`](../../src/kb_mcp/search/app/pruning.py).
 - User-facing: `vectors.sqlite`, `index.pruned`.
 
 ### passage
@@ -352,13 +352,14 @@ about the match; of `ask`, the text quoted. Not "excerpt", which Confluence's ma
 keeps, nor the text that a reranker scores.
 
 - In the code: [`Passage`](../../src/kb_mcp/search/domain/search.py),
-  [`Passage.snippet`](../../src/kb_mcp/search/domain/search.py),
-  [`passage_of`](../../src/kb_mcp/mcp/app/tools.py),
-  [`excerpts`](../../src/kb_mcp/mcp/app/tools.py),
-  [`excerpt`](../../src/kb_mcp/mcp/app/responses.py),
-  [`Chunker.unit`](../../src/kb_mcp/search/domain/chunking.py),
-  [`UNIT`](../../src/kb_mcp/search/domain/chunking.py).
+  [`Passage.text`](../../src/kb_mcp/search/domain/search.py),
+  [`snippet_of`](../../src/kb_mcp/mcp/app/tools.py),
+  [`passages`](../../src/kb_mcp/mcp/app/tools.py),
+  [`passage`](../../src/kb_mcp/mcp/app/responses.py),
+  [`Chunker.quoted_span`](../../src/kb_mcp/search/domain/chunking.py),
+  [`PASSAGE_CHARS`](../../src/kb_mcp/search/domain/chunking.py).
 - User-facing: `kb_mcp.passages`.
+- Retires: `excerpts`, `passage_of`, `UNIT`.
 
 ## The MCP server
 

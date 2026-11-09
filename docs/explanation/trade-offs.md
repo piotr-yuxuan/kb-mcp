@@ -282,7 +282,7 @@ that what read the two keys, a hit's line among them
   creator cost no request: each stored `issue.json` holds every field of the issue
   ([`issue`](../../src/kb_mcp/sources/atlassian/fetch/adapters/jira_v3.py)).
   Account ids are in the files, because the index is rebuilt from the files alone
-  ([`entry`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
+  ([`indexed_document`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and
   because a name alone cannot be told from the account id written when no name is
   known; one account id also ties together a colleague renamed between two fetches.
 - **Cost.** One rewrite: every file of the mirror is written again once, and the index
@@ -542,7 +542,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   whole at each build: on a synthetic index of 20,000 issues of 40 accounts and 2,000
   meetings with their transcripts, 148,000 rows of people and 2,000 links, it took 1.4 s
   on this laptop, the meetings of the transcripts read in 9 ms by their source and id
-  ([`SUMMARIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
+  ([`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   where a search of a source's documents for each of them took 28 s. The files hold no
   person, so another engine sees names
   ([the how-to](../how-to/other-search-engines.md#what-another-engine-does-not-get)).

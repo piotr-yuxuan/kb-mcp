@@ -13,9 +13,9 @@ from kb_mcp.kernel.reranking import LONGEST_TEXT
 
 # The text that a document is scored by: its title and the heading of its section, each
 # cut to these, a line each, then this much of the section about its best place.
-TITLE = 150
-HEADING = 150
-BODY = LONGEST_TEXT - TITLE - HEADING - 2
+TITLE_CHARS = 150
+HEADING_CHARS = 150
+BODY_CHARS = LONGEST_TEXT - TITLE_CHARS - HEADING_CHARS - 2
 # Base64url's alphabet: one character for each place, as many as MOST_TEXTS.
 PLACES = string.ascii_uppercase + string.ascii_lowercase + string.digits + "-_"
 

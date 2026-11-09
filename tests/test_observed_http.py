@@ -24,7 +24,7 @@ from kb_mcp.kernel.endpoint import EMBEDDINGS
 from kb_mcp.search.adapters.embedding import (
     DOCUMENTS,
     SINGLE,
-    RefusedError,
+    EmbeddingRefusedError,
     connect,
     embed,
 )
@@ -328,10 +328,10 @@ def test_an_embedding_is_a_client_span_by_the_genai_conventions_holding_its_atte
 def test_an_embedding_that_fails_is_an_error_typed_as_its_exception(telemetry: InMemory) -> None:
     """Refused, its text sent back with 400: the class qualified by its module; its POST's, 400."""
     opened = scripted(Scripted(statuses=[400]))
-    with opened, pytest.raises(RefusedError):
+    with opened, pytest.raises(EmbeddingRefusedError):
         embed(opened, "tiny", ["undo"], SINGLE)
     refused, embedding = telemetry.spans.get_finished_spans()
-    failed = "kb_mcp.search.adapters.embedding.RefusedError"
+    failed = "kb_mcp.search.adapters.embedding.EmbeddingRefusedError"
     assert dict(embedding.attributes or {}) == {**EMBEDDING, "error.type": failed}
     assert embedding.status.status_code == StatusCode.ERROR
     assert dict(refused.attributes or {})["error.type"] == "400"

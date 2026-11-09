@@ -51,7 +51,7 @@ INCREMENTAL = 2
 SIZE = "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()"
 
 
-def key(fingerprint: str, text: str) -> str:
+def vector_key(fingerprint: str, text: str) -> str:
     """Name the vector of a text embedded by the model of this fingerprint."""
     return hashlib.sha256(f"{fingerprint}\0{text}".encode()).hexdigest()
 

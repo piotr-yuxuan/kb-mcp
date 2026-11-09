@@ -123,14 +123,14 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     assert out.startswith("documents: 2\n")
     with reading(data / "index.sqlite") as reader:
         assert reader.embedded() is None
-        (entry,) = reader.entries(paths=[path])
+        (entry,) = reader.indexed_documents(paths=[path])
         assert entry.front == front
         assert (entry.length, entry.sections) == (len(BODY), 2)
         assert reader.text(path, 0, entry.length) == BODY
         assert reader.text(path, 9, 14) == BODY[9:14]
         second = BODY.index("## ")
         assert reader.bounds(path) == [(0, second), (second, len(BODY))]
-        summary = reader.summary()
+        summary = reader.index_status()
     assert summary.built_at.tzinfo is not None
     assert (summary.types, summary.spaces, summary.projects) == (
         {"issue": 1, "page": 1},
@@ -203,7 +203,7 @@ def test_line_endings_read_back_as_written(data: Path) -> None:
     path = write(data / "docs", page("196845", "Kafka"), body)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
-        (entry,) = reader.entries(paths=[path])
+        (entry,) = reader.indexed_documents(paths=[path])
         assert reader.text(path, 0, entry.length) == body
         second = body.index("## ")
         assert reader.bounds(path) == [(0, second), (second, len(body))]
@@ -242,7 +242,7 @@ def test_a_refused_file_is_named_and_the_others_indexed(
     (lacking,) = logged_as(data.parent / "home", "index.lacks_files")
     assert (lacking["level"], lacking["count"]) == ("warning", SKIPPED)
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().skipped == SKIPPED
+        assert reader.index_status().skipped == SKIPPED
 
 
 def test_a_stray_markdown_file_is_read_and_reported(
@@ -278,7 +278,7 @@ def test_a_failed_build_keeps_the_old_index(data: Path, monkeypatch: MonkeyPatch
         build_index(data / "docs", data / "index.sqlite", MOMENT + timedelta(hours=1))
     assert sorted(path.name for path in data.iterdir()) == ["docs", "index.sqlite"]
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().built_at == MOMENT
+        assert reader.index_status().built_at == MOMENT
 
 
 def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -418,7 +418,7 @@ def test_reading_opens_read_only(data: Path, monkeypatch: MonkeyPatch) -> None:
 
     monkeypatch.setattr(sqlite3, "connect", spy)
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().types == {"page": 1}
+        assert reader.index_status().types == {"page": 1}
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             opened[0].execute("CREATE TABLE written (value)")
 
@@ -445,7 +445,7 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
     write(data / "docs", replace(page("196846", "Another"), space="OPS"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().spaces == {"ENG": 1, "OPS": 1}
+        assert reader.index_status().spaces == {"ENG": 1, "OPS": 1}
 
 
 @pytest.fixture
@@ -560,7 +560,7 @@ def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data
     assert "people" in columns
     assert not {"author", "assignee"} & columns
     with reading(data / "index.sqlite") as reader:
-        (entry,) = reader.entries(paths=[path])
+        (entry,) = reader.indexed_documents(paths=[path])
     assert entry.front == COMMENTED
 
 
@@ -622,7 +622,7 @@ def test_links_and_participants_read_back_and_participants_are_rows_of_people(
         ("t-20261027-meeting-1", "participant", "Sam Sample", None, None),
     ]
     with reading(data / "index.sqlite") as reader:
-        fronts = {entry.path: entry.front for entry in reader.entries(paths=paths)}
+        fronts = {entry.path: entry.front for entry in reader.indexed_documents(paths=paths)}
     assert fronts == dict(zip(paths, (MEETING, TRANSCRIPT), strict=True))
 
 
@@ -817,8 +817,10 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
     tens of seconds so.
     """
     with closing(sqlite3.connect(persons)) as connection:
-        plan = connection.execute(f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARIES}").fetchall()
-    steps = [row[3] for row in plan]
+        plan_query = connection.execute(
+            f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARY_LINKS}"
+        ).fetchall()
+    steps = [row[3] for row in plan_query]
     meeting = [step for step in steps if step.startswith(("SCAN m", "SEARCH m "))]
     assert len(meeting) == 1
     assert meeting[0].startswith("SEARCH m USING ")
@@ -1048,7 +1050,7 @@ def test_each_file_skipped_is_recorded_with_its_digest_and_why(data: Path) -> No
     assert sorted(report.skipped) == [(path, reason) for path, _, reason in rows]
     assert rows_of(data / "index.sqlite", "SELECT path FROM documents") == [(kept,)]
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().skipped == len(rows)
+        assert reader.index_status().skipped == len(rows)
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="APFS refuses names that are not UTF-8")
@@ -1079,7 +1081,7 @@ def test_a_build_with_no_file_skipped_records_none(data: Path) -> None:
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     assert rows_of(data / "index.sqlite", "SELECT * FROM skipped") == []
     with reading(data / "index.sqlite") as reader:
-        assert reader.summary().skipped == 0
+        assert reader.index_status().skipped == 0
 
 
 def test_a_build_records_its_words_and_what_the_alias_file_means(
@@ -1127,9 +1129,9 @@ def test_an_index_built_before_digests_is_read_as_any_other(data: Path) -> None:
         connection.execute("DELETE FROM meta WHERE name IN ('words', 'aliases')")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
-        assert [entry.path for entry in reader.entries(paths=[path])] == [path]
+        assert [entry.path for entry in reader.indexed_documents(paths=[path])] == [path]
         assert list(reader.scores('"retention"', Filters())[0]) == [path]
-        summary = reader.summary()
+        summary = reader.index_status()
     assert (summary.types, summary.skipped) == ({"page": 1}, 0)
 
 

@@ -10,7 +10,7 @@ opens one, so that all that a call reads comes through one reader. A search read
 and vectors in one use, hence ``SearchIndex``, the two interfaces together, whose
 reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
 mirror; ``Held`` what it holds of them, ``Change`` what an update changes, all of it or
-none, and ``Updated`` what that did. ``Stored`` is a document as the index holds it,
+none, and ``Updated`` what that did. ``IndexedBody`` is a document as the index holds it,
 and ``Piece`` a piece of one that a vector stands for.
 """
 
@@ -34,12 +34,12 @@ if TYPE_CHECKING:
     from kb_mcp.search.domain.search import (
         Activity,
         Embedded,
-        Entry,
         Filters,
+        IndexedDocument,
+        IndexStatus,
         Passage,
         Score,
         Sort,
-        Summary,
     )
 
 
@@ -74,7 +74,7 @@ class Skipped(Record):
     reason: str  # holding nothing of the file's content
 
 
-class Stored(Record):
+class IndexedBody(Record):
     """A document as an index holds it: its path, its front matter and its body."""
 
     path: str
@@ -89,7 +89,7 @@ class Piece(Record):
     number: int  # the section holding its middle, numbered from 1
     start: int  # its span in that section's body, its heading line aside
     stop: int
-    key: str  # its vector's in the vector store
+    vector_key: str  # its vector's in the vector store
 
 
 class Held(Record):
@@ -159,21 +159,21 @@ class WordsReader(Protocol):
         every document that matches is there.
         """
 
-    def passage(self, path: str, match: str) -> Passage | None:
+    def snippet(self, path: str, match: str) -> Passage | None:
         """Find the section of a document that best matches, with a snippet of its body.
 
         Sections are judged by their heading and body alone: a match on the title alone
         gives the first section. None when the document does not match.
         """
 
-    def entries(
+    def indexed_documents(
         self,
         *,
         paths: Iterable[str] = (),
         keys: Iterable[str] = (),
         ids: Iterable[str] = (),
         filters: Filters | None = None,
-    ) -> list[Entry]:
+    ) -> list[IndexedDocument]:
         """Find the documents of these paths, issue keys, and page or work-log ids, by path.
 
         An issue's id is never looked up, since a page may have the same.
@@ -181,14 +181,14 @@ class WordsReader(Protocol):
 
     def recent(
         self, filters: Filters, by: Sort, offset: int, limit: int
-    ) -> tuple[int, list[Entry]]:
+    ) -> tuple[int, list[IndexedDocument]]:
         """Count the documents that pass the filters, and list a page of them, newest first.
 
         Newest by created date, or else by update; ties go to the newest update, then the
         path.
         """
 
-    def listing(self, filters: Filters) -> list[Entry]:
+    def listing(self, filters: Filters) -> list[IndexedDocument]:
         """List every document that passes the filters, by path."""
 
     def bounds(self, path: str) -> list[tuple[int, int]]:
@@ -227,7 +227,7 @@ class WordsReader(Protocol):
         time of the last comment, None for any other role.
         """
 
-    def summary(self) -> Summary:
+    def index_status(self) -> IndexStatus:
         """Say what the index holds and when it was built."""
 
     def held(self) -> Held:
@@ -236,7 +236,7 @@ class WordsReader(Protocol):
         Raises DamagedIndexError when a table of it cannot be read.
         """
 
-    def documents(self) -> list[Stored]:
+    def documents(self) -> list[IndexedBody]:
         """Give every document with its front matter and its body as put, by path."""
 
     def built_at(self) -> datetime:

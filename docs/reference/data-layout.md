@@ -748,7 +748,7 @@ finds corrupt, in the update's read or its copy), or on `index --rebuild`, `inde
 naming which. Its index has no pieces and no model's rows: the next `embed` takes their
 vectors back from the vector store.
 
-`embed` (`search.app.indexing.refresh`) reads the index in one use: what it holds of the
+`embed` (`search.app.indexing.fill_and_prune`) reads the index in one use: what it holds of the
 mirror, the model it names, each document's front matter and body, and its pieces by
 path, section number, span and key. It reads no file of the mirror but to digest it,
 compares those digests with the index's, and when they differ warns,

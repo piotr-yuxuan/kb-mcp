@@ -6,14 +6,14 @@ from datetime import timedelta
 
 import pytest
 
-from kb_mcp.search.domain.chunking import passages, pieces
+from kb_mcp.search.domain.chunking import pieces, section_pieces
 from kb_mcp.search.domain.search import (
     MAX_WORDS,
     Score,
     Sort,
     fuse,
     identifiers,
-    plan,
+    plan_query,
     quote,
     rank,
     sections,
@@ -29,7 +29,7 @@ LONGEST = 1200
 
 def test_each_word_is_quoted_and_stop_words_go() -> None:
     """Function words of English and French are not searched; the others are quoted."""
-    planned = plan("How do we rotate the Kafka credentials? Comment faire la rotation")
+    planned = plan_query("How do we rotate the Kafka credentials? Comment faire la rotation")
     assert planned.words == ("rotate", "kafka", "credentials", "faire", "rotation")
     assert planned.match == '"rotate" OR "kafka" OR "credentials" OR "faire" OR "rotation"'
     assert planned.expressions[:5] == tuple(f'"{word}"' for word in planned.words)
@@ -37,14 +37,14 @@ def test_each_word_is_quoted_and_stop_words_go() -> None:
 
 def test_a_query_of_stop_words_alone_is_searched_whole() -> None:
     """When nothing but stop words is left, they are searched rather than nothing."""
-    assert plan("what is it").words == ("what", "is", "it")
+    assert plan_query("what is it").words == ("what", "is", "it")
 
 
 def test_the_phrase_is_one_more_expression() -> None:
     """The query's words in order, stop words included, are scored as one phrase."""
-    assert plan("rotate the key").expressions[-1] == '"rotate the key"'
-    assert plan("kafka").expressions == ('"kafka"',)
-    assert len(plan(" ".join(f"w{n}" for n in range(17))).expressions) == MAX_WORDS
+    assert plan_query("rotate the key").expressions[-1] == '"rotate the key"'
+    assert plan_query("kafka").expressions == ('"kafka"',)
+    assert len(plan_query(" ".join(f"w{n}" for n in range(17))).expressions) == MAX_WORDS
 
 
 @pytest.mark.parametrize(
@@ -53,7 +53,7 @@ def test_the_phrase_is_one_more_expression() -> None:
 )
 def test_no_operator_survives_the_plan(query: str) -> None:
     """Quotes, stars, NEAR, minus, brackets, columns and AND, OR, NOT become words."""
-    for expression in plan(query).expressions:
+    for expression in plan_query(query).expressions:
         assert expression.startswith('"')
         assert expression.endswith('"')
         assert '"' not in expression[1:-1]
@@ -62,7 +62,7 @@ def test_no_operator_survives_the_plan(query: str) -> None:
 def test_words_beyond_the_limit_are_counted_not_searched() -> None:
     """The first MAX_WORDS distinct words are searched, and the rest are counted."""
     over = 3
-    planned = plan(" ".join(f"word{n}" for n in range(MAX_WORDS + over)))
+    planned = plan_query(" ".join(f"word{n}" for n in range(MAX_WORDS + over)))
     assert planned.words == tuple(f"word{n}" for n in range(MAX_WORDS))
     assert planned.dropped == over
 
@@ -296,7 +296,7 @@ def test_each_piece_is_embedded_with_its_title_and_heading() -> None:
     """The title, cut, then the heading unless it is the title, then the piece's text."""
     title = "T" * 250
     cut = sections(f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n")
-    found = passages(title, cut)
+    found = section_pieces(title, cut)
     assert [(index, text) for index, _, _, text in found] == [
         (0, f"{'T' * 200}\nFirst."),
         (1, f"{'T' * 200}\nSecond\nMore."),

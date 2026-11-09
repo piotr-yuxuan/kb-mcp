@@ -268,7 +268,7 @@ class Filters(Record):
     commented_before: datetime | None = None
 
 
-class Entry(Record):
+class IndexedDocument(Record):
     """A document as the index holds it."""
 
     path: str  # relative to <data>/docs, with /
@@ -282,10 +282,10 @@ class Passage(Record):
 
     number: int
     heading: str
-    snippet: str
+    text: str
 
 
-class Persons(Record):
+class PersonCounts(Record):
     """The persons that an index joined, and the names that several accounts hold."""
 
     count: int
@@ -296,7 +296,7 @@ class Persons(Record):
     shared: tuple[tuple[str, int], ...]
 
 
-class Summary(Record):
+class IndexStatus(Record):
     """What an index holds, and when it was built."""
 
     built_at: datetime
@@ -306,7 +306,7 @@ class Summary(Record):
     projects: dict[str, int]
     sections: int
     newest_fetch: datetime | None
-    people: Persons
+    people: PersonCounts
     model: str | None = None  # the model of the vectors, if any
     pieces: int = 0
     chunking: Chunking | None = None  # how the pieces were cut, if there are vectors
@@ -398,7 +398,7 @@ def identifiers(text: str) -> Identifiers:
     )
 
 
-def plan(query: str) -> Plan:
+def plan_query(query: str) -> Plan:
     """Plan a query: its words, without stop words unless nothing else is left.
 
     The first MAX_WORDS distinct words are searched; the phrase counts when the query

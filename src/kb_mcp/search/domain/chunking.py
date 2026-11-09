@@ -48,7 +48,7 @@ TENTH = WINDOW // 10
 WHITE_SPACE = re.compile(r"\s")
 # A piece of small-to-big, at most, and the unit returned for it, at most.
 SMALL = 128 * CHARACTERS_PER_TOKEN
-UNIT = 2400
+PASSAGE_CHARS = 2400
 
 
 def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
@@ -77,7 +77,7 @@ def pieces(text: str, limit: int = PIECE) -> list[tuple[int, int]]:
     return spans
 
 
-def passages(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
+def section_pieces(title: str, cut: Sequence[Section]) -> list[tuple[int, int, int, str]]:
     """Give the text to embed for each piece of a document's sections.
 
     Each is the section's index in ``cut``, the piece's span in the section's body (its
@@ -166,7 +166,9 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = PIECE
     return found
 
 
-def around(piece: tuple[int, int], section: tuple[int, int], size: int = UNIT) -> tuple[int, int]:
+def around(
+    piece: tuple[int, int], section: tuple[int, int], size: int = PASSAGE_CHARS
+) -> tuple[int, int]:
     """Give a piece's section whole when it fits ``size`` characters, else ``size`` about it.
 
     The ``size`` characters are centred on the piece's middle, then moved to stay within
@@ -183,14 +185,14 @@ class Chunker(Record):
     cut: Callable[[FrontMatter, Sequence[Section]], Cut]
     # From a piece's span and that of the section holding it, both in the body, the span
     # that ``ask`` returns.
-    unit: Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]]
+    quoted_span: Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]]
 
 
 CHUNKERS: Mapping[Chunking, Chunker] = {
     "sections": Chunker(
-        cut=lambda front, cut: passages(front.title, cut), unit=lambda piece, _: piece
+        cut=lambda front, cut: section_pieces(front.title, cut), quoted_span=lambda piece, _: piece
     ),
-    "windows": Chunker(cut=windows, unit=lambda piece, _: piece),
-    "section-paths": Chunker(cut=section_paths, unit=lambda piece, _: piece),
-    "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), unit=around),
+    "windows": Chunker(cut=windows, quoted_span=lambda piece, _: piece),
+    "section-paths": Chunker(cut=section_paths, quoted_span=lambda piece, _: piece),
+    "small-to-big": Chunker(cut=functools.partial(section_paths, limit=SMALL), quoted_span=around),
 }

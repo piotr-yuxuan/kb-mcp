@@ -33,7 +33,7 @@ from kb_mcp.search.app.indexing import (
     Embedding,
     Indexing,
     build_index,
-    refresh,
+    fill_and_prune,
     update_index,
 )
 from kb_mcp.search.app.meaning import Meaning
@@ -141,7 +141,7 @@ def test_an_index_with_a_model_holds_a_unit_vector_for_every_piece(data: Path) -
             model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS
         )
         pieces = reader.vectors()
-        assert len(pieces.documents) == reader.summary().sections == len(embedder.texts)
+        assert len(pieces.documents) == reader.index_status().sections == len(embedder.texts)
         assert np.allclose(np.linalg.norm(pieces.matrix, axis=1), 1)
     assert "Rollback\nRelease\nThe deploy of the seller service." in embedder.texts
 
@@ -304,7 +304,7 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
         kept, built = store.read_bytes(), index.read_bytes()
         asked = len(scripted.asked)
         with reading(index) as reader:
-            pieces = reader.summary().pieces
+            pieces = reader.index_status().pieces
         capsys.readouterr()
         assert main(["index", *options]) == 0
         assert len(scripted.asked) == asked
@@ -321,7 +321,7 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
             capsys.readouterr().out
         )
         with reading(index) as reader:
-            assert 0 < reader.summary().pieces < pieces
+            assert 0 < reader.index_status().pieces < pieces
 
 
 def test_the_command_embeds_with_the_settings_model(
@@ -414,7 +414,7 @@ def test_an_endpoint_that_stops_answering_leaves_the_index_in_place(
     assert "hint" not in failed
     assert str(failed["reason"]).startswith("no answer from the embedding endpoint")
     with reading(data / "index.sqlite") as reader:
-        summary = reader.summary()
+        summary = reader.index_status()
     assert (summary.awaiting, summary.pieces > 0) == (1, True)
 
 
@@ -439,7 +439,7 @@ def test_a_piece_the_model_refuses_is_named_and_asked_again(
         (piece,) = logged_as(data.parent / "home", "index.piece_refused")
         assert (piece["level"], piece["path"]) == ("warning", "confluence/ENG/196845-rollback.md")
         with reading(data / "index.sqlite") as reader:
-            assert len(reader.vectors().documents) == reader.summary().sections - 1
+            assert len(reader.vectors().documents) == reader.index_status().sections - 1
         asked = sum(refused in each for each in answers.asked)
         before = snapshot(data / "index.sqlite")
         assert main(["embed", "--yes", *config(data, "tiny", url)]) == FAILED
@@ -478,7 +478,7 @@ def test_the_index_and_its_status_name_its_chunking(data: Path) -> None:
         assert reader.embedded() == Embedded(
             model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS, chunking="windows"
         )
-        said = responses.status(reader.summary(), data / "docs")
+        said = responses.status(reader.index_status(), data / "docs")
     assert re.search(r"search by meaning: tiny, \d+ pieces cut by windows\n", said)
 
 
@@ -492,7 +492,7 @@ def test_an_index_built_before_the_row_reads_as_cut_by_sections(data: Path) -> N
         assert reader.embedded() == Embedded(
             model="tiny", fingerprint=tiny().fingerprint, dimensions=DIMENSIONS, chunking="sections"
         )
-        assert reader.summary().chunking == "sections"
+        assert reader.index_status().chunking == "sections"
 
 
 @pytest.mark.parametrize("chunking", CHUNKINGS)
@@ -504,7 +504,7 @@ def test_an_index_names_the_store_s_key_of_each_piece_s_vector(
     chunked(data, embedder, chunking)
     with reading(data / "index.sqlite") as reader:
         keys = reader.keys()
-    assert keys == {vector_store.key(tiny().fingerprint, text) for text in embedder.texts}
+    assert keys == {vector_store.vector_key(tiny().fingerprint, text) for text in embedder.texts}
 
 
 def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
@@ -514,7 +514,7 @@ def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Pa
         connection.execute("ALTER TABLE pieces DROP COLUMN key")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
-        assert len(reader.vectors().documents) == reader.summary().pieces > 0
+        assert len(reader.vectors().documents) == reader.index_status().pieces > 0
         with pytest.raises(UnavailableIndexError, match="before pieces recorded their keys"):
             reader.keys()
 
@@ -632,7 +632,7 @@ def filled_by(
 ) -> Filled:
     """Update the index, as ``index`` does, then fill it, as ``embed`` does; give the fill."""
     assert update_index(indexing(data), MOMENT) is not None
-    filled = refresh(indexing(data, answers, chunking))
+    filled = fill_and_prune(indexing(data, answers, chunking))
     assert filled is not None
     return filled
 
@@ -698,7 +698,11 @@ def test_one_page_edited_embed_adds_its_pieces_alone(data: Path) -> None:
 def test_a_removed_page_s_vectors_are_pruned_by_the_next_embed(data: Path) -> None:
     """Criterion 4: after ``index``, then ``embed``, the vectors that it alone read are gone."""
     filled_by(data)
-    keys = {piece.key for piece in pieces_of(data / "index.sqlite") if piece.path == ROLLBACK_PATH}
+    keys = {
+        piece.vector_key
+        for piece in pieces_of(data / "index.sqlite")
+        if piece.path == ROLLBACK_PATH
+    }
     (data / "docs" / ROLLBACK_PATH).unlink()
     filled = filled_by(data)
     assert filled.pruned is not None
@@ -706,7 +710,7 @@ def test_a_removed_page_s_vectors_are_pruned_by_the_next_embed(data: Path) -> No
     with closing(sqlite3.connect(data / "v.db")) as connection:
         stored = {row[0] for row in connection.execute("SELECT key FROM vectors")}
     assert stored.isdisjoint(keys)
-    assert stored == {piece.key for piece in pieces_of(data / "index.sqlite")}
+    assert stored == {piece.vector_key for piece in pieces_of(data / "index.sqlite")}
 
 
 def stored_keys(store: Path) -> set[str]:
@@ -728,7 +732,7 @@ def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
         before = stored_keys(data / "v.db")
         answers = Scripted()
         filled = filled_by(data, answers, cut)
-        asked = {vector_store.key(tiny().fingerprint, text) for text in texts_asked(answers)}
+        asked = {vector_store.vector_key(tiny().fingerprint, text) for text in texts_asked(answers)}
         assert asked.isdisjoint(before)
         assert filled.embedded == len(asked)
         assert pieces_of(data / "index.sqlite") == whole_pieces(data, cut)
@@ -861,7 +865,7 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
         return fill(self, expected, *rest)
 
     monkeypatch.setattr(SqliteIndex, "fill", meanwhile)
-    filled = refresh(indexing(data))
+    filled = fill_and_prune(indexing(data))
     assert filled is not None
     assert len(builds) == len(set(builds)) == TWICE
     assert pieces_of(data / "index.sqlite") == whole_pieces(data)
@@ -878,7 +882,7 @@ def test_an_index_written_at_each_attempt_stops_embed(data: Path, monkeypatch: M
 
     monkeypatch.setattr(SqliteIndex, "fill", meanwhile)
     with capture_logs() as logs:
-        assert refresh(indexing(data)) is None
+        assert fill_and_prune(indexing(data)) is None
     (failed,) = [each for each in logs if each["event"] == "index.not_built"]
     assert failed["reason"] == CHANGED_MEANWHILE
 
@@ -892,7 +896,7 @@ def test_index_and_embed_started_together_take_turns(data: Path) -> None:
         target=lambda: results.append(update_index(indexing(data), MOMENT))
     )
     indexing_thread.start()
-    filled = refresh(indexing(data))
+    filled = fill_and_prune(indexing(data))
     indexing_thread.join()
     assert filled is not None
     assert results[0] is not None
@@ -908,7 +912,7 @@ def test_a_lock_held_too_long_stops_embed_naming_it(data: Path, monkeypatch: Mon
     lock = data / "index.sqlite.lock"
     with lock.open("a") as file, capture_logs() as logs:
         fcntl.flock(file, fcntl.LOCK_EX)
-        assert refresh(indexing(data)) is None
+        assert fill_and_prune(indexing(data)) is None
     (failed,) = [each for each in logs if each["event"] == "index.not_built"]
     assert str(lock) in failed["reason"]
     assert (data / "index.sqlite").read_bytes() == before
@@ -927,10 +931,10 @@ def test_a_fill_that_fails_before_its_rename_leaves_the_index_as_it_was(
     with monkeypatch.context() as patch:
         patch.setattr(Piece, "model_dump", fail)
         with pytest.raises(RuntimeError):
-            refresh(indexing(data))
+            fill_and_prune(indexing(data))
     assert (data / "index.sqlite").read_bytes() == before
     assert not list(data.glob(f"{sqlite_index.BUILDING}*"))
-    assert refresh(indexing(data)) is not None
+    assert fill_and_prune(indexing(data)) is not None
 
 
 def test_a_fill_killed_leaves_the_index_as_it_was(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -1000,7 +1004,7 @@ def test_the_prune_keeps_what_embed_wrote_when_an_index_ran_since(
         return prune(*arguments, **options)
 
     monkeypatch.setattr(indexing_module, "prune", meanwhile)
-    filled = refresh(indexing(data))
+    filled = fill_and_prune(indexing(data))
     assert filled is not None
     assert filled.pruned is not None
     assert filled.pruned.outcome == "pruned"
@@ -1008,7 +1012,9 @@ def test_the_prune_keeps_what_embed_wrote_when_an_index_ran_since(
         stored = {row[0] for row in connection.execute("SELECT key FROM vectors")}
     assert filled.kept <= stored
     assert (
-        vector_store.key(tiny().fingerprint, "Rollback\nRelease\nThe deploy of the buyer service.")
+        vector_store.vector_key(
+            tiny().fingerprint, "Rollback\nRelease\nThe deploy of the buyer service."
+        )
         in stored
     )
 
@@ -1052,7 +1058,7 @@ def test_a_mirror_changed_since_the_index_is_a_warning_and_nothing_else(
             assert snapshot(data / "index.sqlite") == before
     with reading(data / "index.sqlite") as reader:
         assert list(reader.scores('"payout"', Filters())[0]) == [ROLLBACK_PATH]
-        assert reader.entries(paths=[location(page("900000", "Lorem 0"))])
+        assert reader.indexed_documents(paths=[location(page("900000", "Lorem 0"))])
 
 
 def test_the_warning_comes_before_the_model_is_reached(

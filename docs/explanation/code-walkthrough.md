@@ -361,7 +361,7 @@ its new file is built, so that the last good copy of every other stays.
 with no endpoint, and
 [`update_index`](../../src/kb_mcp/search/app/indexing.py) reads the alias file first
 ([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)), then lists the files of
-the mirror ([`mirror_files`](../../src/kb_mcp/search/app/indexing.py), by
+the mirror ([`document_files`](../../src/kb_mcp/search/app/indexing.py), by
 [`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)).
 [`updated`](../../src/kb_mcp/search/app/indexing.py) reads in one use what the index
 holds of them ([`Reader.held`](../../src/kb_mcp/search/adapters/sqlite_index.py)): there
@@ -384,7 +384,7 @@ changed are read, and with none, nothing is written.
 
 `embed`'s [`run`](../../src/kb_mcp/cli/commands/embed.py) takes the same
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py), with the means to open the
-endpoint, and [`refresh`](../../src/kb_mcp/search/app/indexing.py) calls
+endpoint, and [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) calls
 [`filling`](../../src/kb_mcp/search/app/indexing.py). It reads the index first, in one
 use ([`to_fill`](../../src/kb_mcp/search/app/indexing.py)): what it holds of the mirror,
 the model it names, each document's front matter and body
@@ -426,7 +426,7 @@ cut it, and into pieces by the chunking that
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py) names: by default
 [`windows`](../../src/kb_mcp/search/domain/chunking.py) of about 300 tokens,
 starting 240 apart, so that two in a row overlap, each embedded with the title. Each
-piece's text gets a [`key`](../../src/kb_mcp/search/adapters/vector_store.py),
+piece's text gets a [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py),
 the SHA-256 of the fingerprint and the text. The pieces wanted that the index does not
 hold are to add, every one at this first run, and those it holds that none wants, to
 remove.
@@ -460,11 +460,11 @@ backup, into which
 pieces, the model, its fingerprint, the chunking and a new `build`. On any failure the
 new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
-which [`refresh`](../../src/kb_mcp/search/app/indexing.py) logs as
+which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
 `index.not_built`. A file skipped is named in `index`'s
-[`Report`](../../src/kb_mcp/search/app/indexing.py), and a piece refused in `embed`'s
+[`IndexReport`](../../src/kb_mcp/search/app/indexing.py), and a piece refused in `embed`'s
 [`Filled`](../../src/kb_mcp/search/app/indexing.py); each run exits 0 only when its
-result is whole ([`Report.whole`](../../src/kb_mcp/search/app/indexing.py),
+result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
 
 ### 10. The result
@@ -516,7 +516,7 @@ times the call;
 [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) checks its arguments
 (their lengths by [`LONGEST`](../../src/kb_mcp/mcp/app/tools.py), the
 filters by [`checked`](../../src/kb_mcp/mcp/app/tools.py)), and
-[`plan`](../../src/kb_mcp/search/domain/search.py) plans the query: its
+[`plan_query`](../../src/kb_mcp/search/domain/search.py) plans the query: its
 words in lower case, without stop words unless nothing else is left, at most ten, each
 made one FTS5 string ([`quote`](../../src/kb_mcp/search/domain/search.py))
 so that nothing in it reads as an operator; the phrase; and the issue keys and page ids
@@ -537,7 +537,7 @@ spans:
   scores each document that matches by its best section's bm25, with weights per column
   ([`WEIGHTS`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
   documents that the query names by key or id come first
-  ([`Reader.entries`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
+  ([`Reader.indexed_documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   and [`rank`](../../src/kb_mcp/search/domain/search.py) orders the rest by
   the sum of their scores.
 - **`search.semantic`.**
@@ -569,7 +569,7 @@ internals](internals.md#fused) say why ranks, not scores.
 ### 14. Budgets and markers
 
 For each document of the page of hits asked,
-[`passage_of`](../../src/kb_mcp/mcp/app/tools.py) chooses the section to
+[`snippet_of`](../../src/kb_mcp/mcp/app/tools.py) chooses the section to
 show, by meaning or by words, as the document was ranked;
 [`call`](../../src/kb_mcp/mcp/app/responses.py) writes the `read(...)` call
 that opens it from `read`'s own signature, so that a call never names a parameter the

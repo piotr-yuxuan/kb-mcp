@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint, prefixes_said
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.search.app.indexing import refresh
+from kb_mcp.search.app.indexing import fill_and_prune
 
 if TYPE_CHECKING:
     import argparse
@@ -39,7 +39,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Fill
     """
     settings = loaded.settings
     opening = partial(open_endpoint, arguments, settings)
-    filled = refresh(indexing_of(settings, opening))
+    filled = fill_and_prune(indexing_of(settings, opening))
     return ExitStatus.OK if filled and filled.whole else ExitStatus.FAILED, filled
 
 

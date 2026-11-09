@@ -24,11 +24,11 @@ from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
     Change,
+    IndexedBody,
     Piece,
     Put,
     SearchReader,
     Skipped,
-    Stored,
     UnavailableIndexError,
 )
 from kb_mcp.search.domain.search import WORDS, Embedded, Filters, quote, sections
@@ -114,7 +114,7 @@ def filled(documents: Sequence[FilledDocument]) -> dict[Piece, NDArray[np.float3
             number=part.number,
             start=part.start,
             stop=part.stop,
-            key=part.key,
+            vector_key=part.key,
         ): np.array(part.vector, dtype=np.float32)
         for document in documents
         for part in document.pieces
@@ -198,7 +198,7 @@ def test_more_of_a_word_ranks_higher(written: Written) -> None:
 def test_a_document_is_read_back(written: Written) -> None:
     """Its front matter, length and sections come back, its text by any span of its body."""
     with written(BOTH).reading() as reader:
-        (entry,) = reader.entries(paths=[RUNBOOK_PATH])
+        (entry,) = reader.indexed_documents(paths=[RUNBOOK_PATH])
         assert entry.path == RUNBOOK_PATH
         assert entry.front == RUNBOOK
         assert entry.length == len(RUNBOOK_BODY)
@@ -218,10 +218,10 @@ def test_a_document_is_read_back(written: Written) -> None:
 def test_a_document_is_found_by_its_key_or_id(written: Written) -> None:
     """An issue by its key, a page by its id; an issue's id is never looked up."""
     with written(BOTH).reading() as reader:
-        assert [each.path for each in reader.entries(keys=["PROJ-7"])] == [UPGRADE_PATH]
-        assert [each.path for each in reader.entries(ids=["1001"])] == [RUNBOOK_PATH]
-        assert reader.entries(ids=[UPGRADE.id]) == []
-        assert reader.entries(paths=["jira/PROJ/PROJ-8.md"]) == []
+        assert [each.path for each in reader.indexed_documents(keys=["PROJ-7"])] == [UPGRADE_PATH]
+        assert [each.path for each in reader.indexed_documents(ids=["1001"])] == [RUNBOOK_PATH]
+        assert reader.indexed_documents(ids=[UPGRADE.id]) == []
+        assert reader.indexed_documents(paths=["jira/PROJ/PROJ-8.md"]) == []
 
 
 def test_documents_found_come_by_path_whatever_order_they_were_written_in(
@@ -233,21 +233,21 @@ def test_documents_found_come_by_path_whatever_order_they_were_written_in(
         [FilledDocument(front=UPGRADE, body=UPGRADE_BODY), FilledDocument(front=other, body="")]
     )
     with index.reading() as reader:
-        found = [each.path for each in reader.entries(keys=["PROJ-7"])]
+        found = [each.path for each in reader.indexed_documents(keys=["PROJ-7"])]
     assert found == sorted((location(other), UPGRADE_PATH))
 
 
 def test_the_passage_is_the_section_that_best_matches(written: Written) -> None:
     """By its heading and body, with a snippet of its body; a title alone gives the first."""
     with written(BOTH).reading() as reader:
-        passage = reader.passage(RUNBOOK_PATH, quote("ledger"))
+        passage = reader.snippet(RUNBOOK_PATH, quote("ledger"))
         assert passage is not None
         assert (passage.number, passage.heading) == (2, "Restore")
-        assert "ledger" in passage.snippet
-        titled = reader.passage(RUNBOOK_PATH, quote("runbook"))
+        assert "ledger" in passage.text
+        titled = reader.snippet(RUNBOOK_PATH, quote("runbook"))
         assert titled is not None
         assert titled.number == 1
-        assert reader.passage(RUNBOOK_PATH, quote("absent")) is None
+        assert reader.snippet(RUNBOOK_PATH, quote("absent")) is None
 
 
 def test_the_documents_are_listed_and_counted(written: Written) -> None:
@@ -274,7 +274,7 @@ def test_the_documents_are_listed_and_counted(written: Written) -> None:
 def test_the_summary_says_what_the_index_holds(written: Written) -> None:
     """Its documents by type, space and project, its sections, and when it was built."""
     with written(BOTH).reading() as reader:
-        summary = reader.summary()
+        summary = reader.index_status()
         assert reader.built_at() == MOMENT
         assert reader.build()
     assert summary.built_at == MOMENT
@@ -363,7 +363,9 @@ def test_filters_narrow_words_and_vectors_alike(
         assert [each.path for each in reader.listing(filters)] == [path]
         assert reader.recent(filters, "updated", 0, 10)[0] == 1
         both = [location(INSIDE), location(OUTSIDE)]
-        assert [each.path for each in reader.entries(paths=both, filters=filters)] == [path]
+        assert [each.path for each in reader.indexed_documents(paths=both, filters=filters)] == [
+            path
+        ]
 
 
 @pytest.mark.parametrize(
@@ -520,7 +522,7 @@ def test_an_index_names_its_model_and_the_keys_of_its_pieces(
     with index.reading() as reader:
         assert reader.embedded() == EMBEDDED
         assert reader.keys() == {"k", "k-broker"}
-        summary = reader.summary()
+        summary = reader.index_status()
     assert (summary.model, summary.pieces, summary.chunking) == (EMBEDDED.model, 3, "sections")
 
 
@@ -569,7 +571,7 @@ def test_a_document_put_again_is_replaced(written: Written) -> None:
         assert reader.build() == done.build != build
         assert reader.scores(quote("ledger"), Filters()) == ({}, True)
         assert list(reader.scores(quote("revert"), Filters())[0]) == [RUNBOOK_PATH]
-        (entry,) = reader.entries(paths=[RUNBOOK_PATH])
+        (entry,) = reader.indexed_documents(paths=[RUNBOOK_PATH])
         assert entry.front == EDITED
         assert reader.text(RUNBOOK_PATH, 0, len(EDITED_BODY)) == EDITED_BODY
         assert reader.values("label") == [("ops", 1), ("revert", 1)]
@@ -597,8 +599,8 @@ def test_a_document_removed_leaves_no_trace(written: Written) -> None:
     assert done.types == {"page": 1, "issue": 1}
     with index.reading() as reader:
         assert reader.scores(quote("solitary"), Filters(), every=True) == ({}, True)
-        assert reader.passage(path, quote("solitary")) is None
-        assert reader.entries(paths=[path], ids=[LONE.id]) == []
+        assert reader.snippet(path, quote("solitary")) is None
+        assert reader.indexed_documents(paths=[path], ids=[LONE.id]) == []
         assert [each.path for each in reader.listing(Filters())] == sorted(
             [RUNBOOK_PATH, UPGRADE_PATH]
         )
@@ -607,7 +609,7 @@ def test_a_document_removed_leaves_no_trace(written: Written) -> None:
         assert ("alone", 1) not in reader.values("label")
         assert reader.values("author") == [("A Person", 2)]
         assert reader.persons(people.name_key(BO)) == []
-        summary = reader.summary()
+        summary = reader.index_status()
         assert summary.types == {"page": 1, "issue": 1}
         assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
         assert summary.spaces == {"ENG": 1}
@@ -633,7 +635,7 @@ def test_held_gives_each_document_s_digest_and_each_file_skipped(written: Writte
     assert done.skipped == (refused, unread)
     with index.reading() as reader:
         assert reader.held().skipped == {refused.path: refused, unread.path: unread}
-        assert reader.summary().skipped == len(done.skipped)
+        assert reader.index_status().skipped == len(done.skipped)
     done = index.update(change(), done.build)
     assert done is not None
     assert done.skipped == ()
@@ -678,7 +680,7 @@ def test_of_two_files_of_one_source_and_id_the_first_by_its_path_s_parts_is_held
     )
     assert (done.copied, done.added, done.replaced, done.removed) == (1, 1, 0, 1)
     with index.reading() as reader:
-        (entry,) = reader.entries(ids=[RUNBOOK.id])
+        (entry,) = reader.indexed_documents(ids=[RUNBOOK.id])
         assert entry.path == nested.path
         assert reader.held().documents.keys() == {nested.path, UPGRADE_PATH}
 
@@ -697,7 +699,7 @@ def test_a_document_replaced_or_removed_takes_its_pieces_with_it(written: Writte
         assert reader.embedded() == EMBEDDED
         assert list(reader.nearest(query(NORTH), Filters(), 10)) == [UPGRADE_PATH]
         assert reader.keys() == {"k-broker"}
-        summary = reader.summary()
+        summary = reader.index_status()
     assert (summary.pieces, summary.awaiting) == (1, 1)
 
 
@@ -752,8 +754,8 @@ def test_documents_come_back_with_their_front_matter_and_body(written: Written) 
     """Each as put, by path: its body exactly, as its sections' heading lines and bodies give it."""
     with written(BOTH).reading() as reader:
         assert reader.documents() == [
-            Stored(path=RUNBOOK_PATH, front=RUNBOOK, body=RUNBOOK_BODY),
-            Stored(path=UPGRADE_PATH, front=UPGRADE, body=UPGRADE_BODY),
+            IndexedBody(path=RUNBOOK_PATH, front=RUNBOOK, body=RUNBOOK_BODY),
+            IndexedBody(path=UPGRADE_PATH, front=UPGRADE, body=UPGRADE_BODY),
         ]
 
 
@@ -798,7 +800,7 @@ def test_a_piece_that_names_no_section_is_refused(written: Written) -> None:
     """A fill of a section that the document lacks raises, and leaves the index as it was."""
     index = written([FilledDocument(front=COMPASS, body=NEAR_BODY)])
     build = build_of(index)
-    stray = Piece(path=COMPASS_PATH, number=9, start=0, stop=1, key="k")
+    stray = Piece(path=COMPASS_PATH, number=9, start=0, stop=1, vector_key="k")
     with pytest.raises(ValueError, match="names a section"):
         index.fill(build, EMBEDDED, {stray: query(NORTH)}, ())
     with index.reading() as reader:
@@ -855,13 +857,13 @@ def test_a_document_that_wants_no_piece_never_awaits(
     ]
     index = written(documents, replace(EMBEDDED, chunking=chunking))
     with index.reading() as reader:
-        assert reader.summary().awaiting == waiting
+        assert reader.index_status().awaiting == waiting
         build = reader.build()
     parts = filled([replace(documents[2], pieces=(piece_of(RUNBOOK_BODY, "ledger", "k", NORTH),))])
     done = index.fill(build, replace(EMBEDDED, chunking=chunking), parts, ())
     assert done is not None
     with index.reading() as reader:
-        assert reader.summary().awaiting == waiting - 1
+        assert reader.index_status().awaiting == waiting - 1
     updated = index.update(change(put=[documents[2]]), done)
     assert updated is not None
     assert updated.awaiting == waiting

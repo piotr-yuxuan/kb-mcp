@@ -57,7 +57,7 @@ Confluence's and Jira's,
 `index`, the words of the mirror's files that changed, whichever sources were prepared
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); and `embed`, the vectors of
 the pieces that the index lacks, then the prune
-([`refresh`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
+([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
 use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/glossary.md#source)'s declaration
 names its table and its roles ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
 names given choose among those that a command can take
@@ -220,7 +220,7 @@ compares it with what the index holds
 ([`change_of`](../../src/kb_mcp/search/app/indexing.py)), reads only those added or
 changed, cuts each body into sections before each heading
 ([`sections`](../../src/kb_mcp/search/domain/search.py)), and indexes them by words.
-[`refresh`](../../src/kb_mcp/search/app/indexing.py), `embed`'s, reads the index alone,
+[`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py), `embed`'s, reads the index alone,
 cuts each document's body again into pieces by the setting `chunking`
 ([`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py)), and gives a vector to each
 piece that the index lacks
@@ -244,7 +244,7 @@ piece that the index lacks
   can share it, a write waiting for the other's
   ([`opened`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` holds the
   store's lock shared from its read of the vectors until its index is in place
-  ([`shared`](../../src/kb_mcp/search/adapters/vector_store.py)); then `refresh` prunes
+  ([`shared`](../../src/kb_mcp/search/adapters/vector_store.py)); then `fill_and_prune` prunes
   the store (below).
 - **Joins** the documents' people into persons, at each write of `index`, over every
   document, those copied included, in the same transaction
@@ -288,7 +288,7 @@ named in a query put their documents first, in every mode.
 
 ### By words
 
-The query becomes words ([`plan`](../../src/kb_mcp/search/domain/search.py)):
+The query becomes words ([`plan_query`](../../src/kb_mcp/search/domain/search.py)):
 split, in lower case, without the English and French stop words unless nothing else is
 left, at most ten, each a quoted string, so that nothing a query holds is read as an
 operator; and the whole phrase too, when it has 2 to 16 words. For each word, and the
@@ -454,7 +454,7 @@ Each piece is embedded as a text that its chunking composes: by `windows`, the d
 the document's title and the window
 ([`windows`](../../src/kb_mcp/search/domain/chunking.py)). Its vector is
 kept under a key, the SHA-256 of the model's fingerprint and that text
-([`key`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` asks
+([`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` asks
 the vector store for the key of each piece that the index lacks, and the endpoint for
 the texts that the store lacks alone. So a piece whose text did not change is never
 embedded again, and one that the index holds is not even looked up: a page moved to
