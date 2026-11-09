@@ -9,8 +9,6 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable, Mapping
 
-# The program's name, as pyproject.toml names its script.
-PROGRAM = "kb-mcp"
 # The settings that the entry reads for every command that it observes, by path, to
 # observe its run: where its log file goes and where its telemetry goes.
 OBSERVING = ("logs.dir", "telemetry.endpoint")

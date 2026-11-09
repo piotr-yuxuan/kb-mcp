@@ -1,4 +1,4 @@
-"""The names of the mirror: the rules of its sources' names, ids, keys and revisions.
+"""The program's name, and the mirror's: the rules of its sources' names, ids, keys and revisions.
 
 A value that breaks a rule is refused where a domain type is built, by ``require``,
 with a ``RefusedError`` that names the field and the rule, never the value.
@@ -9,6 +9,9 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
+# The program's name, as pyproject.toml names its script: its command, its log folder,
+# and the name by which MCP clients know its server.
+PROGRAM = "kb-mcp"
 # The mirror's folder of the files that Confluence's and Jira's documents attach,
 # docs/assets/: no document is under it, and no source's folder may be it.
 ASSETS = "assets"

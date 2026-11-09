@@ -26,6 +26,7 @@ from opentelemetry import metrics
 from kb_mcp.cli.commands._embedding import open_endpoint
 from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.mcp.app.surface import surface
 from kb_mcp.mcp.app.tools import FALLBACKS, Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
@@ -41,7 +42,6 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
 
-NAME = "kb-mcp"
 # What people read for the server, beside the name that clients key it by, as MCP
 # separates them since its revision of 2025-06-18.
 TITLE = "Knowledge base MCP"
@@ -157,7 +157,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             for name in offered.tools
         ]
         server = MCPServer(
-            NAME, title=TITLE, instructions=offered.instructions, tools=tools, log_level="WARNING"
+            PROGRAM,
+            title=TITLE,
+            instructions=offered.instructions,
+            tools=tools,
+            log_level="WARNING",
         )
         for guide in offered.guides:
             wanted = [

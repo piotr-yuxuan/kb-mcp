@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 
 from kb_mcp.cli import options
-from kb_mcp.cli.domain.command import PROGRAM
 from kb_mcp.kernel.exit_status import MEANINGS
+from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.sources.registry import SOURCES, refuse
 
 if TYPE_CHECKING:

@@ -395,9 +395,7 @@ What a server tells an agent: its instructions, each tool's description and its 
 One subcommand of `kb-mcp`.
 
 - In the code: [`Command`](../../src/kb_mcp/cli/domain/command.py),
-  [`PROGRAM`](../../src/kb_mcp/cli/domain/command.py),
-  [`PROGRAM`](../../src/kb_mcp/observability/adapters/logs.py),
-  [`NAME`](../../src/kb_mcp/cli/commands/serve.py).
+  [`PROGRAM`](../../src/kb_mcp/kernel/names.py).
 - User-facing: `fetch`, `prepare`, `index`, `embed`, `serve`.
 
 ### run
