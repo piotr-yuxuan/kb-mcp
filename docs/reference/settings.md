@@ -50,7 +50,7 @@ A path that starts with `~` starts in the home directory.
 | `sources.worklog.archives` | `KB_MCP_SOURCES__WORKLOG__ARCHIVES` | boolean | `true` | Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the subtrees tagged ARCHIVE are prepared too. |
 | `logs.dir` | `KB_MCP_LOGS__DIR` | path | unset | The folder of each run's log file, ~ being the home directory: by default the user's log folder, where the platform keeps them; never under a synchronised folder, nor inside a git working tree. |
 | `telemetry.endpoint` | `KB_MCP_TELEMETRY__ENDPOINT` | text | unset | The OTLP endpoint on this machine that traces, metrics and logs go to, over http with a port and no path, such as http://127.0.0.1:4318; unset, none is sent. Else OTEL_EXPORTER_OTLP_ENDPOINT gives it, below the settings file; OTEL_SDK_DISABLED=true leaves it unset. |
-| `rerank.enabled` | `KB_MCP_RERANK__ENABLED` | boolean | `false` | Whether search and ask rerank their first documents through the reranking server: off by default, as it ranked worse on the sandbox, by the user's choice in plan 022. |
+| `rerank.enabled` | `KB_MCP_RERANK__ENABLED` | boolean | `false` | Whether search and ask rerank their first documents through the reranking server: off by default, as it ranked worse on the sandbox. |
 | `rerank.url` | `KB_MCP_RERANK__URL` | text | `"http://127.0.0.1:9931/v1"` | The reranking server's API, up to /rerank, excluded: an address of this machine, never another. |
 | `rerank.model` | `KB_MCP_RERANK__MODEL` | text | `"qwen3-reranker-0.6b"` | The reranking model, as the server names it. |
 | `rerank.depth` | `KB_MCP_RERANK__DEPTH` | integer | `30` | How many documents, after those a query names, are reranked: 2 to 64. |

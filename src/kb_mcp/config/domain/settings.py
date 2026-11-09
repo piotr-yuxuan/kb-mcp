@@ -243,8 +243,7 @@ class Rerank(BaseModel):
         default=False,
         description=(
             "Whether search and ask rerank their first documents through the reranking"
-            " server: off by default, as it ranked worse on the sandbox, by the user's"
-            " choice in plan 022."
+            " server: off by default, as it ranked worse on the sandbox."
         ),
     )
     url: RerankUrl = Field(
