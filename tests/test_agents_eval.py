@@ -220,13 +220,76 @@ def test_each_prompt_holds_what_serve_lists_for_its_surface(world: World) -> Non
         assert ("ask" in [tool["name"] for tool in tools]) is (run["surface"] == "B")
 
 
-def test_the_remote_flag_reaches_the_server_exactly_when_given(world: World) -> None:
-    """``--allow-remote-embeddings`` given to prepare is given to every server it names."""
-    given, not_given = world.root / "given", world.root / "not-given"
-    assert prepared(world, given, "--sample", "1", "--allow-remote-embeddings") == 0
-    assert prepared(world, not_given, "--sample", "1") == 0
-    servers = [json.loads((out / "runs.json").read_text())["server"] for out in (given, not_given)]
-    assert ["--allow-remote-embeddings" in server for server in servers] == [True, False]
+REMOTE = "https://embeddings.example.invalid/v1"
+
+
+def remote(world: World) -> None:
+    """Point the world's settings at an embedding endpoint off this machine."""
+    config = world.home / ".config" / "kb-mcp" / "config.toml"
+    kept = [line for line in config.read_text("utf-8").splitlines() if "embedding_url" not in line]
+    config.write_text("\n".join([f"embedding_url = {json.dumps(REMOTE)}", *kept]) + "\n", "utf-8")
+
+
+@pytest.mark.parametrize("off_this_machine", [False, True])
+def test_the_prepared_files_say_whether_calls_need_the_consent_and_never_hold_it(
+    world: World, *, off_this_machine: bool
+) -> None:
+    """The consent belongs to each invocation: prepare's reaches no later step."""
+    if off_this_machine:
+        remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
+    written = [each.read_text("utf-8") for each in out.rglob("*") if each.is_file()]
+    assert not [text for text in written if "--allow-remote-embeddings" in text]
+    runs = json.loads((out / "runs.json").read_text("utf-8"))
+    assert runs["remote_embeddings"] is off_this_machine
+
+
+def test_prepare_without_the_consent_to_a_remote_endpoint_is_refused(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Exit 2 before anything is written, as serve would refuse each of its servers."""
+    remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == REFUSED
+    assert "embedding_url: not an address of this machine" in capsys.readouterr().err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("off_this_machine", [False, True])
+@pytest.mark.parametrize("consented", [False, True])
+def test_a_call_of_runs_off_this_machine_needs_its_own_consent(
+    world: World,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    *,
+    off_this_machine: bool,
+    consented: bool,
+) -> None:
+    """Given to call, the flag reaches its server; needed and not given, no server starts."""
+    if off_this_machine:
+        remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
+    started: list[list[str]] = []
+
+    def recorded(server: list[str], *_: object) -> Answered:
+        started.append(server)
+        return Answered(text="an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    run = runs_of(out)[0]
+    capsys.readouterr()
+    flag = ["--allow-remote-embeddings"] if consented else []
+    refused = off_this_machine and not consented
+    status = main([*bridged(out, run["id"], "search", {"query": "kafka"}), *flag])
+    assert status == (REFUSED if refused else 0)
+    server = json.loads((out / "runs.json").read_text("utf-8"))["server"]
+    if refused:
+        assert started == []
+        assert "--allow-remote-embeddings: give it to each call" in capsys.readouterr().err
+    else:
+        assert started == [[*server, *flag, "--tools", ",".join(run["tools"])]]
 
 
 def test_a_call_prints_serve_s_answer_alone_and_logs_five_fields(
@@ -624,11 +687,11 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
     assert (out / "results.json").exists()
 
 
-@pytest.mark.parametrize("given", [[], ["--data-dir", "DATA", "--allow-remote-embeddings"]])
+@pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])
 def test_each_call_starts_the_server_that_prepare_named(
     world: World, monkeypatch: MonkeyPatch, given: list[str]
 ) -> None:
-    """The settings file, the data directory and 018's flag, as prepare was given them."""
+    """The settings file and the data directory, as prepare was given them."""
     out = world.root / "runs"
     options = [str(world.data) if each == "DATA" else each for each in given]
     assert prepared(world, out, "--sample", "1", *options) == 0

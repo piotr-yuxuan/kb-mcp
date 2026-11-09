@@ -19,6 +19,7 @@ from kb_mcp.cli.options._common import (
     add_output_options,
     add_settings_options,
     add_yes_option,
+    endpoint_by_meaning,
 )
 
 if TYPE_CHECKING:
@@ -81,12 +82,13 @@ def register(
         command=Command(
             "eval-agents prepare",
             RUN,
-            reads=("data_dir",),
+            reads=("data_dir", "search_mode", "embedding_url"),
             flags=flags,
             actions=(*actions, remote, golden, out, model, sample, seed),
             writes=True,
             dry_run=True,
             described=described,
+            refused=endpoint_by_meaning,
             files=("golden",),
         ),
     )
@@ -95,6 +97,7 @@ def register(
     # server that call starts reads the settings that prepare named.
     call = steps.add_parser("call", help="call a tool for a run, and print its answer")
     called_actions, called_flags = add_settings_options(call)
+    called_remote = add_embedding_options(call)
     call.add_argument("directory", type=Path, help="the runs' directory")
     call.add_argument("run", help="the run's id")
     call.add_argument("tool", help="the tool's name")
@@ -105,7 +108,7 @@ def register(
             "eval-agents call",
             RUN,
             flags=called_flags,
-            actions=called_actions,
+            actions=(*called_actions, called_remote),
             unlogged=("arguments",),
         ),
     )

@@ -25,6 +25,15 @@ answers keep their order and say "Not reranked", which the warning `rerank.fallb
 and the counter `kb_mcp.rerank.fallbacks` record: run `reranker check` before the runs
 too.
 
+An embedding endpoint off this machine takes the consent of each invocation that sends
+it the mirror's text, never of a step before ([services](../reference/concepts.md#service)).
+`prepare` refuses one without `--allow-remote-embeddings`, which reaches only the servers
+that it starts itself to list the tools; it writes the consent into no file, and
+`runs.json` says, by `remote_embeddings`, that the calls need it. Each call is then
+refused, exit 2, unless given `--allow-remote-embeddings` on its own command line, which
+the prompts' bridge command does not hold: tell each subagent to add it, or keep the
+endpoint on this machine.
+
 ## Prepare the runs
 
 The pilot first, of six questions, twelve runs:
@@ -54,8 +63,9 @@ The prompt tells the subagent to answer from the tools alone, through the bridge
 most twelve calls, and to end with the answer command. The bridge,
 `eval-agents call DIR RUN TOOL JSON`, starts the server that the run names, makes one
 call, logs it in `calls/<run>.jsonl` and prints the answer alone; it refuses a call of a
-tool that the run's surface lacks, arguments that are not one JSON object, and a call
-past the twelfth, saying to answer now. `eval-agents answer DIR RUN JSON` keeps the
+tool that the run's surface lacks, arguments that are not one JSON object, a call
+without the consent that `runs.json` says its server needs, and a call past the
+twelfth, saying to answer now. `eval-agents answer DIR RUN JSON` keeps the
 answer, read strictly; a refused answer names the field at fault and may be sent once
 more, and a second refusal is kept as the agent's failure. Neither asks anything.
 
@@ -115,7 +125,7 @@ and are reported only.
 
 | Path | Written by | Holds |
 |---|---|---|
-| `runs.json` | `prepare` | the runs, their bound, the server's command, what grades each question |
+| `runs.json` | `prepare` | the runs, their bound, the server's command, whether its calls need the consent to remote embeddings, what grades each question |
 | `prompts/<run>.md` | `prepare` | the run's prompt, with its question |
 | `calls/<run>.jsonl` | `call` | each call: tool, arguments, estimated tokens answered, seconds, status |
 | `answers/<run>.json` | `answer` | the answer kept |

@@ -42,6 +42,7 @@ from kb_mcp.evaluation.domain.grading import (
     grade,
     refusal,
 )
+from kb_mcp.kernel.endpoint import EMBEDDINGS
 from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.responses import tokens
 
@@ -151,6 +152,8 @@ class Runs(BaseModel):
     model: str  # the alias of the agents' model, such as haiku
     golden_sha256: str
     server: tuple[str, ...]  # the command that serves, its tools aside
+    # The embedding endpoint is off this machine: each call needs the consent to reach it.
+    remote_embeddings: bool = False
     calls: int  # a run's calls, at most
     call_s: float  # a call's seconds, at most
     runs: tuple[AgentRun, ...]
@@ -180,14 +183,16 @@ class Asking(Record):
     """What ``prepare`` is given besides the questions: who answers, how, and within what.
 
     ``program`` is the command line that reaches ``eval-agents``, for the prompts;
-    ``server`` the one that serves, its tools aside; ``home`` the home directory, for
-    the guard on where the runs' directory may be.
+    ``server`` the one that serves, its tools aside, and never the consent to remote
+    embeddings, which ``remote_embeddings`` says the servers need; ``home`` the home
+    directory, for the guard on where the runs' directory may be.
     """
 
     model: str
     golden_sha256: str
     program: tuple[str, ...]
     server: tuple[str, ...]
+    remote_embeddings: bool
     calls: int
     call_s: float
     home: Path
@@ -225,8 +230,10 @@ def prepare(
         message = f"--out: {problem or 'not empty'}"
         raise AgentsError(message)
     served = surfaces(tools)
+    # prepare's own consent, which its run was refused without, reaches its servers alone.
+    consent = [EMBEDDINGS.flag] if asking.remote_embeddings else []
     said = {
-        name: listed([*asking.server, "--tools", ",".join(each)], LISTING_S)
+        name: listed([*asking.server, *consent, "--tools", ",".join(each)], LISTING_S)
         for name, each in served.items()
     }
     schema = json.dumps(AgentAnswer.model_json_schema(), indent=1)
@@ -262,6 +269,7 @@ def prepare(
         model=asking.model,
         golden_sha256=asking.golden_sha256,
         server=asking.server,
+        remote_embeddings=asking.remote_embeddings,
         calls=asking.calls,
         call_s=asking.call_s,
         runs=tuple(runs),
@@ -331,12 +339,14 @@ class Called(Record):
     text: str
 
 
-def call(directory: Path, name: str, tool: str, given: str) -> Called:
+def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) -> Called:
     """Make one call of a run: start its server, call the tool, log the call, give its answer.
 
+    ``consented``, this call's consent to remote embeddings, reaches its server alone.
     Refused, before any server starts: a run not there, arguments not one JSON object, a
-    tool not of the run's surface, a call past the run's bound. The log line holds the
-    tool, the arguments, the answer's estimated tokens, the seconds and the status.
+    tool not of the run's surface, runs that need the consent without it, a call past
+    the run's bound. The log line holds the tool, the arguments, the answer's estimated
+    tokens, the seconds and the status.
 
     The call is the span ``eval.agent.call``, which holds the client's; it is counted by
     status in ``kb_mcp.eval.agent.calls``, its seconds and tokens measured, and
@@ -354,13 +364,24 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
     if tool not in run.tools:
         message = f"tool: not served on this run's surface, whose tools are {', '.join(run.tools)}"
         raise AgentsError(message)
+    if runs.remote_embeddings and not consented:
+        message = (
+            f"{EMBEDDINGS.flag}: give it to each call, since the runs' embedding endpoint"
+            " is off this machine, where the mirror's text would go"
+        )
+        raise AgentsError(message)
     log = directory / "calls" / f"{run.id}.jsonl"
     with locked(directory, run):
         if len(logged(directory, run)) >= runs.calls:
             message = f"calls: this run's {runs.calls} are spent; give your answer now"
             raise AgentsError(message)
         started = time.monotonic()
-        server = [*runs.server, "--tools", ",".join(run.tools)]
+        server = [
+            *runs.server,
+            *([EMBEDDINGS.flag] if consented else []),
+            "--tools",
+            ",".join(run.tools),
+        ]
         named = {"kb_mcp.surface": run.surface, "gen_ai.tool.name": tool}
         with TRACER.start_as_current_span("eval.agent.call", attributes=named) as span:
             try:

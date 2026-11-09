@@ -37,6 +37,7 @@ from kb_mcp.evaluation.app.agents import (
     readied,
 )
 from kb_mcp.evaluation.app.evaluation import GoldenError, read_golden
+from kb_mcp.kernel.endpoint import loopback
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.tools import TOOLS
@@ -87,7 +88,6 @@ def prepared(
     # The server reads the settings as this run did: the same file, the same variables,
     # and the data directory given here, if one was.
     given = ("--data-dir", str(settings.data_dir)) if arguments.data_dir else ()
-    remote = ("--allow-remote-embeddings",) if arguments.allow_remote_embeddings else ()
     config = arguments.config.expanduser().absolute()
     asking = Asking(
         model=arguments.model,
@@ -99,8 +99,9 @@ def prepared(
             "--config",
             str(config),
             *given,
-            *remote,
         ),
+        remote_embeddings=settings.search_mode != "lexical"
+        and not loopback(settings.embedding_url),
         calls=CALLS,
         call_s=CALL_S,
         home=Path.home().resolve(),
@@ -121,7 +122,13 @@ def prepared(
 def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Called | None]:
     """Make one call of a run; exit 2 for a refused call, 1 when the server did not answer."""
     try:
-        done = call(arguments.directory, arguments.run, arguments.tool, arguments.arguments)
+        done = call(
+            arguments.directory,
+            arguments.run,
+            arguments.tool,
+            arguments.arguments,
+            consented=arguments.allow_remote_embeddings,
+        )
     except AgentsError as error:
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
