@@ -66,7 +66,7 @@ def person(fields: Fields) -> SiteUser:
 
 
 def document(fields: Fields, document_class: type[Page | BlogPost]) -> Page | BlogPost:
-    """Read a page or a blog post, as ``kind`` says, from a listing or a GET.
+    """Read a page or a blog post, as ``document_class`` says, from a listing or a GET.
 
     A listing carries no labels; a GET with ``include-labels=true`` carries the first
     page of them, which ``snapshot`` requires.

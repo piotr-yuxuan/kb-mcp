@@ -637,12 +637,12 @@ def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> No
     assert [each for each in served if any(id_ in each for id_ in ACCOUNTS.values())] == []
 
 
-def worklog(kind: str, id_: str, title: str, *names: str) -> FrontMatter:
+def worklog(document_type: str, id_: str, title: str, *names: str) -> FrontMatter:
     """Give a meeting or a transcript of the work log, its participants by name, in order."""
     return replace(
         page(id_, title),
         source="worklog",
-        type=kind,
+        type=document_type,
         space=None,
         people=tuple(PersonRole(role="participant", name=name) for name in names),
         version=None,

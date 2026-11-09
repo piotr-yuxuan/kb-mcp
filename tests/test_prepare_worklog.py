@@ -154,12 +154,12 @@ class Run:
             for path in found
         ]
 
-    def by_title(self, title: str, kind: str | None = None) -> MirrorFile:
+    def by_title(self, title: str, document_type: str | None = None) -> MirrorFile:
         """Return the one file of this title, and of this type when given."""
         (found,) = [
             each
             for each in self.files()
-            if each.matter.title == title and kind in (None, each.matter.type)
+            if each.matter.title == title and document_type in (None, each.matter.type)
         ]
         return found
 
@@ -320,14 +320,14 @@ def test_front_matter_says_status_labels_and_place(
 ) -> None:
     """Keyword or current; tags, #+FILETAGS and ARCHIVE; the file and journal, or folders."""
     run()
-    kind, title = document
-    matter = run.by_title(title, kind).matter
+    document_type, title = document
+    matter = run.by_title(title, document_type).matter
     assert (matter.status, matter.labels, matter.breadcrumb) == (status, labels, breadcrumb)
     assert (matter.fetched_at, matter.key, matter.space, matter.url) == (MODIFIED, None, None, None)
 
 
 @pytest.mark.parametrize(
-    ("kind", "title", "created", "updated"),
+    ("document_type", "title", "created", "updated"),
     [
         ("entry", "Plan the next quarter", datetime(2026, 10, 14, 16, tzinfo=UTC), None),
         (
@@ -349,7 +349,7 @@ def test_front_matter_says_status_labels_and_place(
     ],
 )
 def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
-    run: Run, kind: str, title: str, created: datetime, updated: datetime | None
+    run: Run, document_type: str, title: str, created: datetime, updated: datetime | None
 ) -> None:
     """A later timestamp is a plan; no event, the file's time; a day's documents, their day.
 
@@ -361,7 +361,7 @@ def test_dates_are_the_earliest_and_latest_events_up_to_the_file_time(
     """
     settle(run.root / "meetings/2026-10-27 Tue/1.org", datetime(2026, 10, 28, tzinfo=UTC))
     run()
-    matter = run.by_title(title, kind).matter
+    matter = run.by_title(title, document_type).matter
     assert (matter.created, matter.updated) == (created, updated or created)
 
 

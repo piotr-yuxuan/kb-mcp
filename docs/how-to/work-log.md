@@ -254,7 +254,7 @@ document holds is refused with the valid ones, those that the most meetings name
 ([the tools](../reference/mcp-tools.md)). `filters={"person": "Sam Sample"}` keeps
 Sam Sample's documents in every role, their issues and pages among them.
 
-The server tells agents what each kind is: days, meetings and entries are your notes and
+The server tells agents what each type is: days, meetings and entries are your notes and
 the summaries an AI wrote, a meeting linking its transcript; transcripts are the
 word-by-word record, which they should prefer when quoting and check a summary against.
 Its text comes to them as untrusted reference data, as a page's does. `browse` lists

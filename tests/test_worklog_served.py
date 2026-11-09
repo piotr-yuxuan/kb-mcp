@@ -164,7 +164,7 @@ def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
 
     Days, meetings and entries: the user's notes and AI-written summaries, a meeting
     linking its transcript. Transcripts: the word-by-word record, to prefer when quoting
-    and to check a summary against. Each kind is named before what it is, and the notes
+    and to check a summary against. Each type is named before what it is, and the notes
     first, so that the roles cannot be swapped; once the record is named, no day, meeting
     or entry is, so that what to quote is the transcripts.
     """
@@ -178,16 +178,16 @@ def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:
     assert [said.index(words) for words in told] == sorted(said.index(words) for words in told)
     assert said.index("quoting") < said.index("check a summary")
     record = said[said.index("word-by-word") :]
-    kinds = ("days", "meetings", "entries", "notes", "summaries")
-    assert [words for words in kinds if words in record] == []
+    named = ("days", "meetings", "entries", "notes", "summaries")
+    assert [words for words in named if words in record] == []
     (search,) = [tool for tool in tools.tools if tool.name == "search"]
     filters = search.input_schema["$defs"]["SearchFilters"]
     assert "worklog" in filters["properties"]["source"]["enum"]
     described = filters["description"]
-    kinds = ["worklog", "user's", "entries", "notes", "AI", "summaries", "transcripts", "verbatim"]
-    assert [words for words in kinds if words not in described] == [], described
-    assert [described.index(words) for words in kinds] == sorted(
-        described.index(words) for words in kinds
+    listed = ["worklog", "user's", "entries", "notes", "AI", "summaries", "transcripts", "verbatim"]
+    assert [words for words in listed if words not in described] == [], described
+    assert [described.index(words) for words in listed] == sorted(
+        described.index(words) for words in listed
     )
     verbatim = described[described.index("transcripts") :]
     assert [words for words in ("entries", "notes", "summaries") if words in verbatim] == []

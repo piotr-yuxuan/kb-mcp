@@ -85,7 +85,7 @@ def test_a_fetch_shows_what_it_fetched_by_kind_its_files_and_failures(
 ) -> None:
     """In short, a row per source, Confluence then Jira, each with its own counts.
 
-    The documents fetched of each kind, the files downloaded, the failures: the file
+    The documents fetched of each type, the files downloaded, the failures: the file
     that fails is a page's, which fails Confluence's row alone, and the run.
     """
     assert main(signed_in) == SOME_FAILED

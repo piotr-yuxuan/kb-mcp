@@ -416,7 +416,7 @@ A source that reaches a system also has a fetcher: `fetch/app/fetcher.py`, a mod
 use what fetching keeps, never the reverse (contract J). One that signs in names an
 [`Account`](../../src/kb_mcp/sources/declaration.py), whose table is `[accounts.<name>]`, read
 by `run.account_table`. [Confluence and Jira](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)
-are the worked example: one fetcher, reading the kinds of the source that it runs for from
+are the worked example: one fetcher, reading the resource types of the source that it runs for from
 `run.source`. No other source keeps a store yet: its place under the data directory is a
 plan's to add, since the data guard judges each
 ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)).

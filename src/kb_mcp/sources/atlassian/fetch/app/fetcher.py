@@ -1,7 +1,7 @@
 """Confluence's and Jira's fetcher: one source's targets fetched into the raw store.
 
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
-source that a run is for from its declaration, by its kinds, and fetch that source's
+source that a run is for from its declaration, by its resource types, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
 ``fetch_targets`` fetches them, or plans their fetch, and says what went wrong.
 """

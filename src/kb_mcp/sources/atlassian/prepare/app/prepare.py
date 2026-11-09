@@ -1,6 +1,6 @@
 """The newest snapshot of every document of one Atlassian source, as Markdown.
 
-Confluence and Jira are prepared apart, each by its kinds of document. Each reads the
+Confluence and Jira are prepared apart, each by its resource types. Each reads the
 whole store and places every document, so that a link or an image of either reaches its
 file, then builds the source's own files of ``docs/reference/data-layout.md``'s Markdown
 mirror and their bytes, and hands them to ``mirror_files``, which writes those that
@@ -75,17 +75,18 @@ if TYPE_CHECKING:
     from kb_mcp.mirror.adapters.conversions import Conversions
     from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
-# The kinds that each source prepares, by its name, in the order that it is prepared, as
-# each kind names its source: Confluence's pages and blog posts, with each space's tree,
-# then Jira's issues.
+# The document classes that each source prepares, by its name, in the order that it is
+# prepared, as each class names its source: Confluence's pages and blog posts, with each
+# space's tree, then Jira's issues.
 PREPARED: dict[str, tuple[type[Page | BlogPost | Issue], ...]] = {
     source: tuple(
         document_class for document_class in DOCUMENT_CLASSES if document_class.source == source
     )
     for source in dict.fromkeys(document_class.source for document_class in DOCUMENT_CLASSES)
 }
-# Each source by all of its kinds, which a prepare takes whole: it removes the files of them
-# all (``owned``), so a prepare of some of them would remove the files of the others.
+# Each source by all of its document classes, which a prepare takes whole: it removes the
+# files of them all (``owned``), so a prepare of some of them would remove the files of the
+# others.
 SOURCE_OF = {document_classes: source for source, document_classes in PREPARED.items()}
 # A comment's headings sit under its own third-level heading.
 COMMENT_SHIFT = 3

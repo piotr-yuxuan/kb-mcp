@@ -221,18 +221,22 @@ PEOPLE = (
 
 
 def worklog_document(
-    kind: str, document_id: str, title: str, names: Sequence[str], linked: str | None = None
+    document_type: str,
+    document_id: str,
+    title: str,
+    names: Sequence[str],
+    linked: str | None = None,
 ) -> FrontMatter:
     """Return the front matter of a work-log meeting or transcript, naming its participants.
 
     ``linked`` is the id of the transcript that a meeting links to, or of the meeting
     that a transcript is the record of, if any.
     """
-    relation = "transcript" if kind == "meeting" else "summary"
+    relation = "transcript" if document_type == "meeting" else "summary"
     return replace(
         page(document_id, title),
         source="worklog",
-        type=kind,
+        type=document_type,
         space=None,
         version=None,
         revision="0123456789abcdef",

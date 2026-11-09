@@ -63,7 +63,7 @@ class Tombstone(Record):
 
     @property
     def key(self) -> tuple[str, str]:
-        """Name the document by its kind and id."""
+        """Name the document by its resource type and id."""
         return self.resource_type, self.id
 
 

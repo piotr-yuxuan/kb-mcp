@@ -64,9 +64,9 @@ an API token without its email
 does not apply, and what its preview says.
 
 - **One fetcher may serve several sources.** Confluence and Jira name one fetcher, which
-  reads the kinds of the source that it runs for from `run.source`
+  reads the resource types of the source that it runs for from `run.source`
   ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as their one
-  preparer reads the kinds that it converts, and the source whose rows of the cache of
+  preparer reads the resource types that it converts, and the source whose rows of the cache of
   conversions it reads ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
@@ -300,7 +300,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   the mirror's documents
   ([`LinkTargets.documents`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)),
   and both attach files in `docs/assets/`. So each prepare reads the whole raw store and
-  places every document, and converts only its own kinds
+  places every document, and converts only its own resource types
   ([`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)): pages and blog
   posts, with the spaces' trees, for Confluence; issues for Jira. Prepared in name order,
   Confluence then Jira, after any fetch, every link is what one prepare of both would
@@ -311,7 +311,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   documents, and removes a file that no placed document of either wants and no document
   file left links, since the last good copy of a document not rebuilt still shows it
   ([`unlinked`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)).
-- **Problems.** Each reports the problems of its own kinds. A snapshot or listing that
+- **Problems.** Each reports the problems of its own resource types. A snapshot or listing that
   cannot be read stops the removals of the source that it belongs to, and every removal
   under `docs/assets/`, since the files wanted are then unknown; each source's conversion
   problems stop its own removals alone. So an issue that pandoc fails on keeps its file, and

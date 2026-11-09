@@ -1,9 +1,9 @@
 """Confluence's and Jira's declarations: what each reads of the site, its table and roles.
 
-Each resource type is a kind that the raw store keeps, fetched over a period that its
-options give. Both sign in with one Atlassian account, its site's, name one fetcher and
-one preparer, which read the kinds of the source that they run for from its
-declaration, and share their light checks: the sign-in's, and the period's.
+The raw store keeps each resource type, fetched over a period that its options give.
+Both sign in with one Atlassian account, its site's, name one fetcher and one preparer,
+which read the resource types of the source that they run for from its declaration, and
+share their light checks: the sign-in's, and the period's.
 """
 
 from __future__ import annotations

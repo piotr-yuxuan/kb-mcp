@@ -44,7 +44,7 @@ class Option:
 
 @dataclass(frozen=True)
 class ResourceType:
-    """A kind of thing that a source reads: its name, what it is, how it is read, its options.
+    """A type of thing that a source reads: its name, what it is, how it is read, its options.
 
     A source's types are read whole: no fetcher or preparer reads some of them until a plan
     chooses among them, and one whose removals cover them all may refuse some, as

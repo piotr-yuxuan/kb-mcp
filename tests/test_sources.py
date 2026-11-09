@@ -81,10 +81,10 @@ CONFIGURED = {
     "sources.worklog.path": Path("/work/todo"),
     "sources.worklog.archives": True,
 }
-# The work log's documents in the fixture, by kind: thirteen entries, two days, eight
+# The work log's documents in the fixture, by type: thirteen entries, two days, eight
 # meetings and six transcripts, one of them under meetings/.
-WORKLOG_KINDS = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
-WORKLOG_DOCUMENTS = sum(WORKLOG_KINDS.values())
+WORKLOG_BY_TYPE = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
+WORKLOG_DOCUMENTS = sum(WORKLOG_BY_TYPE.values())
 # The period of a fetch that covers what the scripted sites serve: the week before FIRST.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
 
@@ -662,7 +662,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     spans = telemetry.spans.get_finished_spans()
     (row,) = [span for span in spans if span.name == "prepare.source"]
     assert row.attributes["kb_mcp.outcome"] == "failed"
-    assert by_kind_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
+    assert by_type_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
     assert run_each("prepare", taken).exit_status == ExitStatus.OK
@@ -1167,8 +1167,8 @@ def missing() -> Pandoc:
     raise PandocMissingError(message)
 
 
-def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
-    """Give the work log's documents counted, by kind and outcome."""
+def by_type_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
+    """Give the work log's documents counted, by type and outcome."""
     return {
         (point.attributes["kb_mcp.kind"], point.attributes["kb_mcp.outcome"]): point.value
         for point in measured["kb_mcp.prepare.documents"].data.data_points
@@ -1176,13 +1176,13 @@ def by_kind_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, objec
     }
 
 
-def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
+def test_the_work_log_is_counted_by_type_and_its_spans_are_in_its_row(
     home: Path, worklog: Path, telemetry: InMemory
 ) -> None:
-    """Each document counted by kind and outcome, each work-log span in the source's row.
+    """Each document counted by type and outcome, each work-log span in the source's row.
 
     Fresh, every entry, day, meeting and transcript is prepared, each conversion timed by
-    kind; unchanged, all are kept and none timed. Each work-log span is in the row's
+    type; unchanged, all are kept and none timed. Each work-log span is in the row's
     ``prepare.source``, which names the source and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
     """
@@ -1192,14 +1192,14 @@ def test_the_work_log_is_counted_by_kind_and_its_spans_are_in_its_row(
     first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
     assert main(given) == ExitStatus.OK
     second = telemetry.measured()
-    assert by_kind_and_outcome(first) == {
-        (kind, "mirrored"): count for kind, count in WORKLOG_KINDS.items()
+    assert by_type_and_outcome(first) == {
+        (document_type, "mirrored"): count for document_type, count in WORKLOG_BY_TYPE.items()
     }
-    assert by_kind_and_outcome(second) == {
-        (kind, "kept"): count for kind, count in WORKLOG_KINDS.items()
+    assert by_type_and_outcome(second) == {
+        (document_type, "kept"): count for document_type, count in WORKLOG_BY_TYPE.items()
     }
     timed = first["kb_mcp.prepare.conversion.duration"].data.data_points
-    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_KINDS
+    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_BY_TYPE
     assert "kb_mcp.prepare.conversion.duration" not in second
     (row,) = [span for span in spans if span.name == "prepare.source"]
     assert (row.attributes["kb_mcp.source"], row.attributes["kb_mcp.outcome"]) == (
@@ -1236,7 +1236,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
 
     Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
-    transcript read, none unread; each document prepared, by its kind and path; a file
+    transcript read, none unread; each document prepared, by its type and path; a file
     each written. Unchanged, each kept and none written. A dry run says each to convert
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.
@@ -1256,7 +1256,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
     assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
     documents = logged_as(fresh, "worklog.document")
-    assert Counter(each["kind"] for each in documents) == WORKLOG_KINDS
+    assert Counter(each["kind"] for each in documents) == WORKLOG_BY_TYPE
     assert {each["outcome"] for each in documents} == {"mirrored"}
     folders = {
         "entry": "worklog/entries/",

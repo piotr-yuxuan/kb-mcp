@@ -56,9 +56,9 @@ UNREADABLE = (ValueError, OSError)
 
 
 class Representation(Record):
-    """How the snapshots of one kind of document are read.
+    """How the snapshots of one resource type are read.
 
-    ``files`` names the responses that a snapshot of the kind must have. ``identity``
+    ``files`` names the responses that a snapshot of the type must have. ``identity``
     reads only what names the folder (id and revision), so that a response whose other
     fields have changed is still kept, to be read once its adapter is fixed;
     ``snapshot`` reads it all.
@@ -178,7 +178,7 @@ def _identifier(value: str, name: str) -> str:
 class RawStore:
     """Responses kept as received, by document and revision, and files by SHA-256.
 
-    A snapshot is the folder ``<root>/<source>/<kind>/<id>/<revision>/``, one JSON file
+    A snapshot is the folder ``<root>/<source>/<resource type>/<id>/<revision>/``, one JSON file
     per response plus the store's record. It is written whole into a hidden folder and
     renamed into place, so it is either complete or absent, and its responses never
     change. A space's listings are ``<root>/confluence/spaces/<id>/*.json``, each
@@ -232,8 +232,8 @@ class RawStore:
     ) -> Path:
         """Store a snapshot as received, and return its folder.
 
-        Every response the kind needs must be there, since a stored revision is never
-        written again; only the id and the revision are read, by the kind's adapter.
+        Every response the type needs must be there, since a stored revision is never
+        written again; only the id and the revision are read, by the type's adapter.
         Every file that ``blobs`` names must be stored first, with ``put_blob``. A
         revision stored already keeps its responses, and records the new blobs.
         """
@@ -320,7 +320,7 @@ class RawStore:
     def latest(
         self, document_class: type[FetchedDocument]
     ) -> Iterator[StoredSnapshot | Unreadable]:
-        """Yield the newest stored snapshot of each document of a kind, or why it is not.
+        """Yield the newest stored snapshot of each document of a type, or why it is not.
 
         A snapshot that its adapter now refuses is yielded as ``Unreadable``, and the
         others still follow.
@@ -454,7 +454,7 @@ class RawStore:
         return results
 
     def stored_ids(self, document_class: type[FetchedDocument]) -> set[str]:
-        """Return the ids of the documents of a kind that have a stored snapshot."""
+        """Return the ids of the documents of a type that have a stored snapshot."""
         folders = _named(
             self.root / document_class.source / document_class.resource_type, IDENTIFIER
         )
@@ -504,7 +504,7 @@ class RawStore:
         _replace_synced(self.root / COVERAGE, _encode(entries))
 
     def tombstones(self) -> dict[tuple[str, str], Tombstone]:
-        """Read the documents that answered as gone, by kind and id."""
+        """Read the documents that answered as gone, by resource type and id."""
         path = self.root / TOMBSTONES
         if not path.exists():
             return {}
@@ -513,7 +513,7 @@ class RawStore:
             with item.refusals():
                 resource_type, identifier = item.text("kind"), _identifier(item.text("id"), "id")
                 if resource_type not in {Page.resource_type, BlogPost.resource_type}:
-                    message = f"{item.path}.kind: not a kind of Confluence document"
+                    message = f"{item.path}.kind: not a resource type of Confluence"
                     raise RepresentationError(message)
                 first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
                 stone = Tombstone(

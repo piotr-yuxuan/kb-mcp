@@ -796,14 +796,14 @@ def test_either_source_first_writes_the_same_files(crossed: Sandbox, tmp_path: P
 
 
 @pytest.mark.parametrize(
-    "kinds",
+    "document_classes",
     [(Page,), (BlogPost,), (Page, Issue), ()],
-    ids=["pages", "blog posts", "two sources' kinds", "none"],
+    ids=["pages", "blog posts", "two sources' types", "none"],
 )
-def test_kinds_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
-    sandbox: Sandbox, kinds: tuple[type[Page | BlogPost | Issue], ...]
+def test_types_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
+    sandbox: Sandbox, document_classes: tuple[type[Page | BlogPost | Issue], ...]
 ) -> None:
-    """Plan 030: a source's files are removed whichever kinds it built, so it builds them all.
+    """Plan 030: a source's files are removed whichever types it built, so it builds them all.
 
     A prepare of the pages alone would otherwise remove every blog post.
     """
@@ -814,7 +814,7 @@ def test_kinds_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
         conversions.opened(path, lambda: "a writer", str, source="confluence") as cache,
         pytest.raises(KeyError),
     ):
-        prepare_atlassian(sandbox.store, sandbox.docs, None, cache, kinds)
+        prepare_atlassian(sandbox.store, sandbox.docs, None, cache, document_classes)
     assert sandbox.files() == before
 
 
@@ -825,8 +825,8 @@ def test_a_file_that_both_sources_attach_stays_while_either_wants_it(crossed: Sa
     document wants any more.
     """
     crossed.run()
-    for kind, document in (("pages", "300"), ("blogposts", "600")):
-        shutil.rmtree(crossed.store.root / "confluence" / kind / document)
+    for resource_type, document in (("pages", "300"), ("blogposts", "600")):
+        shutil.rmtree(crossed.store.root / "confluence" / resource_type / document)
     assert crossed.run(sources=("confluence",))["confluence"].changes.removed == len(
         ["300-leaf.md", "blog/600-news.md"]
     )

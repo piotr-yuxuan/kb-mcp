@@ -12,7 +12,7 @@ what draws on it alone, as ``worklog.writable`` says: every document for ``todo.
 its archive, else its own, so that the last good copy of each file stays, and each
 problem says what it held back; a meeting whose link reaches no transcript found is a
 warning, not a problem. Reading, building and writing are each a span; each document is
-counted, and each conversion timed, by its kind, as
+counted, and each conversion timed, by its document type, as
 ``docs/reference/telemetry/prepare.md`` lists them.
 """
 
@@ -190,12 +190,12 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
             [*journaled, *linked_back(named, journaled)], [where for where, _ in unread]
         )
     log = structlog.get_logger()
-    kinds = Counter(each.type for each in journaled)
+    types = Counter(each.type for each in journaled)
     log.info(
         "worklog.read",
-        entries=kinds[ENTRY_TYPE],
-        days=kinds[DAY_TYPE],
-        meetings=kinds[MEETING_TYPE],
+        entries=types[ENTRY_TYPE],
+        days=types[DAY_TYPE],
+        meetings=types[MEETING_TYPE],
         transcripts=len(named),
         html=org_files.html,
         problems=len(problems),
@@ -257,7 +257,7 @@ def prepare_worklog(
     ``worklog.convert`` and ``worklog.write`` hold building the files and writing them.
     ``worklog.document`` says at DEBUG each document, by its path, id and title, and how
     it went; ``worklog.end`` at INFO the files written. Each document is counted by its
-    outcome and kind, and each conversion timed. A link is written only when its other
+    outcome and document type, and each conversion timed. A link is written only when its other
     end is written in this run or kept from an earlier one, so that each link names a
     file: a transcript not read, or whose conversion failed, without a file yet is no
     link's other end.
@@ -273,7 +273,7 @@ def prepare_worklog(
         task("work-log documents", len(read.documents)) as built,
     ):
         for document in built.each(read.documents, lambda one: one.title):
-            kind = {"kb_mcp.kind": document.type}
+            typed = {"kb_mcp.kind": document.type}
             name = revision(converter, document.text)
             old, body = kept.get(document.id, (None, ""))
             began = time.perf_counter()
@@ -294,13 +294,13 @@ def prepare_worklog(
                             held_back=document.id,
                         )
                     )
-                    DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **kind})
+                    DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **typed})
                     continue
                 outcome = "mirrored"
                 created, updated = document.dates(None if old is None else old.created)
                 fetched_at = document.file.fetched_at
-                CONVERSION_DURATION.record(time.perf_counter() - began, kind)
-            DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **kind})
+                CONVERSION_DURATION.record(time.perf_counter() - began, typed)
+            DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **typed})
             matter = WorklogFrontMatter(
                 source=SOURCE,
                 type=document.type,

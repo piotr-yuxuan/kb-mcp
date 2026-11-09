@@ -166,9 +166,9 @@ LINKED = {"transcript": "t", "summary": "m"}
 
 
 @pytest.mark.parametrize("max_chars", [12_000, 1])
-@pytest.mark.parametrize(("ref", "kind"), [("PROJ-1", {}), (MEETING["id"], MEETING)])
+@pytest.mark.parametrize(("ref", "matter"), [("PROJ-1", {}), (MEETING["id"], MEETING)])
 def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
-    tmp_path: Path, max_chars: int, ref: str, kind: dict[str, object]
+    tmp_path: Path, max_chars: int, ref: str, matter: dict[str, object]
 ) -> None:
     """The front matter, which a read never cuts, leaves its body room within 4,000.
 
@@ -182,7 +182,7 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     defaults, then with the smallest slice, where the front matter is the most of the
     answer.
     """
-    worklog = kind.get("source") == "worklog"
+    worklog = matter.get("source") == "worklog"
     roles = [role for role in ROLES if (role == PARTICIPANT) == worklog]
     people = tuple(
         PersonRole(
@@ -209,7 +209,7 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
         for number in range(REFS + 2)
         if worklog
     )
-    front = replace(issue("PROJ-1", wide, **fields), people=people, links=links, **kind)
+    front = replace(issue("PROJ-1", wide, **fields), people=people, links=links, **matter)
     library = built(tmp_path, [(front, f"# Long issue\n\n{PROSE * 100}")])
     answer = library.read(ref, max_chars=max_chars)
     shown = parts(answer)[1]

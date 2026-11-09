@@ -105,7 +105,7 @@ it; every method that writes refuses to run outside it.
 A [snapshot](glossary.md#snapshot) lies at:
 
 ```
-<data>/raw/<source>/<kind>/<id>/<revision>/<file>.json
+<data>/raw/<source>/<resource type>/<id>/<revision>/<file>.json
 ```
 
 - `source` and `resource_type`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
@@ -151,8 +151,8 @@ only the store reads and writes:
 The store's interface for snapshots:
 
 - `put(document_class, responses, fetched_at, blobs)`, with `document_class` one of `Page`, `BlogPost` and
-  `Issue`, refuses a snapshot without one of the kind's files (above), reads only the
-  id and the revision (the kind's `identity`), stores the responses as received, and
+  `Issue`, refuses a snapshot without one of the type's files (above), reads only the
+  id and the revision (the type's `identity`), stores the responses as received, and
   returns the folder. `blobs` maps attachment ids to digests
   of files already stored with `put_blob`: files first, snapshot last, so a record never
   names a missing file. For a revision stored already, `put` keeps the responses and
@@ -162,8 +162,8 @@ The store's interface for snapshots:
   `Listed`.
 - `has(document)`; `read(document)`, which returns a `StoredSnapshot` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
-  `ValueError` or an `OSError` for a damaged file); and `latest(kind)`, which yields the
-  newest snapshot of each document of a kind as a `StoredSnapshot`, or as an `Unreadable`
+  `ValueError` or an `OSError` for a damaged file); and `latest(document_class)`, which yields
+  the newest snapshot of each document of its type as a `StoredSnapshot`, or as an `Unreadable`
   (where it is, and the refused field's path or the error's class) when it cannot be
   read. The others still follow.
 - `StoredSnapshot` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
@@ -237,8 +237,8 @@ Two more of the store's own records, each replaced whole:
   a kept space whose stored listing names it has moved, and loses its tombstone, as does
   one listed again; one found in a kept space whose listing does not name it goes back
   to pending. The absent are found from the last listing read by id alone
-  (`listed_ids(space_id, kind)`), so that an entry the adapter would refuse is still
-  followed, and the ids that have a snapshot (`stored_ids(kind)`); the record is written
+  (`listed_ids(space_id, document_class)`), so that an entry the adapter would refuse is still
+  followed, and the ids that have a snapshot (`stored_ids(document_class)`); the record is written
   before the space's listing is replaced, so that no absent document is lost to a run
   that stops, and they are probed once every space of the run is listed. A fetch of
   projects neither reads nor rewrites the record.
@@ -250,8 +250,8 @@ Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 `confluence` or `jira`, since two fetches can start within a second (030), in the format
 004's plan defines. A run report holds counts and refused fields' paths, never content,
 and names no target. No code reads one back. Its counts of documents depend on whether
-`--since` was given (034): with it, `<kind>: in the period` and `<kind>: already stored`;
-without, `<kind>: new or changed since the last fetch`; `listed` and `fetched` either way.
+`--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
+stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
 
 ## The Markdown mirror
 

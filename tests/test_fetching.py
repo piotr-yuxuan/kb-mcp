@@ -180,11 +180,10 @@ class FakeSite:
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
             )
-        for kind, documents in (("pages", PAGES | self.many()), ("blogposts", self.posts)):
+        for resource_type, documents in (("pages", PAGES | self.many()), ("blogposts", self.posts)):
             for document_id, document in documents.items():
-                routes[f"/wiki/api/v2/{kind}/{document_id}"] = lambda request, d=document: (
-                    self.document(request, d)
-                )
+                address = f"/wiki/api/v2/{resource_type}/{document_id}"
+                routes[address] = lambda request, d=document: self.document(request, d)
                 files = ATTACHMENTS.get(document_id, [])
                 if document_id == "1001" and self.failing_files:
                     files = files + [
@@ -196,9 +195,7 @@ class FakeSite:
                         for index in range(self.failing_files)
                     ]
                 listed = {"results": files, "_links": {}}
-                routes[f"/wiki/api/v2/{kind}/{document_id}/attachments"] = lambda _, j=listed: (
-                    httpx.Response(200, json=j)
-                )
+                routes[f"{address}/attachments"] = lambda _, j=listed: httpx.Response(200, json=j)
         return {**routes, **self.changes()}
 
     def changes(self) -> dict[str, Callable[[httpx.Request], httpx.Response]]:

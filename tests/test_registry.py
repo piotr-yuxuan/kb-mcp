@@ -63,10 +63,10 @@ def test_each_declaration_names_a_table_that_holds_its_settings_in_order(
     assert tuple(table.model_fields) == declared.settings
 
 
-def test_the_resource_types_are_the_plan_s_and_the_raw_store_s_kinds() -> None:
+def test_the_resource_types_are_the_plan_s_and_the_raw_store_s_types() -> None:
     """Each source's types and how each is read, as plan 030's table gives them.
 
-    Confluence's and Jira's are the kinds that the raw store keeps.
+    Confluence's and Jira's are the types that the raw store keeps.
     """
     assert {
         each.name: [
@@ -111,10 +111,10 @@ def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
 
 
-def test_each_source_prepares_the_kinds_that_its_declaration_names() -> None:
-    """A type added to a declaration reaches its preparer, and the tests' store of each kind."""
+def test_each_source_prepares_the_types_that_its_declaration_names() -> None:
+    """A type added to a declaration reaches its preparer, and the tests' store of each type."""
     assert {
-        source: [kind.resource_type for kind in kinds] for source, kinds in PREPARED.items()
+        source: [each.resource_type for each in classes] for source, classes in PREPARED.items()
     } == {
         declared.name: [resource_type.name for resource_type in declared.resource_types]
         for declared in (CONFLUENCE, JIRA)
@@ -126,10 +126,10 @@ def test_each_source_prepares_the_kinds_that_its_declaration_names() -> None:
     [(CONFLUENCE.resource_types[:1], "pages"), (CONFLUENCE.resource_types[1:], "blogposts")],
     ids=["pages", "blog posts"],
 )
-def test_a_source_that_names_some_of_its_kinds_is_refused_and_no_file_removed(
+def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     tmp_path: Path, capsys: CaptureFixture[str], types: tuple[ResourceType, ...], named: str
 ) -> None:
-    """Plan 030: Atlassian's preparer removes the files of all of a source's kinds.
+    """Plan 030: Atlassian's preparer removes the files of all of a source's resource types.
 
     So a registry that names the pages alone would remove every blog post: ``prepare`` is
     refused before any row, naming the source and its types.
@@ -149,7 +149,7 @@ def test_a_source_that_names_some_of_its_kinds_is_refused_and_no_file_removed(
     assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "prepare.refused" in err
-    assert f"source 'confluence': prepare: types {named}: not all the kinds of one" in err
+    assert f"source 'confluence': prepare: types {named}: not all the resource types of one" in err
     assert post.read_text("utf-8") == "kept"
 
 

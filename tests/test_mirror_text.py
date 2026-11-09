@@ -23,9 +23,9 @@ MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 DIGEST = "e" * 64
 
 
-def page(title: str, kind: type[Page | BlogPost] = Page) -> Page | BlogPost:
+def page(title: str, document_class: type[Page | BlogPost] = Page) -> Page | BlogPost:
     """Return a page or a blog post with this title."""
-    return kind(
+    return document_class(
         id="196845",
         title=title,
         author=None,

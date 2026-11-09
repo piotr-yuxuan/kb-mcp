@@ -301,22 +301,22 @@ def test_users_are_merged_across_runs_by_account_id(store: RawStore) -> None:
 
 
 @pytest.mark.parametrize(
-    ("kind", "missing"),
+    ("document_class", "missing"),
     [(Page, confluence_v2.ATTACHMENTS), (Page, confluence_v2.VIEW), (Issue, jira_v3.COMMENTS)],
 )
 def test_a_snapshot_without_one_of_its_responses_is_refused(
-    store: RawStore, kind: type[Page | Issue], missing: str
+    store: RawStore, document_class: type[Page | Issue], missing: str
 ) -> None:
     """A stored revision is never written again, so it must be whole when first stored."""
     responses: dict[str, object] = (
         page_responses(1)
-        if kind is Page
+        if document_class is Page
         else {jira_v3.ISSUE: v3_issue(), jira_v3.COMMENTS: [v3_comment()]}
     )
     del responses[missing]
     with pytest.raises(ValueError, match=f"a snapshot without {missing}"):
-        store.put(kind, responses, FETCHED, {})
-    assert not (store.root / kind.source).exists()
+        store.put(document_class, responses, FETCHED, {})
+    assert not (store.root / document_class.source).exists()
 
 
 def test_a_blob_of_another_attachment_is_not_a_file_of_this_snapshot(store: RawStore) -> None:

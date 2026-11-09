@@ -91,12 +91,12 @@ HTTP_NOT_FOUND = 404
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
-# The counts that a short result shows: the documents fetched, or to fetch, of each kind,
+# The counts that a short result shows: the documents fetched, or to fetch, of each type,
 # and the files downloaded, or to download; then how a run stopped, if it did.
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 STOPPED = "runs: "
 
-# How each kind of document is read from its listing, and which GETs make its snapshot.
+# How each resource type is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[FetchedDocument], Callable[[Fields], Listed]] = {
     Page: partial(confluence_v2.listed, document_class=Page),
     BlogPost: partial(confluence_v2.listed, document_class=BlogPost),
@@ -149,7 +149,7 @@ class RunReport(Record):
 
 
 def label(document_class: type[FetchedDocument]) -> str:
-    """Name a kind of document in the report, as ``confluence pages``."""
+    """Name a resource type in the report, as ``confluence pages``."""
     return f"{document_class.source} {document_class.resource_type}"
 
 
@@ -458,7 +458,7 @@ class Fetching:
 
         ``fetch.listed`` says at INFO how many documents the target lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.
-        The report counts, by kind, those in the window and those stored when --since gave
+        The report counts, by type, those in the window and those stored when --since gave
         the window; else those new or changed since the last fetch. Those stored get the
         files they lack, without a task; the task ``documents`` reports those to fetch,
         each by its id. ``first_failed`` keeps, for the target, the update time of the
@@ -527,7 +527,7 @@ class Fetching:
         It is not when its fetch failed, its snapshot was refused, or a file it keeps
         failed; a plan counts it to fetch, and fails none. The fetch is a trace of its
         own, ``fetch.document``, linked to the span of the run's trace current when it
-        begins, saying the document's id and kind; an error when the fetch fails, which
+        begins, saying the document's id and resource type; an error when the fetch fails, which
         is a warning, by the document's id.
         """
         what = label(document.document_class)
@@ -792,7 +792,7 @@ class FetchOutcome(Record):
     dry_run: bool = False
 
     def text(self, summary: Detail) -> str:
-        """Write the documents fetched by kind and the files, or a dry run's; then failures.
+        """Write the documents fetched by type and the files, or a dry run's; then failures.
 
         Detailed, and a dry run, begin with each target's window, why it starts there, and
         what became of its coverage. Short also says how a run stopped, if it did; detailed

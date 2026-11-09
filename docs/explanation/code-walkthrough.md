@@ -293,7 +293,7 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
 through [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
 whatever the fetch did. It runs for Confluence here, and reads from `run.source` the
-kinds that it converts: Jira's issues are placed too, so that a link to one reaches its
+resource types that it converts: Jira's issues are placed too, so that a link to one reaches its
 file, and only pages and blog posts are built.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
 users and listings into a

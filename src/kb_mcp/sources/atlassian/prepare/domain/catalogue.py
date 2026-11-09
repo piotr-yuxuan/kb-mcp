@@ -39,14 +39,14 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.atlassian.fetch.domain.content import Comment, SiteUser
 
-# The front matter's type of each kind of document.
+# The front matter's type of each document class.
 TYPES: dict[type[ConfluenceDocument | Issue], str] = {
     Page: PAGE,
     BlogPost: BLOGPOST,
     Issue: ISSUE,
 }
 # Each type with its source, as the front matter names them.
-SOURCE_TYPES = frozenset((kind.source, name) for kind, name in TYPES.items())
+SOURCE_TYPES = frozenset((document_class.source, name) for document_class, name in TYPES.items())
 # Keys that one source alone has, always.
 ONLY = {
     "space": CONFLUENCE,

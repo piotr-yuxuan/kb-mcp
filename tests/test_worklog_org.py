@@ -1054,7 +1054,7 @@ def test_the_work_log_s_front_matter_off_its_rules_is_refused(
 
 
 @pytest.mark.parametrize(
-    ("kind", "identifier"),
+    ("document_type", "identifier"),
     [
         ("entry", "m-20261027-payments-stand-up"),
         ("entry", "d-20261028"),
@@ -1066,10 +1066,12 @@ def test_the_work_log_s_front_matter_off_its_rules_is_refused(
         ("transcript", "e-0123456789abcdef"),
     ],
 )
-def test_a_work_log_id_of_another_type_s_shape_is_refused(kind: str, identifier: str) -> None:
+def test_a_work_log_id_of_another_type_s_shape_is_refused(
+    document_type: str, identifier: str
+) -> None:
     """Each type has its own shape of id: a day bearing a meeting's is refused, naming id."""
     with pytest.raises(RefusedError, match=r"^id: does not match"):
-        copy.replace(ENTRY_MATTER, type=kind, id=identifier)
+        copy.replace(ENTRY_MATTER, type=document_type, id=identifier)
 
 
 # Plan 042's meetings: who they name, and their ids.
