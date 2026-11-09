@@ -2,13 +2,12 @@
 
 A ``Fetcher`` brings a system's changes into the store that it owns, raw first; a
 ``Preparer`` writes documents through the mirror, from that store or from a folder read
-in place. Each takes a ``SourceRun``, the source it is run for and what it reads, and gives a
-``Result``: how it ended and its counts, which ``--format json`` writes as every result,
-and whose ``text`` writes them as its command does. A declaration names its fetcher and
-preparers by module path, which a run loads, never ``--help``; any object with an
-interface's methods is one, and each source's is a module, its functions the methods, which
-take
-the run by position.
+in place. Each takes a ``SourceRun``, the source it is run for and what it reads, and
+gives a ``Result``: how it ended and its counts, which ``--format json`` writes as every
+result, and whose ``text`` writes them as its command does. A declaration names its
+fetcher and preparers by module path, which a run loads, never ``--help``; any object
+with an interface's methods is one, and each source's is a module, its functions the
+methods, which take the run by position.
 """
 
 from __future__ import annotations

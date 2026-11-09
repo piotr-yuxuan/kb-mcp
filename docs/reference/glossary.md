@@ -100,8 +100,8 @@ profile under `<data>/session/`, or an API token.
 
 ### target
 
-A space or a project that a fetch covers. Not an evaluated index, nor the person that an
-alias means.
+A space or a project that a fetch covers. Not an evaluated index, nor an alias's value,
+which `index`'s JSON alone still calls `target` (alias).
 
 - In the code: [`Target`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py).
 - User-facing: `target`, `scope`.
@@ -285,10 +285,11 @@ in the names that telemetry and `status` keep.
 ### alias
 
 A line of `aliases.toml` that says which person a name means, by its value: a name or a
-person's id. Not "target" for the value or the person meant.
+person's id. Not "target" for the value or the person meant, but in `index`'s JSON, which
+keeps `key` for the name's key and `target` for the value.
 
 - In the code: [`Alias`](../../src/kb_mcp/search/domain/people.py).
-- User-facing: `aliases.toml`.
+- User-facing: `aliases.toml`, `key`, `target`.
 
 ## The index and search
 

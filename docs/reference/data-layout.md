@@ -775,8 +775,8 @@ cut by sections, awaits none.
 lock: `index` and `embed` take it exclusive by `flock` from their check that the index
 is still the build they read until the rename, never while they read files or ask the
 model. A run that finds it held says so, `index.lock_wait`, and gives up after a minute
-(`conversions.WAIT_S`), naming the lock; one that finds the index written by another
-meanwhile starts again once, `index.restarted`, then stops. The file is never removed,
+(`conversions.WAIT_S`, which `vector_store` imports), naming the lock; one that finds
+the index written by another meanwhile starts again once, `index.restarted`, then stops. The file is never removed,
 and `flock` releases it at a process's end, a kill included. The index stays in SQLite's
 rollback journal, never in WAL mode, whose `-wal` file a rename would pair with the new
 index. A build file that a kill leaves, `.index-*.sqlite`, is ignored, and never

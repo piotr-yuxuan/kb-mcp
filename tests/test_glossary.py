@@ -35,8 +35,9 @@ HEADING = re.compile(r"^(#{2,3}) (.+)$", re.MULTILINE)
 # A line under a term, with the lines that continue it, each indented by two spaces.
 LINE = re.compile(r"^- (In the code|User-facing|Retires):(.*(?:\n  .*)*)", re.MULTILINE)
 SPAN = re.compile(r"`([^`]+)`")
-# A name, not inside a longer word at an end of it that is a word character.
-WHOLE = r"(?:(?<=\W)|^|(?=\W)){}(?:(?=\W)|$|(?<=\W))"
+# A name, not inside a longer name, dotted or hyphenated, at an end of it that is a word
+# character.
+WHOLE = r"(?:(?<=[^\w.-])|^|(?=[^\w.-])){}(?:(?=[^\w.-])|$|(?<=[^\w.-]))"
 DOCS_ALONE = "A word of the docs alone"
 # An item of a "Retires:" line: a name in code or a phrase in quotes, then the files that
 # keep it, if any.
@@ -96,7 +97,7 @@ def test_each_term_says_where_it_lives_or_what_a_user_meets_of_it_once(
     """A term has its code, its user-facing names or the docs alone; each name is referenced.
 
     A user-facing name is a code span of the line, which a code span or a block of code of
-    a reference page holds, not inside a longer word. No two terms share a name.
+    a reference page holds, not inside a longer name. No two terms share a name.
     """
     code = [
         token.content

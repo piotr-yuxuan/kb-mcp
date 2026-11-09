@@ -33,7 +33,7 @@ from datetime import datetime
 from itertools import chain
 from typing import TYPE_CHECKING
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.record import Record
 
@@ -147,9 +147,10 @@ class Alias(Record):
     """A line of the alias file: a name as a source writes it, and the person it means.
 
     ``index``'s JSON keeps the keys that two fields had before plan 052: ``key`` for
-    ``name_key``, ``target`` for ``value``.
+    ``name_key``, ``target`` for ``value``, whichever serialiser writes it.
     """
 
+    model_config = ConfigDict(serialize_by_alias=True)
     name: str  # as the file writes it
     name_key: str = Field(serialization_alias="key")  # the name's key
     value: str = Field(serialization_alias="target")  # a name, or a person's id, as written
