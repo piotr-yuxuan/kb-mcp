@@ -1039,15 +1039,15 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
 
 
 def ending(*endings: Ending) -> Callable[..., Outcome[FetchCounts]]:
-    """Give a download that ends as told, once each, then stops as Ctrl-C would."""
+    """Give a fetch that ends as told, once each, then stops as Ctrl-C would."""
     left = iter(endings)
 
-    def download(*_: object) -> Outcome[FetchCounts]:
+    def fetch(*_: object) -> Outcome[FetchCounts]:
         for each in left:
             return Outcome(ending=each, counts=FetchCounts())
         raise KeyboardInterrupt
 
-    return download
+    return fetch
 
 
 def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
