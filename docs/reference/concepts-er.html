@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>kb-mcp conceptual model · ER</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper:#f5f5f5; --color-paper-2:#ececec; --color-ink:#2d3142; --color-muted:#4f5d75; --color-soft:#5a6580; --color-rule:rgba(45,49,66,0.12); --color-accent:#bf4520; --color-link:#2e5aa8; --font-sans:'Geist',system-ui,sans-serif; --font-serif:'Instrument Serif',serif; --font-mono:'Geist Mono',ui-monospace,monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); min-height: 100vh; padding: 3rem 1rem; color: var(--color-ink); }
+    .container { max-width: 1340px; margin: 0 auto; }
+    .header { margin-bottom: 2.5rem; }
+    .header-eyebrow, .section-eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.75rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.75rem, 3vw + 1rem, 2.5rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 0.5rem; }
+    h2 { font-family: var(--font-serif); font-size: 1.6rem; font-weight: 400; letter-spacing: -0.01em; margin: 3rem 0 0.5rem; }
+    .subtitle { font-size: 1rem; line-height: 1.55; color: var(--color-muted); max-width: 72ch; }
+    .diagram-container { width: 100%; background: var(--color-paper-2); border-radius: 8px; border: 1px solid var(--color-rule); padding: 1.5rem; overflow-x: auto; margin-top: 1rem; }
+    svg { width: 100%; min-width: 1280px; display: block; }
+    .cards { display: grid; grid-template-columns: 1.1fr 1fr 0.9fr; gap: 1rem; margin-top: 1.5rem; }
+    @media (max-width: 820px) { .cards { grid-template-columns: 1fr; } }
+    .card { background: #fff; border-radius: 6px; border: 1px solid var(--color-rule); padding: 1.25rem; }
+    .card .eyebrow { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    .card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.875rem; padding-bottom: 0.875rem; border-bottom: 1px solid rgba(45,49,66,0.08); }
+    .card-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+    .card-dot.ink { background: var(--color-ink); } .card-dot.muted { background: var(--color-muted); } .card-dot.coral { background: var(--color-accent); }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card p { color: var(--color-muted); font-size: 0.8125rem; line-height: 1.55; }
+    code { font-family: var(--font-mono); font-size: 0.8em; }
+    .footer { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(45,49,66,0.10); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--color-soft); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <p class="header-eyebrow">ER · kb-mcp conceptual model</p>
+      <h1>The conceptual model, drawn as entities</h1>
+      <p class="subtitle">The twelve core concepts of <a href="concepts.md">the concepts page</a>, drawn with every relationship and its cardinality, in two views: what the knowledge is, then how it is kept current and served. Dashed boxes are parts that a core concept defines (a person's mentions, a run's outcomes, a section's chunks), not concepts of their own.</p>
+    </div>
+
+    <p class="section-eyebrow">View 1</p>
+    <h2>What the knowledge is</h2>
+    <p class="subtitle">From the kind of origin down to the sections of a document and the people it names. <code>#</code> marks what identifies an entity, <code>→</code> a reference to another.</p>
+    <div class="diagram-container">
+<svg viewBox="0 0 1280 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="concepts-er-what-title concepts-er-what-desc">
+<title id="concepts-er-what-title">What the knowledge is</title>
+<desc id="concepts-er-what-desc">Entity-relationship model of connectors, sources, scopes, documents, sections, mentions and persons.</desc>
+<defs><pattern id="concepts-er-what-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<rect width="100%" height="100%" fill="url(#concepts-er-what-dots)" opacity="0.55"/>
+<!-- Relationships, drawn first so that boxes sit above them -->
+<line x1="360" y1="100" x2="480" y2="100" stroke="#4f5d75" stroke-width="1"/>
+<line x1="800" y1="100" x2="920" y2="100" stroke="#4f5d75" stroke-width="1"/>
+<line x1="1080" y1="180" x2="1080" y2="300" stroke="#4f5d75" stroke-width="1"/>
+<line x1="800" y1="360" x2="920" y2="360" stroke="#4f5d75" stroke-width="1"/>
+<line x1="360" y1="360" x2="480" y2="360" stroke="#4f5d75" stroke-width="1"/>
+<line x1="1040" y1="560" x2="1040" y2="660" stroke="#4f5d75" stroke-width="1"/>
+<path d="M 1120,560 V 584 Q 1120,592 1128,592 H 1168 Q 1176,592 1176,584 V 560" fill="none" stroke="#4f5d75" stroke-width="1"/>
+<!-- Entities -->
+<g><rect x="40" y="40" width="320" height="180" rx="6" fill="#f5f5f5"/>
+<rect x="40" y="40" width="320" height="180" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="41" y="41" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="40" y1="80" x2="360" y2="80" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="56" y="56" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · KIND OF ORIGIN</text>
+<text x="56" y="73" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Connector</text>
+<text x="56" y="100" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># name</text>
+<text x="344" y="100" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">confluence · jira · worklog · …</text>
+<text x="56" y="120" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">scope types</text>
+<text x="344" y="120" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">and how each is enumerated</text>
+<text x="56" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">document types</text>
+<text x="344" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">declared by it alone</text>
+<text x="56" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">field maps</text>
+<text x="344" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">properties · links · roles</text>
+<text x="56" y="180" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">identity issuer</text>
+<text x="344" y="180" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">per source</text>
+<text x="56" y="200" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">a source needs</text>
+<text x="344" y="200" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">location · sign-in, if any</text>
+</g>
+<g><rect x="480" y="40" width="320" height="140" rx="6" fill="#f5f5f5"/>
+<rect x="480" y="40" width="320" height="140" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="481" y="41" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="480" y1="80" x2="800" y2="80" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="496" y="56" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · CONFIGURED INSTANCE</text>
+<text x="496" y="73" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Source</text>
+<text x="496" y="100" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># name</text>
+<text x="784" y="100" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">a slug the user chooses</text>
+<text x="496" y="120" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ connector</text>
+<text x="496" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">location</text>
+<text x="784" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">address · folder · …</text>
+<text x="496" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">sign-in</text>
+<text x="784" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">as its connector defines</text>
+</g>
+<g><rect x="920" y="40" width="320" height="140" rx="6" fill="#f5f5f5"/>
+<rect x="920" y="40" width="320" height="140" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="921" y="41" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="920" y1="80" x2="1240" y2="80" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="936" y="56" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · SELECTED PART</text>
+<text x="936" y="73" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Scope</text>
+<text x="936" y="100" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># source · scope type · key</text>
+<text x="936" y="120" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">scope type</text>
+<text x="1224" y="120" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">listed · searched · in place</text>
+<text x="936" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">coverage</text>
+<text x="1224" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">[start, end), exact or not</text>
+<text x="936" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">as-of</text>
+<text x="1224" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">last known complete</text>
+</g>
+<g><rect x="40" y="300" width="320" height="120" rx="6" fill="#f5f5f5"/>
+<rect x="40" y="300" width="320" height="120" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="41" y="301" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="40" y1="340" x2="360" y2="340" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="56" y="316" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+<text x="56" y="333" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Person</text>
+<text x="56" y="360" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># p-…</text>
+<text x="344" y="360" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">person id</text>
+<text x="56" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">identities</text>
+<text x="344" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">(issuer, value), any issuer</text>
+<text x="56" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">spellings</text>
+<text x="344" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">each with the rule that joined it</text>
+</g>
+<g><rect x="480" y="300" width="320" height="160" rx="6" fill="#f5f5f5"/>
+<rect x="480" y="300" width="320" height="160" rx="6" fill="rgba(45,49,66,0.04)" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+<rect x="481" y="301" width="318" height="39" rx="5" fill="rgba(45,49,66,0.06)"/>
+<line x1="480" y1="340" x2="800" y2="340" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="496" y="316" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PART OF PERSON</text>
+<text x="496" y="333" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Mention</text>
+<text x="496" y="360" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ document</text>
+<text x="784" y="360" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">one role, one name</text>
+<text x="496" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">role</text>
+<text x="784" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">author · commenter · …</text>
+<text x="496" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">identity</text>
+<text x="784" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">(issuer, value), if given</text>
+<text x="496" y="420" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">spelling</text>
+<text x="784" y="420" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">as the source writes it</text>
+<text x="496" y="440" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">at</text>
+<text x="784" y="440" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">a commenter&#x27;s times</text>
+</g>
+<g><rect x="920" y="300" width="320" height="260" rx="6" fill="#f5f5f5"/>
+<rect x="920" y="300" width="320" height="260" rx="6" fill="rgba(191,69,32,0.04)" stroke="#bf4520" stroke-width="1"/>
+<rect x="921" y="301" width="318" height="39" rx="5" fill="rgba(191,69,32,0.10)"/>
+<line x1="920" y1="340" x2="1240" y2="340" stroke="rgba(191,69,32,0.40)" stroke-width="1"/>
+<text x="936" y="316" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · ROOT</text>
+<text x="936" y="333" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Document</text>
+<text x="936" y="360" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># source · id</text>
+<text x="1224" y="360" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">document id</text>
+<text x="936" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">type</text>
+<text x="1224" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">declared by its connector</text>
+<text x="936" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">revision</text>
+<text x="1224" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">the origin&#x27;s state token</text>
+<text x="936" y="420" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">title · properties</text>
+<text x="1224" y="420" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">one closed set</text>
+<text x="936" y="440" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ parent</text>
+<text x="1224" y="440" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">source:id, at its origin</text>
+<text x="936" y="460" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">links</text>
+<text x="1224" y="460" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">relation → source:id</text>
+<text x="936" y="480" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">absence</text>
+<text x="1224" y="480" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">kept by the copy store</text>
+<text x="936" y="500" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">attachments</text>
+<text x="1224" y="500" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">files beside its own</text>
+<text x="936" y="520" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">ref</text>
+<text x="1224" y="520" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">source:key, else source:id</text>
+<text x="936" y="540" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">body</text>
+<text x="1224" y="540" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">Markdown; none in a container</text>
+</g>
+<g><rect x="920" y="660" width="320" height="140" rx="6" fill="#f5f5f5"/>
+<rect x="920" y="660" width="320" height="140" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="921" y="661" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="920" y1="700" x2="1240" y2="700" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="936" y="676" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+<text x="936" y="693" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Section</text>
+<text x="936" y="720" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># document · number</text>
+<text x="1224" y="720" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">from 1</text>
+<text x="936" y="740" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">heading</text>
+<text x="936" y="760" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">text</text>
+<text x="1224" y="760" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">to the next heading</text>
+<text x="936" y="780" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">chunks</text>
+<text x="1224" y="780" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">cut by the chunking</text>
+</g>
+<!-- Labels, each on its own mask, in the gaps between entities -->
+<rect x="380" y="77" width="80" height="14" rx="2" fill="#f5f5f5"/><text x="420" y="87" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">INSTANCE OF</text>
+<rect x="366" y="109" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="372" y="119" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="455" y="109" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="468" y="119" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="844" y="77" width="31" height="14" rx="2" fill="#f5f5f5"/><text x="860" y="87" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">HAS</text>
+<rect x="806" y="109" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="812" y="119" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="895" y="109" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="908" y="119" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="1027" y="233.0" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="1064" y="243.0" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">HOLDS</text>
+<rect x="1088" y="187" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1094" y="197" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="1088" y="279" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1094" y="289" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="838" y="337" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="860" y="347" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">NAMES</text>
+<rect x="895" y="369" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="908" y="379" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">1</text>
+<rect x="806" y="369" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="812" y="379" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="380" y="337" width="80" height="14" rx="2" fill="#f5f5f5"/><text x="420" y="347" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">JOINED INTO</text>
+<rect x="455" y="369" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="468" y="379" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="366" y="369" width="38" height="14" rx="2" fill="#f5f5f5"/><text x="372" y="379" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">0..1</text>
+<rect x="968" y="603.0" width="62" height="14" rx="2" fill="#f5f5f5"/><text x="1024" y="613.0" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">CUT INTO</text>
+<rect x="1048" y="567" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1054" y="577" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="1048" y="639" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1054" y="649" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="1124" y="601" width="49" height="14" rx="2" fill="#f5f5f5"/><text x="1148" y="611" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">PARENT</text>
+<rect x="1095" y="569" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1108" y="579" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="1182" y="569" width="38" height="14" rx="2" fill="#f5f5f5"/><text x="1188" y="579" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">0..1</text>
+<text x="60" y="500" fill="#2d3142" font-size="15" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="start">A person is the class of mentions joined</text>
+<text x="60" y="518" fill="#2d3142" font-size="15" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="start">across every source, scope and sign-in.</text>
+<path d="M 230,482 Q 220,452 200,426" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="1" stroke-dasharray="4,3"/>
+<circle cx="200" cy="424" r="2" fill="#2d3142"/>
+<line x1="40" y1="840" x2="1240" y2="840" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+<text x="40" y="856" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="40" y="872" width="16" height="12" rx="2" fill="rgba(191,69,32,0.04)" stroke="#bf4520" stroke-width="1"/>
+<text x="64" y="882" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Root of the model</text>
+<rect x="185" y="872" width="16" height="12" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<text x="209" y="882" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Core concept</text>
+<rect x="305" y="872" width="16" height="12" rx="2" fill="rgba(45,49,66,0.04)" stroke="#4f5d75" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="329" y="882" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Part that a core concept defines</text>
+<text x="525" y="882" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" font-weight="600">#</text>
+<text x="540" y="882" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Identity</text>
+<text x="616" y="882" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" font-weight="600">→</text>
+<text x="631" y="882" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Reference</text>
+<text x="712" y="882" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" font-weight="600">1 · N · 0..1</text>
+<text x="799" y="882" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Cardinality</text>
+</svg>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <p class="eyebrow">The headline</p>
+        <div class="card-header"><span class="card-dot coral"></span><h3>Document is the root</h3></div>
+        <p>A document is a unit of content that an origin holds and a scope lists. Its identity, (source, id), is unique across every site and client. Its parent and its links name other documents by document id, and its mentions name people; all are lines of its front matter. A container, such as a folder or a directory, is a document with no body, and the parents make the scope's tree. Its as-of time is its scope's.</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-dot ink"></span><h3>Three levels of origin</h3></div>
+        <p>Connector is the kind of origin, Source a configured instance of it, Scope the part the user selects. Two Jira sites and three Confluence sites for three clients are five sources of two connectors, and three clients' code bases three sources of a git connector: values, not new concepts. A source's way to sign in is defined by its connector.</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-dot muted"></span><h3>Mention, the evidence for a person</h3></div>
+        <p>A mention is one role that one document gives to one name: the origin's fields (author, creator, assignee), activity (commenter), attendance (participant), or the text (tagged, which no connector extracts). It carries an identity qualified by its issuer, when the origin gives one, and the spelling. Persons are joined from the mentions of every source by five rules, in order: identity, alias, name key, attendance, name. Two identities are one person only when an alias says so.</p>
+      </div>
+    </div>
+
+    <p class="section-eyebrow">View 2</p>
+    <h2>How it is kept current and served</h2>
+    <p class="subtitle">A run executes the pipeline's stages, which move data between stores; tools answer agents from the index. The grey box is drawn in view 1 and repeated here as an anchor.</p>
+    <div class="diagram-container">
+<svg viewBox="0 0 1280 1000" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="concepts-er-kept-title concepts-er-kept-desc">
+<title id="concepts-er-kept-title">How it is kept current and served</title>
+<desc id="concepts-er-kept-desc">Entity-relationship model of runs and their outcomes, stages, stores, services, tools, rankings, sections and chunks.</desc>
+<defs><pattern id="concepts-er-kept-dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<rect width="100%" height="100%" fill="url(#concepts-er-kept-dots)" opacity="0.55"/>
+<!-- Relationships, drawn first so that boxes sit above them -->
+<line x1="360" y1="100" x2="480" y2="100" stroke="#4f5d75" stroke-width="1"/>
+<line x1="200" y1="220" x2="200" y2="300" stroke="#4f5d75" stroke-width="1"/>
+<line x1="360" y1="380" x2="480" y2="380" stroke="#4f5d75" stroke-width="1"/>
+<line x1="800" y1="380" x2="920" y2="380" stroke="#4f5d75" stroke-width="1"/>
+<line x1="200" y1="440" x2="200" y2="540" stroke="#4f5d75" stroke-width="1"/>
+<line x1="1080" y1="460" x2="1080" y2="540" stroke="#4f5d75" stroke-width="1"/>
+<line x1="800" y1="600" x2="920" y2="600" stroke="#4f5d75" stroke-width="1"/>
+<line x1="1080" y1="720" x2="1080" y2="780" stroke="#4f5d75" stroke-width="1"/>
+<path d="M 480,160 H 428 Q 420,160 420,168 V 312 Q 420,320 412,320 H 360" fill="none" stroke="#4f5d75" stroke-width="1"/>
+<path d="M 960,540 V 508 Q 960,500 952,500 H 444 Q 436,500 436,508 V 592 Q 436,600 428,600 H 360" fill="none" stroke="#4f5d75" stroke-width="1"/>
+<path d="M 920,840 H 648 Q 640,840 640,832 V 640" fill="none" stroke="#4f5d75" stroke-width="1"/>
+<!-- Entities -->
+<g><rect x="40" y="40" width="320" height="180" rx="6" fill="#f5f5f5"/>
+<rect x="40" y="40" width="320" height="180" rx="6" fill="rgba(191,69,32,0.04)" stroke="#bf4520" stroke-width="1"/>
+<rect x="41" y="41" width="318" height="39" rx="5" fill="rgba(191,69,32,0.10)"/>
+<line x1="40" y1="80" x2="360" y2="80" stroke="rgba(191,69,32,0.40)" stroke-width="1"/>
+<text x="56" y="56" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · ONE EXECUTION</text>
+<text x="56" y="73" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Run</text>
+<text x="56" y="100" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># run id</text>
+<text x="344" y="100" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">resumable by it</text>
+<text x="56" y="120" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">configuration</text>
+<text x="344" y="120" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">fixed at start, no secret kept</text>
+<text x="56" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">  stages</text>
+<text x="344" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">enabled, in pipeline order</text>
+<text x="56" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">  selection</text>
+<text x="344" y="160" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">sources · scopes: its purview</text>
+<text x="56" y="180" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">  settings</text>
+<text x="344" y="180" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">relative values made absolute</text>
+<text x="56" y="200" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">exit status</text>
+<text x="344" y="200" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">the fold of the endings</text>
+</g>
+<g><rect x="480" y="40" width="320" height="180" rx="6" fill="#f5f5f5"/>
+<rect x="480" y="40" width="320" height="180" rx="6" fill="rgba(45,49,66,0.04)" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+<rect x="481" y="41" width="318" height="39" rx="5" fill="rgba(45,49,66,0.06)"/>
+<line x1="480" y1="80" x2="800" y2="80" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="496" y="56" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PART OF RUN</text>
+<text x="496" y="73" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Outcome</text>
+<text x="496" y="100" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">→ stage · → source</text>
+<text x="784" y="100" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">one unit of work</text>
+<text x="496" y="120" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">counts</text>
+<text x="496" y="140" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">problems</text>
+<text x="784" y="140" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">where and why, never content</text>
+<text x="496" y="160" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">warnings</text>
+<text x="496" y="180" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">ending</text>
+<text x="784" y="180" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">done · failed · sign in again · …</text>
+<text x="496" y="200" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"></text>
+<text x="784" y="200" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">not run · interrupted</text>
+</g>
+<g><rect x="40" y="300" width="320" height="140" rx="6" fill="#f5f5f5"/>
+<rect x="40" y="300" width="320" height="140" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="41" y="301" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="40" y1="340" x2="360" y2="340" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="56" y="316" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY · PIPELINE STEP</text>
+<text x="56" y="333" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Stage</text>
+<text x="56" y="360" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># name</text>
+<text x="344" y="360" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">fetch · prepare · index · embed</text>
+<text x="56" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">grain</text>
+<text x="344" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">per source · over the whole</text>
+<text x="56" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">order</text>
+<text x="344" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">each after the one before</text>
+<text x="56" y="420" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">change test</text>
+<text x="344" y="420" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">redoes only what changed</text>
+</g>
+<g><rect x="480" y="300" width="320" height="160" rx="6" fill="#f5f5f5"/>
+<rect x="480" y="300" width="320" height="160" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="481" y="301" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="480" y1="340" x2="800" y2="340" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="496" y="316" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+<text x="496" y="333" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Store</text>
+<text x="496" y="360" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># path</text>
+<text x="784" y="360" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">under the data directory</text>
+<text x="496" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">sort</text>
+<text x="784" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">copy · derived · memo</text>
+<text x="496" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"></text>
+<text x="784" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">input · credential · journal</text>
+<text x="496" y="420" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">owner · lock</text>
+<text x="784" y="420" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">one layout owner</text>
+<text x="496" y="440" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">fingerprints</text>
+<text x="784" y="440" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">of its derivations</text>
+</g>
+<g><rect x="920" y="300" width="320" height="160" rx="6" fill="#f5f5f5"/>
+<rect x="920" y="300" width="320" height="160" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="921" y="301" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="920" y1="340" x2="1240" y2="340" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="936" y="316" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+<text x="936" y="333" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Tool</text>
+<text x="936" y="360" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># name</text>
+<text x="1224" y="360" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">ask · search · read · browse · status</text>
+<text x="936" y="380" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">budget · cursor</text>
+<text x="1224" y="380" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">position · build · order</text>
+<text x="936" y="400" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">passage</text>
+<text x="1224" y="400" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">a snippet or a quote</text>
+<text x="936" y="420" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">hit</text>
+<text x="1224" y="420" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">a ranked document in search</text>
+<text x="936" y="440" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">hosted by</text>
+<text x="1224" y="440" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">serve, which writes nothing</text>
+</g>
+<g><rect x="40" y="540" width="320" height="140" rx="6" fill="#f5f5f5"/>
+<rect x="40" y="540" width="320" height="140" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="41" y="541" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="40" y1="580" x2="360" y2="580" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="56" y="556" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+<text x="56" y="573" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Service</text>
+<text x="56" y="600" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># endpoint</text>
+<text x="344" y="600" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">embedding · reranking · telemetry</text>
+<text x="56" y="620" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">locality</text>
+<text x="344" y="620" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">local · remote with consent</text>
+<text x="56" y="640" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">never</text>
+<text x="344" y="640" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">an origin</text>
+<text x="56" y="660" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">on failure</text>
+<text x="344" y="660" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">skipped for a while</text>
+</g>
+<g><rect x="480" y="540" width="320" height="100" rx="6" fill="#f5f5f5"/>
+<rect x="480" y="540" width="320" height="100" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+<rect x="481" y="541" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="480" y1="580" x2="800" y2="580" stroke="rgba(45,49,66,0.16)" stroke-width="1"/>
+<text x="496" y="556" fill="#5a6580" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">SEE VIEW 1</text>
+<text x="496" y="573" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Section</text>
+<text x="496" y="600" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># document · number</text>
+<text x="496" y="620" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">heading · text</text>
+</g>
+<g><rect x="920" y="540" width="320" height="180" rx="6" fill="#f5f5f5"/>
+<rect x="920" y="540" width="320" height="180" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<rect x="921" y="541" width="318" height="39" rx="5" fill="rgba(45,49,66,0.04)"/>
+<line x1="920" y1="580" x2="1240" y2="580" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="936" y="556" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">ENTITY</text>
+<text x="936" y="573" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Ranking</text>
+<text x="936" y="600" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">mode</text>
+<text x="1224" y="600" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">words · meaning · both fused</text>
+<text x="936" y="620" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">order</text>
+<text x="1224" y="620" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">relevance · date</text>
+<text x="936" y="640" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">pins</text>
+<text x="1224" y="640" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">named documents first</text>
+<text x="936" y="660" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">reranked</text>
+<text x="1224" y="660" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">its first sections, or not</text>
+<text x="936" y="680" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">notes</text>
+<text x="1224" y="680" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">why not · whole count</text>
+<text x="936" y="700" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">holds</text>
+<text x="1224" y="700" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">no score, no display</text>
+</g>
+<g><rect x="920" y="780" width="320" height="120" rx="6" fill="#f5f5f5"/>
+<rect x="920" y="780" width="320" height="120" rx="6" fill="rgba(45,49,66,0.04)" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+<rect x="921" y="781" width="318" height="39" rx="5" fill="rgba(45,49,66,0.06)"/>
+<line x1="920" y1="820" x2="1240" y2="820" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+<text x="936" y="796" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">PART OF SECTION</text>
+<text x="936" y="813" fill="#2d3142" font-size="14" font-weight="600" font-family="'Geist', sans-serif">Chunk</text>
+<text x="936" y="840" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace"># document · start · end</text>
+<text x="1224" y="840" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">body offsets</text>
+<text x="936" y="860" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">cut by</text>
+<text x="1224" y="860" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">embed, by the chunking</text>
+<text x="936" y="880" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace">embedded</text>
+<text x="1224" y="880" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end">with a context prefix</text>
+</g>
+<!-- Labels, each on its own mask, in the gaps between entities -->
+<rect x="398" y="77" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="420" y="87" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">HOLDS</text>
+<rect x="366" y="109" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="372" y="119" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="455" y="109" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="468" y="119" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="128" y="253.0" width="62" height="14" rx="2" fill="#f5f5f5"/><text x="184" y="263.0" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">EXECUTES</text>
+<rect x="208" y="227" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="214" y="237" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="208" y="279" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="214" y="289" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="370" y="357" width="99" height="14" rx="2" fill="#f5f5f5"/><text x="420" y="367" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">READS · WRITES</text>
+<rect x="366" y="389" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="372" y="399" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="455" y="389" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="468" y="399" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="838" y="357" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="860" y="367" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">READS</text>
+<rect x="806" y="389" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="812" y="399" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="895" y="389" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="908" y="399" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="147" y="483.0" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="184" y="493.0" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">CALLS</text>
+<rect x="208" y="447" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="214" y="457" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="208" y="519" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="214" y="529" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="984" y="493.0" width="86" height="14" rx="2" fill="#f5f5f5"/><text x="1064" y="503.0" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">ANSWERS WITH</text>
+<rect x="1088" y="467" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1094" y="477" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="1088" y="519" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1094" y="529" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="838" y="577" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="860" y="587" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">LISTS</text>
+<rect x="895" y="609" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="908" y="619" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="806" y="609" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="812" y="619" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="1027" y="743.0" width="43" height="14" rx="2" fill="#f5f5f5"/><text x="1064" y="753.0" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">NAMES</text>
+<rect x="1088" y="727" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1094" y="737" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="1088" y="759" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="1094" y="769" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="386" y="243" width="24" height="14" rx="2" fill="#f5f5f5"/><text x="404" y="253" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">OF</text>
+<rect x="455" y="169" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="468" y="179" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="366" y="329" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="372" y="339" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<rect x="672" y="479" width="55" height="14" rx="2" fill="#f5f5f5"/><text x="700" y="489" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">RERANKS</text>
+<rect x="968" y="517" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="974" y="527" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="366" y="609" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="372" y="619" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">N</text>
+<rect x="562" y="733" width="68" height="14" rx="2" fill="#f5f5f5"/><text x="624" y="743" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.12em">PLACED AT</text>
+<rect x="895" y="849" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="908" y="859" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0" font-weight="600">N</text>
+<rect x="648" y="649" width="19" height="14" rx="2" fill="#f5f5f5"/><text x="654" y="659" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" letter-spacing="0" font-weight="600">1</text>
+<text x="1220" y="200" fill="#2d3142" font-size="15" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="end">serve hosts the tools and writes nothing:</text>
+<text x="1220" y="218" fill="#2d3142" font-size="15" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="end">it is no stage of the pipeline.</text>
+<path d="M 1170,226 Q 1170,262 1160,294" fill="none" stroke="rgba(45,49,66,0.40)" stroke-width="1" stroke-dasharray="4,3"/>
+<circle cx="1160" cy="296" r="2" fill="#2d3142"/>
+<line x1="40" y1="940" x2="1240" y2="940" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+<text x="40" y="956" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+<rect x="40" y="972" width="16" height="12" rx="2" fill="rgba(191,69,32,0.04)" stroke="#bf4520" stroke-width="1"/>
+<text x="64" y="982" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Focus of this view</text>
+<rect x="190" y="972" width="16" height="12" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<text x="214" y="982" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Core concept</text>
+<rect x="310" y="972" width="16" height="12" rx="2" fill="rgba(45,49,66,0.04)" stroke="#4f5d75" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="334" y="982" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Part that a core concept defines</text>
+<rect x="530" y="972" width="16" height="12" rx="2" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+<text x="554" y="982" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Drawn in view 1</text>
+<text x="665" y="982" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" font-weight="600">#</text>
+<text x="680" y="982" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Identity</text>
+<text x="756" y="982" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" font-weight="600">→</text>
+<text x="771" y="982" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Reference</text>
+</svg>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <p class="eyebrow">The headline</p>
+        <div class="card-header"><span class="card-dot coral"></span><h3>A run is what the program does for one command</h3></div>
+        <p>Its configuration is fixed when it starts, whichever layers gave it: the stages enabled, the sources and scopes selected, every relative value made absolute; secrets are never kept. Its units are a stage applied to one source, or over the whole; only stages depend on one another. It is idempotent and resumable by its id. Of the copy stores and the mirror it changes only its scopes; the index, persons and vectors follow the whole mirror.</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-dot ink"></span><h3>Stage is a move between stores</h3></div>
+        <p>Fetch, prepare, index and embed each read stores and write one, redoing only what changed. Stores are of six sorts: copy, derived, memo, input, credential and journal; a derivation's fingerprint keys what it wrote. Of the stages, embed alone calls a service that computes. The sign-in state, a credential store, is written by <code>login</code>, a run of its own, before the runs that rely on it.</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-dot muted"></span><h3>Retrieval returns a ranking</h3></div>
+        <p>A ranking is a sequence of sections, at most one per document, best first or by date; one found by meaning names the chunk that matched. It records its mode and whether it was reranked, and holds no score and nothing of its display. A tool shows each ranked section as a passage: a snippet in <code>search</code>, a quote in <code>ask</code>.</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>kb-mcp · conceptual model · entity-relationship views</span>
+      <span>source: docs/reference/concepts.md</span>
+    </div>
+  </div>
+</body>
+</html>

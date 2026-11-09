@@ -58,6 +58,8 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [Concepts](reference/concepts.md): the program's concepts, each defined once, and the
   code and the names that carry each.
+- [Entity-relationship views](reference/concepts-er.html): the concepts drawn with their
+  relationships and cardinalities, in two views.
 - [Commands](reference/commands.md): what the command and each subcommand say with
   `--help`, and the exit statuses; generated from the parser.
 - [Settings](reference/settings.md): each setting's key, variable, type, default and

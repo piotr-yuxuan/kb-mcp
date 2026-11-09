@@ -4,6 +4,9 @@ The code is being conformed to these concepts, as [the roadmap](../work/README.m
 where a sentence here and the code differ, the code is what runs, under the names of
 each entry's "In the code" paragraph.
 
+[The entity-relationship views](concepts-er.html) draw the core concepts with their
+relationships and cardinalities.
+
 The program brings knowledge from many origins, keeps it current, and serves it to
 agents with its provenance. Three concepts say where knowledge comes from: a
 **connector** reads one kind of origin, a **source** is one configured instance of it,
