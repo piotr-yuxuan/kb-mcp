@@ -144,7 +144,7 @@ behind one interface ([`Fetcher`](../../src/kb_mcp/sources/stages.py),
 whichever source wrote them; [sources](sources.md#three-roles-not-a-bundle) say how.
 
 - **Why.** The roles vary apart: git is fetched once and prepared twice, persons are a
-  preparation over every source's documents, and tools per source would bring back the
+  join over every source's documents, which `index` makes, and tools per source would bring back the
   several calls and merges that one interface in front of many tools avoids. A declaration
   also lets a new source be a package and one line, Confluence, Jira and the work log
   treated alike.

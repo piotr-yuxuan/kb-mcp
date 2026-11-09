@@ -129,7 +129,7 @@ def arm_row(arm: Arm, group: str) -> str:
 
 
 def text(evaluated: DepthsEvaluated, summary: Detail) -> str:
-    """Write each arm's row, every group's in detail; the first stage's recall; the bar.
+    """Write each arm's row, every group's in detail; the first ranking's recall; the bar.
 
     The bar's verdicts come depth by depth, each clause said with the groups' losses,
     then each qualifying depth's p-value against the best, then the depth at which to

@@ -18,7 +18,7 @@ Follow the `workflow:plans` skill with these parameters:
     which needs pandoc on `PATH`.
 - The design: why each decision was taken and what it costs, in
   [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
-  [the internals](docs/explanation/internals.md); the shared contracts, in
+  [the internals](docs/explanation/internals.md); the formats that the stages share, in
   [the data layout](docs/reference/data-layout.md); where code goes, in
   [the code's layout](docs/explanation/code-layout.md); the plans, in
   [the roadmap](docs/work/README.md). Only the adapter of a representation reads its

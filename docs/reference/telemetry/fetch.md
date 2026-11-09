@@ -14,7 +14,7 @@ fetched in the run's trace, in its space's or project's span.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `fetch.listed` | info | `target`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space or a project is listed whole: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
+| `fetch.listed` | info | `target`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
 | `fetch.document` | debug | `id`, `kind`, `title` | A document is fetched, and its snapshot read |
 | `fetch.document_failed` | warning | `id`, `kind`, `reason` | A document cannot be fetched: the run goes on, and exits 1 |
 | `fetch.document_unread` | warning | `kind`, `reason` | A snapshot that its adapter refuses: stored as it came, without its files |

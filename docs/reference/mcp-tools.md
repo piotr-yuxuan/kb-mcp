@@ -33,7 +33,8 @@ verbatim. With the filter `person`, the passages follow the person, as `search`'
 do. By meaning, the text is the unit of the index's chunking (see
 [chunking](../explanation/chunking.md)); by words, the section
 that holds the question's words best, whole up to 2,400 characters, else 2,400 of it
-centred on the first of the question's words that it holds, cut to whole lines.
+centred on the place of the question's rarest word that has the most of its other words
+near it, cut to whole lines.
 The setting `search_mode` gives the mode; without vectors, `ask` answers by words and
 says why.
 
@@ -117,7 +118,9 @@ Other filters of people add neither.
 
 Reads a document, or one of its sections, from a character offset, in slices. Each
 slice opens with the document's title, path and mirror date, and one from the body's
-start with its whole front matter, a `key: value` line each. People come there one line
+start with its front matter, a `key: value` line each, of what it has: its ref, type,
+space, project, issue type, status, labels, breadcrumb, people, links, created and updated
+days and address. People come there one line
 per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
 without the account id that the mirror keeps beside it, which stands for the name only
 where the source gives none: ten names at most, then how many more, each commenter with

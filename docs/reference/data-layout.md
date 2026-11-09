@@ -1,7 +1,7 @@
 # Data layout
 
 What each part of the program writes and reads under the data directory, so that the
-download (plan 004), the Markdown mirror (005) and search (006) can be built apart.
+fetch (plan 004), the mirror (005) and search (006) can be built apart.
 Where this file and the code disagree, the code named here is right and this file is
 fixed.
 

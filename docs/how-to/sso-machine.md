@@ -67,10 +67,11 @@ flag gave.
 kb-mcp doctor
 ```
 
-It says where pandoc is (needed later by the mirror), whether the public CAs verify the
-site (if not, TLS is inspected, and the operating system's trust store is used, as it
-always is), and whether the sign-in works: the session that `login` saves, or an API
-token.
+It checks that pandoc is on `PATH` (needed later by the mirror), whether the public CAs
+verify the site (if not, TLS is inspected, and the operating system's trust store is
+used, as it always is), and whether the sign-in works: the session that `login` saves, or
+an API token. It names each check that is not well; with `--summary detailed`, every
+one, where pandoc is among them.
 
 ## 4. Sign in
 

@@ -14,7 +14,7 @@ system where the three come as one, such as Google Drive, Notion or SharePoint. 
 not fit:
 
 - **git**, fetched once and prepared twice, as code and as history;
-- **persons**, a preparation over every source's documents, which is no source;
+- **persons**, a join over every source's documents, which `index` makes, no source;
 - **tools per source**, which would bring back the several calls and merges that one
   server in front of every source avoids.
 
@@ -118,8 +118,8 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 A source declares what it can read, each a [resource type](../reference/glossary.md#resource-type), a
 [`ResourceType`](../../src/kb_mcp/sources/declaration.py): its name, a summary, how it is
 read ([`Reading`](../../src/kb_mcp/sources/declaration.py)), and its options, each an
-[`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds. They match the
-kinds that the raw store keeps
+[`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds. They are the
+folders that the raw store keeps
 ([`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)) and, for the work
@@ -133,16 +133,18 @@ log, which keeps no store, its documents' types
 | `worklog` | `entries`, `days`, `meetings`, `transcripts` | read whole, in place | none |
 
 `--space` and `--project` replace a setting for one run
-([`SPACE`](../../src/kb_mcp/sources/atlassian/declared.py), by its `setting`), until plan
-032 generates flags from the settings. Plan 034 needs how each type is read: coverage per target, an exact
-end only where searched by time. Choosing among a source's types waits for one worth
+([`SPACE`](../../src/kb_mcp/sources/atlassian/declared.py), by its `setting`). How each
+type is read sets its coverage: per target, an exact end only where searched by time.
+Coverage, which may not import a declaration, decides so by the target's source, which
+[a test](../../tests/test_names.py) holds to the declarations. Choosing among a source's types waits for one worth
 fetching apart, such as Jira's boards: until then a source's types are read whole. The
-Atlassian fetcher lists every kind of a space, and its preparer, which removes the files
-of every kind of its source, refuses a declaration that names some of them
+Atlassian fetcher lists every resource type of a space, and its preparer, which removes
+the files of every resource type of its source, refuses a declaration that names some of
+them
 ([`preflight`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)). So a type's
 name, its options and how it is read are read so far, the last in the groups of `fetch
---help` and `prepare --help`, each opening with its source's summary: plan 033 reads a
-type's summary.
+--help` and `prepare --help`, each opening with its source's help; no command reads a
+type's help yet.
 
 ## The registry, a list in the code
 
@@ -224,7 +226,7 @@ name `atlassian`: `[accounts.atlassian]` holds `site`, `email` and `api_token`, 
 from `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` alone. So the core knows no Atlassian setting,
 and another sign-in is another account. `--site`, which
 [`add_settings_options`](../../src/kb_mcp/cli/options/_common.py) gives every parser but
-`completion`'s, replaces `accounts.atlassian.site` until plan 032 generates flags: so the
+`completion`'s, replaces `accounts.atlassian.site`: so the
 core still offers it under a registry without that account, as only a test gives, where it
 exits 2, `not a setting`. The places `session/` and `runs/` stay `config`'s
 ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)), which the data guard
@@ -372,9 +374,9 @@ through the entry, with no line of `src/` naming it.
 
 ## Not built
 
-- **Persons and links across sources**, a later plan: a preparer over every document, listed
-  in the registry apart from any source and run after the sources' own, writes person
-  documents and links that one serving tool follows.
+- **Links across sources**, a later plan: a preparer over every document, listed in the
+  registry apart from any source and run after the sources' own, writes links that one
+  serving tool follows. Persons are `index`'s join, built already.
 - **Plans 021 and 024, re-planned on the roles**: one package for the clones, its fetcher
   reading them in place or refreshing them, its preparers code and history; whether a code
   graph is served beside this program is the re-plan's question.

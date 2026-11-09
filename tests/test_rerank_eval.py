@@ -276,7 +276,7 @@ def test_a_sample_larger_than_the_golden_file_is_refused_before_any_request(data
 def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_first_n(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Recall@2 and @3 of the order not reranked: the first stage, searched again alone."""
+    """Recall@2 and @3 of the order not reranked: the first ranking, searched again alone."""
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url, "--format", "json") == 0
     record = json.loads(capsys.readouterr().out)

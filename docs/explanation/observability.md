@@ -30,8 +30,8 @@ thousands of documents is then found by its document, not guessed from a count.
 The file stays where the data stays, under the same rules: in the user's log folder, or
 `logs.dir`, which passes the data directory's guard, never under a synchronised folder
 nor in a git working tree; the folder 0700 when the run makes it, the file 0600; kept
-30 days, and cut at 256 MiB a run. What is safe to carry off the machine is
-`doctor --shareable`, which gives counts alone, never a log.
+30 days, and cut at 256 MiB a run. No command gives an extract of them to carry off the
+machine.
 
 Metrics, unlike logs, carry bounded attributes alone: a command, an outcome, a mode, a
 status. Ids, titles and queries go on spans and in logs, so that the number of series

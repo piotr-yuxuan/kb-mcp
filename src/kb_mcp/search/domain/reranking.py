@@ -2,7 +2,7 @@
 
 A search's next page must follow the order of its first without scoring again, so the
 cursor that continues a reranked page carries that order, one character for each
-document reranked: its place among the documents that the first stage gave.
+document reranked: its place among the documents that the first ranking gave.
 """
 
 from __future__ import annotations

@@ -22,8 +22,8 @@ A **cross-encoder** reads the question and one document together, in one pass, a
 gives the pair a score: how well this text answers this question. Every word of the
 question can weigh every word of the document. Nothing can be computed in advance, so
 each search costs one pass per document scored. Nogueira and Cho's reranking of a
-first stage by words with such a model topped MS MARCO's passage ranking in 2019
-([nogueira]); across BEIR's eighteen datasets, a first stage by words reranked by a
+first ranking by words with such a model topped MS MARCO's passage ranking in 2019
+([nogueira]); across BEIR's eighteen datasets, a first ranking by words reranked by a
 cross-encoder was the strongest zero-shot method compared, and among the slowest
 ([beir]).
 
@@ -32,7 +32,7 @@ document meets the question, to which it answers "yes" or "no": the score is the
 probability of "yes", from 0 to 1 ([qwen3]). The server writes that prompt around each
 pair, about 80 tokens. Only the order of the scores is used: they are not calibrated
 across questions, so no threshold drops a document, and no fusion mixes them with the
-first stage's.
+first ranking's.
 
 ## Why only the first documents
 
@@ -40,16 +40,16 @@ Scoring every document of the mirror for each question would take hours. So the 
 stage chooses, and the reranker reorders the first `rerank.depth` documents it found,
 30 by default; the rest follow in their order.
 
-- **The first stage sets the ceiling.** A document that the first stage puts past the
+- **The first ranking sets the ceiling.** A document that the first ranking puts past the
   depth is never scored, so reranking cannot bring it into the first ten. Recall@N, the
-  share of the expected documents within the first stage's first N, is the most that
+  share of the expected documents within the first ranking's first N, is the most that
   reranking N documents can reach; `eval-rerank` reports it for each depth measured.
 - **Documents named stay first.** A question naming `ENG-123`, or a page's id, wants
   that document: it stays first, as plan 006 put it, and is not scored. Plan 018 found
   identifiers the weak point of a model by meaning, and the reranker is a model too.
 - **A short text for each.** The reranker reads at most 1,502 characters a document:
   its title and the heading of the section that `search` shows, each cut to 150
-  characters, then 1,200 characters of that section about the place the first stage
+  characters, then 1,200 characters of that section about the place the first ranking
   chose, by meaning its best piece, by words where the question's words gather (the
   place `ask` quotes). 1,200 is plan 011's piece, and plan 019's 300-token window at
   four characters a token, so a search costs at most N such pairs whatever the
@@ -71,7 +71,7 @@ stage chooses, and the reranker reorders the first `rerank.depth` documents it f
 
 ## When the server fails
 
-A search never fails for the reranker: it keeps the first stage's order, and its
+A search never fails for the reranker: it keeps the first ranking's order, and its
 answer ends its header with " Not reranked:" and why, as a search by meaning says why
 it fell back to words. No answer, or none within 30 seconds, a server that is not a
 reranker, or an answer that does not parse is remembered for 30 seconds, during which
@@ -142,7 +142,7 @@ rerankers.
 Chosen from published results, as plan 018 chose its embedding model, not by
 benchmarking candidates here:
 
-| Source | First stage | Qwen3-Reranker-0.6B | bge-reranker-v2-m3 | First stage alone |
+| Source | First ranking | Qwen3-Reranker-0.6B | bge-reranker-v2-m3 | First ranking alone |
 |---|---|---|---|---|
 | Qwen3 paper, MTEB(eng, v2) retrieval ([qwen3]) | `qwen3-embedding:0.6b`, this program's | **65.80** | 57.03 | 61.82 |
 | Qwen3 paper, MMTEB retrieval | the same | **66.36** | 58.36 | 64.64 |
@@ -152,9 +152,9 @@ benchmarking candidates here:
 
 - **Qwen3-Reranker-0.6B** (Apache 2.0), in the conversion that llama.cpp's maintainer
   published as correct ([lc-16407]), 639 MB. The only published run over this
-  program's own first stage puts it 4 points above that stage in English, where
+  program's own first ranking puts it 4 points above that ranking in English, where
   bge-reranker-v2-m3 falls 5 below; an independent run in English agrees on the order.
-  Jina's run, over another first stage, ties them in English and puts bge far ahead
+  Jina's run, over another first ranking, ties them in English and puts bge far ahead
   across languages: French content waits, as plan 018 decided.
 - **Caveats.** All runs but Hugging Face's are by interested authors; none is on
   documentation like this, identifiers or French; the server gives the model its
@@ -181,8 +181,8 @@ reads is the mirror's, and no flag allows another ("No remote reranker.").
 ## Not done
 
 - **Scoring several pieces of a document** and keeping the best ([maxp]): N times the
-  cost again, where the first stage already chose the place.
-- **Fusing the scores** with the first stage's, or a threshold on them: they are not
+  cost again, where the first ranking already chose the place.
+- **Fusing the scores** with the first ranking's, or a threshold on them: they are not
   calibrated across questions, and a fusion tuned on the sandbox's 105 questions would
   fit them.
 - **Shorter texts**: 600 characters would about halve the time; if the bar fails on

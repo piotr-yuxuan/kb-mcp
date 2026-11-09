@@ -1,7 +1,7 @@
 """Reranking measured on golden questions: one mode not reranked, then at each depth.
 
 Each arm searches every question as ``search`` does, timed, then asks it as ``ask``
-does; the arm not reranked gives the first stage, whose Recall@N says the most that a
+does; the arm not reranked gives the first ranking, whose Recall@N says the most that a
 depth of N could bring into the first ten. Plan 022's bar then reads the arms.
 """
 

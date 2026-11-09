@@ -597,7 +597,7 @@ each of the 105 questions, 2.6 to 4.6 million tokens. By the estimate in
 [reranking](reranking.md#why-only-the-first-documents), that takes about 20 to 35
 minutes on the user's machine; on a laptop's CPU with llama.cpp 0.6.0, depths 10, 20 and 30
 took 50, 64 and 74 minutes, a run each, and depth 50 could not end. The output has a
-table with a row per depth, `none` the order not reranked, the first stage's Recall@N,
+table with a row per depth, `none` the order not reranked, the first ranking's Recall@N,
 a line per depth with each clause's verdict and each group's loss, each qualifying
 depth's p-value against the best, and the bar's last line, `By the bar, with this
 machine's times: turn reranking on, at depth N.` or `...: leave reranking off.` Its

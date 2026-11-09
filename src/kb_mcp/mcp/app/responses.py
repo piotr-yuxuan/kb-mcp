@@ -271,7 +271,9 @@ def passage(
 def metadata(entry: IndexedDocument, *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
-    ``whole`` gives every key; otherwise the title, path and mirror date alone. People
+    ``whole`` gives every key that a reader needs, but the source, id, key, version and
+    revision that the ref and the dates stand for; otherwise the title, path and mirror
+    date alone. People
     come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
     the last. Links come by ref, one line per relation in the order of the relations:
