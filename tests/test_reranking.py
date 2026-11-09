@@ -373,9 +373,18 @@ def test_reranking_is_off_by_default_at_the_guide_s_server_and_model() -> None:
         ({"depth": 1}, "rerank.depth (config.toml):"),
         ({"depth": MOST_TEXTS + 1}, "rerank.depth (config.toml):"),
         ({"model": "a model"}, "rerank.model (config.toml): the name of a reranking model"),
-        ({"url": "http://localhost:9931/v1"}, "rerank.url (config.toml): an address of this"),
-        ({"url": "http://10.0.0.1:9931/v1"}, "rerank.url (config.toml): an address of this"),
-        ({"url": "https://example.com/v1"}, "rerank.url (config.toml): an address of this"),
+        (
+            {"url": "http://localhost:9931/v1"},
+            "rerank.url (config.toml): not an address of this machine",
+        ),
+        (
+            {"url": "http://10.0.0.1:9931/v1"},
+            "rerank.url (config.toml): not an address of this machine",
+        ),
+        (
+            {"url": "https://example.com/v1"},
+            "rerank.url (config.toml): not an address of this machine",
+        ),
         ({"enabled": True, "url": "https://example.com/v1"}, "rerank.url (config.toml):"),
     ],
 )

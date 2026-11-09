@@ -16,7 +16,7 @@ class Service:
     """A server that a run sends text to: from the stores or a query, or what it records.
 
     Its rule: on this machine, or off it over https when ``flag`` is given to the run;
-    a ``bare`` address is http, with a port and no path, its protocol's paths following.
+    in the ``form`` that it names, if any.
     """
 
     name: str  # what it is, as a sentence names it
@@ -24,7 +24,7 @@ class Service:
     sends: str  # what it is sent, as a refusal names it
     flag: str | None  # the option that lets a run reach one off this machine; None: none may
     start: str  # how to start it, said when it does not answer
-    bare: bool = False
+    form: str | None = None  # what its address must look like, as a refusal says it
 
     @property
     def otherwise(self) -> str:
@@ -54,7 +54,7 @@ TELEMETRY = Service(
     sends="what a run records",
     flag=None,
     start="With podman: podman compose -f deploy/lgtm/compose.yaml up -d",
-    bare=True,
+    form="an http address with a port and no path, such as http://127.0.0.1:4318",
 )
 
 
@@ -95,20 +95,20 @@ def loopback(url: str) -> bool:
 def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str | None:
     """Say why a run may not send text to a service, or None when it may, by its rule.
 
-    ``remote_allowed`` is the run's word, which a service without a flag ignores.
+    ``remote_allowed`` is the run's word, which a service without a flag ignores. The
+    reason names no setting: each caller names it as its users read it.
     """
-    if not loopback(url):
-        if not (remote_allowed and service.flag):
-            return (
-                f"{service.setting}: not an address of this machine, where {service.sends}"
-                f" would go; write 127.0.0.1 for this one{service.otherwise}"
-            )
-        if not url.startswith("https://"):
-            return f"{service.setting}: an endpoint off this machine is reached over https only"
+    if service.form:
+        parts = urlsplit(url) if endpoint_host(url) else None
+        if not parts or parts.scheme != "http" or parts.port is None or parts.path not in {"", "/"}:
+            return f"not {service.form}"
+    if loopback(url):
         return None
-    if not service.bare:
-        return None
-    parts = urlsplit(url)
-    if (parts.scheme, parts.path or "/") != ("http", "/") or parts.port is None:
-        return f"{service.setting}: http, with a port and no path"
+    if not (remote_allowed and service.flag):
+        return (
+            f"not an address of this machine, where {service.sends} would go;"
+            f" write 127.0.0.1 for this one{service.otherwise}"
+        )
+    if not url.startswith("https://"):
+        return "an endpoint off this machine is reached over https only"
     return None

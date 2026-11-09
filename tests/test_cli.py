@@ -812,31 +812,32 @@ def test_check_and_index_refuse_a_log_folder_that_could_leave_the_machine(
     assert not user_log_folder(home.resolve()).exists()
 
 
-# Endpoints that telemetry may not go to, by plan 016: a name, another host, a user, https.
-ELSEWHERE = [
-    "http://localhost:4318",
-    "http://192.0.2.1:4318",
-    "http://user@127.0.0.1:4318",
-    "https://127.0.0.1:4318",
-]
-# What telemetry's endpoint must be, as the setting's refusal says.
-TELEMETRY_RULE = (
-    "an http address of this machine, with a port and no path, such as"
-    " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
+# Why the setting refuses telemetry's endpoint: off this machine, or not its address.
+OFF_THIS_MACHINE = (
+    "not an address of this machine, where what a run records would go;"
+    " write 127.0.0.1 for this one"
 )
+NOT_ITS_ADDRESS = "not an http address with a port and no path, such as http://127.0.0.1:4318"
+# Endpoints that telemetry may not go to, by plan 016: a name, another host, a user, https.
+ELSEWHERE = {
+    "http://localhost:4318": OFF_THIS_MACHINE,
+    "http://192.0.2.1:4318": OFF_THIS_MACHINE,
+    "http://user@127.0.0.1:4318": NOT_ITS_ADDRESS,
+    "https://127.0.0.1:4318": NOT_ITS_ADDRESS,
+}
 
 
 @pytest.mark.parametrize("endpoint", ELSEWHERE)
 def test_check_refuses_a_telemetry_endpoint_off_this_machine_naming_it(
     home: Path, capsys: CaptureFixture[str], endpoint: str
 ) -> None:
-    """The setting exits 2, naming itself, its layer and what it must be, in one error."""
+    """The setting exits 2, naming itself, its layer and why, in one error."""
     config = home / "config.toml"
     config.write_text(f'[telemetry]\nendpoint = "{endpoint}"\n', "utf-8")
     assert main(["check", "--config", str(config)]) == BAD_SETTINGS
     (line,) = capsys.readouterr().err.splitlines()
     assert said_on(line) == [("error", "settings.refused")]
-    assert f"telemetry.endpoint (config.toml): {TELEMETRY_RULE}" in line
+    assert f"telemetry.endpoint (config.toml): {ELSEWHERE[endpoint]}" in line
 
 
 @pytest.mark.parametrize("endpoint", ELSEWHERE)
@@ -850,7 +851,7 @@ def test_check_ignores_opentelemetry_s_endpoint_off_this_machine_and_says_so(
     out, err = capsys.readouterr()
     assert "telemetry.endpoint: (not set) [default]\n" in out
     assert (
-        err == f"ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): not {TELEMETRY_RULE}\n"
+        err == f"ignored: telemetry.endpoint (OTEL_EXPORTER_OTLP_ENDPOINT): {ELSEWHERE[endpoint]}\n"
     )
 
 
