@@ -30,7 +30,7 @@ from kb_mcp.cli.app import sources as sources_app
 from kb_mcp.cli.app.sources import run_each
 from kb_mcp.cli.domain.sources import chosen, fetch_described, given
 from kb_mcp.cli.main import main, parser
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.exit_status import Ending, ExitStatus
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
 from kb_mcp.mirror.adapters.pandoc import (
@@ -532,7 +532,9 @@ def test_a_fetch_that_must_sign_in_leaves_each_prepare_to_run_on_what_is_stored(
     first = runs(settings, FIRST, CONFLUENCE, options=SINCE)
     with capture_logs() as logged:
         fetched = run_each("fetch", first)
-    assert [(row.source, row.outcome) for row in fetched.sources] == [("confluence", "sign in")]
+    assert [(row.source, row.outcome) for row in fetched.sources] == [
+        ("confluence", "sign in again")
+    ]
     assert fetched.exit_status == ExitStatus.SIGN_IN_AGAIN
     assert logged_as(logged, "fetch.sign_in_needed")
     prepared = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
@@ -1043,13 +1045,13 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
     assert [each["source"] for each in logged_as(logged, "prepare.interrupted")] == [None]
 
 
-def ending(*statuses: ExitStatus) -> Callable[..., FetchOutcome]:
+def ending(*endings: Ending) -> Callable[..., FetchOutcome]:
     """Give a download that ends as told, once each, then stops as Ctrl-C would."""
-    left = iter(statuses)
+    left = iter(endings)
 
     def download(*_: object) -> FetchOutcome:
-        for status in left:
-            return FetchOutcome(report=RunReport(), failed_targets=[], status=status)
+        for each in left:
+            return FetchOutcome(report=RunReport(), failed_targets=[], ending=each)
         raise KeyboardInterrupt
 
     return download
@@ -1061,13 +1063,13 @@ def test_to_sign_in_again_ranks_above_a_failure_and_below_an_interruption(
     """A failed fetch and one to sign in again exit 3, whichever comes first; Ctrl-C, 130."""
     settings = chosen_settings(tmp_path, worklog)
     taken = runs(settings, FIRST, CONFLUENCE, JIRA, options=SINCE)
-    monkeypatch.setattr(fetcher, "run_fetch", ending(ExitStatus.FAILED, ExitStatus.SIGN_IN_AGAIN))
+    monkeypatch.setattr(fetcher, "run_fetch", ending("failed", "sign in again"))
     ran = run_each("fetch", taken)
-    assert [row.outcome for row in ran.sources] == ["failed", "sign in"]
+    assert [row.outcome for row in ran.sources] == ["failed", "sign in again"]
     assert ran.exit_status == ExitStatus.SIGN_IN_AGAIN
-    monkeypatch.setattr(fetcher, "run_fetch", ending(ExitStatus.SIGN_IN_AGAIN))
+    monkeypatch.setattr(fetcher, "run_fetch", ending("sign in again"))
     ran = run_each("fetch", taken)
-    assert [row.outcome for row in ran.sources] == ["sign in", "interrupted"]
+    assert [row.outcome for row in ran.sources] == ["sign in again", "interrupted"]
     assert ran.exit_status == ExitStatus.INTERRUPTED
 
 

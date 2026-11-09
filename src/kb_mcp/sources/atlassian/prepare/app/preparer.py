@@ -13,9 +13,9 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from kb_mcp.kernel.exit_status import Ending
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
-from kb_mcp.sources import stages
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES
 from kb_mcp.sources.atlassian.prepare.app.prepare import (
@@ -48,7 +48,7 @@ class AtlassianPrepared(Result):
 class NotCounted(AtlassianPrepared):
     """A dry run's prepare: nothing converted, so nothing counted, which its row says."""
 
-    outcome: stages.Outcome = "not run"
+    outcome: Ending = "not run"
     mirrored: None = None
 
     def text(self, _summary: Detail) -> str:

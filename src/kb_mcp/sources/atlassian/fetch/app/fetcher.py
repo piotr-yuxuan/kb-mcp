@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
@@ -32,17 +31,9 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.output import Detail
-    from kb_mcp.sources import stages
     from kb_mcp.sources.atlassian.fetch.app.fetching import Targets
     from kb_mcp.sources.stages import SourceRun
 
-# How a fetch or its plan ended, by its status. A fetch that Ctrl-C stops raises
-# KeyboardInterrupt, so its status is never none here.
-FETCHED: dict[ExitStatus | None, stages.Outcome] = {
-    ExitStatus.OK: "done",
-    ExitStatus.FAILED: "failed",
-    ExitStatus.SIGN_IN_AGAIN: "sign in",
-}
 # What to do while another run writes the raw store.
 BUSY = "another run is writing it; try again once that run ends"
 
@@ -133,6 +124,6 @@ def fetch_targets(
     log = structlog.get_logger()
     for target in outcome.failed_targets:
         log.warning("fetch.target_failed", target=target)
-    if outcome.status == ExitStatus.SIGN_IN_AGAIN:
+    if outcome.ending == "sign in again":
         log.error("fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again)
-    return Fetched(outcome=FETCHED[outcome.status], downloaded=outcome)
+    return Fetched(outcome=outcome.ending, downloaded=outcome)

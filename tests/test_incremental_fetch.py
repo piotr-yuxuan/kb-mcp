@@ -28,9 +28,7 @@ from tests.test_fetching import (
     CAP,
     ISSUE,
     PAGES,
-    SIGN_IN_NEEDED,
     SITE,
-    SOME_FAILED,
     SPACE,
     FakeSite,
     stamp,
@@ -44,6 +42,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.kernel.exit_status import Ending
 
 FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)
 SECOND = datetime(2026, 10, 23, 9, tzinfo=UTC)
@@ -129,10 +128,10 @@ def run(
     fake: FakeSite,
     targets: Targets,
     now: datetime,
-) -> int | None:
-    """Run one download at ``now`` over the fake site, and return its status."""
+) -> Ending:
+    """Run one download at ``now`` over the fake site, and return how it ended."""
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    return run_fetch(chosen, targets, lambda: now, lambda _: None).status
+    return run_fetch(chosen, targets, lambda: now, lambda _: None).ending
 
 
 def first_week(spaces: list[str], projects: list[str]) -> Targets:
@@ -159,8 +158,8 @@ def test_a_first_run_starts_the_coverage_of_each_target(
 ) -> None:
     """A run of each source with --since 7d covers the week, for every target listed whole."""
     chosen = settings(tmp_path)
-    assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST) == 0
-    assert run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST) == 0
+    assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST) == "done"
+    assert run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST) == "done"
     assert RawStore(chosen.raw).coverage().periods == {
         Target(source="confluence", key="MFS"): Period(FIRST - WEEK, FIRST),
         Target(source="jira", key="PRB"): Period(FIRST - WEEK, FIRST),
@@ -177,7 +176,7 @@ def test_a_later_run_catches_up_on_an_old_page_edited_since(
     edited = {"number": 4, "createdAt": "2026-10-23T08:00:00.000Z"}
     listing = {**PAGES, "1003": {**PAGES["1003"], "version": edited}}
     later = RefreshSite(listing=listing)
-    assert run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND) == 0
+    assert run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND) == "done"
     assert stored_pages(chosen)["1003"] == "000004"
     assert RawStore(chosen.raw).coverage().periods[
         Target(source="confluence", key="MFS")
@@ -191,7 +190,7 @@ def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SECOND - YEAR)
-    assert run(chosen, monkeypatch, RefreshSite(), targets, SECOND) == 0
+    assert run(chosen, monkeypatch, RefreshSite(), targets, SECOND) == "done"
     assert stored_pages(chosen)["1003"] == "000003"
     covered = RawStore(chosen.raw).coverage().periods[Target(source="confluence", key="MFS")]
     assert covered == Period(SECOND - YEAR, SECOND)
@@ -231,7 +230,7 @@ def test_a_plan_lists_and_decides_and_writes_nothing(
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     outcome = plan_fetch(chosen, first_week(["MFS"], ["PRB"]), lambda: FIRST, lambda _: None)
-    assert outcome.status == 0
+    assert outcome.ending == "done"
     assert outcome.report.counts["confluence pages: to fetch"] == len(["1001", "1002"])
     assert outcome.report.counts["jira issues: to fetch"] == 1
     assert outcome.report.counts["files: to download"] == 1
@@ -377,7 +376,7 @@ def test_many_gone_with_a_lost_session_write_no_tombstone(
     many = {str(5000 + n): v2_page(id=str(5000 + n), version=stamp(20)) for n in range(MANY)}
     run(chosen, monkeypatch, RefreshSite(listing=many), first_week(["MFS"], []), FIRST)
     lost = RefreshSite(listing={}, gone=set(many), anonymous_after=1)
-    assert run(chosen, monkeypatch, lost, catch_up(["MFS"], []), SECOND) == SIGN_IN_NEEDED
+    assert run(chosen, monkeypatch, lost, catch_up(["MFS"], []), SECOND) == "sign in again"
     stones = RawStore(chosen.raw).tombstones().values()
     assert len(stones) == MANY  # each absent page waits for a probe
     assert [stone for stone in stones if stone.first_gone is not None] == []
@@ -430,7 +429,7 @@ def test_many_gone_with_the_session_holding_are_believed(
     many = {str(5000 + n): v2_page(id=str(5000 + n), version=stamp(20)) for n in range(MANY)}
     run(chosen, monkeypatch, RefreshSite(listing=many), first_week(["MFS"], []), FIRST)
     deleted = RefreshSite(listing={}, gone=set(many))
-    assert run(chosen, monkeypatch, deleted, catch_up(["MFS"], []), SECOND) == 0
+    assert run(chosen, monkeypatch, deleted, catch_up(["MFS"], []), SECOND) == "done"
     assert len(RawStore(chosen.raw).tombstones()) == MANY
 
 
@@ -823,9 +822,9 @@ def test_a_search_entry_that_the_adapter_refuses_holds_the_coverage(
     assert said_coverage(events) == [("project PRB", "held", "entries refused")]
 
 
-@pytest.mark.parametrize(("status", "stopped"), [(503, SOME_FAILED), (401, SIGN_IN_NEEDED)])
+@pytest.mark.parametrize(("status", "stopped"), [(503, "failed"), (401, "sign in again")])
 def test_a_run_stopped_during_a_project_leaves_its_coverage_and_extends_those_before(
-    status: int, stopped: int, tmp_path: Path, monkeypatch: MonkeyPatch
+    status: int, stopped: str, tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Failures in a row, or a sign-in lost, during PRB's fetch: MFS, fetched first, grows.
 
@@ -837,7 +836,7 @@ def test_a_run_stopped_during_a_project_leaves_its_coverage_and_extends_those_be
     before = RawStore(chosen.raw).coverage().periods[PRB]
     many = {str(30000 + n): issue_at(str(30000 + n), RUN - timedelta(hours=1)) for n in range(MANY)}
     failing = RefreshSite(issues=many, failing_issues=dict.fromkeys(many, status))
-    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), RUN) == 0
+    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), RUN) == "done"
     assert run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), RUN) == stopped
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
@@ -1022,8 +1021,8 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
             period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"
         ),
     }
-    assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up(["MFS"], []), NEXT) == 0
-    assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), NEXT) == 0
+    assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up(["MFS"], []), NEXT) == "done"
+    assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), NEXT) == "done"
     assert RawStore(chosen.raw).coverage().periods == {
         Target(source="confluence", key="MFS"): Period(NEXT - WEEK, NEXT),
         PRB: Period(START, NEXT),

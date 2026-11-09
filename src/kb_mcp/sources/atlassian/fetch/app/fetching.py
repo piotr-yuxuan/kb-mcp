@@ -25,7 +25,7 @@ from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
 from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.exit_status import Ending
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
 from kb_mcp.kernel.record import Record
@@ -779,7 +779,7 @@ def windows_of(
 
 
 class FetchOutcome(Record):
-    """What a run did, the user's keys that failed, and the run's exit status.
+    """What a run did, the user's keys that failed, and how the run ended.
 
     ``windows`` holds each target's window, and what became of its coverage; ``dry_run``
     says whether the run only planned.
@@ -787,7 +787,7 @@ class FetchOutcome(Record):
 
     report: RunReport
     failed_targets: list[str]
-    status: ExitStatus | None
+    ending: Ending
     windows: tuple[TargetFetchWindow, ...] = ()
     dry_run: bool = False
 
@@ -837,7 +837,7 @@ def plan_fetch(
     try:
         client = choose_sign_in(settings).client()
     except SignInNeededError:
-        return planned(report=report, failed_targets=[], status=ExitStatus.SIGN_IN_AGAIN)
+        return planned(report=report, failed_targets=[], ending="sign in again")
     with client:
         run = Fetching(
             SiteClient(client, sleep=sleep),
@@ -851,18 +851,14 @@ def plan_fetch(
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return planned(
-                report=report, failed_targets=run.failed_targets, status=ExitStatus.SIGN_IN_AGAIN
-            )
+            return planned(report=report, failed_targets=run.failed_targets, ending="sign in again")
         except TooManyFailuresError:
             report.add("runs: stopped, too many failures in a row")
-            return planned(
-                report=report, failed_targets=run.failed_targets, status=ExitStatus.FAILED
-            )
+            return planned(report=report, failed_targets=run.failed_targets, ending="failed")
     return planned(
         report=report,
         failed_targets=run.failed_targets,
-        status=ExitStatus.FAILED if report.failures else ExitStatus.OK,
+        ending="failed" if report.failures else "done",
     )
 
 
@@ -881,13 +877,14 @@ def run_fetch(
     Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
     the run stops, and a fetch of projects neither reads nor rewrites them.
     ``fetch.coverage`` says at INFO what became of each finished target's coverage,
-    and why it was held, if it was. The status is
-    ``OK`` when nothing failed, ``FAILED`` when something did, and ``SIGN_IN_AGAIN`` when
-    the sign-in no longer holds or no session was saved. Raises PeriodError when --since
+    and why it was held, if it was. It ends done when nothing failed, failed when
+    something did, and sign in again when the sign-in no longer holds or no session was
+    saved. Raises PeriodError when --since
     does not come before the windows' end, StoreBusyError when another run writes, and
     ValueError for targets of no source or of both, all before anything is written.
     """
-    report, failed_targets, status = RunReport(), [], None
+    report, failed_targets = RunReport(), []
+    ending: Ending | None = None
     extensions: dict[Target, CoverageChange] = {}
     store, started, source = RawStore(settings.raw), now(), targets.source
     coverage = store.coverage()
@@ -908,11 +905,11 @@ def run_fetch(
                 failed_targets = run.failed_targets
                 try:
                     run.run(targets.spaces, targets.projects)
-                    status = ExitStatus.FAILED if report.failures else ExitStatus.OK
+                    ending = "failed" if report.failures else "done"
                 except SignInNeededError:
-                    status = ExitStatus.SIGN_IN_AGAIN
+                    ending = "sign in again"
                 except TooManyFailuresError:
-                    status = ExitStatus.FAILED
+                    ending = "failed"
                     report.add("runs: stopped, too many failures in a row")
                 finally:
                     signing.keep(client)
@@ -930,20 +927,23 @@ def run_fetch(
                         log.info("fetch.coverage", target=str(target), outcome="held", reason=why)
                     store.put_coverage(coverage)
         except SignInNeededError:  # from the client: no session was saved
-            status = ExitStatus.SIGN_IN_AGAIN
+            ending = "sign in again"
         finally:
-            if status is None:
+            if ending is None:
                 report.add("runs: interrupted")
-            elif status == ExitStatus.SIGN_IN_AGAIN:
+            elif ending == "sign in again":
                 report.add("runs: stopped, sign-in needed")
             settings.runs.mkdir(parents=True, exist_ok=True)
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-            saved = {"status": status, "counts": dict(sorted(report.counts.items()))}
+            saved = {
+                "ending": ending or "interrupted",
+                "counts": dict(sorted(report.counts.items())),
+            }
             path = settings.runs / f"{stamp}-{source}.json"
             path.write_text(json.dumps(saved, indent=1), "utf-8")
     return FetchOutcome(
         report=report,
         failed_targets=failed_targets,
-        status=status,
+        ending=ending,
         windows=windows_of(windows, extensions),
     )

@@ -608,11 +608,10 @@ settings, secrets masked. The outcome:
 [`WorklogPrepareOutcome`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py),
 [`IndexReport`](../../src/kb_mcp/search/app/indexing.py) and
 [`Filled`](../../src/kb_mcp/search/app/indexing.py). The ending:
-[`Outcome`](../../src/kb_mcp/sources/stages.py),
-[`RowOutcome`](../../src/kb_mcp/cli/domain/rows.py) and
-[`RANKED`](../../src/kb_mcp/cli/domain/rows.py),
-[`Verdict`](../../src/kb_mcp/sources/stages.py) and
-[`Verdict.state`](../../src/kb_mcp/sources/stages.py),
+[`Ending`](../../src/kb_mcp/kernel/exit_status.py) and
+[`folded`](../../src/kb_mcp/kernel/exit_status.py),
+[`Check`](../../src/kb_mcp/sources/stages.py) and
+[`Check.state`](../../src/kb_mcp/sources/stages.py),
 [`ExitStatus`](../../src/kb_mcp/kernel/exit_status.py) and
 [`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py). The problem:
 [`Problem`](../../src/kb_mcp/mirror/domain/mirror.py),

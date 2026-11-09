@@ -305,7 +305,7 @@ def test_a_fetch_with_no_session_saved_is_to_sign_in_before_any_request(
 ) -> None:
     """No token and no session: the outcome says to sign in, and the site is asked nothing."""
     fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, settings, SINCE))
-    assert fetched.outcome == "sign in"
+    assert fetched.outcome == "sign in again"
     assert site.asked == []
 
 

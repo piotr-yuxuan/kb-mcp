@@ -1,8 +1,17 @@
-"""The exit statuses of every command, defined once for the commands and their use cases."""
+"""The exit statuses of every command, and the endings of a run's units that fold into them."""
 
 from __future__ import annotations
 
 from enum import IntEnum
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+# How a unit of a run ended: done; failed; the sign-in no longer holding; not run, as a
+# unit that a dry run leaves alone or that an interruption reached before it started; or
+# interrupted.
+type Ending = Literal["done", "failed", "sign in again", "not run", "interrupted"]
 
 
 class ExitStatus(IntEnum):
@@ -26,3 +35,18 @@ MEANINGS = {
     " site refused the API token",
     ExitStatus.INTERRUPTED: "stopped by Ctrl-C",
 }
+
+# The exit status of each ending. Their numbers rank them, most severe highest:
+# interrupted, then sign in again, then failed; done and not run are 0.
+ENDED: dict[Ending, ExitStatus] = {
+    "done": ExitStatus.OK,
+    "not run": ExitStatus.OK,
+    "failed": ExitStatus.FAILED,
+    "sign in again": ExitStatus.SIGN_IN_AGAIN,
+    "interrupted": ExitStatus.INTERRUPTED,
+}
+
+
+def folded(endings: Iterable[Ending]) -> ExitStatus:
+    """Give the exit status of the most severe of these endings; OK for none."""
+    return max((ENDED[ending] for ending in endings), default=ExitStatus.OK)

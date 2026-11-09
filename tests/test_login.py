@@ -16,7 +16,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_c
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.declaration import Account
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.stages import SignedIn, Verdict
+from kb_mcp.sources.stages import Check, SignedIn
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.test_cli import logged_as
@@ -190,9 +190,9 @@ def drive_signed_in(
     return SignedIn(site=str(settings.accounts.drive.folder), session=settings.session)
 
 
-def drive_checks(settings: Settings) -> list[Verdict]:
-    """Check a second account: its verdict, as its declaration names it."""
-    return [Verdict(name="drive", found=str(settings.accounts.drive.folder))]
+def drive_checks(settings: Settings) -> list[Check]:
+    """Check a second account: its check, as its declaration names it."""
+    return [Check(name="drive", found=str(settings.accounts.drive.folder))]
 
 
 DRIVE = Account(
@@ -235,12 +235,12 @@ def test_a_second_account_signs_in_by_its_own_run_and_reads_none_of_the_first(
 def test_doctor_checks_each_account_by_its_own_checks(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Only that which this machine uses: its verdict after the machine's."""
+    """Only that which this machine uses: its check after the machine's."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_ACCOUNTS__DRIVE__FOLDER", "/made/up")
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
     assert main(options, TWO_ACCOUNTS) == 0
-    names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
+    names = [check["name"] for check in json.loads(capsys.readouterr().out)]
     assert names == ["python", "pandoc", "data directory", "drive"]
 
 

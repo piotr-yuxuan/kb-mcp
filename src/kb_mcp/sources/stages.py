@@ -21,27 +21,23 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel
 
 from kb_mcp.config.domain.settings import Settings
+from kb_mcp.kernel.exit_status import Ending
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.declaration import Source
 
 if TYPE_CHECKING:
     from kb_mcp.kernel.output import Detail
 
-# How a fetcher or a preparer ended: done, failed, the sign-in no longer holding, or not run, as a
-# preparer that a dry run leaves alone.
-type Outcome = Literal["done", "failed", "sign in", "not run"]
-
-
 # What a check concludes: all is well, the user must sign in again, or something fails.
-WELL, SIGN_IN, FAILED = "well", "sign in", "failed"
+type CheckState = Literal["well", "sign in again", "failed"]
 
 
-class Verdict(Record):
+class Check(Record):
     """One check: what it looked at, what it found, and what that means."""
 
     name: str
     found: str
-    state: str = WELL
+    state: CheckState = "well"
 
 
 class SignedIn(Record):
@@ -75,7 +71,7 @@ class SourceRun(Record):
 class Result(Record):
     """How a fetcher or a preparer ended; each one's result adds its counts, written as text."""
 
-    outcome: Outcome
+    outcome: Ending
 
     @abstractmethod
     def text(self, summary: Detail) -> str:

@@ -140,9 +140,9 @@ starts there, here `given`; a `--since` that does not come before the fetch wind
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
 exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
-one before it failed, as it reads what is on disk. The exit status is the first outcome
-of [`RANKED`](../../src/kb_mcp/cli/domain/rows.py) that a row had:
-interrupted, then sign in, then failed; else 0.
+one before it failed, as it reads what is on disk. The exit status folds the rows'
+endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/exit_status.py)):
+interrupted, then sign in again, then failed; else 0.
 
 ### 4. The source and the site's port
 

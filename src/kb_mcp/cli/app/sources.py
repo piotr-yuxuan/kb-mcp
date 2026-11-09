@@ -21,16 +21,16 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import trace
 
-from kb_mcp.cli.domain.rows import RANKED, Ran, Row
+from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.sources import FETCH, PREPARE
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.exit_status import folded
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.stages import Fetcher, Preparer, Result, SourceRun
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.cli.domain.rows import RowOutcome
+    from kb_mcp.kernel.exit_status import Ending
     from kb_mcp.sources.declaration import Source
 
 
@@ -120,7 +120,7 @@ def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
     ``preflight`` refuses, after its source's name and the stage, both before the first
     row. Ctrl-C ends the row it stops as interrupted, and each later one as not run; the
     run is interrupted even when Ctrl-C comes once every row has ended. The status is the
-    first of ``RANKED``'s outcomes that the run had, else OK. A stage's ``start`` and ``end``
+    most severe of the rows' endings, as ``folded`` gives it. A stage's ``start`` and ``end``
     say at INFO the sources planned and how each ended, its ``source`` each as it ends; its
     ``interrupted``, a warning, which source Ctrl-C stopped.
     """
@@ -140,7 +140,7 @@ def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
     names = [each.run.source.name for each in plans]
     log.info(recorded.start, sources=names, dry_run=any(run.dry_run for run in runs))
     rows: list[Row] = []
-    outcomes: set[RowOutcome] = set()
+    own: list[Ending] = []  # the run's own ending, beside its rows'
     try:
         for each, source in zip(plans, names, strict=True):
             attributes = {"kb_mcp.source": source}
@@ -151,13 +151,12 @@ def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
                 rows.append(Row(source=source, outcome=result.outcome, result=result))
     except KeyboardInterrupt:
         stopped = len(rows)
+        own.append("interrupted")
         log.warning(recorded.interrupted, source=names[stopped] if stopped < len(names) else None)
-        outcomes.add("interrupted")
         rows.extend(
             Row(source=name, outcome="interrupted" if at == stopped else "not run", result=None)
             for at, name in enumerate(names[stopped:], stopped)
         )
-    outcomes.update(row.outcome for row in rows)
-    status = next((status for outcome, status in RANKED if outcome in outcomes), ExitStatus.OK)
+    status = folded([*own, *(row.outcome for row in rows)])
     log.info(recorded.end, status=int(status), sources=[f"{r.source}: {r.outcome}" for r in rows])
     return Ran(exit_status=status, sources=tuple(rows))

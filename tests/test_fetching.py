@@ -489,11 +489,11 @@ def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None
     The report is named by the run's source, after its time.
     """
     outcome = run_fetch(settings(tmp_path), targets(["MFS"], []), lambda: NOW, no_sleep)
-    assert outcome.status == SIGN_IN_NEEDED
+    assert outcome.ending == "sign in again"
     assert outcome.report.counts["runs: stopped, sign-in needed"] == 1
     [report] = (tmp_path / "data" / "runs").iterdir()
     assert report.name == "20261022T090000Z-confluence.json"
-    assert json.loads(report.read_text("utf-8"))["status"] == SIGN_IN_NEEDED
+    assert json.loads(report.read_text("utf-8"))["ending"] == "sign in again"
 
 
 @pytest.mark.parametrize(("spaces", "projects"), [([], []), (["MFS"], ["PRB"])])
@@ -521,7 +521,7 @@ def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     fake = FakeSite()
     chosen = saved_session(tmp_path, monkeypatch, fake)
     outcome = run_fetch(chosen, targets([], ["PRB"]), lambda: NOW, no_sleep)
-    assert outcome.status == 0
+    assert outcome.ending == "done"
     assert outcome.report.counts["jira issues: fetched"] == 1
     assert [what for what in outcome.report.counts if "confluence" in what] == []
     assert [url.path for url in fake.asked if url.path.startswith("/wiki/")] == []
@@ -536,7 +536,7 @@ def test_an_expired_session_stops_the_run_before_anything_is_stored(
     """Confluence answering as to an anonymous user means the session has expired."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
     outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
-    assert outcome.status == SIGN_IN_NEEDED
+    assert outcome.ending == "sign in again"
     assert not (chosen.raw / "confluence" / "pages").exists()
 
 
@@ -546,10 +546,10 @@ def test_a_run_with_a_failure_says_so_in_its_status(
     """A document that failed makes the run's status 1, and its report says why."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
     outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
-    assert outcome.status == SOME_FAILED
+    assert outcome.ending == "failed"
     assert outcome.report.failures == 1
     [report] = chosen.runs.iterdir()
-    assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
+    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
 def test_only_the_site_cookies_with_a_value_are_saved_back(
@@ -675,7 +675,7 @@ def test_an_expired_session_still_leaves_a_run_report(
     run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     saved = json.loads(report.read_text("utf-8"))
-    assert saved["status"] == SIGN_IN_NEEDED
+    assert saved["ending"] == "sign in again"
     assert saved["counts"]["runs: stopped, sign-in needed"] == 1
 
 

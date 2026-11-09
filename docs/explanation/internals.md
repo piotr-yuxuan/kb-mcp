@@ -73,9 +73,9 @@ names given choose among those that a command can take
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder
   ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
-  the row it stops and runs no later one. The exit status ranks how the rows ended:
-  interrupted, then to sign in again, then failed
-  ([`RANKED`](../../src/kb_mcp/cli/domain/rows.py)).
+  the row it stops and runs no later one. The exit status folds how the rows ended:
+  interrupted, then sign in again, then failed
+  ([`folded`](../../src/kb_mcp/kernel/exit_status.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 
 ## Fetch: from the site to the raw store

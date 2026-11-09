@@ -15,7 +15,6 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
@@ -165,9 +164,9 @@ def test_each_source_is_fetched_alone_into_a_report_of_its_own(
     )
     assert [what for what in reports["confluence.json"]["counts"] if "jira" in what] == []
     assert [what for what in reports["jira.json"]["counts"] if "confluence" in what] == []
-    assert (reports["confluence.json"]["status"], reports["jira.json"]["status"]) == (
-        SOME_FAILED,
-        0,
+    assert (reports["confluence.json"]["ending"], reports["jira.json"]["ending"]) == (
+        "failed",
+        "done",
     )
 
 
@@ -183,7 +182,7 @@ def test_without_a_session_each_source_is_to_sign_in_before_any_request(
     options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == SIGN_IN_NEEDED
     rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
-    assert rows == ["confluence: sign in", "jira: sign in"]
+    assert rows == ["confluence: sign in again", "jira: sign in again"]
     needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
         ("confluence", "run kb-mcp login atlassian"),
@@ -202,7 +201,7 @@ def test_a_stopped_fetch_says_why_in_short(
         "runs: stopped, too many failures in a row": 1,
     }
     stopped = FetchOutcome(
-        report=RunReport(counts=Counter(counts)), failed_targets=[], status=ExitStatus.FAILED
+        report=RunReport(counts=Counter(counts)), failed_targets=[], ending="failed"
     )
     monkeypatch.setattr(fetcher, "run_fetch", lambda *_: stopped)
     assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
@@ -258,7 +257,7 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
     assert confluence["report"]["counts"]["confluence pages: fetched"] == len(["1001", "1002"])
     assert jira["report"]["counts"]["jira issues: fetched"] == 1
     assert [each["failed_targets"] for each in (confluence, jira)] == [[], []]
-    assert [each["status"] for each in (confluence, jira)] == [SOME_FAILED, 0]
+    assert [each["ending"] for each in (confluence, jira)] == ["failed", "done"]
     assert [
         (each["target"], each["start"], each["reason"], each["coverage"])
         for result in (confluence, jira)
@@ -344,7 +343,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     [report] = chosen.runs.iterdir()
     assert report.name.endswith("-confluence.json")
     assert "NOPE" not in report.read_text("utf-8")
-    assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
+    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
 def test_ctrl_c_exits_130_and_says_which_source_it_stopped(
@@ -414,7 +413,7 @@ def counted(
             Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SINCE),
             LISTED_AT,
         )
-        == 0
+        == "done"
     )
     if first_fetch:
         (chosen.raw / "coverage.json").unlink()
@@ -547,7 +546,7 @@ def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left
     monkeypatch.setattr(
         fetcher,
         "run_fetch",
-        lambda *_: FetchOutcome(report=RunReport(), failed_targets=[], status=ExitStatus.OK),
+        lambda *_: FetchOutcome(report=RunReport(), failed_targets=[], ending="done"),
     )
     assert main(command(home, "--site", SITE, "--space", "MFS")) == 0
     captured = capsys.readouterr()
