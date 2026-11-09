@@ -28,6 +28,7 @@ from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
+from kb_mcp.mirror.domain.mirror import ref_of
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, UNIT, around
@@ -178,7 +179,7 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         named = [*planned.identifiers.keys, *planned.identifiers.ids]
         keys, ids = planned.identifiers.keys, planned.identifiers.ids
         pinned = reader.entries(keys=keys, ids=ids, filters=filters)
-        ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
+        ordered = sorted(pinned, key=lambda e: named.index(ref_of(e.front.key, e.front.id)))
         first = [entry.path for entry in ordered]
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
@@ -660,7 +661,7 @@ class Library:
             person, held = about(reader, kept, [entry.path for entry in shown])
             for number, entry in enumerate(shown, offset + 1):
                 passage = passage_of(reader, entry, ranked, planned)
-                ref = entry.front.key or entry.front.id
+                ref = ref_of(entry.front.key, entry.front.id)
                 opening = responses.call(self.read, ref=ref, section=passage.number)
                 items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
@@ -738,7 +739,7 @@ class Library:
                 entry,
                 passage,
                 responses.call(
-                    self.read, ref=entry.front.key or entry.front.id, section=passage.number
+                    self.read, ref=ref_of(entry.front.key, entry.front.id), section=passage.number
                 ),
                 held.get(entry.path),
             )
@@ -825,7 +826,7 @@ class Library:
             last = min(end, begin + clamp(max_chars, CHARS_LIMITS))
             text = reader.text(entry.path, begin, last)
         frame = responses.metadata(entry, whole=begin == 0)
-        ref = entry.front.key or entry.front.id
+        ref = ref_of(entry.front.key, entry.front.id)
         later = responses.call(self.read, ref=ref, section=section, offset=end, max_chars=max_chars)
         allowed = responses.budget(max_chars, READ_CHARS) - responses.RESERVE
         stop = begin + responses.cut(text, allowed - responses.tokens(frame + later))

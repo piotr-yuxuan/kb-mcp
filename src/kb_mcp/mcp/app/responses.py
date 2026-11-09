@@ -14,7 +14,7 @@ import re
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
-from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, ref_of
 from kb_mcp.search.domain import people
 
 if TYPE_CHECKING:
@@ -234,7 +234,7 @@ def hit(number: int, entry: Entry, passage: Passage, opening: str, held: str | N
     lines = [
         f"{number}. {short(front.title)}",
         (
-            f"   {front.key or front.id} | {entry.path} | updated {stamp(front.updated)}"
+            f"   {ref_of(front.key, front.id)} | {entry.path} | updated {stamp(front.updated)}"
             f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}"
             + (f" | {held}" if held else "")
         ),
@@ -257,7 +257,7 @@ def excerpt(number: int, entry: Entry, passage: Passage, opening: str, held: str
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
-        f"{number}. {short(front.title)} | {front.key or front.id} | section"
+        f"{number}. {short(front.title)} | {ref_of(front.key, front.id)} | section"
         f" {passage.number}{heading} | updated {stamp(front.updated)}"
         f" | mirrored {front.fetched_at:%Y-%m-%d} | {facts(front)}" + (f" | {held}" if held else "")
     )
@@ -280,7 +280,7 @@ def metadata(entry: Entry, *, whole: bool) -> str:
     if whole:
         labels = ", ".join(short(label, LABEL) for label in front.labels[:LABELS])
         rows += [
-            ("ref", front.key or front.id),
+            ("ref", ref_of(front.key, front.id)),
             ("type", front.type),
             ("space", front.space),
             ("project", front.project),
@@ -328,8 +328,9 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], Entry]], base: int) -> list[str]
         common = sum(1 for _ in takewhile(lambda pair: pair[0] == pair[1], shared))
         front = entry.front
         line = (
-            f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)} ({front.key or front.id},"
-            f" updated {front.updated:%Y-%m-%d}, mirrored {front.fetched_at:%Y-%m-%d})"
+            f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
+            f" ({ref_of(front.key, front.id)}, updated {front.updated:%Y-%m-%d},"
+            f" mirrored {front.fetched_at:%Y-%m-%d})"
         )
         if missing := ancestors[common:]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"

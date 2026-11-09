@@ -70,6 +70,11 @@ class PersonRole(Record):
         return self
 
 
+def ref_of(key: str | None, identifier: str) -> str:
+    """Name a document as ``read`` takes it and links name it: its key, else its id."""
+    return key or identifier
+
+
 class Link(Record):
     """A link from a document to another of the mirror: the relation, and the other's ref."""
 

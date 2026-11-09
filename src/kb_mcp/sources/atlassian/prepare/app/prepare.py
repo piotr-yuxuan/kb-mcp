@@ -33,6 +33,7 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.mirror.domain.mirror import ref_of
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
@@ -164,7 +165,7 @@ class Placed(Record):
     def ref(self) -> str:
         """Name the document as links and images do: its key for Jira, else its id."""
         document = self.document
-        return document.key if isinstance(document, Issue) else document.id
+        return ref_of(document.key if isinstance(document, Issue) else None, document.id)
 
 
 def readable[T](items: Iterable[T | Unreadable], problems: list[Problem]) -> list[T]:

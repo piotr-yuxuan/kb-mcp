@@ -206,7 +206,8 @@ YAML header whose keys are fixed in name, type and order.
 A document's key, else its id: what `read` takes besides an address or a path. Not
 "handle", which a file keeps.
 
-- In the code: [`Placed.ref`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py).
+- In the code: [`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py),
+  [`Placed.ref`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py).
 - User-facing: `ref`.
 
 ### link
