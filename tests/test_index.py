@@ -1438,7 +1438,9 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     pinned = [(path, reason[: len(PINNED_SKIPPED[0][1])]) for path, reason in skipped]
     assert pinned == PINNED_SKIPPED, WORDS_CHANGED
     with closing(sqlite3.connect(index)) as connection:
-        connection.execute("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, chunks, row)")
+        connection.execute(
+            "CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, section_words, row)"
+        )
         terms = connection.execute("SELECT term, doc, cnt FROM terms ORDER BY term").fetchall()
     assert terms == PINNED_TERMS, WORDS_CHANGED
 
@@ -1572,7 +1574,7 @@ KEPT_ROWS = (
     WHERE d.path <> :path ORDER BY s.rowid
     """,
     """
-    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    SELECT p.* FROM chunks p JOIN sections s ON s.rowid = p.section
     JOIN documents d ON d.rowid = s.document WHERE d.path <> :path ORDER BY p.rowid
     """,
 )
@@ -1583,7 +1585,7 @@ ITS_ROWS = (
     "SELECT p.* FROM people p JOIN documents d ON d.rowid = p.document WHERE d.path = :path",
     "SELECT s.* FROM sections s JOIN documents d ON d.rowid = s.document WHERE d.path = :path",
     """
-    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    SELECT p.* FROM chunks p JOIN sections s ON s.rowid = p.section
     JOIN documents d ON d.rowid = s.document WHERE d.path = :path
     """,
 )
@@ -1654,12 +1656,14 @@ def test_a_removed_file_leaves_no_row_and_full_text_search_whole(
     assert status == 0
     assert f"copied: {PAGES}\nadded: 0\nreplaced: 0\nremoved: 1\n" in out
     assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH) == [[]] * len(ITS_ROWS)
-    orphans = "SELECT count(*) FROM pieces WHERE section NOT IN (SELECT rowid FROM sections)"
+    orphans = "SELECT count(*) FROM chunks WHERE section NOT IN (SELECT rowid FROM sections)"
     assert rows_of(data / "index.sqlite", orphans) == [(0,)]
     checked = data.parent / "checked.sqlite"
     checked.write_bytes((data / "index.sqlite").read_bytes())
     with closing(sqlite3.connect(checked)) as connection:
-        connection.execute("INSERT INTO chunks (chunks, rank) VALUES ('integrity-check', 1)")
+        connection.execute(
+            "INSERT INTO section_words (section_words, rank) VALUES ('integrity-check', 1)"
+        )
     with reading(data / "index.sqlite") as reader:
         assert reader.scores('"retention"', Filters()) == ({}, True)
         assert ("streaming", 1) not in reader.values("label")

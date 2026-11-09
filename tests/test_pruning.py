@@ -603,7 +603,7 @@ def test_an_evaluation_index_without_keys_holds_the_prune_back(
     """Built before pieces recorded their keys: nothing deleted, the file named, exit 0."""
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
-        connection.execute("ALTER TABLE pieces DROP COLUMN key")
+        connection.execute("ALTER TABLE chunks DROP COLUMN key")
         connection.commit()
     status, result, err = held_back(data, capsys)
     assert (status, result["outcome"], result["file"]) == (0, "held back", str(windows))
@@ -763,7 +763,7 @@ def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
     pruned(refreshed(indexing(data)))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
-        root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 'pieces'")
+        root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 'chunks'")
         page_number = root.fetchone()[0]
         size = connection.execute("PRAGMA page_size").fetchone()[0]
     with windows.open("r+b") as file:

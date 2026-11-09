@@ -67,8 +67,8 @@ TABLES = {
         FROM sections s JOIN documents d ON d.rowid = s.document ORDER BY 1, 2
     """,
     "skipped": "SELECT path, digest, reason FROM skipped ORDER BY path",
-    "pieces": """
-        SELECT d.path, s.number, p.start, p.stop, p.key, p.vector FROM pieces p
+    "chunks": """
+        SELECT d.path, s.number, p.start, p."end", p.key, p.vector FROM chunks p
         JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
         ORDER BY 1, 2, 3, 4, 5
     """,
@@ -83,7 +83,9 @@ def rows(index: Path) -> dict[str, list[tuple[object, ...]]]:
     copy = index.with_name(f"checked-{index.name}")
     copy.write_bytes(index.read_bytes())
     with closing(sqlite3.connect(copy)) as connection:
-        connection.execute("INSERT INTO chunks (chunks, rank) VALUES ('integrity-check', 1)")
+        connection.execute(
+            "INSERT INTO section_words (section_words, rank) VALUES ('integrity-check', 1)"
+        )
         read = {name: connection.execute(query).fetchall() for name, query in TABLES.items()}
     copy.unlink()
     return read
@@ -313,7 +315,7 @@ def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data:
     assert filled is not None
     assert filled.unchanged
     assert rows(data / "index.sqlite") == rows(step.whole())
-    assert rows(data / "index.sqlite")["pieces"] == held["pieces"]
+    assert rows(data / "index.sqlite")["chunks"] == held["chunks"]
     before = (data / "index.sqlite").read_bytes()
     (data / "aliases.toml").write_text("not = [toml\n", encoding="utf-8")
     assert update_index(step.indexing(), MOMENT) is None

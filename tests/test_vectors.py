@@ -511,7 +511,7 @@ def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Pa
     """Without the column, its pieces and summary read as ever; its keys are refused."""
     build(data, counting())
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
-        connection.execute("ALTER TABLE pieces DROP COLUMN key")
+        connection.execute("ALTER TABLE chunks DROP COLUMN key")
         connection.commit()
     with reading(data / "index.sqlite") as reader:
         assert len(reader.vectors().documents) == reader.index_status().pieces > 0
@@ -740,6 +740,36 @@ def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
             embedded = reader.embedded()
         assert embedded is not None
         assert embedded.chunking == cut
+
+
+def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
+    data: Path,
+) -> None:
+    """Plan 054: the former tables, ``pieces`` and the words' ``chunks``, at schema 6.
+
+    ``index`` rebuilds it whole, as an index it cannot read; ``embed`` then takes every
+    chunk's vector from the vector cache, since neither a text nor a context prefix
+    changed, and the index holds a whole build's chunks.
+    """
+    filled_by(data, chunking="windows")
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute('ALTER TABLE chunks RENAME COLUMN "end" TO stop')
+        connection.execute("ALTER TABLE chunks RENAME TO pieces")
+        connection.execute("ALTER TABLE section_words RENAME TO chunks")
+        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
+        connection.commit()
+    indexed = update_index(indexing(data), MOMENT)
+    assert indexed is not None
+    assert (indexed.report.rebuilt, indexed.report.copied) == ("unavailable", 0)
+    answers = Scripted()
+    filled = fill_and_prune(indexing(data, answers, "windows"))
+    assert filled is not None
+    assert (texts_asked(answers), filled.embedded) == ([], 0)
+    assert pieces_of(data / "index.sqlite") == whole_pieces(data, "windows")
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
+    assert {"chunks", "section_words"} <= tables
+    assert "pieces" not in tables
 
 
 def embedded_at(data: Path, url: str, capsys: CaptureFixture[str]) -> tuple[int, str]:

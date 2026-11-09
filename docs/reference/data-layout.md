@@ -727,8 +727,11 @@ content; and the meta rows `words`, the `search.domain.search.WORDS` of the code
 cut the sections, and `aliases`, the digest of what the alias file meant
 (`search.domain.people.aliases_digest`). The server's readers ignore them; an index
 built before them is served, rebuilt whole by the next `index`, and refused by `embed`
-until then. An index of another schema is refused, naming `prepare`, then `index`, then
-`embed`: `prepare` writes the mirror again before `index` rebuilds the index, as a new
+until then. Schema 7 (054) renames the table `pieces` `chunks`, its column `stop`
+`end`, and the FTS5 table `chunks` `section_words`: an index of 6 is rebuilt whole by
+the next `index`, and `embed` then finds every vector in the vector store, no text
+embedded having changed. An index of another schema is refused, naming `prepare`, then
+`index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the index, as a new
 schema can come with a new format of the files; one cut by a chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the

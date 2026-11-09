@@ -597,11 +597,11 @@ def filling(index: SearchIndex, indexing: Indexing) -> Filled:
                     path=each.path,
                     number=number + 1,
                     start=start,
-                    stop=stop,
+                    end=end,
                     vector_key=vector_store.vector_key(model.fingerprint, text),
                 ): text
                 for each in stored
-                for number, start, stop, text in CHUNKERS[model.chunking].cut(
+                for number, start, end, text in CHUNKERS[model.chunking].cut(
                     each.front, sections(each.body)
                 )
             }

@@ -60,7 +60,7 @@ class FilledPiece(Record):
 
     number: int
     start: int  # in the section's body, after its heading line
-    stop: int
+    end: int
     key: str
     vector: tuple[float, ...]
 
@@ -113,7 +113,7 @@ def filled(documents: Sequence[FilledDocument]) -> dict[Piece, NDArray[np.float3
             path=location(document.front),
             number=part.number,
             start=part.start,
-            stop=part.stop,
+            end=part.end,
             vector_key=part.key,
         ): np.array(part.vector, dtype=np.float32)
         for document in documents
@@ -147,7 +147,7 @@ def piece_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> Fille
     section = next(each for each in sections(body) if text in each.body)
     start = section.body.index(text)
     return FilledPiece(
-        number=section.number, start=start, stop=start + len(text), key=key, vector=vector
+        number=section.number, start=start, end=start + len(text), key=key, vector=vector
     )
 
 
@@ -800,7 +800,7 @@ def test_a_piece_that_names_no_section_is_refused(written: Written) -> None:
     """A fill of a section that the document lacks raises, and leaves the index as it was."""
     index = written([FilledDocument(front=COMPASS, body=NEAR_BODY)])
     build = build_of(index)
-    stray = Piece(path=COMPASS_PATH, number=9, start=0, stop=1, vector_key="k")
+    stray = Piece(path=COMPASS_PATH, number=9, start=0, end=1, vector_key="k")
     with pytest.raises(ValueError, match="names a section"):
         index.fill(build, EMBEDDED, {stray: query(NORTH)}, ())
     with index.reading() as reader:

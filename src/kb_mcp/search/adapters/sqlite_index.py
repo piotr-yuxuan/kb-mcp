@@ -77,8 +77,8 @@ DUPLICATE = "another document has the same source and id"
 WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
-# plan 043, with persons.
-SCHEMA = "6"
+# plan 043, with persons; 7 from plan 054, with the tables chunks and section_words.
+SCHEMA = "7"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -121,14 +121,14 @@ CREATE TABLE sections (
   heading TEXT NOT NULL, body TEXT NOT NULL
 );
 CREATE INDEX sections_document ON sections (document, number);
-CREATE VIRTUAL TABLE chunks USING fts5(
+CREATE VIRTUAL TABLE section_words USING fts5(
   title, labels, breadcrumb, heading, body,
   content = 'sections', content_rowid = 'rowid',
   tokenize = 'unicode61 remove_diacritics 2'
 );
-CREATE TABLE pieces (
+CREATE TABLE chunks (
   rowid INTEGER PRIMARY KEY,
-  section INTEGER NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL,
+  section INTEGER NOT NULL, start INTEGER NOT NULL, "end" INTEGER NOT NULL,
   key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
@@ -168,8 +168,8 @@ WHERE (:source IS NULL OR d.source = :source)
 SCORES = """
 WITH matched AS MATERIALIZED (
   SELECT rowid AS section,
-         -bm25(chunks, :title, :labels, :breadcrumb, :heading, :body) AS relevance
-  FROM chunks WHERE chunks MATCH :expression
+         -bm25(section_words, :title, :labels, :breadcrumb, :heading, :body) AS relevance
+  FROM section_words WHERE section_words MATCH :expression
 )
 SELECT d.path, d.updated, d.created, max(m.relevance) AS relevance
 FROM matched m JOIN sections s ON s.rowid = m.section JOIN documents d ON d.rowid = s.document
@@ -177,12 +177,12 @@ WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 GROUP BY d.rowid ORDER BY relevance DESC, d.path LIMIT :limit
 """
 PASSAGE = """
-SELECT s.number, s.heading, snippet(chunks, 4, '', '', '…', :tokens) AS snippet
-FROM chunks JOIN sections s ON s.rowid = chunks.rowid
-WHERE chunks MATCH :match
-  AND chunks.rowid BETWEEN (SELECT first_section FROM documents WHERE path = :path)
+SELECT s.number, s.heading, snippet(section_words, 4, '', '', '…', :tokens) AS snippet
+FROM section_words JOIN sections s ON s.rowid = section_words.rowid
+WHERE section_words MATCH :match
+  AND section_words.rowid BETWEEN (SELECT first_section FROM documents WHERE path = :path)
                        AND (SELECT last_section FROM documents WHERE path = :path)
-ORDER BY bm25(chunks, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
+ORDER BY bm25(section_words, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
 """
 ENTRIES = """
 SELECT d.* FROM documents d
@@ -218,14 +218,14 @@ ORDER BY s.number
 PIECES = """
 SELECT d.rowid AS document, d.path, d.updated, s.number,
        s.start + length(s.head) + p.start AS offset,
-       s.start + length(s.head) + p.stop AS finish, p.vector
-FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
+       s.start + length(s.head) + p."end" AS finish, p.vector
+FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
 """
 # Every piece that has its vector, where it is and its key: what ``embed`` compares.
 HELD_PIECES = """
-SELECT d.path, s.number, p.start, p.stop, p.key
-FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
+SELECT d.path, s.number, p.start, p."end", p.key
+FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
 """
 # Each section's heading line and body, which give a document's body back in order.
@@ -236,16 +236,16 @@ ORDER BY d.path, s.number
 # What a fill writes into its copy: a piece, its section named by path and number, which
 # the copy resolves to a rowid; or the removal of one.
 FILL_ADD = """
-INSERT INTO pieces (section, start, stop, key, vector)
-SELECT s.rowid, :start, :stop, :vector_key, :vector
+INSERT INTO chunks (section, start, "end", key, vector)
+SELECT s.rowid, :start, :end, :vector_key, :vector
 FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path AND s.number = :number
 """
 FILL_REMOVE = """
-DELETE FROM pieces WHERE rowid IN (
-  SELECT p.rowid FROM pieces p JOIN sections s ON s.rowid = p.section
+DELETE FROM chunks WHERE rowid IN (
+  SELECT p.rowid FROM chunks p JOIN sections s ON s.rowid = p.section
   JOIN documents d ON d.rowid = s.document
-  WHERE d.path = :path AND s.number = :number AND p.start = :start AND p.stop = :stop
+  WHERE d.path = :path AND s.number = :number AND p.start = :start AND p."end" = :end
     AND p.key = :vector_key
 )
 """
@@ -260,7 +260,7 @@ META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
 UNFILLED = """
 SELECT d.* FROM documents d
 WHERE d.last_section >= d.first_section
-  AND d.rowid NOT IN (SELECT s.document FROM pieces p JOIN sections s ON s.rowid = p.section)
+  AND d.rowid NOT IN (SELECT s.document FROM chunks p JOIN sections s ON s.rowid = p.section)
 """
 # A document's body, as its sections' heading lines and bodies give it back in order.
 BODY = "SELECT head || body FROM sections WHERE document = ? ORDER BY number"
@@ -294,7 +294,7 @@ COPY = (
     WHERE document IN (SELECT rowid FROM main.documents)
     """,
     """
-    INSERT INTO main.pieces SELECT p.* FROM old.pieces p
+    INSERT INTO main.chunks SELECT p.* FROM old.chunks p
     JOIN main.sections s ON s.rowid = p.section
     """,
 )
@@ -501,7 +501,7 @@ class Writer:
             ],
         )
         self._connection.executemany(
-            "INSERT INTO chunks (rowid, title, labels, breadcrumb, heading, body)"
+            "INSERT INTO section_words (rowid, title, labels, breadcrumb, heading, body)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             rows,
         )
@@ -515,7 +515,7 @@ class Writer:
         Each vector comes with its key in the vector store, which only pruning reads.
         """
         self._connection.executemany(
-            "INSERT INTO pieces (section, start, stop, key, vector) VALUES (?, ?, ?, ?, ?)",
+            'INSERT INTO chunks (section, start, "end", key, vector) VALUES (?, ?, ?, ?, ?)',
             pieces,
         )
 
@@ -611,7 +611,7 @@ class Writer:
                     skipped.append(Skipped(path=holder, digest=held[holder], reason=DUPLICATE))
             for statement in COPY:
                 connection.execute(statement, {"left": json.dumps(sorted(left))})
-            connection.execute("INSERT INTO chunks (chunks) VALUES ('rebuild')")
+            connection.execute("INSERT INTO section_words (section_words) VALUES ('rebuild')")
             self._next_section += (
                 connection.execute("SELECT max(rowid) FROM sections").fetchone()[0] or 0
             )
@@ -703,7 +703,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
             connection.executescript(CREATE)
             writer = Writer(connection, embedded)
             yield writer
-            connection.execute("INSERT INTO chunks (chunks) VALUES ('optimize')")
+            connection.execute("INSERT INTO section_words (section_words) VALUES ('optimize')")
             skipped = connection.execute("SELECT count(*) FROM skipped").fetchone()[0]
             connection.executemany(
                 "INSERT INTO meta (name, value) VALUES (?, ?)",
@@ -1009,18 +1009,18 @@ class Reader:
         pieces recorded their keys reads as any other: neither can say which vectors a
         prune must keep, so raise UnavailableIndexError.
         """
-        columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(pieces)")}
+        columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(chunks)")}
         model = self._connection.execute("SELECT value FROM meta WHERE name = 'model'").fetchone()
         if not model or not model[0] or "key" not in columns:
             message = "built by words alone, or before pieces recorded their keys"
             raise UnavailableIndexError(message)
-        return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
+        return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM chunks")}
 
     def pieces(self) -> list[Piece]:
         """Give every piece that has its vector, by path, section number and start."""
         return [
-            Piece(path=path, number=number, start=start, stop=stop, vector_key=key)
-            for path, number, start, stop, key in self._connection.execute(HELD_PIECES)
+            Piece(path=path, number=number, start=start, end=end, vector_key=key)
+            for path, number, start, end, key in self._connection.execute(HELD_PIECES)
         ]
 
     def vectors(self) -> Pieces:
@@ -1068,7 +1068,7 @@ class Reader:
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
-        pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
+        pieces = self._connection.execute("SELECT count(*) FROM chunks").fetchone()[0]
         persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
         across = self._connection.execute(ACROSS).fetchone()[0]
         shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
