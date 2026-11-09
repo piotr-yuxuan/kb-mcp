@@ -232,8 +232,8 @@ of the site's HTML.
 
 What a prepare did not write, and why; the work log's also says what it held back.
 
-- In the code: [`Problem`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
-  [`Problem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py).
+- In the code: [`Problem`](../../src/kb_mcp/mirror/domain/mirror.py),
+  [`WorklogProblem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py).
 - User-facing: `problems`, `prepare.not_mirrored`.
 
 ### fetch time

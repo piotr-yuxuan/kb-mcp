@@ -33,7 +33,7 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import ref_of
+from kb_mcp.mirror.domain.mirror import Problem, ref_of
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
@@ -96,13 +96,6 @@ UNKNOWN_AUTHOR = "unknown author"
 DOCUMENT_ERRORS = (ValueError, PandocFailedError)
 NAMED_ERRORS = (RefusedError, MarkupError, PandocFailedError)
 TRACER = trace.get_tracer(__name__)
-
-
-class Problem(Record):
-    """Something not mirrored: where it is in the store, and why, without content."""
-
-    where: str
-    reason: str
 
 
 class AtlassianPrepareOutcome(Record):

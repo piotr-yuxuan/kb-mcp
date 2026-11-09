@@ -33,7 +33,7 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, PersonRole, Problem
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 TRACER = trace.get_tracer(__name__)
 
 
-class Problem(Record):
+class WorklogProblem(Problem):
     """A file of the work log not read, or a document not converted, and what it held back.
 
     ``where`` is the path from the work log's folder, or a document's file and id, never
@@ -74,8 +74,6 @@ class Problem(Record):
     the domain's function ``held_back`` says; for a conversion, the document's id.
     """
 
-    where: str
-    reason: str
     held_back: str
 
 
@@ -89,7 +87,7 @@ class Read(Record):
 
     documents: tuple[WorklogDocument, ...]
     html: int
-    problems: tuple[Problem, ...]
+    problems: tuple[WorklogProblem, ...]
     warnings: tuple[str, ...]
 
 
@@ -103,7 +101,7 @@ class WorklogPrepareOutcome(Record):
     documents: int
     changes: Changes
     html: int
-    problems: tuple[Problem, ...]
+    problems: tuple[WorklogProblem, ...]
     warnings: tuple[str, ...]
 
     def text(self, summary: Summary) -> str:
@@ -130,7 +128,7 @@ class WorklogDryRun(Record):
     to_convert: int
     to_remove: int
     html: int
-    problems: tuple[Problem, ...]
+    problems: tuple[WorklogProblem, ...]
     warnings: tuple[str, ...]
 
     def text(self, summary: Summary) -> str:
@@ -182,7 +180,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         ]
         ids, warnings = transcript_ids([*org_files.paths, *out], archives=archives)
         problems = [
-            Problem(where=where, reason=reason, held_back=held_back(where, ids))
+            WorklogProblem(where=where, reason=reason, held_back=held_back(where, ids))
             for where, reason in unread
         ]
         named = transcripts(org_texts, ids, archives=archives)
@@ -290,7 +288,7 @@ def prepare_worklog(
                     body = pandoc.org_markdown(document.text)
                 except PandocFailedError as error:
                     problems.append(
-                        Problem(
+                        WorklogProblem(
                             where=f"{document.file.path}, {document.id}",
                             reason=str(error),
                             held_back=document.id,

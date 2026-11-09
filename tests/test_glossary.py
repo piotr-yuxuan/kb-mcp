@@ -48,7 +48,6 @@ SHARED = frozenset(
         "Evaluated",
         "Kind",
         "Outcome",
-        "Problem",
         "RefusedError",
         "Row",
         "Run",

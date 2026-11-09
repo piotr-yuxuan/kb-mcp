@@ -101,11 +101,10 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   Atlassian's does not run.
 - **A result** is a record, which `--format json` writes as every result, and whose `text`
   its row writes ([`text`](../../src/kb_mcp/cli/commands/sources.py)). Each keeps its
-  own problems: the Atlassian prepare's
-  [`Problem`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) has a place and a
+  own problems: a [`Problem`](../../src/kb_mcp/mirror/domain/mirror.py) has a place and a
   reason, the work log's
-  [`Problem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) what it held back
-  too, so `Result` holds none.
+  [`WorklogProblem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) what it
+  held back too, so `Result` holds none.
 - **Pandoc is the preparers' own.** `SourceRun` holds no tool that a role alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`
