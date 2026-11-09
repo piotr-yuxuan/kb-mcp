@@ -83,7 +83,7 @@ class NotesTable(BaseModel):
 ## 4. Write its declaration
 
 The declaration is data ([`Source`](../../src/kb_mcp/sources/declaration.py)), in the
-standard library alone, since `--help` imports it: it names the table and the roles by
+standard library alone, since `--help` imports it: it names the table, the fetcher and the preparers by
 module path. Each [resource type](../reference/glossary.md#resource-type) says what the source reads and how
 ([`ResourceType`](../../src/kb_mcp/sources/declaration.py)). A source that signs in also
 names its `account`, and one with a fetcher its `fetcher`; a light check that `fetch` asks
@@ -116,7 +116,7 @@ NOTES = Source(
 
 A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/stages.py)): `preflight`,
 what it cannot go on with, read before any source starts, which `prepare` says after the
-source's name and the step, and `prepare`, which writes the
+source's name and the stage, and `prepare`, which writes the
 documents through the mirror and gives a [`Result`](../../src/kb_mcp/sources/stages.py), its
 counts and how they read as text. Mind what the writer and the front matter ask:
 

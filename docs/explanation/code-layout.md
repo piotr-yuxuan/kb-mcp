@@ -17,7 +17,7 @@ side, never use each other:
 | `evaluation` | How well search and ask answer golden questions (`eval`), and how agents fare with them (`eval-agents`) |
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
-| `sources` | Where documents come from: the registry and the roles' interfaces, beside a package per source, nested by role: `atlassian/`, Confluence and Jira, whose `fetch/` holds the sign-in (the saved session or an API token) and the raw store, and whose `prepare/` writes their documents from that store; `worklog/`, the user's work log, read in place, with `prepare/` alone |
+| `sources` | Where documents come from: the registry and the stages' interfaces, beside a package per source, nested by stage: `atlassian/`, Confluence and Jira, whose `fetch/` holds the sign-in (the saved session or an API token) and the raw store, and whose `prepare/` writes their documents from that store; `worklog/`, the user's work log, read in place, with `prepare/` alone |
 | `mirror` | What every source writes through and search reads: the front matter, which files are documents, the writer of the files that changed, pandoc and its cache of conversions, the instruments of documents built, the rules of text |
 | `config` | The settings, their file, and the guard on where data lives |
 | `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
@@ -46,7 +46,7 @@ Some choices are not obvious:
   serves, beside its only user, the prepare of Confluence and Jira. It is still an
   adapter: a fix for the real site's HTML goes there.
 - **`fetch`'s and `prepare`'s rows are `cli/app/sources.py`**, a use case of `cli`: it runs
-  each source's role, a row each, by the path that its declaration names. What they choose
+  each source's fetcher or preparers, a row each, by the path that its declaration names. What they choose
   and say is pure, in `cli/domain/sources.py`, so that their declarations stay light, and
   reads the registry that the entry is given, so that it names no source.
 - **The index is two interfaces**, declared as protocols in `search/domain/indexes.py`:
@@ -81,7 +81,7 @@ Each context but the kernel holds the same layers, as sub-packages, from the top
 | `domain` | Pure rules: decisions and conversions with no I/O, time or environment |
 
 A context holds only the layers it needs; `mcp` has only `app`. In `sources/`, each
-role of a source holds them, as below.
+stage of a source holds them, as below.
 
 A subcommand is a pair of modules: `cli/options/<name>.py` declares it, and the module
 of `cli/commands/` that its declaration names runs it. `--help`, and shell completion at
@@ -101,26 +101,26 @@ A source is a declaration and the code that it names; [sources](sources.md) says
 |---|---|---|
 | `sources/declaration.py` | What a source declares: `Source`, `ResourceType`, `Option`, `Account`, as dataclasses, since `--help` imports them | every declaration |
 | `sources/registry.py` | `SOURCES`, one line per source, and `refuse`, the rules of any registry | `cli`, whose entry takes a registry as a parameter |
-| `sources/stages.py` | The roles' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun` and `Result`, and what a sign-in and its checks give, `SignedIn` and `Verdict` | each role, each account's sign-in and checks, and `cli`'s `run_each`, `login` and `doctor` |
+| `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun` and `Result`, and what a sign-in and its checks give, `SignedIn` and `Verdict` | each role, each account's sign-in and checks, and `cli`'s `run_each`, `login` and `doctor` |
 
 The first two stay light for `--help`, and all three are pure, by contracts G and C, which
 name them. Each source's package holds:
 
 | Module | What it holds | Loaded |
 |---|---|---|
-| `declared.py` | The declaration: its name, resource types, table, account and roles by module path | at every parse: contract G keeps it light |
+| `declared.py` | The declaration: its name, resource types, table, account, fetcher and preparers by module path | at every parse: contract G keeps it light |
 | `settings.py` | The Pydantic models of its table and its account | with the settings, by the path that its declaration names |
 | `fetch/` | Its fetcher, if any, and all that it uses | by the run that uses it |
 | `prepare/` | Its preparers, and all that they use | by the run that uses it |
 
 Each source imports the interfaces, `mirror`, `config`'s rules of a table, `observability`
-and the kernel. `cli` reaches its roles by the paths of its declaration, and its sign-in
+and the kernel. `cli` reaches its fetcher and preparers by the paths of its declaration, and its sign-in
 and checks by those of its account, never by name.
 
-## The roles within a source
+## The stages within a source
 
-Each source's package holds one sub-package per role, and each role holds the layers
-above. Plan 029 nested them so:
+Each source's package holds one sub-package per stage that it takes part in, and each
+holds the layers above. Plan 029 nested them so:
 
 - **`fetch/`** reaches a system and keeps the store it owns. For Confluence and Jira:
   the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
@@ -132,9 +132,9 @@ above. Plan 029 nested them so:
   folder read in place. For Confluence and Jira: the site's HTML, the catalogue, the
   layout of their files, the files they own, and the use case, `prepare.py`. The work log
   has `prepare/` alone, being read in place: org's syntax, its folder's reader, its
-  documents and their layout, the files it owns, and its step.
+  documents and their layout, the files it owns, and its use case, `prepare.py`.
 
-Each role's module in its `app/` is what the declaration names: `fetch/app/fetcher.py` a
+Each stage's module in its `app/` is what the declaration names: `fetch/app/fetcher.py` a
 `Fetcher`, `prepare/app/preparer.py` a `Preparer`. Preparing may use what fetching keeps,
 never the reverse, both may read the tables, and no source imports another: contracts J
 and I.
@@ -148,7 +148,7 @@ checks the ids, in their order, against this table:
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above, and `search` and `sources`, side by side, never use each other. It is exhaustive: a new top-level package breaks it until it is placed in the order |
-| B | Within each context, and within each role of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `stages` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
+| B | Within each context, and within each stage of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `stages` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
 | C | Pure rules, in any context (and the kernel), with the declarations and the modules beside the sources' packages, use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation, with their commands, `index` and `embed` among them, read the mirror, never a source: the index is built from the mirror alone |
@@ -156,12 +156,12 @@ checks the ids, in their order, against this table:
 | G | Declaring the command, `cli.main` and `cli.options`, with the registry and each source's declaration, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
 | H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
 | I | No source imports another, `sources.atlassian` and `sources.worklog`: a list that a test holds to the packages of the registry's declarations, so a new source's package joins it |
-| J | Within each source, from the top: its declaration, preparing, fetching, its settings: the declaration names the roles by path and imports neither, and preparing may use fetching, never the reverse. It is exhaustive: a source's package holds these alone |
+| J | Within each source, from the top: its declaration, preparing, fetching, its settings: the declaration names the fetcher and preparers by path and imports neither, and preparing may use fetching, never the reverse. It is exhaustive: a source's package holds these alone |
 | K | Only `sources.atlassian` uses lxml and Playwright, so that an extra can hold them later: every other context, the modules beside the sources' packages, `sources.worklog` and `sources.atlassian.settings`, which every command loads by its path, import neither, as `cli` loads what uses them by the declarations' paths. It names every other context, so a new one, or a new source, joins its list, as H's does |
 
 A orders the contexts, which B, applied per context, does not; C and D carry the order
 of the layers across contexts, which B cannot; I keeps the sources apart, and J the
-roles of each in their order, which A, ordering whole contexts, cannot. All but F count
+stages of each in their order, which A, ordering whole contexts, cannot. All but F count
 indirect imports too. None sees an import by name, as `main` makes of the entry and the
 run, or of the run alone: a test of `tests/test_cli.py` checks, in a fresh interpreter,
 that `--help` and a completion import none of G's packages. And a contract forbids only
@@ -230,11 +230,11 @@ would only hide. Any other value is a record.
 ## Where a new module goes
 
 1. Find the concern it serves, and so its context. A new source of documents is a new
-   package under `sources/`, with its declaration, its table and a sub-package per role it
-   has, `fetch/` and `prepare/`, each with its own layers; a line of the registry; and a
+   package under `sources/`, with its declaration, its table and a sub-package per stage it
+   takes part in, `fetch/` and `prepare/`, each with its own layers; a line of the registry; and a
    place in the lists of contracts I and K, as [add a source](../how-to/add-a-source.md)
    says.
-2. Within the context, or the role, put it in the layer of what it does: a rule without
+2. Within the context, or the stage, put it in the layer of what it does: a rule without
    effects in `domain/`, an effect in `adapters/`, a use case in `app/`.
 3. Run `uv run lint-imports`. A broken contract says which import crosses a boundary;
    move the code, or the import, rather than the boundary. A module that fits no

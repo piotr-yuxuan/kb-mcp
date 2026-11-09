@@ -141,7 +141,7 @@ naming its path, never its value.
 A source is a declaration that names its roles, a fetcher, if any, and its preparers, each
 behind one interface ([`Fetcher`](../../src/kb_mcp/sources/stages.py),
 [`Preparer`](../../src/kb_mcp/sources/stages.py)), and the server reads documents alone,
-whichever source wrote them; [sources](sources.md#three-roles-not-a-bundle) say how.
+whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say how.
 
 - **Why.** The roles vary apart: git is fetched once and prepared twice, persons are a
   join over every source's documents, which `index` makes, and tools per source would bring back the

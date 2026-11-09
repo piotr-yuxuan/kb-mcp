@@ -138,7 +138,7 @@ asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.p
 from the coverage that the raw store holds, for each target's window and why it starts
 there, here `given`; a `--since` that does not come before the windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
-exit 2, naming both options. Then each row runs in turn, each source's role within a span
+exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
 one before it failed, as it reads what is on disk. The exit status is the first outcome
 of [`RANKED`](../../src/kb_mcp/cli/domain/rows.py) that a row had:
@@ -475,7 +475,7 @@ result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/stages.py). `index`
+its counts, by its [`Result.text`](../../src/kb_mcp/sources/stages.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).

@@ -1,6 +1,6 @@
 # Bring every source up to date
 
-Four commands, each one step, which you compose: `fetch` brings each source's changes into
+Four commands, each one stage, which you compose: `fetch` brings each source's changes into
 its store, `prepare` turns what each source holds into the Markdown mirror, `index` brings
 the index of the mirror's words up to the mirror, and `embed` gives the index's pieces their
 vectors, for search by meaning. Nothing runs them for you, and no command runs another.

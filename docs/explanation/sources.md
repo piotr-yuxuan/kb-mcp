@@ -7,7 +7,7 @@ line of a registry. This page says why a source is put together as it is; [bring
 source up to date](../how-to/refresh.md) and [mirror the work log](../how-to/work-log.md)
 say how to use them, and [add a source](../how-to/add-a-source.md) how to write one.
 
-## Three roles, not a bundle
+## Three stages, not a bundle
 
 A source could be one bundle of a fetcher, a processor and tools of its own. That fits a
 system where the three come as one, such as Google Drive, Notion or SharePoint. It does
@@ -18,8 +18,8 @@ not fit:
 - **tools per source**, which would bring back the several calls and merges that one
   server in front of every source avoids.
 
-So the roles vary apart: a fetcher by system, a preparer by format, and the serving side
-by kind of question. A [`Fetcher`](../../src/kb_mcp/sources/stages.py) and a
+So the stages vary apart: a fetcher by system, a preparer by format, and the serving side
+by the question asked. A [`Fetcher`](../../src/kb_mcp/sources/stages.py) and a
 [`Preparer`](../../src/kb_mcp/sources/stages.py) are an interface each; the serving side
 reads documents alone, and imports no source ([contract
 E](code-layout.md#the-contracts)). Their seams are data, not calls: the store that a
@@ -28,16 +28,16 @@ whose items each have an id, a revision and dates, and are present or gone; and 
 with their front matter ([`FrontMatter`](../../src/kb_mcp/mirror/domain/mirror.py)).
 [The trade-offs](trade-offs.md#three-roles-not-a-bundle) give what this costs.
 
-Each source's package is nested by role: `sources/atlassian/fetch/` brings the site's
+Each source's package is nested by stage: `sources/atlassian/fetch/` brings the site's
 changes into the raw store, and `sources/atlassian/prepare/` writes Confluence's and
 Jira's files from it; the work log, read in place, has `sources/worklog/prepare/` alone.
 Each writes through the mirror's common part: the front matter, which search reads back,
 the writer of the files that changed, and pandoc. So the mirror imports no source, and no
-source another ([the code's layout](code-layout.md#the-roles-within-a-source)).
+source another ([the code's layout](code-layout.md#the-stages-within-a-source)).
 
 ## A source is a declaration
 
-A source is data that names the code of its roles
+A source is data that names the code of its stages
 ([`Source`](../../src/kb_mcp/sources/declaration.py)), and the three are declared alike:
 [`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py),
 [`JIRA`](../../src/kb_mcp/sources/atlassian/declared.py) and
@@ -52,10 +52,11 @@ A source is data that names the code of its roles
 
 `--help` builds the whole parser, as a completion does at every Tab, so a declaration
 stays light, and names the rest by module path, which the entry loads for its tables
-([`enter`](../../src/kb_mcp/cli/commands/_shared.py)) and a run for its roles
+([`enter`](../../src/kb_mcp/cli/commands/_shared.py)) and a run for its fetcher and
+preparers
 ([`loaded`](../../src/kb_mcp/cli/app/sources.py)). Within a package, the declaration sits
-above the preparers, they above the fetcher, it above the tables: both roles read the
-tables, and the declaration imports neither role ([contract
+above the preparers, they above the fetcher, it above the tables: both read the tables,
+and the declaration imports neither ([contract
 J](code-layout.md#the-contracts)). A declaration's light checks are functions that it
 holds, which `fetch` asks before anything is asked of the user: what it refuses, such as
 an API token without its email
@@ -73,18 +74,18 @@ does not apply, and what its summary says.
 - **A source keeps a store when it has a fetcher**, so no field says so.
 - **Later plans add their fields**: 032 its flag rows; 033 a description and examples.
 
-## The roles' interfaces
+## The stages' interfaces
 
-A role takes a [`SourceRun`](../../src/kb_mcp/sources/stages.py), the source that it runs for and
+A fetcher or a preparer takes a [`SourceRun`](../../src/kb_mcp/sources/stages.py), the source that it runs for and
 all that it reads, and gives a [`Result`](../../src/kb_mcp/sources/stages.py). Any object
-with a role's methods is one, and each source's is the module of its role, its functions
-the methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
-it against the runtime-checkable protocol. A role may use the interfaces, the mirror,
+with an interface's methods is one, and each source's is a module, its functions the
+methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
+it against the runtime-checkable protocol. It may use the interfaces, the mirror,
 `config`'s rules of a table ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
 [`LocalPath`](../../src/kb_mcp/config/domain/settings.py)), `observability` and the
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
-- **`preflight`** says what a role cannot go on with, read from disk before any source
+- **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk before any source
   starts, so that a run is refused before its first row, whichever source is at fault: an
   `--until` before `--since`
   ([the fetcher's](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), or a work
@@ -105,7 +106,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   reason, the work log's
   [`WorklogProblem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) what it
   held back too, so `Result` holds none.
-- **Pandoc is the preparers' own.** `SourceRun` holds no tool that a role alone needs, so each
+- **Pandoc is the preparers' own.** `SourceRun` holds no tool that one of them alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`
   once the run began fails those rows alone; the run then exits as its rows rank, 1. The
@@ -174,8 +175,8 @@ errors, raised, not exits. A name is a table, a folder of the mirror, a command 
 from plan 031 on and the front matter's `source`, so each source is configured once: two
 Confluence sites or two work logs cannot be configured, and allowing them later (named
 instances, `docs/<instance>/`) moves an existing source's files once. A run that cannot
-load a role, whatever its import raises, exits 2, naming the declaration and the path
-([`loaded`](../../src/kb_mcp/cli/app/sources.py)); a test loads every role of `SOURCES`
+load a fetcher or a preparer, whatever its import raises, exits 2, naming the declaration and the path
+([`loaded`](../../src/kb_mcp/cli/app/sources.py)); a test loads every fetcher and preparer of `SOURCES`
 ([`test_each_fetcher_that_the_registry_names_loads_as_a_fetcher`](../../tests/test_stages.py)).
 
 `--help` imports the registry and the declarations, so contract G holds them to the
@@ -331,7 +332,7 @@ package, but each is a source: a row, a report and a set of files of its own.
 ## `fetch` and `prepare` through the registry
 
 [`run_each`](../../src/kb_mcp/cli/app/sources.py) is one use case over the sources taken:
-every `preflight`, then each role, a row each. Each row runs even when an earlier one failed,
+every `preflight`, then each fetcher or preparer, a row each. Each row runs even when an earlier one failed,
 since the next reads what is on disk, Ctrl-C stops the rest, and the rows rank the exit status
 ([`RANKED`](../../src/kb_mcp/cli/domain/rows.py)). A row names its source, with its
 result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,
@@ -377,7 +378,7 @@ through the entry, with no line of `src/` naming it.
 - **Links across sources**, a later plan: a preparer over every document, listed in the
   registry apart from any source and run after the sources' own, writes links that one
   serving tool follows. Persons are `index`'s join, built already.
-- **Plans 021 and 024, re-planned on the roles**: one package for the clones, its fetcher
+- **Plans 021 and 024, re-planned on the stages**: one package for the clones, its fetcher
   reading them in place or refreshing them, its preparers code and history; whether a code
   graph is served beside this program is the re-plan's question.
 - **The identity that a document was synced as, whether a source's terms allow keeping

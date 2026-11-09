@@ -59,10 +59,10 @@ Confluence's and Jira's,
 the pieces that the index lacks, then the prune
 ([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
 use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/glossary.md#source)'s declaration
-names its table and its roles ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
+names its table, its fetcher and its preparers ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
 names given choose among those that a command can take
 ([`chosen`](../../src/kb_mcp/cli/domain/sources.py));
-[sources](sources.md#three-roles-not-a-bundle) says why a source is put together so.
+[sources](sources.md#three-stages-not-a-bundle) says why a source is put together so.
 
 - **Writes** what each stage writes, as the sections below say.
 - **One row's failure** stops no other: each role reads what is on disk, and the next

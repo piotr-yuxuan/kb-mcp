@@ -23,7 +23,7 @@ the command and those who change its code, unless it is marked for contributors.
 - [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
   name moved, its settings, data and variables, and what other programs keep of it.
 - [Bring every source up to date](how-to/refresh.md): `fetch`, `prepare`, `index` and
-  `embed`, each one step, which you compose.
+  `embed`, each one stage, which you compose.
 - [Mirror the work log](how-to/work-log.md): a folder of org files mirrored as Markdown
   beside Confluence and Jira, read in place, indexed and served to agents.
 - [Sign in with an API token kept by sops](how-to/api-token-with-sops.md): a token in
@@ -93,7 +93,7 @@ the command and those who change its code, unless it is marked for contributors.
 - [A walkthrough of the code](explanation/code-walkthrough.md), for contributors: one
   `fetch`, `prepare`, `index` and `embed` of a Confluence space, then one `search` by an
   agent, followed through the functions and classes of `src/` that take each step.
-- [Sources](explanation/sources.md): why a source is a declaration of three roles rather
+- [Sources](explanation/sources.md): why a source is a declaration of its stages rather
   than a bundle, how the registry composes the settings and commands, what every source's
   documents share, and why the work log is read in place.
 - [Credentials](explanation/credentials.md): the browser session, the API token and the
