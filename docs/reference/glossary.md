@@ -175,9 +175,7 @@ attachment alone is a download.
 
 - In the code: [`Attachment`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
   [`RawStore.put_blob`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-  [`ASSETS`](../../src/kb_mcp/mirror/adapters/markdown.py),
-  [`ASSETS`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py),
-  [`ASSETS`](../../src/kb_mcp/sources/registry.py).
+  [`ASSETS`](../../src/kb_mcp/kernel/names.py).
 - User-facing: `--max-file-mb`, `fetch.file_skipped`, `raw/blobs/`, `assets/`.
 
 ## The mirror

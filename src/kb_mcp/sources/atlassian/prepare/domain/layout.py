@@ -12,6 +12,7 @@ from html import escape
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.names import ASSETS
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.atlassian.fetch.domain.content import ConfluenceDocument, Issue
 
-ASSETS = PurePosixPath("assets")
 TREE = "_tree.md"
 EXTENSION = re.compile(r"[a-z0-9]{1,8}")
 # The name of an asset: the file's SHA-256, then its extension if it has one.
@@ -53,8 +53,8 @@ def asset_path(digest: str, filename: str) -> PurePosixPath:
     """Return where an attached file is mirrored: its digest and its name's extension."""
     extension = PurePosixPath(filename).suffix.removeprefix(".").lower()
     if EXTENSION.fullmatch(extension):
-        return ASSETS / f"{digest}.{extension}"
-    return ASSETS / digest
+        return PurePosixPath(ASSETS, f"{digest}.{extension}")
+    return PurePosixPath(ASSETS, digest)
 
 
 def document_html(

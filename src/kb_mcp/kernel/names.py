@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import re
 
+# The mirror's folder of the files that Confluence's and Jira's documents attach,
+# docs/assets/: no document is under it, and no source's folder may be it.
+ASSETS = "assets"
 # A source's name, and a type of its documents, as the front matter names them.
 SOURCE_NAME = re.compile(r"[a-z][a-z0-9]*")
 TYPE_NAME = re.compile(r"[a-z]+")

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import ASSETS
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 
 if TYPE_CHECKING:
@@ -28,7 +29,6 @@ CLOSING = "\n---\n"
 # source wrote it, but those under assets/, where an attached x.md is an asset, and
 # those with a name beginning with _ or . on their path.
 DOCUMENT_GLOBS = ("**/*.md",)
-ASSETS = "assets"
 
 
 class Dumper(yaml.SafeDumper):

@@ -13,7 +13,7 @@ import pkgutil
 import re
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import SOURCE_NAME
+from kb_mcp.kernel.names import ASSETS, SOURCE_NAME
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.worklog.declared import WORKLOG
 
@@ -24,9 +24,6 @@ if TYPE_CHECKING:
 
 # Every source, in name order.
 SOURCES = (CONFLUENCE, JIRA, WORKLOG)
-# The mirror's folder of the files that Confluence's and Jira's documents attach,
-# docs/assets/, which no source's folder may be.
-ASSETS = "assets"
 # A flag of an option: one dash and a letter, or two and a lower-case word.
 FLAG = re.compile(r"-[a-z]|--[a-z][a-z0-9_-]*")
 

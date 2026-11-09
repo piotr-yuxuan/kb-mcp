@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kb_mcp.kernel.names import ASSETS
 from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.adapters.mirror_files import regular_files
 from kb_mcp.sources.atlassian.fetch.domain.content import ConfluenceDocument
 from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
-from kb_mcp.sources.atlassian.prepare.domain.layout import ASSET_NAME, ASSETS, TREE
+from kb_mcp.sources.atlassian.prepare.domain.layout import ASSET_NAME, TREE
 
 if TYPE_CHECKING:
     from pathlib import Path, PurePosixPath
