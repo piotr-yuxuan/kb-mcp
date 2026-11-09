@@ -122,7 +122,7 @@ class WorklogPlanned(Record):
     held_back: dict[str, str]
 
     def text(self, _detail: Detail) -> str:
-        """Write the counts of documents, of those to convert, of files to remove, of HTML."""
+        """Write the counts of documents, to convert, files to remove, HTML transcripts left out."""
         return (
             f"documents: {self.documents}\n"
             f"to convert: {self.to_convert}\n"

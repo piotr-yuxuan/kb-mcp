@@ -26,7 +26,7 @@ REFUSED = {FETCH: "fetch.refused", PREPARE: "prepare.refused"}
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran | None]:
-    """Run each source taken in this stage; exit as the rows rank, 2 when refused.
+    """Run each source taken in this stage; exit as the rows' endings fold, 2 when refused.
 
     The entry refused what it could before asking. Each source taken is run with its
     table, its account's, and, in a fetch, its options' values by flag. A fetcher or a
