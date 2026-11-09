@@ -1,12 +1,13 @@
-"""The roles of a source: its fetcher, if any, and its preparers, each with one interface.
+"""A source's part in the stages: its fetcher, if any, and its preparers, one interface each.
 
 A ``Fetcher`` brings a system's changes into the store that it owns, raw first; a
 ``Preparer`` writes documents through the mirror, from that store or from a folder read
 in place. Each takes a ``SourceRun``, the source it is run for and what it reads, and gives a
 ``Result``: how it ended and its counts, which ``--format json`` writes as every result,
-and whose ``text`` writes them as its command does. A declaration names its roles by
-module path, which a run loads, never ``--help``; any object with a role's methods is
-one, and each source's is the module of its role, its functions the methods, which take
+and whose ``text`` writes them as its command does. A declaration names its fetcher and
+preparers by module path, which a run loads, never ``--help``; any object with an
+interface's methods is one, and each source's is a module, its functions the methods, which
+take
 the run by position.
 """
 
@@ -27,7 +28,7 @@ from kb_mcp.sources.declaration import Source
 if TYPE_CHECKING:
     from kb_mcp.kernel.output import Detail
 
-# How a role ended: done, failed, the sign-in no longer holding, or not run, as a
+# How a fetcher or a preparer ended: done, failed, the sign-in no longer holding, or not run, as a
 # preparer that a dry run leaves alone.
 type Outcome = Literal["done", "failed", "sign in", "not run"]
 
@@ -52,14 +53,14 @@ class SignedIn(Record):
 
 
 class SourceRun(Record):
-    """What a role runs with: its source, the settings, its tables and options, a dry run.
+    """What a fetcher or a preparer runs with: its source, the settings, tables, options, a dry run.
 
     ``source`` is the source that it is run for, its name and resource types, which a
-    role serving several sources reads; ``source_table`` is that source's ``[sources.<name>]``,
-    ``account_table`` its account's table, None for a source that signs in with none.
-    ``options`` holds its options' values by flag, None when not given, and nothing for a
-    preparer, a source's options being its fetch's; ``now`` and ``sleep`` are the clock and
-    the pause between requests.
+    fetcher or preparer serving several sources reads; ``source_table`` is that source's
+    ``[sources.<name>]``, ``account_table`` its account's table, None for a source that
+    signs in with none. ``options`` holds its options' values by flag, None when not given,
+    and nothing for a preparer, a source's options being its fetch's; ``now`` and ``sleep``
+    are the clock and the pause between requests.
     """
 
     source: Source
@@ -73,13 +74,13 @@ class SourceRun(Record):
 
 
 class Result(Record):
-    """How a role ended; each role's result adds its counts, and writes them as text."""
+    """How a fetcher or a preparer ended; each one's result adds its counts, written as text."""
 
     outcome: Outcome
 
     @abstractmethod
     def text(self, summary: Detail) -> str:
-        """Write the counts as the role's command writes them, short or detailed."""
+        """Write the counts as the stage's command writes them, short or detailed."""
 
 
 @runtime_checkable

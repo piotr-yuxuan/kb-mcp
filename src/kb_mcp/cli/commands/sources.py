@@ -1,4 +1,4 @@
-"""``fetch`` and ``prepare``: each source taken, its role in turn, a row each."""
+"""``fetch`` and ``prepare``: each source taken, its part in the stage in turn, a row each."""
 
 from __future__ import annotations
 
@@ -26,17 +26,17 @@ REFUSED = {FETCH: "fetch.refused", PREPARE: "prepare.refused"}
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran | None]:
-    """Run the role of each source taken; exit as the rows rank, 2 when refused.
+    """Run each source taken in this stage; exit as the rows rank, 2 when refused.
 
     The entry refused what it could before asking. Each source taken is run with its
-    table, its account's, and, in a fetch, its options' values by flag. A role that does
-    not load, or what a role's ``preflight`` refuses, such as an --until before --since, or
-    a work log that is not a folder, is refused here, before any row runs, an error,
-    ``fetch.refused`` or ``prepare.refused``. Each row's problems are said as it runs, by
-    place and reason, never content.
+    table, its account's, and, in a fetch, its options' values by flag. A fetcher or a
+    preparer that does not load, or what its ``preflight`` refuses, such as an --until
+    before --since, or a work log that is not a folder, is refused here, before any row
+    runs, an error, ``fetch.refused`` or ``prepare.refused``. Each row's problems are said
+    as it runs, by place and reason, never content.
     """
     settings = loaded.settings
-    step = arguments.command.name
+    stage = arguments.command.name
     taken, _ = chosen(arguments, values_of(loaded))
     runs = [
         SourceRun(
@@ -48,7 +48,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
                 if declared.account is None
                 else getattr(settings.accounts, declared.account.name)
             ),
-            options=given(arguments, declared.options) if step == FETCH else {},
+            options=given(arguments, declared.options) if stage == FETCH else {},
             now=lambda: datetime.now(UTC),
             sleep=time.sleep,
             dry_run=arguments.dry_run,
@@ -56,9 +56,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
         for declared in taken
     ]
     try:
-        ran = run_each(step, runs)
+        ran = run_each(stage, runs)
     except SourcesRefusedError as error:
-        structlog.get_logger().error(REFUSED[step], reason=str(error))
+        structlog.get_logger().error(REFUSED[stage], reason=str(error))
         return ExitStatus.REFUSED, None
     return ran.exit_status, ran
 

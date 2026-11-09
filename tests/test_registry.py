@@ -322,9 +322,9 @@ def test_a_name_that_a_model_holds_is_refused_naming_it(tmp_path: Path, name: st
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
 
 
-def test_a_source_that_names_no_role_is_refused_naming_it(tmp_path: Path) -> None:
+def test_a_source_that_names_neither_fetcher_nor_preparer_is_refused(tmp_path: Path) -> None:
     """A run of it would have no row, its absence said by nothing; a fetcher alone has a row."""
-    with pytest.raises(ValueError, match=r"^source 'worklog': names no role, neither fetcher nor"):
+    with pytest.raises(ValueError, match=r"^source 'worklog': names neither fetcher nor preparer"):
         main(
             ["check", "--config", str(tmp_path / "none.toml")],
             (CONFLUENCE, JIRA, replace(WORKLOG, preparers=())),

@@ -1,4 +1,4 @@
-"""Confluence's and Jira's fetcher: a download of one source's targets, as its role.
+"""Confluence's and Jira's fetcher: one source's targets fetched into the raw store.
 
 Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 source that a run is for from its declaration, by its kinds, and fetch that source's

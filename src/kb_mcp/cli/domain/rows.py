@@ -2,8 +2,8 @@
 
 ``fetch`` and ``prepare`` give them, and the exit status ranks how the rows ended. They
 are records, and a row's outcome is its stage's, so not in ``cli.domain.sources``, which
-``--help`` imports, nor in the use case, which loads what roles need, so that a command
-writes rows without importing what it does not run.
+``--help`` imports, nor in the use case, which loads what fetchers and preparers need, so
+that a command writes rows without importing what it does not run.
 """
 
 from __future__ import annotations

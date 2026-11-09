@@ -1,4 +1,4 @@
-"""Confluence's and Jira's preparer: the mirror of one source's kinds, as its role.
+"""Confluence's and Jira's preparer: one source's documents written into the mirror.
 
 Both declarations name this module, a ``Preparer``: ``prepare`` reads from the
 declaration of the source that a run is for the kinds that it converts, and the source

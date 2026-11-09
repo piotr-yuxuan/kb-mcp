@@ -1,4 +1,4 @@
-"""The work log's preparer: its folder, read in place, mirrored, as its role.
+"""The work log's preparer: its folder, read in place, written into the mirror.
 
 The work log's declaration names this module, a ``Preparer``: ``preflight`` refuses a
 work log that is not a folder before any source starts, and ``prepare`` finds pandoc,

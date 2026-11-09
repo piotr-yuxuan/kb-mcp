@@ -35,7 +35,7 @@ def refuse(sources: Iterable[Source]) -> None:
     ``source``, so each source is configured once: a name matches ``SOURCE_NAME``, is
     not ``assets``, and is declared once. An account's name is its table, which the
     sources naming it share: each names it alike. A source names a setting, its first
-    saying whether it is configured, and a role, a fetcher or a preparer, or a run of it
+    saying whether it is configured, and a fetcher or a preparer, or a run of it
     would have no row. An option is one flag of ``fetch``, which the sources declaring it
     share: each declares it alike, and it matches ``FLAG``, or argparse would read it as
     a positional, and no command would start.
@@ -62,7 +62,7 @@ def refuse(sources: Iterable[Source]) -> None:
             message = f"source {declared.name!r}: names no setting"
             raise ValueError(message)
         if declared.fetcher is None and not declared.preparers:
-            message = f"source {declared.name!r}: names no role, neither fetcher nor preparer"
+            message = f"source {declared.name!r}: names neither fetcher nor preparer"
             raise ValueError(message)
         for option in (
             option for resource_type in declared.resource_types for option in resource_type.options

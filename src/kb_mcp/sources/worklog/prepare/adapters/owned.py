@@ -1,4 +1,4 @@
-"""The files of the mirror that the work log's step owns, and so may remove."""
+"""The files of the mirror that the work log's preparer owns, and so may remove."""
 
 from __future__ import annotations
 
@@ -13,5 +13,5 @@ if TYPE_CHECKING:
 
 
 def worklog_owned(docs: Path) -> set[PurePosixPath]:
-    """Return the files under ``docs`` that the work log's step owns: its documents."""
+    """Return the files under ``docs`` that the work log's preparer owns: its documents."""
     return regular_files(docs, documents(docs, WORKLOG_OWNED))

@@ -1,11 +1,11 @@
-"""What a source declares: its name, what it reads, its settings' table, account and roles.
+"""What a source declares: its name, what it reads, its settings' table, account, stages.
 
 Standard library alone, since ``--help`` imports every declaration (contract G), so its
 classes are dataclasses, as ``Command`` is. A declaration names its table, and its
 account's, by module path, ``module:name``, which the entry loads once the arguments are
-parsed; and its roles, each a module that the run using it loads, a ``Fetcher`` or a
-``Preparer`` of ``sources.roles``. Its light checks, which ``fetch`` asks before anything
-is asked of the user, are functions that it holds.
+parsed; and its fetcher and preparers, each a module that the run using it loads, a
+``Fetcher`` or a ``Preparer`` of ``sources.stages``. Its light checks, which ``fetch`` asks
+before anything is asked of the user, are functions that it holds.
 """
 
 from __future__ import annotations
@@ -46,10 +46,11 @@ class Option:
 class ResourceType:
     """A kind of thing that a source reads: its name, what it is, how it is read, its options.
 
-    A source's types are read whole: no role reads some of them until a plan chooses among
-    them, and a role whose removals cover them all may refuse some, as Atlassian's preparer
-    does. The name, the options and ``read`` are read so far, the last in the help of
-    ``fetch`` and ``prepare``, each source's group, where ``help`` is not read yet.
+    A source's types are read whole: no fetcher or preparer reads some of them until a plan
+    chooses among them, and one whose removals cover them all may refuse some, as
+    Atlassian's preparer does. The name, the options and ``read`` are read so far, the last
+    in the help of ``fetch`` and ``prepare``, each source's group, where ``help`` is not
+    read yet.
     """
 
     name: str
@@ -66,7 +67,7 @@ class Account:
     ``table_path`` names the model by module path; ``settings`` are its settings, by name, in
     their order, the first where it signs in. ``login`` names by module path, as ``table_path``
     does, the run of ``kb-mcp login <name>``: a function of the settings, the browser's
-    path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.roles``, or
+    path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.stages``, or
     None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
     it: a function of the settings, which gives a ``Verdict`` each. ``refused`` and
     ``unapplied``, if any, are its light checks, which ``doctor`` asks with no options:
@@ -90,7 +91,7 @@ class Account:
 
 @dataclass(frozen=True)
 class Source:
-    """A source: its name, what it is, the types it reads, its settings, table and roles.
+    """A source: its name, what it is, the types it reads, its settings, table and stages.
 
     ``name`` is its table, ``[sources.<name>]``, its folder of the mirror and the front
     matter's ``source``. ``help`` opens its group in the help of ``fetch`` and

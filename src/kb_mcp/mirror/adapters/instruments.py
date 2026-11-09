@@ -1,4 +1,4 @@
-"""The instruments of the documents that a run builds, which every source's step records.
+"""The instruments of the documents that a run builds, which every source's preparer records.
 
 ``prepare`` records them for each source's documents, the work log's by kind, as
 ``docs/reference/telemetry/prepare.md`` lists them.

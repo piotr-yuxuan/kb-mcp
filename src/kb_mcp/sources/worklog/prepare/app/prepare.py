@@ -1,4 +1,4 @@
-"""The work log's step: its org files, read in place, as Markdown files of the mirror.
+"""The work log's prepare: its org files, read in place, as Markdown files of the mirror.
 
 It reads the work log's folder, converts each document whose revision is not the one its
 file holds, and hands every file to ``mirror_files``, which writes those that changed and
@@ -217,7 +217,7 @@ def existing(
 
     Then where they are, from ``docs``, by id: every file of one id, though only the last
     read of two is returned first, as a run under a problem may leave two. A damaged one
-    is left out: it is the step's own, written again or removed.
+    is left out: it is the prepare's own, written again or removed.
     """
     kept: dict[str, tuple[FrontMatter, str]] = {}
     placed: dict[str, set[PurePosixPath]] = {}
