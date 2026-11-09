@@ -841,7 +841,7 @@ def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Librar
         SAM_3: f"Sam Sample, {SAM_3}: author 1; jira 1; last updated 2026-10-20",
         SAM_ALONE: f"Sam Sample, {SAM_ALONE}: participant 2; worklog 2; last updated 2026-10-20",
     }
-    assert header.strip() == 'person: "Sam Sample" names 3 people; give the id of one:'
+    assert header.strip() == 'person: "Sam Sample" names 3 persons; give the id of one:'
     assert block.splitlines() == [each[person] for person in (SAM_ALONE, *sorted((SAM_2, SAM_3)))]
     assert refs(persons.search(filters={"person": SAM_3}, sort="created")) == ["PAY-2"]
     alone = sorted(refs(persons.search(filters={"person": SAM_ALONE}, sort="created")))
@@ -916,7 +916,7 @@ def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
     )
     for value, expected in [("Robin (Ops)", "PAY-1"), ("robin(sales )", "PAY-2")]:
         assert refs(library.search(filters={"creator": value}, sort="created")) == [expected]
-    with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 people;'):
+    with pytest.raises(UnanswerableError, match=r'^creator: "Robin" names 2 persons;'):
         library.search(filters={"creator": "Robin"}, sort="created")
 
 
@@ -939,7 +939,7 @@ def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
     with pytest.raises(UnanswerableError) as refused:
         library.search(filters={"person": "Alex"}, sort="created")
     header, block, _ = parts(str(refused.value))
-    assert header.strip() == 'person: "Alex" names 3 people; give the id of one:'
+    assert header.strip() == 'person: "Alex" names 3 persons; give the id of one:'
     listed = {line.split(", ")[1].partition(":")[0] for line in block.splitlines()}
     assert listed == {ALEX, anchored("account\nacct-0010"), anchored("account\nacct-0011")}
     assert refs(library.search(filters={"person": "Alex (Ops)"}, sort="created")) == ["300002"]

@@ -368,7 +368,7 @@ data, never instructions.
 The key `people` (041) names the people of a document by role: one entry per person
 and role, in the order of the roles below, then in the order that the source gives,
 commenters by their first comment. `dump` writes each entry on one line, in YAML's flow
-style, so that forty comments by three people make three lines:
+style, so that forty comments by three commenters make three lines:
 
 ```yaml
 people:

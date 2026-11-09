@@ -274,7 +274,7 @@ def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> 
         library.search(filters={"author": "Former user"}, sort="created")
     answer = str(refused.value)
     header, block, footer = parts(answer)
-    assert header.strip() == f'author: "Former user" names {accounts} people; give the id of one:'
+    assert header.strip() == f'author: "Former user" names {accounts} persons; give the id of one:'
     listed = block.splitlines()
     assert len(listed) == NAMES
     assert listed[0].startswith(f"Former user, {first}: author 2; jira 2;")

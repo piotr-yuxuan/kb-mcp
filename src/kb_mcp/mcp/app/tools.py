@@ -420,7 +420,7 @@ def who(reader: SearchReader, name: str, value: str | None) -> str | None:
         return (exact or found)[0].person.id
     quoted = json.dumps(value, ensure_ascii=False)
     if found:
-        message = f"{name}: {quoted} names {len(found)} people; give the id of one:"
+        message = f"{name}: {quoted} names {len(found)} persons; give the id of one:"
         found.sort(key=lambda each: (-sum(each.sources.values()), each.person.id))
         listed = "\n".join(responses.activity(each) for each in found[: responses.NAMES])
         rest = len(found) - responses.NAMES
