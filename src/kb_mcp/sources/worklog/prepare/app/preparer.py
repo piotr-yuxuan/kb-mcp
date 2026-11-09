@@ -22,7 +22,7 @@ from kb_mcp.sources.worklog.prepare.app.prepare import (
 )
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.stages import SourceRun
 
 
@@ -31,7 +31,7 @@ class WorklogPrepared(Result):
 
     mirrored: WorklogPrepareOutcome | WorklogDryRun | None
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the work log's counts; nothing when it could not run."""
         return "" if self.mirrored is None else self.mirrored.text(summary)
 

@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.app.sources import SourcesRefusedError, run_each
+from kb_mcp.cli.domain.preview import values_of
 from kb_mcp.cli.domain.sources import FETCH, PREPARE, chosen, given
-from kb_mcp.cli.domain.summary import values_of
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.stages import SourceRun
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.cli.domain.rows import Ran
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 # What each command's refusal is called, written out as every event's name is.
 REFUSED = {FETCH: "fetch.refused", PREPARE: "prepare.refused"}
@@ -63,7 +63,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     return ran.exit_status, ran
 
 
-def text(ran: Ran, summary: Summary) -> str:
+def text(ran: Ran, summary: Detail) -> str:
     """Write a row per source, how it ended, then its result's own text, indented."""
     written: list[str] = []
     for row in ran.sources:

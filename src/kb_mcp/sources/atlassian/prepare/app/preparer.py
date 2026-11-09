@@ -27,7 +27,7 @@ from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
     from kb_mcp.sources.stages import SourceRun
 
@@ -40,7 +40,7 @@ class AtlassianPrepared(Result):
 
     mirrored: AtlassianPrepareOutcome | None
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the mirror's counts; nothing when it did not run."""
         return "" if self.mirrored is None else self.mirrored.text(summary)
 
@@ -51,7 +51,7 @@ class NotCounted(AtlassianPrepared):
     outcome: stages.Outcome = "not run"
     mirrored: None = None
 
-    def text(self, _summary: Summary) -> str:
+    def text(self, _summary: Detail) -> str:
         """Say that a count needs what a dry run does not do."""
         return f"{NOT_COUNTED}\n"
 

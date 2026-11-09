@@ -15,7 +15,7 @@ import truststore
 from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.observability.adapters.http import Recorded
+from kb_mcp.observability.adapters.http import ObservedTransport
 from kb_mcp.sources.atlassian.fetch.domain.content import SITE_PATH
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ def client(
     """Return an httpx client for the site, carrying cookies, verifying TLS with the OS.
 
     Each of ``hooks`` sees every request before it is sent, once plain HTTP is refused.
-    Each request sent is observed, as ``Recorded`` has it, with its query on the site's
+    Each request sent is observed, as ``ObservedTransport`` has it, with its query on the site's
     host alone. ``transport`` replaces the network, for tests.
     """
     cookie_jar = httpx.Cookies()
@@ -135,7 +135,7 @@ def client(
         follow_redirects=False,
         timeout=TIMEOUT_S,
         event_hooks={"request": [refuse_plain_http, *hooks]},
-        transport=Recorded(network, httpx.URL(site).host),
+        transport=ObservedTransport(network, httpx.URL(site).host),
     )
 
 
@@ -271,7 +271,7 @@ def verified_by_public_cas(url: str) -> bool | None:
     already allows for.
     """
     context = ssl.create_default_context(cafile=certifi.where())
-    transport = Recorded(httpx.Client(verify=context), httpx.URL(url).host)
+    transport = ObservedTransport(httpx.Client(verify=context), httpx.URL(url).host)
     with httpx.Client(timeout=TIMEOUT_S, transport=transport) as client:
         try:
             client.get(url)

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 
 class IndexesEvaluated(Record):
@@ -90,7 +90,7 @@ def run(
     return ExitStatus.OK, IndexesEvaluated(runs=runs, choices=choices, results=results)
 
 
-def text(evaluated: IndexesEvaluated, summary: Summary) -> str:
+def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
     """Write each run's measures, each model's choice of chunking, then the results file.
 
     Short gives each run's row of all the questions, mode by mode, for search and for

@@ -9,7 +9,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 if TYPE_CHECKING:
     from typing import TextIO
 
-    from kb_mcp.cli.domain.summary import Then
+    from kb_mcp.cli.domain.preview import Then
 
 QUESTION = "Proceed? [y/N] "
 # The answers that let a run go on, in any case.

@@ -17,7 +17,7 @@ from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
-from tests.endpoint import connector
+from tests.endpoint import connect_scripted
 from tests.mirrors import MOMENT, issue, page, worklog_document
 from tests.test_people import anchored
 
@@ -83,7 +83,7 @@ def with_vectors(tmp_path_factory: TempPathFactory) -> Path:
 def by_meaning(with_vectors: Path, request: pytest.FixtureRequest) -> tuple[Library, str]:
     """Serve the large mirror, searched by meaning or by both."""
     root = with_vectors
-    meaning = Meaning(connector())
+    meaning = Meaning(connect_scripted())
     return Library(
         SqliteIndex(root / "index.sqlite"), root / "docs", meaning, request.param
     ), request.param

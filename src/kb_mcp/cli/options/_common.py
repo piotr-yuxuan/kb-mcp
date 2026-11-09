@@ -11,7 +11,7 @@ from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
-from kb_mcp.kernel.output import FORMATS, LEVELS, SUMMARIES
+from kb_mcp.kernel.output import DETAILS, FORMATS, LEVELS
 from kb_mcp.sources.atlassian.declared import SITE
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
     output is its own, such as a protocol, --format and --summary are not offered, and
     take their defaults.
     """
-    parser.set_defaults(level=VERBOSITY[0], quiet=False, format=FORMATS[0], summary=SUMMARIES[0])
+    parser.set_defaults(level=VERBOSITY[0], quiet=False, format=FORMATS[0], summary=DETAILS[0])
     levels = parser.add_mutually_exclusive_group()
     levels.add_argument(
         "-q",
@@ -87,7 +87,7 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
             "--format", choices=FORMATS, help="write the result as text, or as one JSON document"
         )
         parser.add_argument(
-            "--summary", choices=SUMMARIES, help="write what matters of the result, or all of it"
+            "--summary", choices=DETAILS, help="write what matters of the result, or all of it"
         )
 
 

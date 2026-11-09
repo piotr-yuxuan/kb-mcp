@@ -1,6 +1,6 @@
 """Requests to other programs, observed by OpenTelemetry's semantic conventions.
 
-``Recorded`` is the transport of the clients that reach the site and the embeddings
+``ObservedTransport`` is the transport of the clients that reach the site and the embeddings
 endpoint: each request that it sends is a span, a duration and an event, by the HTTP
 conventions. ``client_span`` traces and measures any operation of a client, such as an
 embedding, made of such requests. Both use the OpenTelemetry API alone, which does
@@ -93,7 +93,7 @@ def client_span(
             duration.record(time.perf_counter() - began, measured)
 
 
-class Recorded(httpx.BaseTransport):
+class ObservedTransport(httpx.BaseTransport):
     """A transport that observes each request it sends, a redirect's included.
 
     Each is a span named after its method, by the HTTP conventions, until its answer's

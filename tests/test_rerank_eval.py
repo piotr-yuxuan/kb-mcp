@@ -24,7 +24,7 @@ from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Reranks, Scripted, connector, serving
+from tests.endpoint import Reranks, Scripted, connect_scripted, serving
 from tests.reference import Emitted, undocumented
 from tests.test_evaluate import GOLDEN, data
 
@@ -284,7 +284,7 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
         GOLDEN, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve
     )
     index = data / "eval" / "indexes" / "windows" / "tiny.sqlite"
-    plain = Library(SqliteIndex(index), data / "docs", Meaning(connector()), "hybrid")
+    plain = Library(SqliteIndex(index), data / "docs", Meaning(connect_scripted()), "hybrid")
     found = {
         size: [
             {shown.path for shown in plain.ranked(question.text, "hybrid", size)[0]}

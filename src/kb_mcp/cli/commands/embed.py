@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned
 
@@ -43,7 +43,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Fill
     return ExitStatus.OK if filled and filled.whole else ExitStatus.FAILED, filled
 
 
-def prune_text(pruned: Pruned | None, summary: Summary) -> str:
+def prune_text(pruned: Pruned | None, summary: Detail) -> str:
     """Say what the prune that followed the build did.
 
     Short gives the vectors deleted and the vector store's size. Detailed gives the
@@ -74,7 +74,7 @@ def prune_text(pruned: Pruned | None, summary: Summary) -> str:
     return f"{written}\n"
 
 
-def text(filled: Filled, summary: Summary) -> str:
+def text(filled: Filled, summary: Detail) -> str:
     """Write the pieces that the index holds and what changed of them, then the prune.
 
     Short gives the pieces, those added and removed, or that nothing was written, and

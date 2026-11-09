@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.evaluation.domain.grading import AgentAnswer
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 # The command line that reaches this program, from the agents and for the server.
 MODULE_COMMAND = (sys.executable, "-m", "kb_mcp")
@@ -193,7 +193,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, obje
     return STEPS[arguments.step](arguments, loaded)
 
 
-def text(result: object, summary: Summary) -> str:
+def text(result: object, summary: Detail) -> str:
     """Write a step's result: the runs prepared, a tool's answer alone, an answer kept, a grading.
 
     A grading gives the runs counted, B against A on each measure, the verdict on ask,

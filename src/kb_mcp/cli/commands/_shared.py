@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 import structlog
 from pydantic_core import to_json, to_jsonable_python
 
-from kb_mcp.cli.adapters.question import ask
-from kb_mcp.cli.domain.summary import before, ignored_lines, values_of
+from kb_mcp.cli.adapters.confirmation import ask
+from kb_mcp.cli.domain.preview import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus

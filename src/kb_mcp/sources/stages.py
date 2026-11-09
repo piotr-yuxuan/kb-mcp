@@ -25,7 +25,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.sources.declaration import Source
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 # How a role ended: done, failed, the sign-in no longer holding, or not run, as a
 # preparer that a dry run leaves alone.
@@ -78,7 +78,7 @@ class Result(Record):
     outcome: Outcome
 
     @abstractmethod
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the counts as the role's command writes them, short or detailed."""
 
 

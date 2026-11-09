@@ -74,7 +74,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, FetchedDocument, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
@@ -791,7 +791,7 @@ class FetchOutcome(Record):
     windows: tuple[TargetFetchWindow, ...] = ()
     dry_run: bool = False
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the documents fetched by kind and the files, or a dry run's; then failures.
 
         Detailed, and a dry run, begin with each target's window, why it starts there, and

@@ -43,7 +43,7 @@ from tests.answers import parts
 from tests.endpoint import (
     DIMENSIONS,
     Scripted,
-    connector,
+    connect_scripted,
     nothing_listening,
     scripted,
     serving,
@@ -312,7 +312,7 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
         out, err = capsys.readouterr()
         assert "then: documents added or changed have no vectors until kb-mcp embed" in err
         assert "nothing written\nskipped: 0\nawaiting vectors: 0\n" in out
-        library = Library(SqliteIndex(index), data / "docs", Meaning(connector()), "hybrid")
+        library = Library(SqliteIndex(index), data / "docs", Meaning(connect_scripted()), "hybrid")
         assert "search by meaning: tiny, " in parts(library.status())[1]
         write(data / "docs", page("196845", "Rollback"), BODY + "\nEdited.\n")
         assert main(["index", *options]) == 0

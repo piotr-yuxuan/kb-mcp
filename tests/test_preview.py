@@ -22,7 +22,7 @@ import pytest
 from kb_mcp.cli.commands import model as model_command
 from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.cli.domain.summary import values_of
+from kb_mcp.cli.domain.preview import values_of
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early

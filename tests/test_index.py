@@ -57,6 +57,7 @@ from tests.mirrors import (
     write,
 )
 from tests.test_cli import logged_as
+from tests.test_confirmation import read_until
 from tests.test_observed import CONTROL, said
 from tests.test_people import (
     ALEX,
@@ -69,7 +70,6 @@ from tests.test_people import (
     SAM_ALONE,
     anchored,
 )
-from tests.test_question import read_until
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable

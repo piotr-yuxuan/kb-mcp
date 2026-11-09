@@ -24,7 +24,7 @@ from kb_mcp.sources.stages import Result
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.stages import SourceRun
 
 # The source's name, which is its folder of the mirror too, as the registry's rule has it.
@@ -37,7 +37,7 @@ class MemoPrepared(Result):
     changes: Changes | None
 
     @override
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the files that it changed, whichever the summary; nothing in a dry run."""
         done = self.changes
         return (

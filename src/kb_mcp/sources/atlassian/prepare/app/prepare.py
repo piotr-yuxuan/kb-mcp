@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.mirror.adapters.conversions import Conversions
     from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
@@ -116,7 +116,7 @@ class AtlassianPrepareOutcome(Record):
     problems: tuple[Problem, ...]
     elsewhere: dict[str, tuple[Problem, ...]] = Field(default_factory=dict)
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the counts of documents, of conversions run and reused, of files, of problems.
 
         In detail, what the mirror does not show, by name, comes before the problems;

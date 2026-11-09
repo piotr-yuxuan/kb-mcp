@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.search.app.indexing import Indexed
 
 # Why an update kept nothing of the index in place, as the detailed summary says it.
@@ -37,7 +37,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Inde
     return ExitStatus.OK if indexed and indexed.report.whole else ExitStatus.FAILED, indexed
 
 
-def text(indexed: Indexed, summary: Summary) -> str:
+def text(indexed: Indexed, summary: Detail) -> str:
     """Write the documents and sections held, then what changed, or that nothing did.
 
     Short gives each count, the documents awaiting vectors when the index names a model,

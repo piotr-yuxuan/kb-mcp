@@ -254,7 +254,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, dict[str, int]]:
@@ -264,7 +264,7 @@ def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, dic
     return ExitStatus.OK, per_source(found, (declared.name for declared in SOURCES))
 
 
-def text(counts: dict[str, int], _summary: Summary) -> str:
+def text(counts: dict[str, int], _summary: Detail) -> str:
     """Write a line per source: its name, then how many documents it has."""
     return "".join(f"{source}: {count}\n" for source, count in counts.items())
 ```

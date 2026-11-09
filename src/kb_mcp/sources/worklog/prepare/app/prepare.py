@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.mirror.adapters.pandoc import Pandoc
     from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.sources.worklog.prepare.domain.worklog import OrgText
@@ -104,7 +104,7 @@ class WorklogPrepareOutcome(Record):
     problems: tuple[WorklogProblem, ...]
     warnings: tuple[str, ...]
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the counts of documents, of files, of HTML transcripts left out, of problems.
 
         In detail, each warning comes before the problems.
@@ -131,7 +131,7 @@ class WorklogDryRun(Record):
     problems: tuple[WorklogProblem, ...]
     warnings: tuple[str, ...]
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the counts of documents, of those to convert, of files to remove, of problems.
 
         HTML transcripts left out come before the problems, and in detail each warning.

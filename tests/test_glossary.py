@@ -39,9 +39,6 @@ DOCS_ALONE = "A word of the docs alone"
 # An item of a "Retires:" line: a name in code or a phrase in quotes, then the files that
 # keep it, if any.
 ITEM = re.compile(r'(?:`(?P<name>[^`]+)`|"(?P<phrase>[^"]+)")(?: \(kept in (?P<kept>[^)]+)\))?')
-# The names that classes or type aliases of two modules or more share, as plan 052 found
-# them: each of its steps takes some out, and the last deletes this.
-SHARED: frozenset[str] = frozenset()
 
 
 class Retired(NamedTuple):
@@ -128,10 +125,7 @@ def test_each_term_says_where_it_lives_or_what_a_user_meets_of_it_once(
 
 
 def test_no_two_classes_or_type_aliases_of_the_package_share_a_name() -> None:
-    """At the top of the package's modules, each class and ``type`` alias has its own name.
-
-    But the names that ``SHARED`` lists, each of which two modules or more still share.
-    """
+    """At the top of the package's modules, each class and ``type`` alias has its own name."""
     defined: Counter[str] = Counter()
     for path in PACKAGE.rglob("*.py"):
         for node in ast.parse(path.read_bytes(), path).body:
@@ -139,8 +133,7 @@ def test_no_two_classes_or_type_aliases_of_the_package_share_a_name() -> None:
                 case ast.ClassDef(name=name) | ast.TypeAlias(name=ast.Name(id=name)):
                     defined[name] += 1
     shared = {name for name, count in defined.items() if count > 1}
-    assert [f"{name}: shared, and not in SHARED" for name in sorted(shared - SHARED)] == []
-    assert [f"{name}: in SHARED, and no longer shared" for name in sorted(SHARED - shared)] == []
+    assert [f"{name}: shared by two modules or more" for name in sorted(shared)] == []
 
 
 def test_each_retired_name_is_gone_from_the_code_and_the_pages_but_where_kept(

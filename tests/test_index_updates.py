@@ -28,7 +28,7 @@ from kb_mcp.search.app.indexing import (
     update_index,
 )
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Scripted, connector, scripted, tiny
+from tests.endpoint import Scripted, connect_scripted, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, location, page, worklog_document, write
 from tests.test_evaluate import GOLDEN
 from tests.test_people import SAM_2
@@ -190,7 +190,7 @@ QUERIES = ("vacation lunch", "revert release", "PROJ-7 upgrade", "lorem ipsum", 
 
 def rankings(index: Path, docs: Path) -> dict[tuple[str, SearchMode], list[tuple[str, int, str]]]:
     """Rank each query in each mode, the reranker off, as an evaluation does."""
-    library = Library(SqliteIndex(index), docs, Meaning(connector()))
+    library = Library(SqliteIndex(index), docs, Meaning(connect_scripted()))
     return {
         (query, mode): [
             (shown.path, shown.section, shown.text) for shown in library.ranked(query, mode)[0]

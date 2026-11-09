@@ -68,7 +68,7 @@ layers, each stronger than the last: the file
 the environment
 ([`environment_entries`](../../src/kb_mcp/config/domain/settings.py)) and
 the flags. [`settings_of`](../../src/kb_mcp/config/domain/settings.py)
-merges their [`Entry`](../../src/kb_mcp/config/domain/settings.py) rows,
+merges their [`LayerValue`](../../src/kb_mcp/config/domain/settings.py) rows,
 weakest first, into one [`Settings`](../../src/kb_mcp/config/domain/settings.py),
 which Pydantic validates, and keeps each value's layer in a
 [`Loaded`](../../src/kb_mcp/config/domain/settings.py). A value refused is
@@ -102,13 +102,13 @@ off this machine without `--allow-remote-embeddings`, or over plain http even wi
 is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
-Then [`before`](../../src/kb_mcp/cli/domain/summary.py) writes the summary
+Then [`before`](../../src/kb_mcp/cli/domain/preview.py) writes the summary
 on stderr: each setting that the command reads, with its value, a secret only as set or not
-([`setting_line`](../../src/kb_mcp/cli/domain/summary.py)); the sources
+([`setting_line`](../../src/kb_mcp/cli/domain/preview.py)); the sources
 taken and left out ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py));
 each value ignored, and why; and the command to copy
 ([`command_line`](../../src/kb_mcp/cli/domain/command_line.py)).
-[`ask`](../../src/kb_mcp/cli/adapters/question.py) asks `Proceed? [y/N]`;
+[`ask`](../../src/kb_mcp/cli/adapters/confirmation.py) asks `Proceed? [y/N]`;
 `--yes` skips the question, and with no terminal to answer it, the run is refused.
 
 Only now does the run begin.
@@ -165,7 +165,7 @@ that `login` saved. Either gives an httpx client built by
 by the system's certificates, plain http refused
 ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 no redirect followed by httpx itself, and each request observed by
-[`Recorded`](../../src/kb_mcp/observability/adapters/http.py). A token's
+[`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py). A token's
 header goes to the site's host alone
 ([`ApiToken.authorise`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
 [credentials](credentials.md#on-the-wire) say why.
@@ -603,7 +603,7 @@ from each document fetched, and a call of a tool is one trace:
 | `fetch.source`, `prepare.source`, one a row | [`run_each`](../../src/kb_mcp/cli/app/sources.py) |
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
-| `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
+| `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
 | `prepare.read`, `prepare.build`, `prepare.write` | [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
 | `index.join` | [`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py) |
@@ -623,8 +623,8 @@ document fetched is a trace of its own.
 
 Each step has its tests, which say what the code must do in the requirement's words:
 [`test_settings.py`](../../tests/test_settings.py),
-[`test_summary.py`](../../tests/test_summary.py) and
-[`test_question.py`](../../tests/test_question.py) for step 2;
+[`test_preview.py`](../../tests/test_preview.py) and
+[`test_confirmation.py`](../../tests/test_confirmation.py) for step 2;
 [`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
 [`test_download.py`](../../tests/test_fetching.py),
 [`test_http.py`](../../tests/test_http.py) and

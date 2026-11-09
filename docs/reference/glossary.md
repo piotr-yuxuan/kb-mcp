@@ -418,15 +418,17 @@ code is named so.
 What a command writes on stderr before it acts or asks. Not "summary", which `--summary`
 and the relation keep.
 
-- In the code: [summary.py](../../src/kb_mcp/cli/domain/summary.py).
+- In the code: [preview.py](../../src/kb_mcp/cli/domain/preview.py).
+- Retires: `summary.py`.
 
 ### detail
 
 How much of a result a command writes: `short` or `detailed`.
 
-- In the code: [`Summary`](../../src/kb_mcp/kernel/output.py),
-  [`SUMMARIES`](../../src/kb_mcp/kernel/output.py).
+- In the code: [`Detail`](../../src/kb_mcp/kernel/output.py),
+  [`DETAILS`](../../src/kb_mcp/kernel/output.py).
 - User-facing: `--summary`.
+- Retires: `SUMMARIES`.
 
 ### exit status
 
@@ -445,8 +447,8 @@ a bare "table" or "layer".
 
 - In the code: [`Settings`](../../src/kb_mcp/config/domain/settings.py),
   [`Loaded`](../../src/kb_mcp/config/domain/settings.py),
-  [`Entry`](../../src/kb_mcp/config/domain/settings.py),
-  [`Kind`](../../src/kb_mcp/config/domain/settings.py),
+  [`LayerValue`](../../src/kb_mcp/config/domain/settings.py),
+  [`SettingKind`](../../src/kb_mcp/config/domain/settings.py),
   [`ConfluenceTable`](../../src/kb_mcp/sources/atlassian/settings.py),
   [`JiraTable`](../../src/kb_mcp/sources/atlassian/settings.py),
   [`WorklogTable`](../../src/kb_mcp/sources/worklog/settings.py).

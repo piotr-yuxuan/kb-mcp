@@ -214,10 +214,10 @@ What a run logs is for you, on this machine, and may hold titles and queries
   The rule reads keys, not values, so the code never logs a header, and shows a URL's
   query on the site's host alone, as a media redirect carries a signed token in its
   query
-  ([`Recorded`](../../src/kb_mcp/observability/adapters/http.py)).
+  ([`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py)).
 - A secret setting is never shown: the summary before a run and `check` say whether it
   is set
-  ([`setting_line`](../../src/kb_mcp/cli/domain/summary.py),
+  ([`setting_line`](../../src/kb_mcp/cli/domain/preview.py),
   [`test_check_shows_no_secret_in_any_format_or_summary`](../../tests/test_api_token.py)),
   and `run.start` masks it.
 - A refused setting is named with the layer that gave it, never with its value, since

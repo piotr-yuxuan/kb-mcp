@@ -26,8 +26,8 @@ from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
 from kb_mcp.kernel.output import Output
 from tests.composed import MODEL
 from tests.endpoint import nothing_listening
+from tests.test_confirmation import read_until
 from tests.test_observed import said as said_on
-from tests.test_question import read_until
 from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:

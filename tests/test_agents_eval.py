@@ -30,7 +30,7 @@ from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import estimate, parts
-from tests.endpoint import Scripted, connector, serving, tiny
+from tests.endpoint import Scripted, connect_scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.reference import Emitted, undocumented
 from tests.test_observed import said as said_on
@@ -242,7 +242,7 @@ def test_a_call_prints_serve_s_answer_alone_and_logs_five_fields(
     library = Library(
         SqliteIndex(world.data / "index.sqlite"),
         world.data / "docs",
-        Meaning(connector()),
+        Meaning(connect_scripted()),
         "hybrid",
     )
     answer = library.ask(QUESTIONS["q1"])

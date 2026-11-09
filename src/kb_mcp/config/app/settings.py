@@ -17,7 +17,7 @@ from kb_mcp.config.domain.former_name import (
 )
 from kb_mcp.config.domain.settings import (
     DEFAULT_DATA_DIR,
-    Entry,
+    LayerValue,
     Loaded,
     Settings,
     SettingsError,
@@ -103,7 +103,7 @@ def load_settings(
             ),
             *environment,
             *(
-                Entry(path=tuple(setting.split(".")), value=value, layer=flag)
+                LayerValue(path=tuple(setting.split(".")), value=value, layer=flag)
                 for flag, (setting, value) in flags.items()
                 if value is not None
             ),

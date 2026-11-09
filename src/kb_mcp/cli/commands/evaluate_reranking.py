@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
 
 HEADER = (
     "| Depth | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Found@ask"
@@ -128,7 +128,7 @@ def arm_row(arm: Arm, group: str) -> str:
     )
 
 
-def text(evaluated: DepthsEvaluated, summary: Summary) -> str:
+def text(evaluated: DepthsEvaluated, summary: Detail) -> str:
     """Write each arm's row, every group's in detail; the first stage's recall; the bar.
 
     The bar's verdicts come depth by depth, each clause said with the groups' losses,

@@ -53,10 +53,10 @@ from kb_mcp.sources.stages import SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.reference import Emitted
+from tests.test_confirmation import QUESTION, Terminal
 from tests.test_fetching import PAGES, SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
-from tests.test_question import QUESTION, Terminal
 
 if TYPE_CHECKING:
     import argparse

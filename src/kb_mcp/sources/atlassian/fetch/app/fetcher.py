@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Summary
+    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources import stages
     from kb_mcp.sources.atlassian.fetch.app.fetching import Targets
     from kb_mcp.sources.stages import SourceRun
@@ -52,7 +52,7 @@ class Fetched(Result):
 
     downloaded: FetchOutcome | None
 
-    def text(self, summary: Summary) -> str:
+    def text(self, summary: Detail) -> str:
         """Write the download's counts; nothing when it could not start."""
         return "" if self.downloaded is None else self.downloaded.text(summary)
 
