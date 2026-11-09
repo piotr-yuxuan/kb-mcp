@@ -233,7 +233,7 @@ def reciprocal(ranks):  # MRR@10 of one question: 1 over its best rank, else 0
     return 1 / min(found) if found else 0.0
 
 
-run = json.load(open(sys.argv[1]))["runs"][0]
+run = json.load(open(sys.argv[1]))["indexes"][0]
 ids = sorted(run["ranks"]["lexical"])
 before = [reciprocal(run["ranks"]["lexical"][each]) for each in ids]
 after = [reciprocal(run["ranks"]["hybrid"][each]) for each in ids]

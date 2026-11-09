@@ -187,7 +187,7 @@ options:
   --chunking {sections,windows,section-paths,small-to-big}
                         a chunking to evaluate; by default, every one
 
-With --format json: runs, each model's and chunking's measures of search and ask by
+With --format json: indexes, each model's and chunking's measures of search and ask by
 mode and group, with its ranks, times, costs and tests; choices, each model's default
 chunking by the rule; results, the file that keeps them.
 ```

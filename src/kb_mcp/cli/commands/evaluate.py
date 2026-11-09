@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 class IndexesEvaluated(Record):
     """What each evaluated index measured, each model's chunking, and the results file."""
 
-    runs: list[IndexMeasures]
+    indexes: list[IndexMeasures]
     choices: dict[str, Choice]
     results: Path
 
@@ -78,16 +78,16 @@ def run(
                 for name in arguments.model or [settings.model]
                 for chunking in arguments.chunking or CHUNKINGS
             ]
-            runs = evaluate(settings, questions, indexes, time.perf_counter, built_at)
+            measured = evaluate(settings, questions, indexes, time.perf_counter, built_at)
     except (ModelError, EvaluationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    choices = compared(runs, questions)
-    kept = record(runs, golden, built_at, choices)
+    choices = compared(measured, questions)
+    kept = record(measured, golden, built_at, choices)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, IndexesEvaluated(runs=runs, choices=choices, results=results)
+    return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)
 
 
 def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
@@ -113,10 +113,10 @@ def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
     ]
     closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
     if summary == "detailed":
-        return f"{table(evaluated.runs)}\n{closing}"
+        return f"{table(evaluated.indexes)}\n{closing}"
     lines = []
-    for run in evaluated.runs:
-        modes = [mode for mode in run.groups if mode != "lexical" or run is evaluated.runs[0]]
+    for run in evaluated.indexes:
+        modes = [mode for mode in run.groups if mode != "lexical" or run is evaluated.indexes[0]]
         lines += [heading(run), "", built(run), "", HEADER, DIVIDER]
         lines += [row(mode, "all", run.groups[mode]["all"], run.times[mode]) for mode in modes]
         lines += ["", ASK_HEADER, ASK_DIVIDER]

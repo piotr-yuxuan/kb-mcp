@@ -368,7 +368,7 @@ def record(
         "golden_sha256": hashlib.sha256(golden.encode()).hexdigest(),
         "built_at": built_at.isoformat(),
         "test": {"kind": "paired randomisation, two-sided", "samples": SAMPLES, "seed": SEED},
-        "runs": [
+        "indexes": [
             {
                 "model": run.model,
                 "chunking": run.chunking,
