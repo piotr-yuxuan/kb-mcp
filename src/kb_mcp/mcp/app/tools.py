@@ -213,13 +213,9 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     # A document that words do not find is ranked by meaning alone: shown by meaning.
     places = {path: at for at, path in enumerate(words)}
     higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
-    counted = "found by words or meaning"
+    placed, counted = {path: chunks[path] for path in higher}, "found by words or meaning"
     return Ranking(
-        paths=[*first, *fused],
-        whole=whole,
-        chunks={path: chunks[path] for path in higher if path in chunks},
-        counted=counted,
-        pinned=len(first),
+        paths=[*first, *fused], whole=whole, chunks=placed, counted=counted, pinned=len(first)
     )
 
 
