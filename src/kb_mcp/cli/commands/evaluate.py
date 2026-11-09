@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 
 class IndexesEvaluated(Record):
-    """How each target served the golden questions, each model's chunking, the results file."""
+    """What each evaluated index measured, each model's chunking, and the results file."""
 
     runs: list[IndexMeasures]
     choices: dict[str, Choice]
@@ -60,7 +60,7 @@ def run(
 ) -> tuple[ExitStatus, IndexesEvaluated | None]:
     """Evaluate each model and chunking; exit 1 on a failure, 2 for a refused golden file.
 
-    Each target connects anew, so that the tokens reported are its own. The results,
+    Each evaluated index connects anew, so that the tokens reported are its own. The results,
     ids and numbers only, go to ``<data>/eval/results/<UTC time>.json``.
     """
     settings = loaded.settings
@@ -73,12 +73,12 @@ def run(
     built_at = datetime.now(UTC)
     try:
         with open_endpoint(arguments, settings) as opened:
-            targets = [
+            indexes = [
                 EvaluatedIndex(connect(opened, name), chunking)
                 for name in arguments.model or [settings.model]
                 for chunking in arguments.chunking or CHUNKINGS
             ]
-            runs = evaluate(settings, questions, targets, time.perf_counter, built_at)
+            runs = evaluate(settings, questions, indexes, time.perf_counter, built_at)
     except (ModelError, EvaluationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None

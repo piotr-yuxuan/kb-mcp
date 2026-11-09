@@ -1,12 +1,12 @@
 """Evaluating the search strategies on golden questions, for each model and chunking.
 
-Each target, a model connected and a chunking, gets its own index, built from the
+Each evaluated index, a model connected and a chunking, gets its own file, built from the
 mirror like any other with the vector store, so a second evaluation embeds nothing new.
 Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answered by
 ``Library.quoted``, as ``ask`` answers, in each mode; the measures and the paired tests
 of ``evaluation.domain.evaluation`` say how the modes compare, and its rule which
-chunking each model's index should be cut by. Each target is a span; each question is
-timed and logged, and each mode's scores measured, as
+chunking each model's index should be cut by. Each evaluated index is a span; each
+question is timed and logged, and each mode's scores measured, as
 ``docs/reference/telemetry/eval.md`` lists it.
 """
 
@@ -158,7 +158,7 @@ class EvaluatedIndex:
 
 
 class Costs(Record):
-    """What a target's index holds and cost, whatever the vector store held before."""
+    """What an evaluated index holds and cost, whatever the vector store held before."""
 
     pieces: int
     characters: int  # of the texts that the pieces embed
@@ -172,7 +172,7 @@ class Costs(Record):
 
 
 class IndexMeasures(Record):
-    """How one target's search ranked the golden questions, and ask answered, mode by mode."""
+    """How one evaluated index ranked the golden questions, and ask answered, mode by mode."""
 
     model_config = ConfigDict(frozen=False)
 
@@ -196,30 +196,30 @@ class IndexMeasures(Record):
 def evaluate(
     settings: Settings,
     questions: Sequence[Question],
-    targets: Sequence[EvaluatedIndex],
+    indexes: Sequence[EvaluatedIndex],
     clock: Callable[[], float],
     built_at: datetime,
 ) -> list[IndexMeasures]:
-    """Rank and answer every question in every mode with each target, and compare the modes.
+    """Rank and answer every question in every mode on each evaluated index; compare the modes.
 
-    Each target's index is ``prepared``. Raises EvaluationError when a mode by meaning
+    Each evaluated index is ``prepared``. Raises EvaluationError when a mode by meaning
     falls back to words, which would measure words twice, and ModelError for a model
-    that fails. For each target, its index's build reports its own tasks, then the task
+    that fails. For each, its index's build reports its own tasks, then the task
     ``questions`` every question in every mode, each by its id.
 
-    Each target is the span ``eval.model``; each question, timed in
+    Each is the span ``eval.model``; each question, timed in
     ``kb_mcp.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
     measures on all the questions, ask's among them, are set in ``kb_mcp.eval.score``, but
     Section@10, and Evidence@ask when no question has evidence; ``eval.evaluated`` says
-    at INFO each target evaluated. Each names the target's chunking.
+    at INFO each index evaluated. Each names its chunking.
     """
     log = structlog.get_logger()
     runs: list[IndexMeasures] = []
-    for target in targets:
-        name = target.embedder.name
-        named = {"gen_ai.request.model": name, "kb_mcp.chunking": target.chunking}
+    for evaluated in indexes:
+        name = evaluated.embedder.name
+        named = {"gen_ai.request.model": name, "kb_mcp.chunking": evaluated.chunking}
         with TRACER.start_as_current_span("eval.model", attributes=named):
-            run, library = prepared(target, settings, questions, clock, built_at)
+            run, library = prepared(evaluated, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
                     run.per[mode], run.ranks[mode], run.asked[mode] = {}, {}, {}
@@ -229,7 +229,7 @@ def evaluate(
                         shown, note = library.ranked(question.text, mode, limit=CUTOFF)
                         spent.append(clock() - started)
                         QUESTION_DURATION.record(
-                            spent[-1], {"kb_mcp.chunking": target.chunking, "kb_mcp.mode": mode}
+                            spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
                         )
                         if note:
                             message = f"{name}, {mode}:{note}"
@@ -249,7 +249,7 @@ def evaluate(
                         log.debug(
                             "eval.question",
                             id=question.id,
-                            chunking=target.chunking,
+                            chunking=evaluated.chunking,
                             mode=mode,
                             seconds=round(spent[-1], 3),
                             reciprocal_rank=run.per[mode][question.id].reciprocal_rank,
@@ -276,7 +276,7 @@ def evaluate(
             log.info(
                 "eval.evaluated",
                 model=name,
-                chunking=target.chunking,
+                chunking=evaluated.chunking,
                 questions=len(questions),
                 embedded=run.embedded,
                 index_seconds=round(run.seconds, 3),
@@ -290,25 +290,25 @@ def evaluate(
 
 
 def prepared(
-    target: EvaluatedIndex,
+    evaluated: EvaluatedIndex,
     settings: Settings,
     questions: Sequence[Question],
     clock: Callable[[], float],
     built_at: datetime,
 ) -> tuple[IndexMeasures, Library]:
-    """Build a target's index, and give its run, costs counted, and a library over it.
+    """Build an evaluated index, and give its run, costs counted, and a library over it.
 
     The index is ``<evaluation_indexes>/<chunking>/<model>.sqlite``, its model's ``/``
     and ``:`` written ``_``. Raises EvaluationError when a document that a question names
     is not in it, and ModelError for a model that fails. The library has read the
     index's vectors already, so that no question's time holds the reading.
     """
-    embedder, name = target.embedder, target.embedder.name
+    embedder, name = evaluated.embedder, evaluated.embedder.name
     safe = name.replace("/", "_").replace(":", "_")
-    index = settings.evaluation_indexes / target.chunking / f"{safe}.sqlite"
+    index = settings.evaluation_indexes / evaluated.chunking / f"{safe}.sqlite"
     index.parent.mkdir(parents=True, exist_ok=True)
     started = clock()
-    embedding = Embedding(embedder, settings.vectors, chunking=target.chunking)
+    embedding = Embedding(embedder, settings.vectors, chunking=evaluated.chunking)
     report = build_index(settings.docs, index, built_at, embedding)
     seconds = clock() - started
     costs = Costs(
@@ -322,7 +322,7 @@ def prepared(
         fingerprint=embedder.fingerprint,
         embedded=report.embedded,
         seconds=seconds,
-        chunking=target.chunking,
+        chunking=evaluated.chunking,
         costs=costs,
     )
     # The model that the index names is this embedder's.

@@ -534,7 +534,7 @@ class Writer:
         ``persons`` and ``person_names`` hold each person and each of its spellings, with
         how it joined. A transcript's meetings are the meetings that its ``summary`` links
         name: no other document, so that each is joined before the transcript.
-        ``aliases`` gives each alias's name and target, as the alias file's reader checks
+        ``aliases`` gives each alias's name and value, as the alias file's reader checks
         them, and the build records their digest. Documents go to the join by the order
         of their paths, so that its ties go as in a whole build, whichever file was edited
         last. Give back how many persons there are, and what the join left apart: the

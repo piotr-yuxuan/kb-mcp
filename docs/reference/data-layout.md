@@ -828,7 +828,7 @@ person stays. A second note on a name, which parts its annotated spellings, anch
 each of them anew: the bare name keeps the id, and an alias to it, or an id that an
 agent kept, names fewer documents, as the build warns of that name. A person is served
 by a name: an account's, the name on its most recently updated document; a person by
-name alone's, the target of the first alias that made it, when that is a name, else
+name alone's, the value of the first alias that made it, when that is a name, else
 its most frequent spelling; ties go to the first row in the join's order, by document,
 in the order of their paths' text whichever file was written last, then role, name and
 account, the rows of transcripts that link meetings last, so that their
@@ -869,17 +869,17 @@ TOML strings:
   site's. It means its name anywhere but in a transcript whose meetings give the
   speaker one other person: the participants that the user wrote for a meeting tell
   more. Its name compares by its key, without annotation, so that `"Alex"` moves
-  `Alex (Ops)` and `Alex (Sales)` alike. A target that is a name means the one account
+  `Alex (Ops)` and `Alex (Sales)` alike. A value that is a name means the one account
   with a name of its key, else the person by name alone of its key; one that is a
   person's id, that person. Either must be a person that an account or a name makes,
-  not aliases or meetings alone: aliases are not chained, and an alias whose target's
+  not aliases or meetings alone: aliases are not chained, and an alias whose value's
   every name another alias or a meeting joins elsewhere names nobody.
-- A file that is not UTF-8 TOML; a target that is a table or not a string; a name or
-  a target of an empty key, such as white space or accents alone, holding a line break
+- A file that is not UTF-8 TOML; a value that is a table or not a string; a name or
+  a value of an empty key, such as white space or accents alone, holding a line break
   or longer than 200 characters; or two names of one key: the build stops before it
   reads the mirror, `index.not_built` naming the file and, but for a file that is not
   TOML, the alias; the index in place stays, and the run exits 1.
-- An alias whose key no name without an account holds, or whose target names nobody
+- An alias whose key no name without an account holds, or whose value names nobody
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
 - A change takes effect at the next `index`, which writes a new build for it alone,

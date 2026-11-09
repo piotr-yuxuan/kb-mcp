@@ -321,12 +321,12 @@ kb-mcp index
   participants give someone else: to change that, change the meeting's
   `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
   `Alex (Sales)` alike, and `"Kim" = "Kim"` joins two notes of Kim to Kim.
-- Its target is a name or a person's id, never another alias: a name that another
+- Its value is a name or a person's id, never another alias: a name that another
   alias, or the meeting of each transcript, joins to someone else names nobody.
 - A file that breaks a rule stops the build, naming the file and the alias, and the
   index in place stays: a file that is not UTF-8 TOML, a value that is not a string in
   quotes, an empty name, a name or value of several lines or longer than 200
   characters, or two names that differ by case, accents or spaces alone.
-- An alias whose name no document writes without an account, or whose target names
+- An alias whose name no document writes without an account, or whose value names
   nobody or several people, changes nothing, and the build warns of it.
 - To undo an alias, delete its line and run `index`. The program never writes the file.

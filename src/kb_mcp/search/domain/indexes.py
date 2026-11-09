@@ -114,7 +114,7 @@ class Change(Record):
     removed: frozenset[str]  # the paths of documents to remove
     put: tuple[Put, ...]
     skipped: tuple[Skipped, ...]
-    aliases: dict[str, str]  # each alias's name and target, in the file's order
+    aliases: dict[str, str]  # each alias's name and value, in the file's order
     built_at: datetime
     whole: bool = False
 

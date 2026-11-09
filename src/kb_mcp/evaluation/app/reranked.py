@@ -88,20 +88,20 @@ class Arm(Record):
 
 
 def measured(
-    target: EvaluatedIndex,
+    evaluated: EvaluatedIndex,
     settings: Settings,
     questions: Sequence[Question],
     arms: Arms,
     clock: Callable[[], float],
 ) -> list[Arm]:
-    """Build the target's index as ``eval`` does; measure the arm not reranked, then each depth.
+    """Build the evaluated index as ``eval`` does; measure the arm not reranked, then each depth.
 
     Every arm ranks as deep as the deepest, to give Recall@N, and measures its first ten.
     Raises EvaluationError when a search falls back, by words or not reranked, which
     would measure another arm, and ModelError for a model that fails. Each question in
     each arm is the progress task ``questions``.
     """
-    _, plain = prepared(target, settings, questions, clock, arms.built_at)
+    _, plain = prepared(evaluated, settings, questions, clock, arms.built_at)
     deepest = max(arms.depths)
     found: list[Arm] = []
     with task("questions", (1 + len(arms.depths)) * len(questions)) as asking:

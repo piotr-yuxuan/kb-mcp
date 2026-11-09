@@ -1091,7 +1091,7 @@ def test_a_build_with_no_file_skipped_records_none(data: Path) -> None:
 def test_a_build_records_its_words_and_what_the_alias_file_means(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The names and targets, in their order: no other change of the file moves the row."""
+    """The names and values, in their order: no other change of the file moves the row."""
     write(data / "docs", page("196845", "Kafka"))
 
     def recorded(text: str | None) -> tuple[object, ...]:

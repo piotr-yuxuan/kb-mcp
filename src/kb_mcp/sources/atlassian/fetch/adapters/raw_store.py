@@ -252,24 +252,24 @@ class RawStore:
             message = "not plain JSON file names of responses"
             raise ValueError(message)
         self._check_blobs(blobs)
-        target = (
+        folder = (
             self.root / document_class.source / document_class.resource_type / identifier / revision
         )
-        if not target.is_dir():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            hidden = Path(tempfile.mkdtemp(prefix=f".{revision}.", dir=target.parent))
+        if not folder.is_dir():
+            folder.parent.mkdir(parents=True, exist_ok=True)
+            hidden = Path(tempfile.mkdtemp(prefix=f".{revision}.", dir=folder.parent))
             try:
                 for name, response in responses.items():
                     _write_synced(hidden / name, _encode(response))
                 _write_synced(hidden / RECORD, self._record(fetched_at, {}))
-                hidden.rename(target)
+                hidden.rename(folder)
             except OSError:
-                if not target.is_dir():  # not another writer's snapshot, landed first
+                if not folder.is_dir():  # not another writer's snapshot, landed first
                     raise
             finally:
                 shutil.rmtree(hidden, ignore_errors=True)
-        self._merge_blobs(target, blobs)
-        return target
+        self._merge_blobs(folder, blobs)
+        return folder
 
     def add_blobs(self, document: FetchedDocument | Listed, blobs: Mapping[str, str]) -> None:
         """Record files downloaded after their snapshot was stored, such as on a retry."""
@@ -366,16 +366,16 @@ class RawStore:
         of two listings that name one document, as after a move.
         """
         self._check_writing()
-        target = self._space(Fields(space, "space").text("id"))
+        space_folder = self._space(Fields(space, "space").text("id"))
         for name, value in ((PAGES, pages), (BLOGPOSTS, blog_posts), ("folders", folders)):
             if type(value) is not list:
                 message = f"{name}: expected a list"
                 raise ValueError(message)
-            _replace_synced(target / f"{name}.json", _encode(value))
-        _replace_synced(target / "space.json", _encode(space))
+            _replace_synced(space_folder / f"{name}.json", _encode(value))
+        _replace_synced(space_folder / "space.json", _encode(space))
         if listed_at is not None:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
-            _replace_synced(target / LISTED_AT, _encode(moment))
+            _replace_synced(space_folder / LISTED_AT, _encode(moment))
 
     def listed_at(self, space_id: str) -> datetime | None:
         """Say when a space was last listed, or None when no run said so."""

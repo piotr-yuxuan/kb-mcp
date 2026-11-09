@@ -206,7 +206,7 @@ def test_a_key_keeps_what_makes_another_name(one: str, other: str) -> None:
 
 
 def test_by_alias_gives_a_name_the_person_its_alias_means() -> None:
-    """Rule 2 alone: by the name's key; a target that names nobody or several gives none."""
+    """Rule 2 alone: by the name's key; a value that names nobody or several gives none."""
     rows = (*ACCOUNTS, named(UNLINKED, "Robin"), named(UNLINKED, "Alex"), named(UNLINKED, "Kim"))
     aliases = {"Robin": "Robin Example", "Alex": "Nobody", "Kim": "Sam Sample"}
     joining = Joining(rows, {}, aliases)
@@ -353,7 +353,7 @@ def test_names_that_two_annotations_tell_apart_stay_apart() -> None:
     """The offsite lists Alex (Ops) and Alex (Sales): two persons, as the user wrote them.
 
     Its transcript's Alex could be either: it is reported, once with the two, under the
-    first of them, and goes with the other Alexes by name alone. An alias's target names
+    first of them, and goes with the other Alexes by name alone. An alias's value names
     one of them by its annotation. One annotation of a key still joins its name: the
     stand-up's Alex Example (not in the header).
     """
@@ -574,7 +574,7 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
 def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_accounts_share_the_key() -> None:
     """The stand-up's Sam Sample, of two accounts' name, is a person by name alone.
 
-    Its id, which a refusal of Sam Sample lists, is a target as any person's: a meeting's
+    Its id, which a refusal of Sam Sample lists, is a value as any person's: a meeting's
     S. Sample and an unlinked transcript's Sam join it, and no alias is unused.
     """
     rows = (*ROWS, named(REVIEW, "S. Sample"), named(UNLINKED, "Sam"))
@@ -617,7 +617,7 @@ def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
 
 
 def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
-    """A target of nobody, by name or id, or of several; a key held by no name alone.
+    """A value of nobody, by name or id, or of several; a key held by no name alone.
 
     An account's name is the site's: an alias of it alone joins nothing.
     """
@@ -648,7 +648,7 @@ def test_an_alias_moves_the_names_without_an_account_alone() -> None:
 
 
 def test_a_person_by_name_alone_that_an_alias_made_is_named_as_its_target_is_written() -> None:
-    """The target as written names the person, not its most frequent spelling.
+    """The value as written names the person, not its most frequent spelling.
 
     By the person's id, the most frequent spelling names it still: Alex, of three rows.
     """
@@ -662,7 +662,7 @@ def test_a_person_by_name_alone_that_an_alias_made_is_named_as_its_target_is_wri
 
 
 def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
-    """Two targets written apart, of one key: the first alias in the file's order wins."""
+    """Two values written apart, of one key: the first alias in the file's order wins."""
     aliases = {"Alex": "alex EXAMPLE", "Kim": "Alex Example"}
     result = joined((*ROWS, named(UNLINKED, "Kim")), LINKS, aliases)
     assert next(person for person in result.persons if person.id == ALEX_EXAMPLE).name == (
@@ -671,7 +671,7 @@ def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
 
 
 def test_aliases_are_not_chained() -> None:
-    """An alias's target must be a person that names make, as without the aliases.
+    """An alias's value must be a person that names make, as without the aliases.
 
     Robin Other's own alias, written first, takes every Robin Other to Robin's account:
     the name makes no person, so Alex's alias to it names nobody, and changes nothing.
@@ -697,11 +697,11 @@ def test_an_alias_to_a_name_that_its_meeting_joins_elsewhere_names_nobody() -> N
     assert replace(result, unused=()) == joined(rows, LINKS, {})
 
 
-@pytest.mark.parametrize("target", ["Kim", anchored("name\nkim")])
-def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(target: str) -> None:
+@pytest.mark.parametrize("value", ["Kim", anchored("name\nkim")])
+def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(value: str) -> None:
     """Kim and two notes of Kim, which the two annotations part; "Kim" = "Kim" joins them.
 
-    Its target is the person of Kim alone, which Kim makes though the alias takes it, as
+    Its value is the person of Kim alone, which Kim makes though the alias takes it, as
     does that person's id; then no name is several persons.
     """
     rows = (
@@ -709,7 +709,7 @@ def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(target: str)
         named(REVIEW, "Kim (not in the header)"),
         named(PLANNING, "Kim (late)"),
     )
-    result = joined(rows, {}, {"Kim": target})
+    result = joined(rows, {}, {"Kim": value})
     assert set(result.of.values()) == {anchored("name\nkim")}
     assert (result.ambiguous, result.unused) == ((), ())
 
@@ -818,7 +818,7 @@ def test_the_result_is_the_same_for_the_rows_in_any_order(rows: tuple[PersonRow,
 
 
 def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path) -> None:
-    """Names and targets as written, in the file's order; 200 characters are not too many."""
+    """Names and values as written, in the file's order; 200 characters are not too many."""
     path = tmp_path / "aliases.toml"
     long = "R" * 200
     path.write_text(
@@ -848,14 +848,14 @@ def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
         ('"" = "Sam Sample"\n', [""], "the name is empty"),
         ('" " = "Sam Sample"\n', [" "], "the name is empty"),
         ('"\\u0301" = "Robin"\n', ["\u0301"], "the name is empty"),
-        ('"Robin" = "\\u0301\\u0300"\n', ["Robin"], "its target is empty"),
-        ('"Sam" = ""\n', ["Sam"], "its target is empty"),
+        ('"Robin" = "\\u0301\\u0300"\n', ["Robin"], "its value is empty"),
+        ('"Sam" = ""\n', ["Sam"], "its value is empty"),
         ('"Sam\\nSample" = "Sam Sample"\n', ["Sam\nSample"], "the name holds a line break"),
         ('"Sam\\u2028" = "Sam Sample"\n', ["Sam\u2028"], "the name holds a line break"),
-        ('"Sam" = """Sam\nSample"""\n', ["Sam"], "its target holds a line break"),
-        ('"Sam" = "Sam Sample\\r"\n', ["Sam"], "its target holds a line break"),
+        ('"Sam" = """Sam\nSample"""\n', ["Sam"], "its value holds a line break"),
+        ('"Sam" = "Sam Sample\\r"\n', ["Sam"], "its value holds a line break"),
         (f'"{"R" * 201}" = "Robin"\n', ["R" * 201], "the name is longer than 200"),
-        (f'"Robin" = "{"R" * 201}"\n', ["Robin"], "its target is longer than 200"),
+        (f'"Robin" = "{"R" * 201}"\n', ["Robin"], "its value is longer than 200"),
         ('[Sam]\nname = "Sam Sample"\n', ["Sam"], "a table"),
         ('"Sam" = { name = "Sam Sample" }\n', ["Sam"], "a table"),
         ('"Sam" = 1\n', ["Sam"], "not text"),
@@ -871,14 +871,14 @@ def test_no_alias_file_gives_no_alias(tmp_path: Path) -> None:
         "empty name",
         "blank name",
         "name of an accent alone",
-        "target of accents alone",
-        "empty target",
+        "value of accents alone",
+        "empty value",
         "line feed in a name",
         "line separator in a name",
-        "line feed in a target",
-        "carriage return in a target",
+        "line feed in a value",
+        "carriage return in a value",
         "name of 201 characters",
-        "target of 201 characters",
+        "value of 201 characters",
         "table",
         "inline table",
         "number",
@@ -991,7 +991,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
             lambda path: path.write_text('"Sam" = "Sam Sample"\n"sam" = "Sam Other"\n', "utf-8"),
             "'Sam' and 'sam' are one name",
         ),
-        (lambda path: path.write_text('"Sam" = 1\n', "utf-8"), "'Sam': its target is not text"),
+        (lambda path: path.write_text('"Sam" = 1\n', "utf-8"), "'Sam': its value is not text"),
         (lambda path: path.write_bytes(b"Sam = \n"), "not UTF-8 TOML"),
         (lambda path: path.mkdir(), "Is a directory"),
     ],
@@ -1028,6 +1028,6 @@ def test_a_refused_alias_file_stops_a_build_before_the_endpoint_is_asked(
     assert status == 1
     (failed,) = logged_as(data.parent / "home", "index.not_built")
     assert str(failed["reason"]).endswith(
-        "'Sam': its target is not text; write a name or an id in quotes"
+        "'Sam': its value is not text; write a name or an id in quotes"
     )
     assert "hint" not in failed

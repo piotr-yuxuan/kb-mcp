@@ -5,8 +5,8 @@ people, the meetings that each transcript links to and the user's aliases, and g
 each row a person, by the first of these rules that answers:
 
 1. an account is a person, under each of its names: two accounts are never one;
-2. a name without an account whose key an alias holds goes to the alias's target, but
-   for a transcript's speaker whom rule 4 gives one other person;
+2. a name without an account whose key an alias holds goes to the person that the alias
+   means, but for a transcript's speaker whom rule 4 gives one other person;
 3. a name of the key of exactly one account's name joins that account's person;
 4. a transcript's speaker of one word joins the one person among its meetings'
    participants whose key's first word, whole, is that word;
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 # work log's, such as "Kim (not in the header)", and what it says. It needs a name
 # before it.
 ANNOTATION = re.compile(r"(?<=\S) ?\(([^()]*)\)\Z")
-# A person's id, as an alias's target may give it.
+# A person's id, as an alias's value may give it.
 PERSON_ID = re.compile(r"p-[0-9a-f]{16}")
 # How a name joined its person. BY_ACCOUNT and BY_NAME also say what a person's id hashes.
 BY_ACCOUNT = "account"
@@ -51,8 +51,8 @@ BY_MEETING = "meeting"
 BY_NAME = "name"
 # Why an alias changes nothing.
 UNHELD = "no name without an account has its key"
-NOBODY = "its target names nobody"
-SEVERAL = "its target names several people"
+NOBODY = "its value names nobody"
+SEVERAL = "its value names several people"
 
 
 def written_key(name: str) -> str:
@@ -105,7 +105,7 @@ def person_id(anchor: str, value: str) -> str:
 
 
 def aliases_digest(aliases: Mapping[str, str]) -> str:
-    """Give the digest of what an alias file means: its names and targets, in their order.
+    """Give the digest of what an alias file means: its names and values, in their order.
 
     All that ``joined`` reads of it, so a comment or a blank line leaves it as it was.
     """
@@ -146,8 +146,8 @@ class Alias(Record):
 
     name: str  # as the file writes it
     name_key: str  # the name's key
-    target: str  # a name, or a person's id, as the file writes it
-    means: Meant  # the person its target names, several, or nobody
+    value: str  # a name, or a person's id, as the file writes it
+    means: Meant  # the person its value names, several, or nobody
     held: bool  # whether a name without an account has its key
 
     @property
@@ -210,7 +210,7 @@ class Joining:
     ) -> None:
         """Read the rows, the meetings of each transcript, by number, and the aliases.
 
-        An alias's target is a person's id; or a name, which means the one account of
+        An alias's value is a person's id; or a name, which means the one account of
         its key, as rule 3 finds it, else the person by name alone of a key that a name
         without an account holds. ``joined`` keeps either when an account or a name
         makes that person: aliases are not chained. Raise ValueError, naming them, for
@@ -250,19 +250,17 @@ class Joining:
                     for each in {key, compared}:
                         self.accounts.setdefault(each, set()).add(account)
         self.aliases: dict[str, Alias] = {}
-        for name, target in aliases.items():
-            if PERSON_ID.fullmatch(target):
-                means: Meant = target
+        for name, value in aliases.items():
+            if PERSON_ID.fullmatch(value):
+                means: Meant = value
             else:
-                key = self.compared_key(target)
-                means = self.account(target) or (
+                key = self.compared_key(value)
+                means = self.account(value) or (
                     person_id(BY_NAME, key) if key in self.held else None
                 )
             key = name_key(name)
             held = any(account is None for _, account in spelt.get(key, ()))
-            self.aliases[key] = Alias(
-                name=name, name_key=key, target=target, means=means, held=held
-            )
+            self.aliases[key] = Alias(name=name, name_key=key, value=value, means=means, held=held)
 
     def compared_key(self, name: str) -> str:
         """Give the key by which the join compares a name, and a name alone's id hashes.
@@ -289,7 +287,7 @@ class Joining:
 def by_alias(row: PersonRow, joining: Joining) -> Meant:
     """Give a name without an account to the person its alias means (rule 2).
 
-    An alias whose target names nobody, or several, changes nothing; nor does it take a
+    An alias whose value names nobody, or several, changes nothing; nor does it take a
     transcript's speaker whom its meetings give one other person, by rule 4: the user
     wrote those participants for that meeting, and the alias for the name anywhere.
     """
@@ -357,13 +355,13 @@ def joined(
 
     ``meetings`` gives each transcript's meetings, by number, as its ``summary`` links
     name them, none of them a transcript (``Joining`` refuses one that links to
-    meetings); ``aliases`` each alias's name and target, of distinct keys, as the alias
+    meetings); ``aliases`` each alias's name and value, of distinct keys, as the alias
     file's reader checks. Rows go in order of document, role, name and account, linked
     transcripts' last, so that their meetings' persons are known; the same rows in any
     order give the same result. A person is served by the name on its account's most
-    recently updated document; else by the target of the alias that made it, when that
+    recently updated document; else by the value of the alias that made it, when that
     is a name; else by its most frequent spelling: ties go to the first row in order.
-    An alias whose target, a person's id or a name, means a person that no account or
+    An alias whose value, a person's id or a name, means a person that no account or
     name makes, but aliases or meetings alone, names nobody: the join is made again
     without it, each pass with fewer aliases.
     """
@@ -417,15 +415,15 @@ def joined(
         if alias.reason is None and alias.means not in made
     }
     if nobody:
-        kept = {name: target for name, target in aliases.items() if name_key(name) not in nobody}
+        kept = {name: value for name, value in aliases.items() if name_key(name) not in nobody}
         again = joined(ordered, meetings, kept)
         unused = {alias.name_key: alias for alias in again.unused} | nobody
         return replace(again, unused=tuple(unused[key] for key in joining.aliases if key in unused))
-    # Each name alone's target as an alias writes it, the first alias's in their order.
+    # Each name alone's value as an alias writes it, the first alias's in their order.
     written = {
-        alias.means: alias.target
+        alias.means: alias.value
         for alias in reversed(joining.aliases.values())
-        if alias.reason is None and not PERSON_ID.fullmatch(alias.target)
+        if alias.reason is None and not PERSON_ID.fullmatch(alias.value)
     }
     persons = []
     for person, joins in sorted(members.items()):

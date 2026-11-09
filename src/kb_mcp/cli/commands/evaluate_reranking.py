@@ -87,9 +87,9 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
         ):
             listed = served(server)
             score = Counted(functools.partial(rerank, server, reranker.model, bounds=EVALUATION))
-            target = EvaluatedIndex(connect(opened, settings.model), settings.chunking)
+            evaluated = EvaluatedIndex(connect(opened, settings.model), settings.chunking)
             arms = Arms(settings.search_mode, depths, score, built_at)
-            found = measured(target, settings, questions, arms, time.perf_counter)
+            found = measured(evaluated, settings, questions, arms, time.perf_counter)
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None

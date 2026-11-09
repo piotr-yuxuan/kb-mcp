@@ -283,8 +283,8 @@ in the names that telemetry and `status` keep.
 
 ### alias
 
-A line of `aliases.toml` that says which person a name means. Not "target" for the
-person meant.
+A line of `aliases.toml` that says which person a name means, by its value: a name or a
+person's id. Not "target" for the value or the person meant.
 
 - In the code: [`Alias`](../../src/kb_mcp/search/domain/people.py).
 - User-facing: `aliases.toml`.
