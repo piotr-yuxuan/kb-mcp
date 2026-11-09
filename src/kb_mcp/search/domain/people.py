@@ -13,11 +13,11 @@ each row a person, by the first of these rules that answers:
 5. any other name is a person by name alone, shared by every name of its key.
 
 A name that could be several persons, by rule 3 or 4, or a speaker whom they give
-different persons, is ambiguous: it is reported, never given to one of them, and goes
-by rule 5. Every rule compares names by their key, which keeps an annotation that
-tells two names apart; a key whose annotated names go by rule 5 to several persons is
-reported too, as the annotations may be notes rather than names. Nothing here reads
-the index or the alias file.
+different persons, is ambiguous: it is reported with every person that it could be, and
+goes by rule 5, whose person by name may be one of them. Every rule compares names by
+their key, which keeps an annotation that tells two names apart; a key whose annotated
+names go by rule 5 to several persons is reported too, as the annotations may be notes
+rather than names. Nothing here reads the index or the alias file.
 """
 
 from __future__ import annotations

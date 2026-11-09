@@ -2,7 +2,7 @@
 
 How the program turns its sources into answers for agents: Confluence and Jira, on the
 site, and the user's work log, a folder of org files on this machine
-([sources](sources.md) says why these three are put together as they are). Five [stages](../reference/glossary.md#stage),
+([sources](sources.md) says why these three are put together as they are). Five stages,
 each a command that the user composes, each reading what an earlier one wrote. Of the
 stages, only `fetch` reads the site; every later one can be run again offline, from what
 is on the disk. This page follows the data through them, then follows one change, from a
@@ -58,7 +58,7 @@ Confluence's and Jira's,
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); and `embed`, the vectors of
 the pieces that the index lacks, then the prune
 ([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
-use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/glossary.md#source)'s declaration
+use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/concepts.md#connector)'s declaration
 names its table, its fetcher and its preparers ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
 names given choose among those that a command can take
 ([`chosen`](../../src/kb_mcp/cli/domain/sources.py));

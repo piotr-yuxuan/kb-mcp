@@ -1,7 +1,7 @@
 # The MCP surface
 
 What the server says to agents, and why: its tools, their descriptions, its
-instructions and its prompts. Plan 019 added `ask` and the prompts, after the maintainer found
+instructions and its prompts. Plan 019 added `ask` and the prompts, after the user found
 the surface thin: a question cost a `search` and a `read` per document, and agents not
 "equally equipped" stopped after the first call. [The reference](../reference/mcp-tools.md)
 lists every tool and prompt; this page says which practice each choice follows, where

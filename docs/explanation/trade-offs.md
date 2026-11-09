@@ -57,7 +57,7 @@ server never fetches from the site.
   lasting hole. A window from the last fetch for a space, which would miss what moved in
   and save no request. A refresh started from an MCP tool, after the user's approval, is
   planned (009), not built.
-- **Settled** by the programme with the maintainer, before plan 001; catching up without
+- **Settled** by the programme with the user, before plan 001; catching up without
   dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); the
   commands that the user composes by
   [plan 031](../work/changelog/031-composable-commands.md#settled-by-the-user), which removed
@@ -99,7 +99,7 @@ takes the token when one is set, else the session.
 the mirror, the index and the vectors are all derived from it, offline.
 
 - **Why.** The site's responses and HTML "can and will unexpectedly change", in the
-  maintainer's words. A response that a change breaks is still stored
+  user's words. A response that a change breaks is still stored
   ([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
   stores a snapshot that its adapter refuses), and once the adapter is fixed, `prepare`
   reads it again without fetching anything. A fix to the conversion is a rebuild, never
@@ -134,7 +134,7 @@ naming its path, never its value.
   missing; models of the site's JSON in Pydantic, which plan 015 left for later, if at
   all.
 - **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions), at the
-  maintainer's request.
+  user's request.
 
 ## Three roles, not a bundle
 
@@ -162,7 +162,7 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
   such as Google Drive, Notion or SharePoint, and fits neither git nor persons. Keeping
   each source by name in `cli` and `config`, on which `sync` dispatched since plan 017,
   which treats a new source as a change to the core.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 030](../work/changelog/030-sources-as-equals.md#settled-by-the-user).
 
 ## A list, not entry points
@@ -170,7 +170,7 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
 The sources are a list in the code, [`SOURCES`](../../src/kb_mcp/sources/registry.py),
 which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
 
-- **Why.** It is a monorepo for speed and convenience, by the maintainer's word, with
+- **Why.** It is a monorepo for speed and convenience, by the user's word, with
   packaging to come later by extras. A list is read at a glance, and a test registers a
   source of its own by passing one line
   ([`registry`](../../tests/test_memo_source.py)). A test still holds contract I to the
@@ -183,7 +183,7 @@ which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
 - **Rejected.** Entry points now: about 10 ms more on every `--help`, 95.9 ms against 106.3
   ms, on a command that a shell's completion runs at every Tab, for what no distribution
   yet needs. Choosing a source's roles in the settings.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 030](../work/changelog/030-sources-as-equals.md#the-registry-a-list-in-the-code).
 
 ## Markdown beside MCP
@@ -216,7 +216,7 @@ Every run still reads the store and builds every document's HTML.
 
 - **Why.** Pandoc was most of a mirror's time, one process a document whether it had
   changed or not: 27.7 of 31.2 seconds on the sandbox's store of 1,474 documents. The
-  maintainer asked for the stages after the download to be incremental, and thought of
+  user asked for the stages after the download to be incremental, and thought of
   a cache, wary that "cache invalidation is hard". Keyed by the whole of pandoc's input,
   this one has nothing to invalidate: with `--sandbox`, pandoc reads its standard input
   alone, and its version and arguments are in the key
@@ -246,7 +246,7 @@ Every run still reads the store and builds every document's HTML.
   `prepare --rebuild`, which deleting the file replaces; the work log in the cache, whose
   revisions already skip what has not changed; a file per source, where a column keeps
   one file, which the data guard already judges.
-- **Settled** by the maintainer's answer to [plan
+- **Settled** by the user's answer to [plan
   034](../work/changelog/034-incremental-fetch.md#questions-for-the-user)'s fourth
   question, "Cache pandoc's output", built by [plan
   039](../work/changelog/039-conversion-cache.md#decisions), and its rows parted by source
@@ -272,7 +272,7 @@ written, never normalised, merged or masked
 that what read the two keys, a hit's line among them
 ([`facts`](../../src/kb_mcp/mcp/app/responses.py)), reads on.
 
-- **Why.** Jira's creator and an issue's commenters had no key, and the maintainer's
+- **Why.** Jira's creator and an issue's commenters had no key, and the user's
   feedback asked for the creator among the filters, and for the comments' authors with
   their dates, as asks such as "what did a colleague say this week" are mostly
   comments. A key for each would have changed every file and the index's schema, and
@@ -319,8 +319,8 @@ that what read the two keys, a hit's line among them
   `version`, which nothing yet needs.
 - **Settled** by [plan
   041](../work/changelog/041-people-in-documents.md#one-generic-key-in-place-of-two-atlassian-ones),
-  on the maintainer's feedback, its questions answered by their defaults when the
-  maintainer approved it.
+  on the user's feedback, its questions answered by their defaults when the
+  user approved it.
 
 ## The journal split by shape
 
@@ -355,7 +355,7 @@ afresh at each run
 - **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
   whole journal, its meetings named nobody,
   nothing tied a summary to its record, and the meeting files under `meetings/` were
-  never read. The maintainer's feedback asked for days and meetings as documents, the
+  never read. The user's feedback asked for days and meetings as documents, the
   meetings' sections kept, participants, and each summary and its transcript linked
   both ways. By shape rather than by the journal's name, so that a renamed journal, an
   older "Daily notes", and the archive file, where org writes a day at level 1 and a
@@ -428,10 +428,10 @@ afresh at each run
   participant or a date already narrows.
 - **Settled** by [plan
   042](../work/changelog/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
-  the maintainer's feedback, its questions answered by their defaults when the
-  maintainer approved it; dates by the day and numbers by the journal's order by [plan
+  the user's feedback, its questions answered by their defaults when the
+  user approved it; dates by the day and numbers by the journal's order by [plan
   044](../work/changelog/044-meetings-by-their-day.md#dates-the-day-alone), on the
-  maintainer's answer that the work log gives the day of a meeting, never its time.
+  user's answer that the work log gives the day of a meeting, never its time.
 
 ## A file not read holds back its own
 
@@ -453,7 +453,7 @@ again under another title's path, and `prepare` exits 1.
 - **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
   that it holds draws on a transcript's text: one transcript not read, or past the
   bound of 20,000, no longer needs to hold back every meeting and every document that
-  links one, as plan 042's rule did. The maintainer asked that one faulty file be
+  links one, as plan 042's rule did. The user asked that one faulty file be
   flagged and reported loudly, without stopping everything.
 - **Cost.** A link made while its transcript is not read is one way until a run reads
   that transcript, whose last copy does not name the new meeting; a link removed
@@ -475,7 +475,7 @@ again under another title's path, and `prepare` exits 1.
   bytes: not needed for ten years or more.
 - **Settled** by [plan
   044](../work/changelog/044-meetings-by-their-day.md#settled-by-the-user), on the
-  maintainer's answers, its questions answered by their defaults when the maintainer
+  user's answers, its questions answered by their defaults when the user
   approved it.
 
 ## Persons joined by account, then exact name
@@ -512,7 +512,7 @@ their names or their id ([`who`](../../src/kb_mcp/mcp/app/tools.py)),
 and an answer narrowed by `person` opens with who they are, their names and how each
 joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
 
-- **Why.** The maintainer's feedback asked for one person across sources, their Jira
+- **Why.** The user's feedback asked for one person across sources, their Jira
   account, their transcript speaker name and `:PARTICIPANTS:`, and for one query giving
   the issues they created, were assigned and commented on, and the meetings they
   attended. An account id is the site's identity, so it joins a renamed colleague's
@@ -565,8 +565,8 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   reference, logged by every run. Person documents under `<data>/docs/`, which other
   engines would read: a new type, folder and owner of files, left to a later plan.
 - **Settled** by [plan 043](../work/changelog/043-person-index.md#how-names-become-persons),
-  on the maintainer's feedback, its questions answered by their defaults when the
-  maintainer approved it.
+  on the user's feedback, its questions answered by their defaults when the
+  user approved it.
 
 ## SQLite FTS5
 
@@ -585,7 +585,7 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
   write what changed ([the index updated aside](#the-index-updated-aside-not-in-place)).
 - **Rejected.** The Porter stemmer, which knows English alone where the content mixes
   English and French ([plan 011](../work/changelog/011-search-strategies.md#deliberately-not-done)).
-  No plan weighed another engine: the programme settled FTS5 with the maintainer.
+  No plan weighed another engine: the programme settled FTS5 with the user.
 - **Settled** by the programme, and built by
   [plan 006](../work/changelog/006-search-mcp.md#the-index).
 
@@ -609,7 +609,7 @@ finds the index written meanwhile starts again once. An index so updated equals 
 build, row for row, and ranks the golden questions alike
 ([the tests](../../tests/test_index_updates.py)).
 
-- **Why.** The maintainer asked that the commands be incremental and keep the index
+- **Why.** The user asked that the commands be incremental and keep the index
   correct of themselves, a document removed losing its words and its vectors. On plan
   002's mirror, a whole build took 3.3 to 3.7 s, 1.9 s of it reading and loading files;
   digesting them takes 0.024 s, and a new file holding a copy of every document but one,
@@ -623,7 +623,7 @@ build, row for row, and ranks the golden questions alike
   next `embed`. Persons are joined whole at each write, as one account fetched late can
   make a work-log name ambiguous
   ([persons joined by account](#persons-joined-by-account-then-exact-name)). `embed`
-  digests the mirror too, by the maintainer's answer, so that a chain that leaves out
+  digests the mirror too, by the user's answer, so that a chain that leaves out
   `index` does not pass in silence.
 - **Cost.** The copy grows with the index, not with the change: on 20,000 made-up
   issues, 3.4 s, 2.0 s of it the join, on top of reading the changed files, and the
@@ -655,7 +655,7 @@ build, row for row, and ranks the golden questions alike
   needs, and a networked backend's adapter would bring its own pool and retries.
 - **Settled** by [plan
   035](../work/changelog/035-incremental-index-and-embed.md#decisions), its first question
-  answered by the maintainer, aside, and its fourth too: `embed` warns of a mirror
+  answered by the user, aside, and its fourth too: `embed` warns of a mirror
   changed since the index, and goes on.
 
 ## Filters on the index as it is
@@ -717,8 +717,8 @@ mode and chunking on golden questions, whose answers are known.
   became the default again. Plan 019 compared four chunkings: `windows` ranked best by
   hybrid search, but its rule, which asked for the evidence quoted significantly more
   often, kept `sections`. Plan 025 made hybrid search over `windows` the default, the
-  maintainer's choice over both rules, knowing their numbers, which
-  [the defaults](chunking.md#the-defaults-the-maintainers-choice) give: ranking
+  user's choice over both rules, knowing their numbers, which
+  [the defaults](chunking.md#the-defaults-the-users-choice) give: ranking
   mattered more to them than speed.
 - **Cost.** A model by default: `embed` needs an embedding endpoint, and so does the
   server unless `search_mode = "lexical"`. A query's 95th percentile on the development
@@ -726,12 +726,12 @@ mode and chunking on golden questions, whose answers are known.
   questions are not a real site's: the work set will decide again
   ([evaluating search](search-evaluation.md)).
 - **Rejected.** Words alone and `sections`, which the rules of 018 and 019 kept; meaning
-  alone, which scored higher still over `windows` on the sandbox, where the maintainer
+  alone, which scored higher still over `windows` on the sandbox, where the user
   chose hybrid search.
 - **Settled** by [plan 011](../work/changelog/011-search-strategies.md#search) for the
   modes and the measure; the defaults by [plan
   025](../work/changelog/025-windows-and-hybrid.md#settled-by-the-user), the
-  maintainer's choice.
+  user's choice.
 
 ## Embeddings by any OpenAI-compatible API, not in process
 
@@ -754,7 +754,7 @@ which is only the example: any such server works.
 - **Rejected.** Models in process with onnxruntime, from pinned files, as plan 011 built
   them; Ollama's own `/api/embed`, which other servers do not offer; a setting that
   allows a remote endpoint, which would allow it on every run without a word.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 018](../work/changelog/018-embeddings-via-ollama.md#settled-by-the-user-not-reopened).
 
 ## A reranker on this machine, off by default
@@ -768,10 +768,10 @@ by default.
 - **Why.** A model that reads the question with each document is the strongest known
   lever on the first answers
   ([reranking](reranking.md#two-ways-a-model-can-read-a-question)),
-  so it was built, on the side as the embedding model is: the maintainer wanted it "not
+  so it was built, on the side as the embedding model is: the user wanted it "not
   run within the MCP but on the side as a separate (local-only) component of the
   system". Off by default because, measured, it ranked worse on the sandbox, and the
-  maintainer wanted "more accurate results".
+  user wanted "more accurate results".
 - **Cost.** For whoever turns it on, a second server to install and keep running, with
   its model file. Each search waits for it: 29 to 37 seconds at the median on the
   development laptop's processor, reranking 10 to 30 documents, and 30 seconds at most
@@ -780,11 +780,11 @@ by default.
   0.639), keyword questions most
   ([evaluating search](search-evaluation.md#plan-022-reranking-on-a-laptop)). Off, it
   costs nothing: the server is never asked.
-- **Rejected.** A model in process, against the maintainer's wish; a reranker off this
+- **Rejected.** A model in process, against the user's wish; a reranker off this
   machine ("No remote reranker."); Text Embeddings Inference, whose API has another
-  shape; on by default, which the maintainer chose before the measures, then reversed
+  shape; on by default, which the user chose before the measures, then reversed
   for accuracy.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 022](../work/changelog/022-reranking.md#settled-by-the-user).
 
 ## Budgets and untrusted-data markers
@@ -818,7 +818,7 @@ argcomplete. Each subcommand is declared apart from its run, so that `--help` an
 completion import no run's packages: [`parser`](../../src/kb_mcp/cli/main.py)
 registers every declaration, and imports a run only once the arguments are parsed.
 
-- **Why.** The maintainer's choice: argparse needs no dependency, and argcomplete
+- **Why.** The user's choice: argparse needs no dependency, and argcomplete
   completes subcommands, options and their values. argcomplete runs the program at every
   Tab, so a declaration must stay light; an import contract keeps the runs' packages out
   of it.
@@ -826,7 +826,7 @@ registers every declaration, and imports a run only once the arguments are parse
   argparse's internals, so a new Python may break completion; fish is not supported.
 - **Rejected.** Subparsers registered lazily, which neither argcomplete nor `--help`
   would see.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 015](../work/changelog/015-cli-and-configuration.md#settled-by-the-user).
 
 ## File, then environment, then flags
@@ -847,7 +847,7 @@ merges them and keeps each value's layer.
   give a token or a key.
 - **Rejected.** pydantic-settings' own sources, which would add a flag per field,
   secrets included, and cannot say which layer gave a value.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 015](../work/changelog/015-cli-and-configuration.md#the-settings-one-model-three-layers).
 
 ## Records as Pydantic models
@@ -857,7 +857,7 @@ Each value of the program, a document, a setting's layer or a run's outcome, is 
 checked where it is built, and frozen unless it accumulates. Fifteen classes stay
 dataclasses, each for the reason that [the code's layout](code-layout.md#records) gives.
 
-- **Why.** The maintainer prefers Pydantic to dataclasses, except where it is
+- **Why.** The user prefers Pydantic to dataclasses, except where it is
   impossible: a record refuses a misspelt keyword, its checks run at every construction,
   a changed copy included, and its errors never print a value, as the settings' model
   already did.
@@ -873,7 +873,7 @@ dataclasses, each for the reason that [the code's layout](code-layout.md#records
 - **Rejected.** Pydantic's own dataclasses, which keep positional arguments; strict
   mode, which would have changed hundreds of callers; `SkipValidation`, which would make
   the exceptions models in name only.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 028](../work/changelog/028-pydantic-records.md#settled-by-the-user).
 
 ## Telemetry off, logs that may hold titles
@@ -882,7 +882,7 @@ Each run writes a log file of JSON lines, from DEBUG, in the user's log folder; 
 hold titles, ids, paths and queries. Traces, metrics and logs go out by OpenTelemetry
 only once an endpoint is set, and only to this machine.
 
-- **Why.** In the maintainer's words, the logs "will most likely never leave any
+- **Why.** In the user's words, the logs "will most likely never leave any
   machine": they are there for detailed observability when needed, so they hold what
   explains a run. Telemetry carries the same titles and queries, hence off by default,
   and to a literal loopback address alone, as embeddings are.
@@ -891,7 +891,7 @@ only once an endpoint is set, and only to this machine.
   telemetry needs a container, Grafana's LGTM.
 - **Rejected.** Logs without titles, which could not say which document was slow or
   failed; telemetry on by default, or to a collector elsewhere.
-- **Settled** by the maintainer, in
+- **Settled** by the user, in
   [plan 016](../work/changelog/016-observability-and-progress.md#settled-by-the-user);
   [observability](observability.md) explains it further.
 

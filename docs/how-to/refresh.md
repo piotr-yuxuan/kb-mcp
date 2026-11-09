@@ -25,7 +25,7 @@ path = "~/todo"  # absolute or under ~
 
 Confluence and Jira sign in with the Atlassian account, on its site. A table that names
 nothing (no space, no project, no folder) leaves its source out of `fetch`, and the work log
-out of `prepare`. The work log has its own guide: [mirror the work log](work-log.md).
+out of `prepare`. The work log has its own guide: [add the work log](work-log.md).
 
 ## 2. Run the chain
 

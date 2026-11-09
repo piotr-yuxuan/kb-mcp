@@ -5,7 +5,7 @@ saves from a browser, an Atlassian API token with its account's email, and the e
 endpoint's API key. For each, where it comes from, where it is kept and why, and where
 it may travel; then what agents get, what is never logged, and what none of it guards
 against. How to sign in is in
-[mirror the site on a managed machine](../how-to/sso-machine.md) and
+[fetch through SSO on a managed machine](../how-to/sso-machine.md) and
 [the API token's how-to](../how-to/api-token-with-sops.md); why the program signs in so,
 in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 

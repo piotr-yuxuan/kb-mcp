@@ -5,13 +5,18 @@ the declarations, the fetch and the prepare read. Where a contract forbids an im
 copy stays and is held here, as plan 052 settled: coverage, which cannot import a
 declaration, decides by a target's source whether its documents are found by update time;
 the server and the index, which read no source (contract E), spell sources as text; and
-search, which the site's HTML is above (contract A), reads a page's id in its address.
+search, which the site's HTML is above (contract A), reads a page's id in its address. No
+two classes or ``type`` aliases at the top of the package's modules share a name, so that
+each entity has one name in the code.
 """
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
+from collections import Counter
+from pathlib import Path
 from urllib.parse import parse_qs
 
 import pytest
@@ -27,6 +32,8 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     VIEW_PAGE_ID,
 )
 from kb_mcp.sources.registry import SOURCES
+
+PACKAGE = Path(__file__).parents[1] / "src" / "kb_mcp"
 
 # A key that each source's targets take.
 KEYS = {CONFLUENCE.name: "MFS", JIRA.name: "PRB"}
@@ -72,3 +79,15 @@ def test_search_reads_a_document_s_id_in_its_address_as_the_site_s_html_does(add
     found += parse_qs(query).get(VIEW_PAGE_ID, []) if page == VIEW_PAGE else []
     assert len(found) == 1
     assert ID_IN_ADDRESS.findall(address) == found
+
+
+def test_no_two_classes_or_type_aliases_of_the_package_share_a_name() -> None:
+    """At the top of the package's modules, each class and ``type`` alias has its own name."""
+    defined: Counter[str] = Counter()
+    for path in PACKAGE.rglob("*.py"):
+        for node in ast.parse(path.read_bytes(), path).body:
+            match node:
+                case ast.ClassDef(name=name) | ast.TypeAlias(name=ast.Name(id=name)):
+                    defined[name] += 1
+    shared = {name for name, count in defined.items() if count > 1}
+    assert [f"{name}: shared by two modules or more" for name in sorted(shared)] == []

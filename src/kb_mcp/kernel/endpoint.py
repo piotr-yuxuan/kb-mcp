@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 @dataclass(frozen=True)
 class Service:
-    """A server that a run sends the mirror's text to, as the messages about it name it."""
+    """A server that a run sends text to, from the mirror or a query, as messages name it."""
 
     name: str  # what it is, as a sentence names it
     setting: str  # the setting that holds its address
@@ -76,7 +76,7 @@ def loopback(url: str) -> bool:
 
 
 def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str | None:
-    """Say why a run may not send the mirror's text to a service, or None when it may.
+    """Say why a run may not send text to a service, or None when it may.
 
     An address that is not a literal one of this machine needs the run's word,
     ``remote_allowed``, and https even then. The message names the service's setting,

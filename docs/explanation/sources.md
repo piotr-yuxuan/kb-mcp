@@ -1,10 +1,10 @@
 # Sources
 
-The mirror has three [sources](../reference/glossary.md#source): Confluence and Jira, on the Atlassian site, and the user's
+The mirror has three [sources](../reference/concepts.md#source): Confluence and Jira, on the Atlassian site, and the user's
 work log, a folder of org files on this machine. A source is a declaration and the code
 that it names, and the three are declared alike, so that a new one is a package and one
 line of a registry. This page says why a source is put together as it is; [bring every
-source up to date](../how-to/refresh.md) and [mirror the work log](../how-to/work-log.md)
+source up to date](../how-to/refresh.md) and [add the work log](../how-to/work-log.md)
 say how to use them, and [add a source](../how-to/add-a-source.md) how to write one.
 
 ## Three stages, not a bundle
@@ -116,7 +116,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
 ## Resource types
 
-A source declares what it can read, each a [resource type](../reference/glossary.md#resource-type), a
+A source declares what it can read, each a resource type, a
 [`ResourceType`](../../src/kb_mcp/sources/declaration.py): its name, a help line, how it is
 read ([`Reading`](../../src/kb_mcp/sources/declaration.py)), and its options, each an
 [`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds. They are the
@@ -218,7 +218,7 @@ the registry alone, and the names given choose among them. What a run does not a
 as Jira's projects in a `fetch confluence`, is said, not refused: the same settings serve
 every run.
 
-An [account](../reference/glossary.md#account), what a fetcher signs in with, is a light record in the
+An [account](../reference/concepts.md#account), what a fetcher signs in with, is a light record in the
 declaration
 ([`ATLASSIAN`](../../src/kb_mcp/sources/atlassian/declared.py), an
 [`Account`](../../src/kb_mcp/sources/declaration.py)) and a table in the package
@@ -236,7 +236,7 @@ judges.
 A settings file of the former name, the default's or one that `--config` names, holding
 these keys at its top is stopped before its entries are refused, each key named by its
 final one ([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py)), a token by the
-variable that alone sets it, so that the user's machine's file gets its advice, and a value that
+variable that alone sets it, so that the existing file gets its advice, and a value that
 the former default's file holds and a setting refuses names that file's path as its layer
 ([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding
 a top-level `site` or `email` is refused by
@@ -353,7 +353,7 @@ from the registry: its run, its checks and its light rules, each named by its
 
 ## Kept for the extras, later
 
-No extra is built, by the maintainer's word. What makes them, later, a change of `pyproject.toml`
+No extra is built, by the user's word. What makes them, later, a change of `pyproject.toml`
 alone is kept: Playwright (138 MB installed) and lxml (12 MB) stay inside the Atlassian
 package, by [contract K](code-layout.md#the-contracts). Of `sources/atlassian/`,
 [its browser](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py) alone imports

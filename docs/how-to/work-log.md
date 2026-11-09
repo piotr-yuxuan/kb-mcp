@@ -1,4 +1,4 @@
-# Mirror the work log
+# Add the work log
 
 Your work log, a folder of org files, is written as Markdown beside Confluence and Jira,
 under `<data>/docs/worklog/`, indexed with them, and served to agents. It is read in
@@ -137,7 +137,7 @@ the id last named, which may be the other file's. So
 archiving one, with its folder, never hands its id to the other, unless the two folders
 have one name, as a copy's may.
 
-## 4. Mirror it
+## 4. Add it
 
 ```bash
 kb-mcp prepare worklog

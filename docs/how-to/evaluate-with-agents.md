@@ -87,8 +87,8 @@ lost its server gives no result, and its question leaves the tests, counted. It 
 `results.json`, of ids and numbers, the prompts' SHA-256 and the models reported, never
 a question's text, and says B against A on success, calls and tokens handed over, each
 with its interval, and whether `ask` stays among the default tools. `--summary detailed`
-adds each run. It exits 1 when the runs spent past twice their estimates: stop, and set
-the estimates from what was spent.
+adds each run. It exits 1 when the runs spent past twice their estimates: stop; the
+estimates change through a plan, from what was spent.
 
 ```bash
 kb-mcp eval-agents --format json grade pilot --yes
@@ -96,9 +96,9 @@ kb-mcp eval-agents --format json grade pilot --yes
 
 ## After the pilot
 
-Set the estimates of `cli/domain/evaluate_agents.py` once, from the pilot's calls, tokens
-handed over and model tokens, then prepare the runs that decide, each model in its own
-directory:
+The estimates of `cli/domain/evaluate_agents.py` change through a plan, from the pilot's
+calls, tokens handed over and model tokens. Then prepare the runs that decide, each
+model in its own directory:
 
 ```bash
 kb-mcp eval-agents prepare golden.yaml --out haiku-runs --model haiku --sample 25
