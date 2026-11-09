@@ -22,6 +22,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.reranking import BAR_DEPTHS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import Reranks, Scripted, connector, serving
 from tests.reference import Emitted, undocumented
@@ -279,9 +280,11 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url, "--format", "json") == 0
     record = json.loads(capsys.readouterr().out)
-    questions = read_golden(GOLDEN, Library(data / "index.sqlite", data / "docs").resolve)
+    questions = read_golden(
+        GOLDEN, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve
+    )
     index = data / "eval" / "indexes" / "windows" / "tiny.sqlite"
-    plain = Library(index, data / "docs", Meaning(connector()), "hybrid")
+    plain = Library(SqliteIndex(index), data / "docs", Meaning(connector()), "hybrid")
     found = {
         size: [
             {shown.path for shown in plain.ranked(question.text, "hybrid", size)[0]}

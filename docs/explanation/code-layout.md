@@ -49,6 +49,19 @@ Some choices are not obvious:
   each source's role, a row each, by the path that its declaration names. What they choose
   and say is pure, in `cli/domain/sources.py`, so that their declarations stay light, and
   reads the registry that the entry is given, so that it names no source.
+- **The index is two interfaces**, declared as protocols in `search/domain/indexes.py`:
+  `WordsIndex`, the documents by their words, and `VectorIndex`, their pieces by their
+  vectors, each opening one use by `reading()` and changing all or nothing, by `update`
+  and `fill`, with `SearchIndex`, the two together, which a search reads in one use.
+  They name domain types alone, so contract C holds, and
+  `tests/test_index_contract.py` holds every backend to their docstrings. Callers type
+  against them: the use cases, `Meaning`, `Library` and the evaluation. The one backend,
+  `search.adapters.sqlite_index.SqliteIndex`, is made where the index's path is
+  resolved: the use cases of `index` and `embed`, `cli/commands/serve.py`,
+  `evaluate.py`, `evaluate_agents.py` and `evaluate_reranking.py`, and
+  `evaluation/app/evaluation.py`; a second backend would add a setting there. The handle
+  is an argument, never a record's field, as Pydantic cannot build a field typed by a
+  protocol: no dataclass joins [the table below](#records) for it.
 - **The MCP SDK is known to two modules**: `cli/commands/serve.py`, which registers the
   methods of `mcp.app.tools.Library` as tools, with what `mcp.app.surface` composes, and
   `evaluation/adapters/mcp_client.py`, the client through which `eval-agents` reaches

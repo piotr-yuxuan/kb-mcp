@@ -21,6 +21,7 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.mcp.app.surface import guides
 from kb_mcp.mcp.app.tools import Library
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from tests.answers import parts
 from tests.mirrors import page, write
 from tests.test_surface import seen
@@ -65,7 +66,7 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 def library(home: Path) -> Library:
     """Answer from the index built in the home's data directory."""
     data = home.parent / "data"
-    return Library(data / "index.sqlite", data / "docs")
+    return Library(SqliteIndex(data / "index.sqlite"), data / "docs")
 
 
 def refs(answer: str) -> list[str]:

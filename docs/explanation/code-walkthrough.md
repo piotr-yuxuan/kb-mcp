@@ -1,8 +1,8 @@
 # A walkthrough of the code
 
-For contributors: one `fetch`, `prepare` and `embed` over one Confluence space, then one
-`search` that an agent makes over MCP, followed through the code in the order in which it
-runs. Each
+For contributors: one `fetch`, `prepare`, `index` and `embed` over one Confluence space,
+then one `search` that an agent makes over MCP, followed through the code in the order
+in which it runs. Each
 step names the function or class that takes it and links its module, so that the page
 reads best beside the code, one link at a time. Links name functions, never lines:
 lines move, and [the docs' checks](../../tests/test_docs.py) fail once a linked name is
@@ -23,7 +23,7 @@ spaces = ["ENG"]
 ```
 
 ```bash
-kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp embed
+kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp index && kb-mcp embed
 ```
 
 The space was never downloaded: without `--since`, its first run would take its last 7
@@ -353,14 +353,46 @@ something was reported of this source, it removes only
 the files of documents confirmed gone, and the old file of a document that moved once
 its new file is built, so that the last good copy of every other stays.
 
-### 8. Pieces and their embeddings
+### 8. Words, then pieces and their embeddings
 
-`embed`'s [`run`](../../src/kb_mcp/cli/commands/embed.py) takes the
+`index`'s [`run`](../../src/kb_mcp/cli/commands/index.py) takes the
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py) that
-[`indexing_of`](../../src/kb_mcp/cli/commands/_embedding.py) reads from the settings, and
-[`refresh`](../../src/kb_mcp/search/app/indexing.py) calls
-[`index_mirror`](../../src/kb_mcp/search/app/indexing.py), as `index` does, by words alone. It
-opens the embedding endpoint first, by
+[`indexing_of`](../../src/kb_mcp/cli/commands/_embedding.py) reads from the settings,
+with no endpoint, and
+[`update_index`](../../src/kb_mcp/search/app/indexing.py) reads the alias file first
+([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)), then lists the files of
+the mirror ([`mirror_files`](../../src/kb_mcp/search/app/indexing.py), by
+[`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)).
+[`updated`](../../src/kb_mcp/search/app/indexing.py) reads in one use what the index
+holds of them ([`Reader.held`](../../src/kb_mcp/search/adapters/sqlite_index.py)): there
+is no index yet, so the update is whole.
+[`change_of`](../../src/kb_mcp/search/app/indexing.py) then reads each file by
+[`read_document`](../../src/kb_mcp/search/app/indexing.py): its digest, the SHA-256 of
+its bytes; [`load`](../../src/kb_mcp/mirror/adapters/markdown.py), which refuses any
+other front matter than `dump` writes; and its body cut into sections, one before each
+heading ([`sections`](../../src/kb_mcp/search/domain/search.py)).
+[`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py) takes the
+index's lock, and [`Writer.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)
+copies from the old index what did not change, nothing here, adds each document read and
+indexes its sections by words
+([`Writer.add`](../../src/kb_mcp/search/adapters/sqlite_index.py)), then joins persons
+([`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py)). At the next
+`index`, each file is digested
+([`digested`](../../src/kb_mcp/search/app/indexing.py)) and compared with the index's
+digest ([`differences`](../../src/kb_mcp/search/app/indexing.py)): only those added or
+changed are read, and with none, nothing is written.
+
+`embed`'s [`run`](../../src/kb_mcp/cli/commands/embed.py) takes the same
+[`Indexing`](../../src/kb_mcp/search/app/indexing.py), with the means to open the
+endpoint, and [`refresh`](../../src/kb_mcp/search/app/indexing.py) calls
+[`filling`](../../src/kb_mcp/search/app/indexing.py). It reads the index first, in one
+use ([`to_fill`](../../src/kb_mcp/search/app/indexing.py)): what it holds of the mirror,
+the model it names, each document's front matter and body
+([`Reader.documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and the pieces
+it holds ([`Reader.pieces`](../../src/kb_mcp/search/adapters/sqlite_index.py)); it stops
+there on an index that this code's cut did not write. It digests the mirror's files and
+compares them with the index, to warn when they differ, and reads nothing else of them.
+Only then does it open the embedding endpoint, by
 [`open_endpoint`](../../src/kb_mcp/cli/commands/_embedding.py), then
 [`endpoint`](../../src/kb_mcp/search/adapters/model_api.py), the only way to
 a client: [`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py) refuses
@@ -388,22 +420,21 @@ Ollama's own `/api/tags` for the digest. So any server that answers OpenAI's
 `/v1/embeddings` will do, Ollama being only the example ([use another OpenAI-compatible
 API](../how-to/embeddings.md#use-another-openai-compatible-api)).
 
-[`build_index`](../../src/kb_mcp/search/app/indexing.py) then reads every
-file of the mirror ([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py),
-then [`load`](../../src/kb_mcp/mirror/adapters/markdown.py), which refuses
-any other front matter than `dump` writes). It cuts each body into sections, one before
-each heading ([`sections`](../../src/kb_mcp/search/domain/search.py)),
-indexes them by words ([`Writer.add`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
-and cuts the document into pieces by the chunking that
+[`filling`](../../src/kb_mcp/search/app/indexing.py) then cuts each document's body
+again into sections ([`sections`](../../src/kb_mcp/search/domain/search.py)), as `index`
+cut it, and into pieces by the chunking that
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py) names: by default
 [`windows`](../../src/kb_mcp/search/domain/chunking.py) of about 300 tokens,
 starting 240 apart, so that two in a row overlap, each embedded with the title. Each
 piece's text gets a [`key`](../../src/kb_mcp/search/adapters/vector_store.py),
-the SHA-256 of the fingerprint and the text.
+the SHA-256 of the fingerprint and the text. The pieces wanted that the index does not
+hold are to add, every one at this first run, and those it holds that none wants, to
+remove.
 
 [`VectorStore.vectors`](../../src/kb_mcp/search/adapters/vector_store.py)
-then gives each key its vector: from `<data>/vectors.sqlite` when it holds it, else
-embedded by [`ApiEmbedder.documents`](../../src/kb_mcp/search/adapters/embedding.py),
+then gives each key to add its vector: from `<data>/vectors.sqlite` when it holds it,
+else embedded by
+[`ApiEmbedder.documents`](../../src/kb_mcp/search/adapters/embedding.py),
 with the model's document prefix, [`BATCH`](../../src/kb_mcp/search/adapters/embedding.py)
 texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_store.py)
 texts a commit, so that an interrupted build loses little. The digest is read again
@@ -411,24 +442,30 @@ before and after ([`ApiEmbedder.check`](../../src/kb_mcp/search/adapters/embeddi
 so that no vector of other weights is kept under this fingerprint. Only the texts that
 the store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
 say which an edit changes.
-[`Writer.add_pieces`](../../src/kb_mcp/search/adapters/sqlite_index.py)
-copies the vectors into the index.
+[`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py)
+copies the vectors into the index, each piece naming its section by path and number.
 
 ### 9. The index swapped in
 
-All of this writes into a new file:
-[`building`](../../src/kb_mcp/search/adapters/sqlite_index.py) creates it
-beside the old index, yields its
-[`Writer`](../../src/kb_mcp/search/adapters/sqlite_index.py), writes in the
-same transaction the meta rows (a random `build` id, the model, its fingerprint, the
-chunking), and renames the file over `<data>/index.sqlite` once complete. On any failure
-the new file goes and the old index stays: an endpoint that does not answer, or lacks the
+Each command writes into a new file beside the old index, which readers and the prune
+skip ([`aside`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and renames it over
+`<data>/index.sqlite` once complete, under the index's lock
+([`locked`](../../src/kb_mcp/search/adapters/vector_store.py)). `index`'s is made by
+[`building`](../../src/kb_mcp/search/adapters/sqlite_index.py), which yields its
+[`Writer`](../../src/kb_mcp/search/adapters/sqlite_index.py) and writes in the same
+transaction the meta rows (a random `build` id, `words`, the alias file's digest, the
+model's rows of the old index, none here). `embed`'s is a copy of the index by SQLite's
+backup, into which
+[`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py) writes the
+pieces, the model, its fingerprint, the chunking and a new `build`. On any failure the
+new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
-which [`index_mirror`](../../src/kb_mcp/search/app/indexing.py) logs as
-`index.not_built`, with the hint to index by words alone. A file skipped or a piece
-refused is named in the [`Report`](../../src/kb_mcp/search/app/indexing.py),
-and the run exits 0 only when the report is
-[`Report.whole`](../../src/kb_mcp/search/app/indexing.py).
+which [`refresh`](../../src/kb_mcp/search/app/indexing.py) logs as
+`index.not_built`. A file skipped is named in `index`'s
+[`Report`](../../src/kb_mcp/search/app/indexing.py), and a piece refused in `embed`'s
+[`Filled`](../../src/kb_mcp/search/app/indexing.py); each run exits 0 only when its
+result is whole ([`Report.whole`](../../src/kb_mcp/search/app/indexing.py),
+[`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
 
 ### 10. The result
 
@@ -438,8 +475,10 @@ and the run exits 0 only when the report is
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/roles.py). `embed` has one
-result, written by its own [`text`](../../src/kb_mcp/cli/commands/embed.py).
+its counts, by its role's [`Result.text`](../../src/kb_mcp/sources/roles.py). `index`
+and `embed` have one result each, written by their own `text`
+([`text`](../../src/kb_mcp/cli/commands/index.py),
+[`text`](../../src/kb_mcp/cli/commands/embed.py)).
 [`observed`](../../src/kb_mcp/observability/app/observed.py) ends the run:
 `run.end`, the exit status on the root span, the run's duration.
 
@@ -506,11 +545,13 @@ spans:
   model that the index was built with
   ([`Reader.embedded`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
   [`Meaning.prepared`](../../src/kb_mcp/search/app/meaning.py) connects to
-  it once, and loads the index's vectors once a build
-  ([`Reader.pieces`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
-  by the build's id. The query is embedded, with the model's query prefix
-  ([`ApiEmbedder.query`](../../src/kb_mcp/search/adapters/embedding.py)),
+  it once a build, by the build's id. The query is embedded, with the model's query
+  prefix ([`ApiEmbedder.query`](../../src/kb_mcp/search/adapters/embedding.py)),
   only while the endpoint's fingerprint is the index's; then
+  [`Reader.nearest`](../../src/kb_mcp/search/adapters/sqlite_index.py) searches the
+  index's vectors, which the index's handle
+  ([`SqliteIndex`](../../src/kb_mcp/search/adapters/sqlite_index.py)) reads once a
+  build ([`Reader.vectors`](../../src/kb_mcp/search/adapters/sqlite_index.py)):
   [`Pieces.nearest`](../../src/kb_mcp/search/domain/search.py) multiplies
   the matrix of the pieces' unit vectors by the query's, which gives every cosine
   exactly, and keeps the documents whose best piece is nearest, at most
@@ -558,19 +599,22 @@ from each document fetched, and a call of a tool is one trace:
 
 | Span | Opened by |
 |---|---|
-| `fetch`, `prepare`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
+| `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
 | `fetch.source`, `prepare.source`, one a row | [`run_each`](../../src/kb_mcp/cli/app/sources.py) |
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Download.space`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py), [`Download.users`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Download.fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/download.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
 | `prepare.read`, `prepare.build`, `prepare.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
-| `index.files`, `index.embed` | [`build_index`](../../src/kb_mcp/search/app/indexing.py) |
+| `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
+| `index.join` | [`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py) |
+| `index.embed` | [`filling`](../../src/kb_mcp/search/app/indexing.py) |
 | `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
 | `tools/call search`, a call's root | the MCP SDK; [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) adds the mode, the documents found and whether words stood in for meaning |
 | `search.lexical`, `search.semantic` | [`ranking`](../../src/kb_mcp/mcp/app/tools.py) |
 
-In `embed`'s trace, the model's connection comes first, its `GET` and probe before
-`index.files`; within `index.embed`, a `GET` of the digest frames the embeddings. Every
+In `index`'s trace, `index.files` reads the files, then `index.join` joins persons. In
+`embed`'s, the model's connection comes first, its `GET` and probe, then `index.embed`,
+within which a `GET` of the digest frames the embeddings. Every
 span and its attributes are listed in [telemetry](../reference/telemetry/README.md), a
 page per command; [observability](observability.md#a-trace-per-document) says why a
 document fetched is a trace of its own.
@@ -590,6 +634,8 @@ Each step has its tests, which say what the code must do in the requirement's wo
 [`test_mirror.py`](../../tests/test_mirror.py) and
 [`test_site_html.py`](../../tests/test_site_html.py) for 7;
 [`test_index.py`](../../tests/test_index.py),
+[`test_index_contract.py`](../../tests/test_index_contract.py),
+[`test_index_updates.py`](../../tests/test_index_updates.py),
 [`test_embedding.py`](../../tests/test_embedding.py) and
 [`test_vectors.py`](../../tests/test_vectors.py) for 8 and 9; and
 [`test_serve.py`](../../tests/test_serve.py),

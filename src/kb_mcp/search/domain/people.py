@@ -23,6 +23,7 @@ the index or the alias file.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from collections import Counter
@@ -101,6 +102,14 @@ def person_id(anchor: str, value: str) -> str:
     return "p-" + hashlib.sha256(f"{anchor}\n{value}".encode()).hexdigest()[:16]
 
 
+def aliases_digest(aliases: Mapping[str, str]) -> str:
+    """Give the digest of what an alias file means: its names and targets, in their order.
+
+    All that ``joined`` reads of it, so a comment or a blank line leaves it as it was.
+    """
+    return hashlib.sha256(json.dumps(list(aliases.items())).encode()).hexdigest()
+
+
 class Row(Record):
     """A person in a role of a document, as a row of the index's people holds it.
 
@@ -108,7 +117,7 @@ class Row(Record):
     the document was last updated, by which an account's person is named.
     """
 
-    document: int  # the document's rowid
+    document: int  # the document's number, by which rows are ordered
     role: str
     name: str
     account: str | None
@@ -197,7 +206,7 @@ class Joining:
         meetings: Mapping[int, Collection[int]],
         aliases: Mapping[str, str],
     ) -> None:
-        """Read the rows, the meetings of each transcript, by rowid, and the aliases.
+        """Read the rows, the meetings of each transcript, by number, and the aliases.
 
         An alias's target is a person's id; or a name, which means the one account of
         its key, as rule 3 finds it, else the person by name alone of a key that a name
@@ -340,7 +349,7 @@ def joined(
 ) -> Joined:
     """Join every row into its person: by its account, by RULES in order, or by its name.
 
-    ``meetings`` gives each transcript's meetings, by rowid, as its ``summary`` links
+    ``meetings`` gives each transcript's meetings, by number, as its ``summary`` links
     name them, none of them a transcript (``Joining`` refuses one that links to
     meetings); ``aliases`` each alias's name and target, of distinct keys, as the alias
     file's reader checks. Rows go in order of document, role, name and account, linked

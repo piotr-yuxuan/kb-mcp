@@ -472,19 +472,23 @@ The credentials file lies at the root of the checkout that made it, never in git
 another machine, bring the file and a key; or make a file of your own for the sandbox's
 account, with a new token, by [the sops how-to](../how-to/api-token-with-sops.md), under
 the same generic names; or skip `fetch` and `prepare`: copy `<data>/docs` (7 MB)
-from a machine that has it into the new data directory, and go on from `embed`.
+from a machine that has it into the new data directory, and go on from `index`.
 
 ```bash
 uv run kb-mcp prepare confluence jira --config <missing-file> --data-dir <data>
 ```
 
 ```bash
+uv run kb-mcp index --config <missing-file> --data-dir <data>
+```
+
+```bash
 uv run kb-mcp embed --config <missing-file> --data-dir <data>
 ```
 
-`embed` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
+`index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
 018; without `ENG`, 31 questions name tickets that the mirror lacks, which `eval`
-refuses by name. It also embeds the mirror's windows, which `eval` then
+refuses by name. `embed` then embeds the mirror's windows, which `eval` then
 finds in `<data>/vectors.sqlite` and does not embed again.
 
 ```bash

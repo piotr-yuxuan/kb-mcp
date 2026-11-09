@@ -37,6 +37,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 
 if TYPE_CHECKING:
     import argparse
@@ -64,7 +65,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Eval
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
+        questions = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
     except (GoldenError, OSError, UnanswerableError) as error:
         structlog.get_logger().error("eval.refused", reason=str(error))
         return ExitStatus.REFUSED, None

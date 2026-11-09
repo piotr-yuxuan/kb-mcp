@@ -334,7 +334,7 @@ every `preflight`, then each role, a row each. Each row runs even when an earlie
 since the next reads what is on disk, Ctrl-C stops the rest, and the rows rank the exit status
 ([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)). A row names its source, with its
 result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,
-reading the mirror whatever sources it holds.
+`index` reading the mirror whatever sources it holds, and `embed` the index.
 
 What a run says of a source comes from the declarations: the names that each command takes
 are the registry's ([`register`](../../src/kb_mcp/cli/options/fetch.py),

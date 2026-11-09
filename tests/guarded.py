@@ -4,8 +4,9 @@ Run as ``python -m tests.guarded`` from the repository, it reads what to run as 
 from its argument or else from stdin: ``ports``, the ports of this machine that the run
 may connect to, none where it may make no socket at all; ``limit``, how long telemetry
 has at the run's end, in seconds, where it may connect; ``report``, a file that the
-names of the threads started, the classes of OpenTelemetry's providers and whether its
-SDK was imported are written to once the run ends; and ``arguments``, the command's.
+names of the threads started, the connections tried, the classes of OpenTelemetry's
+providers and whether its SDK was imported are written to once the run ends; and
+``arguments``, the command's.
 Any other use of the network ends the process at once, with status 3, the event said on
 stderr. Read from stdin, what to run leaves the run's stdin at its end, as a pipe that
 says nothing; given as the argument, it leaves stdin to the run, such as ``serve``'s
@@ -19,6 +20,7 @@ import json
 import os
 import signal
 import sys
+from collections import Counter
 from pathlib import Path
 
 from kb_mcp.cli.main import main
@@ -33,10 +35,12 @@ NETWORK = frozenset({"socket.connect", "socket.bind", "socket.getaddrinfo", "soc
 given = json.loads(sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read())
 ports, report = {int(port) for port in given["ports"]}, Path(given["report"])
 started: list[str] = []
+audited: Counter[str] = Counter()
 
 
 def guard(event: str, arguments: tuple[object, ...]) -> None:
-    """Note each thread started; end the process at a use of the network not allowed."""
+    """Note each event and thread started; end the process at a use of the network not allowed."""
+    audited[event] += 1
     if event == "_thread.start_joinable_thread":
         bootstrap = arguments[0]
         started.append(bootstrap.__self__.name)
@@ -69,6 +73,7 @@ trace, metrics = (importlib.import_module(f"opentelemetry.{name}") for name in (
 kinds = [type(trace.get_tracer_provider()), type(metrics.get_meter_provider())]
 left = {
     "threads": started,
+    "connections": audited["socket.connect"],
     "providers": [f"{kind.__module__}.{kind.__qualname__}" for kind in kinds],
     "sdk": any(name.startswith("opentelemetry.sdk") for name in sys.modules),
 }

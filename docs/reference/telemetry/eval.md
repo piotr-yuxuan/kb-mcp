@@ -2,11 +2,11 @@
 
 What `eval` records, besides what every command does ([README](README.md)). A run is one
 trace: its root `eval`, the connections, one a target, then a span per target, a model
-and a chunking, which holds the build of its index, as `embed` records it, and the
-searches and answers of every question in every mode, as `serve` records them. A
+and a chunking, which holds the whole build of its index, as the events below list it,
+and the searches and answers of every question in every mode, as `serve` records them. A
 question is timed and logged, never a span of its own. A build that waits for a prune of
-the vector store records `vectors.lock_wait`, as [embed.md](embed.md) lists it, and
-one that waits past 60 s is `eval.not_evaluated`.
+the vector store records `vectors.lock_wait`, as [embed.md](embed.md) lists it, and one
+that waits past 60 s is `eval.not_evaluated`.
 
 ## Events
 

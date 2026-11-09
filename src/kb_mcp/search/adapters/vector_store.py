@@ -4,8 +4,9 @@ A vector is keyed by the SHA-256 of its model's fingerprint and the text embedde
 text is embedded once per model however often the index is rebuilt, and a vector is
 never reused for another model or another version of one. Each ``put`` commits, so an
 interrupted build keeps what it embedded, until a prune finds that no index reads it.
-Deleting the file costs a full embedding of the mirror by the model, and downloads
-nothing.
+Deleting the file costs no embedding while the index holds its pieces, each with its
+vector; once the index is rebuilt whole, the next ``embed`` embeds the mirror again by
+the model, and downloads nothing.
 
 Its lock, beside it, keeps a prune from deleting what a build in progress embeds: each
 build holds it shared, a prune exclusive. ``flock`` locks an open file, so the kernel
@@ -205,8 +206,32 @@ def opened(path: Path) -> Iterator[VectorStore]:
 
 
 def lock_of(store: Path) -> Path:
-    """Name the lock of the store at ``store``, beside it."""
+    """Name the lock of the store at ``store``, beside it; an index's lock is named alike."""
     return store.with_name(f"{store.name}.lock")
+
+
+@contextmanager
+def locked(lock: Path, operation: int, event: str, holder: str) -> Iterator[None]:
+    """Hold a lock file by ``flock``'s ``operation``, shared or exclusive, waiting for it.
+
+    A run that finds it held says so once, ``event`` naming the lock, then waits, and
+    raises TimeoutError, naming the lock and its ``holder``, once WAIT_S seconds have
+    passed.
+    """
+    with lock.open("a") as file:
+        for attempt in itertools.count():
+            try:
+                fcntl.flock(file, operation | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if attempt == 0:
+                    structlog.get_logger().info(event, lock=str(lock))
+                if attempt * POLL_S >= WAIT_S:
+                    message = f"{lock}: {holder} held it for {WAIT_S} s"
+                    raise TimeoutError(message) from None
+                time.sleep(POLL_S)
+            else:
+                break
+        yield
 
 
 @contextmanager
@@ -217,20 +242,7 @@ def shared(store: Path) -> Iterator[None]:
     ``vectors.lock_wait``, then waits, and raises TimeoutError, naming the lock, once
     WAIT_S seconds have passed.
     """
-    lock = lock_of(store)
-    with lock.open("a") as file:
-        for attempt in itertools.count():
-            try:
-                fcntl.flock(file, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            except BlockingIOError:
-                if attempt == 0:
-                    structlog.get_logger().info("vectors.lock_wait", lock=str(lock))
-                if attempt * POLL_S >= WAIT_S:
-                    message = f"{lock}: a prune of the vector store held it for {WAIT_S} s"
-                    raise TimeoutError(message) from None
-                time.sleep(POLL_S)
-            else:
-                break
+    with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector store"):
         yield
 
 

@@ -23,8 +23,11 @@ if TYPE_CHECKING:
 def pruning_said(
     _arguments: argparse.Namespace, _settings: Mapping[str, object]
 ) -> tuple[str, ...]:
-    """Say first that the build is followed by a prune of the vector store."""
-    return ("then: the vector store keeps only the vectors that the index and eval's read",)
+    """Say first that the pieces are the index's, then that a prune of the store follows."""
+    return (
+        "then: the pieces of the index as kb-mcp index left it get their vectors",
+        "then: the vector store keeps only the vectors that the index and eval's read",
+    )
 
 
 def register(
@@ -34,12 +37,14 @@ def register(
     """Add ``embed`` to the command."""
     parser = subparsers.add_parser(
         "embed",
-        help="build the search index again with vectors, then prune the vector store",
+        help="give the index's pieces their vectors, then prune the vector store",
         epilog=(
-            "With --format json: report, the documents by type, the sections, the files"
-            " skipped, the pieces by meaning, the texts embedded now and the files with a"
-            " piece refused; index, its path; model, the one that embedded; pruned, what the"
-            " prune of the vector store kept and deleted, or why it did not prune."
+            "With --format json: index, its path; model, the one that embedded; pieces, those"
+            " that the index holds; documents, its documents; skipped, the files that it"
+            " lacks; added and removed, the pieces; embedded, the texts embedded now; found,"
+            " those that the vector store held; refused, the documents with a piece refused;"
+            " unchanged, whether nothing was written; pruned, what the prune of the vector"
+            " store kept and deleted, or why it did not prune."
         ),
     )
     actions, flags = add_settings_options(parser)

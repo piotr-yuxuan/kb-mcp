@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
 import os
 import pty
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -17,10 +20,19 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
+from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import Link, PersonRole
-from kb_mcp.search.adapters import sqlite_index
-from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
-from kb_mcp.search.app.indexing import Embedding, Indexing, build_index, index_mirror
+from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
+from kb_mcp.search.app import indexing as indexing_module
+from kb_mcp.search.app.indexing import (
+    CHANGED_MEANWHILE,
+    Embedding,
+    Indexing,
+    build_index,
+    update_index,
+)
+from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
 from kb_mcp.search.domain.people import (
     UNHELD,
     Ambiguity,
@@ -28,7 +40,7 @@ from kb_mcp.search.domain.people import (
     Person,
     Spelling,
 )
-from kb_mcp.search.domain.search import Filters
+from kb_mcp.search.domain.search import WORDS, Filters, sections
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
     CREATED,
@@ -59,11 +71,13 @@ from tests.test_people import (
 from tests.test_question import read_until
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+    from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.search.domain.search import Sort
 
 BAD_SETTINGS = 2
@@ -82,7 +96,10 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 
 
 def index(
-    data: Path, capsys: CaptureFixture[str], settings: str = 'search_mode = "lexical"\n'
+    data: Path,
+    capsys: CaptureFixture[str],
+    settings: str = 'search_mode = "lexical"\n',
+    *options: str,
 ) -> tuple[int, str, str]:
     """Run ``index`` on the data directory, by words alone unless the settings say otherwise.
 
@@ -90,7 +107,7 @@ def index(
     """
     config = data.parent / "config.toml"
     config.write_text(settings, encoding="utf-8")
-    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data)])
+    status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data), *options])
     out, err = capsys.readouterr()
     return status, out, err
 
@@ -122,12 +139,19 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
     )
 
 
+# What the first index of a mirror of one page says: none to update, so built whole.
+FIRST_SHORT = (
+    "documents: 1\nsections: 2\ncopied: 0\nadded: 1\nreplaced: 0\nremoved: 0\nskipped: 0\n"
+    "rebuilt whole: unavailable\n"
+)
+FIRST_DETAILED = (
+    "rebuilt {index} whole, there being none that this version reads:"
+    " 1 documents (page: 1), 2 sections\n"
+)
+
+
 @pytest.mark.parametrize(
-    ("summary", "shown"),
-    [
-        ("short", "documents: 1\nsections: 2\n"),
-        ("detailed", "indexed 1 documents (page: 1), 2 sections, into {index}\n"),
-    ],
+    ("summary", "shown"), [("short", FIRST_SHORT), ("detailed", FIRST_DETAILED)]
 )
 def test_by_words_alone_the_command_shows_documents_and_sections(
     data: Path, capsys: CaptureFixture[str], summary: str, shown: str
@@ -159,19 +183,18 @@ def test_the_command_gives_its_report_index_and_model_as_json(
 def test_embed_needs_the_endpoint_and_index_never_asks_it(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """No endpoint answering: ``embed`` exits 1 naming the way out, which runs by words alone.
+    """No endpoint answering: ``index`` never asks it, and ``embed`` exits 1 saying why.
 
     Whatever the mode says, as neither reads it to decide: plan 031, criterion 5.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     config = data.parent / "config.toml"
     with nothing_listening() as url:
-        config.write_text(f"embedding_url = {json.dumps(url)}\n", encoding="utf-8")
+        status, out, _ = index(data, capsys, f"embedding_url = {json.dumps(url)}\n")
+        assert (status, out) == (0, FIRST_SHORT)
         options = ["--yes", "--config", str(config), "--data-dir", str(data)]
         assert main(["embed", *options]) == 1
-        assert "run kb-mcp index for an index by words alone" in capsys.readouterr().err
-        status, out, _ = index(data, capsys, f"embedding_url = {json.dumps(url)}\n")
-    assert (status, out) == (0, "documents: 1\nsections: 2\n")
+    assert "no answer from the embedding endpoint" in capsys.readouterr().err
 
 
 def test_line_endings_read_back_as_written(data: Path) -> None:
@@ -259,11 +282,16 @@ def test_a_failed_build_keeps_the_old_index(data: Path, monkeypatch: MonkeyPatch
 
 
 def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str]) -> None:
-    """Built twice, the data directory holds the mirror and one index, no journal."""
+    """Built, then updated, the data directory holds the mirror, one index and its lock.
+
+    No journal, no write-ahead log, no build file.
+    """
     write(data / "docs", page("196845", "Kafka"))
     assert index(data, capsys)[0] == 0
+    write(data / "docs", page("196846", "Another"))
     assert index(data, capsys)[0] == 0
-    assert sorted(path.name for path in data.iterdir()) == ["docs", "index.sqlite"]
+    names = ["docs", "index.sqlite", "index.sqlite.lock"]
+    assert sorted(path.name for path in data.iterdir()) == names
 
 
 def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -293,6 +321,7 @@ def test_a_database_error_is_a_failure_and_keeps_the_old_index(
     write(data / "docs", page("196845", "Kafka"))
     assert index(data, capsys)[0] == 0
     before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", page("196846", "Another"))
 
     def full(*_: object) -> None:
         message = "database or disk is full"
@@ -328,7 +357,7 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
         endpoint=None,
     )
     with pytest.raises(sqlite3.ProgrammingError):
-        index_mirror(indexing, MOMENT)
+        update_index(indexing, MOMENT)
 
 
 @pytest.mark.parametrize("mode", ["lexical", "hybrid"])
@@ -854,7 +883,7 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     """An index of plan 006, or built before the build id, people, links or persons.
 
     The commands named write the mirror's files before the index, as 041 changed them:
-    ``prepare``, then ``index`` or ``embed``.
+    ``prepare``, then ``index``, then ``embed``.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -866,7 +895,7 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         UnavailableIndexError,
         match=(
             "rebuild it with `kb-mcp prepare`, which writes the mirror again first,"
-            " then `kb-mcp index` or `kb-mcp embed`"
+            " then `kb-mcp index`, then `kb-mcp embed`"
         ),
     )
     with refused, reading(data / "index.sqlite"):
@@ -898,11 +927,11 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
 
     Piped, stderr has no bar, and the log file holds the events progress; on a terminal,
     the files' bar shows them all done, with the time elapsed and the time left; with
-    -q, the terminal is sent no bar.
+    -q, the terminal is sent no bar. Each run reads every file, rebuilding whole.
     """
     fillers(data / "docs")
     piped = subprocess.run(
-        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--rebuild", "--format", "json"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         env=child_environment(data),
@@ -916,7 +945,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert (last["task"], last["done"], last["total"]) == ("files", FILLERS, FILLERS)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--rebuild", "--format", "json"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,
@@ -931,7 +960,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert re.search(rf"files [━╸╺ ]+ {FILLERS}/{FILLERS} {clock} {clock} ", shown)
     controller, terminal = pty.openpty()
     with subprocess.Popen(
-        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--format", "json", "-q"],
+        [sys.executable, "-m", "kb_mcp", "index", "--yes", "--rebuild", "--format", "json", "-q"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=terminal,
@@ -959,9 +988,957 @@ def test_an_index_that_cannot_be_written_exits_1_and_keeps_the_one_in_place(
     write(data / "docs", page("196845", "Kafka"), BODY)
     assert index(data, capsys)[0] == 0
     before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", page("196846", "Another"), BODY)
     monkeypatch.setattr(sqlite_index.Writer, "add", full)
     status, _, err = index(data, capsys)
     assert status == 1
     assert ("error", "index.not_built") in said(err)
     assert "database or disk is full" in err
     assert (data / "index.sqlite").read_bytes() == before
+
+
+def rows_of(index: Path, query: str) -> list[tuple[object, ...]]:
+    """Read rows of an index as they are written."""
+    with closing(sqlite3.connect(index)) as connection:
+        return connection.execute(query).fetchall()
+
+
+def digest_of(file: Path) -> str:
+    """Give the digest of a file as the plan defines it: the SHA-256 of its bytes."""
+    return hashlib.sha256(file.read_bytes()).hexdigest()
+
+
+def test_a_document_records_the_digest_of_its_file_s_bytes(data: Path) -> None:
+    """Its line endings as written, its accents as the bytes that encode them."""
+    path = write(data / "docs", page("196845", "Kafka"), "# Kafka\r\n\r\nDélai.\r\n")
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert rows_of(data / "index.sqlite", "SELECT path, digest FROM documents") == [
+        (path, digest_of(data / "docs" / path))
+    ]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
+def test_each_file_skipped_is_recorded_with_its_digest_and_why(data: Path) -> None:
+    """Refused, not in UTF-8, or a duplicate, by its digest; one that cannot be read has none."""
+    docs = data / "docs"
+    kept = write(docs, page("900001", "First"))
+    twin = write(docs, page("900001", "Second"))
+    broken = docs / "confluence" / "ENG" / "1-broken.md"
+    broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
+    latin = docs / "confluence" / "ENG" / "2-latin.md"
+    latin.write_bytes(b"---\ntitle: \xe9\n---\n")
+    closed = docs / "confluence" / "ENG" / "3-closed.md"
+    closed.write_text("---\n", encoding="utf-8")
+    closed.chmod(0)
+    report = build_index(docs, data / "index.sqlite", MOMENT)
+    rows = rows_of(data / "index.sqlite", "SELECT path, digest, reason FROM skipped ORDER BY path")
+    assert [(path, digest) for path, digest, _ in rows] == [
+        ("confluence/ENG/1-broken.md", digest_of(broken)),
+        ("confluence/ENG/2-latin.md", digest_of(latin)),
+        ("confluence/ENG/3-closed.md", None),
+        (twin, digest_of(docs / twin)),
+    ]
+    reasons = [str(reason) for _, _, reason in rows]
+    assert reasons[0].startswith("front matter without exactly the mirror's keys")
+    assert reasons[1:] == [
+        "not UTF-8",
+        "not readable (PermissionError)",
+        "another document has the same source and id",
+    ]
+    assert sorted(report.skipped) == [(path, reason) for path, _, reason in rows]
+    assert rows_of(data / "index.sqlite", "SELECT path FROM documents") == [(kept,)]
+    with reading(data / "index.sqlite") as reader:
+        assert reader.summary().skipped == len(rows)
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="APFS refuses names that are not UTF-8")
+def test_a_file_named_in_bytes_that_are_not_utf_8_is_indexed_or_skipped_all_the_same(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The index holds text: its name goes in ASCII escapes, two such names staying two."""
+    folder = data / "docs" / "confluence" / "ENG"
+    folder.mkdir(parents=True)
+    (folder / os.fsdecode(b"caf\xe9.md")).write_text("not a document\n", encoding="utf-8")
+    good = dump(page("196845", "Kafka"), BODY)
+    (folder / os.fsdecode(b"th\xe9.md")).write_text(good, encoding="utf-8")
+    status, out, err = index(data, capsys)
+    assert status == 1
+    assert out.startswith("documents: 1\n")
+    assert ("warning", "index.file_skipped") in said(err)
+    assert rows_of(data / "index.sqlite", "SELECT path, reason FROM skipped") == [
+        ("confluence/ENG/caf\\xe9.md", "no front matter")
+    ]
+    assert rows_of(data / "index.sqlite", "SELECT path FROM documents") == [
+        ("confluence/ENG/th\\xe9.md",)
+    ]
+
+
+def test_a_build_with_no_file_skipped_records_none(data: Path) -> None:
+    """The table is there, and empty, as the count says."""
+    write(data / "docs", page("196845", "Kafka"))
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert rows_of(data / "index.sqlite", "SELECT * FROM skipped") == []
+    with reading(data / "index.sqlite") as reader:
+        assert reader.summary().skipped == 0
+
+
+def test_a_build_records_its_words_and_what_the_alias_file_means(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """The names and targets, in their order: no other change of the file moves the row."""
+    write(data / "docs", page("196845", "Kafka"))
+
+    def recorded(text: str | None) -> tuple[object, ...]:
+        if text is None:
+            (data / "aliases.toml").unlink(missing_ok=True)
+        else:
+            (data / "aliases.toml").write_text(text, encoding="utf-8")
+        assert index(data, capsys)[0] == 0
+        ((words, aliases),) = rows_of(
+            data / "index.sqlite",
+            "SELECT (SELECT value FROM meta WHERE name = 'words'),"
+            " (SELECT value FROM meta WHERE name = 'aliases')",
+        )
+        assert words == WORDS
+        return aliases
+
+    none = recorded(None)
+    build_index(data / "docs", data / "evaluated.sqlite", MOMENT)
+    assert rows_of(data / "evaluated.sqlite", "SELECT value FROM meta WHERE name = 'aliases'") == [
+        (none,)
+    ]
+    assert recorded("") == none
+    assert recorded("# Nobody yet.\n") == none
+    one = recorded('"Sam" = "Sam Sample"\n"Kim" = "Kim Example"\n')
+    assert one != none
+    assert recorded('# Who is who.\n\nSam = "Sam Sample"\n\nKim  =  "Kim Example"\n') == one
+    assert recorded('"Kim" = "Kim Example"\n"Sam" = "Sam Sample"\n') != one
+    assert recorded('"Sam" = "Sam Example"\n"Kim" = "Kim Example"\n') != one
+    assert recorded('"Samuel" = "Sam Sample"\n"Kim" = "Kim Example"\n') != one
+
+
+def test_an_index_built_before_digests_is_read_as_any_other(data: Path) -> None:
+    """``SCHEMA`` stays: readers ignore the column, the table and the meta rows that it lacks."""
+    path = write(data / "docs", page("196845", "Kafka"), BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        connection.execute("ALTER TABLE documents DROP COLUMN digest")
+        connection.execute("DROP TABLE skipped")
+        connection.execute("DELETE FROM meta WHERE name IN ('words', 'aliases')")
+        connection.commit()
+    with reading(data / "index.sqlite") as reader:
+        assert [entry.path for entry in reader.entries(paths=[path])] == [path]
+        assert list(reader.scores('"retention"', Filters())[0]) == [path]
+        summary = reader.summary()
+    assert (summary.types, summary.skipped) == ({"page": 1}, 0)
+
+
+def written_backwards(index: Path, fronts: Iterable[FrontMatter]) -> Outcome:
+    """Write documents the last by path first, join them, and give what the join said.
+
+    Their rowids then go against their paths, as they do where an edited file comes last.
+    """
+    cut = tuple(sections(""))
+    with sqlite_index.building(index, MOMENT) as writer:
+        for front in sorted(fronts, key=location, reverse=True):
+            writer.add(Put(path=location(front), digest="d", front=front, sections=cut))
+        return writer.join({})
+
+
+@pytest.mark.parametrize(
+    ("account", "first", "second", "person"),
+    [
+        ("acct-0001", "Robin Example", "Robin Sample", ROBIN),
+        (None, "Sam SAMPLE", "sam sample", SAM_ALONE),
+    ],
+    ids=["an account's", "a name alone's"],
+)
+def test_two_names_tied_serve_the_first_by_path_whatever_the_rowids(
+    data: Path, account: str | None, first: str, second: str, person: str
+) -> None:
+    """On documents of one update time, as an edit leaves them, the person keeps its name."""
+    fronts = [
+        page(number, "Tied", people=(PersonRole(role="author", name=name, account=account),))
+        for number, name in (("1", first), ("2", second))
+    ]
+    written_backwards(data / "index.sqlite", fronts)
+    with reading(data / "index.sqlite") as reader:
+        activity = reader.person(person)
+    assert activity is not None
+    assert activity.person.name == first
+
+
+def test_an_ambiguous_name_is_said_by_its_first_spelling_by_path(data: Path) -> None:
+    """Whichever of the documents spelling it was written last."""
+    fronts = [
+        page("1", "Tied", author="Sam SAMPLE"),
+        page("2", "Tied", author="sam sample"),
+        *(
+            page(
+                number, "Tied", people=(PersonRole(role="author", name="Sam Sample", account=who),)
+            )
+            for number, who in (("3", "acct-0002"), ("4", "acct-0003"))
+        ),
+    ]
+    outcome = written_backwards(data / "index.sqlite", fronts)
+    assert outcome.ambiguous == (Ambiguity(name="Sam SAMPLE", persons=frozenset({SAM_2, SAM_3})),)
+
+
+def test_a_transcript_joins_its_meeting_whatever_the_rowids(data: Path) -> None:
+    """Its speaker, by first name alone, takes the person of the participant that it links to."""
+    fronts = [
+        worklog_document("meeting", "m-20261020-review", "Review", ("Sam Sample",)),
+        worklog_document("transcript", "t-20261020-1", "Review", ("Sam",), "m-20261020-review"),
+    ]
+    written_backwards(data / "index.sqlite", fronts)
+    assert sorted(rows_of(data / "index.sqlite", "SELECT name, person FROM people")) == [
+        ("Sam", SAM_ALONE),
+        ("Sam Sample", SAM_ALONE),
+    ]
+
+
+def test_a_whole_build_numbers_documents_by_their_paths_text(data: Path) -> None:
+    """Files come by the parts of their paths, ``a/b.md`` first; ties by their text, ``a-b.md``."""
+    folder = data / "docs" / "confluence" / "ENG"
+    (folder / "a").mkdir(parents=True)
+    first = dump(page("1", "Tied", author="Sam SAMPLE"), "# Tied\n")
+    (folder / "a" / "b.md").write_text(first, encoding="utf-8")
+    second = dump(page("2", "Tied", author="sam sample"), "# Tied\n")
+    (folder / "a-b.md").write_text(second, encoding="utf-8")
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert rows_of(data / "index.sqlite", "SELECT path FROM documents ORDER BY rowid") == [
+        ("confluence/ENG/a/b.md",),
+        ("confluence/ENG/a-b.md",),
+    ]
+    with reading(data / "index.sqlite") as reader:
+        activity = reader.person(SAM_ALONE)
+    assert activity is not None
+    assert activity.person.name == "sam sample"
+
+
+# What a whole build writes under this value of ``WORDS``, from files of the same bytes:
+# sections cut, words tokenized, a document's rows written and people joined. Changing any
+# pin below goes with a new value of ``WORDS``, here and in the code.
+PINNED_WORDS = "1"
+WORDS_CHANGED = (
+    "a whole build writes otherwise from the same files: change WORDS, in"
+    " search/domain/search.py, so that no update keeps rows of the old one; then pin this"
+)
+HANDBOOK = page(
+    "1001",
+    "Deploy",
+    labels=("ops", "été"),
+    breadcrumb=("Home", "Guidés"),
+    created=MOMENT - timedelta(days=3),
+    fetched_at=MOMENT + timedelta(hours=1),
+    url="https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
+    people=(
+        PersonRole(role="author", name="A Person", account="acct-0001"),
+        PersonRole(
+            role="commenter",
+            name="Kim Doé",
+            at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
+        ),
+    ),
+    links=(Link(relation="summary", ref="m-20261020-review"),),
+)
+HANDBOOK_BODY = (
+    "# Deploy\n\nWhy we deploy_it.\n\n"
+    "## Rollback ##\r\n\r\nUndo it.\n\n```\n# not a heading\n```\n\n"
+    "### Steps\n\n####### nor this\n"
+)
+NOTE = issue("PROJ-1", "Économie", author=None)
+# Việt's letter of two diacritics is what ``remove_diacritics 2`` folds, and 1 does not.
+NOTE_BODY = "Avant l'été à Vi\u1ec7t.\n\n# Économie\n\nRetour.\n"
+# Per section: its document, number, start, head, title, labels, breadcrumb, heading, body.
+PINNED_SECTIONS = [
+    (
+        "confluence/ENG/1001-deploy.md",
+        1,
+        0,
+        "# Deploy\n",
+        "Deploy",
+        "ops été",
+        "Home / Guidés",
+        "",
+        "\nWhy we deploy_it.\n\n",
+    ),
+    (
+        "confluence/ENG/1001-deploy.md",
+        2,
+        29,
+        "## Rollback ##\r\n",
+        "",
+        "",
+        "",
+        "Rollback",
+        "\r\nUndo it.\n\n```\n# not a heading\n```\n\n",
+    ),
+    (
+        "confluence/ENG/1001-deploy.md",
+        3,
+        82,
+        "### Steps\n",
+        "",
+        "",
+        "",
+        "Steps",
+        "\n####### nor this\n",
+    ),
+    ("jira/PROJ/PROJ-1.md", 1, 0, "", "Économie", "", "", "", "Avant l'été à Vi\u1ec7t.\n\n"),
+    ("jira/PROJ/PROJ-1.md", 2, 21, "# Économie\n", "", "", "", "Économie", "\nRetour.\n"),
+]
+# Each term of the two documents: in how many sections, how many times, as FTS5 counts.
+PINNED_TERMS = [
+    ("a", 2, 2),
+    ("avant", 1, 1),
+    ("deploy", 1, 2),
+    ("economie", 2, 2),
+    ("ete", 2, 2),
+    ("guides", 1, 1),
+    ("heading", 1, 1),
+    ("home", 1, 1),
+    ("it", 2, 2),
+    ("l", 1, 1),
+    ("nor", 1, 1),
+    ("not", 1, 1),
+    ("ops", 1, 1),
+    ("retour", 1, 1),
+    ("rollback", 1, 1),
+    ("steps", 1, 1),
+    ("this", 1, 1),
+    ("undo", 1, 1),
+    ("viet", 1, 1),
+    ("we", 1, 1),
+    ("why", 1, 1),
+]
+# Each document's row but its rowid and its file's digest: times, people, links as written.
+PINNED_DOCUMENTS = [
+    (
+        "confluence/ENG/1001-deploy.md",
+        "confluence",
+        "page",
+        "1001",
+        None,
+        "Deploy",
+        "ENG",
+        None,
+        "current",
+        None,
+        '["ops", "été"]',
+        (
+            '[{"role": "author", "name": "A Person", "account": "acct-0001", "at": []},'
+            ' {"role": "commenter", "name": "Kim Doé", "account": null,'
+            ' "at": ["2026-10-20T19:52:41+00:00", "2026-10-20T20:52:41+00:00"]}]'
+        ),
+        '[{"relation": "summary", "ref": "m-20261020-review"}]',
+        "2026-10-17T21:52:41+00:00",
+        "2026-10-20T21:52:41+00:00",
+        1,
+        "000001",
+        "https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
+        '["Home", "Guidés"]',
+        "2026-10-20T22:52:41+00:00",
+        110,
+        1,
+        3,
+    ),
+    (
+        "jira/PROJ/PROJ-1.md",
+        "jira",
+        "issue",
+        "10001",
+        "PROJ-1",
+        "Économie",
+        None,
+        "PROJ",
+        "To Do",
+        "Task",
+        "[]",
+        "[]",
+        "[]",
+        "2026-10-20T21:52:41+00:00",
+        "2026-10-20T21:52:41+00:00",
+        None,
+        "20261020T215241.000000Z",
+        None,
+        "[]",
+        "2026-10-20T21:52:41+00:00",
+        41,
+        4,
+        5,
+    ),
+]
+# Each row of people, a commenter's one per comment, and the file refused with why.
+PINNED_ROWS = [
+    ("confluence/ENG/1001-deploy.md", "author", "A Person", "acct-0001", None),
+    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doé", None, "2026-10-20T19:52:41+00:00"),
+    ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doé", None, "2026-10-20T20:52:41+00:00"),
+]
+PINNED_LABELS = [("confluence/ENG/1001-deploy.md", "ops"), ("confluence/ENG/1001-deploy.md", "été")]
+REFUSED = "---\ntitle: no other key\n---\n"
+# Its reason, but the mirror's keys, which change with the mirror rather than the index.
+PINNED_SKIPPED = [("confluence/ENG/1-broken.md", "front matter without exactly the mirror's keys")]
+
+
+def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Path) -> None:
+    """The sections, the words and the rows of two documents, and a refusal, under ``WORDS``.
+
+    Every column of their rows, labels and people, each time distinct, names and labels
+    beyond ASCII, so that no change to how a time, a name, the people or the links are
+    written leaves an update's copied rows otherwise than a whole build's.
+    """
+    write(data / "docs", HANDBOOK, HANDBOOK_BODY)
+    write(data / "docs", NOTE, NOTE_BODY)
+    (data / "docs" / "confluence" / "ENG" / "1-broken.md").write_text(REFUSED, encoding="utf-8")
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert WORDS == PINNED_WORDS, WORDS_CHANGED
+    index = data / "index.sqlite"
+    assert (
+        rows_of(
+            index,
+            "SELECT d.path, s.number, s.start, s.head, s.title, s.labels, s.breadcrumb,"
+            " s.heading, s.body FROM sections s JOIN documents d ON d.rowid = s.document"
+            " ORDER BY d.path, s.number",
+        )
+        == PINNED_SECTIONS
+    ), WORDS_CHANGED
+    assert (
+        rows_of(
+            index,
+            "SELECT path, source, type, id, key, title, space, project, status, issue_type,"
+            " labels, people, links, created, updated, version, revision, url, breadcrumb,"
+            " fetched_at, length, first_section, last_section FROM documents ORDER BY path",
+        )
+        == PINNED_DOCUMENTS
+    ), WORDS_CHANGED
+    assert (
+        rows_of(
+            index,
+            "SELECT d.path, p.role, p.name, p.account, p.at FROM people p"
+            " JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3, 5",
+        )
+        == PINNED_ROWS
+    ), WORDS_CHANGED
+    assert (
+        rows_of(
+            index,
+            "SELECT d.path, l.label FROM labels l JOIN documents d ON d.rowid = l.document"
+            " ORDER BY l.rowid",
+        )
+        == PINNED_LABELS
+    ), WORDS_CHANGED
+    skipped = rows_of(index, "SELECT path, reason FROM skipped")
+    pinned = [(path, reason[: len(PINNED_SKIPPED[0][1])]) for path, reason in skipped]
+    assert pinned == PINNED_SKIPPED, WORDS_CHANGED
+    with closing(sqlite3.connect(index)) as connection:
+        connection.execute("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, chunks, row)")
+        terms = connection.execute("SELECT term, doc, cnt FROM terms ORDER BY term").fetchall()
+    assert terms == PINNED_TERMS, WORDS_CHANGED
+
+
+# One account under two names; a name that joins it, an alias and a meeting's speaker that
+# join a name alone; a name of two accounts, which joins neither.
+JO_2, JO_3 = anchored("account\nacct-0002"), anchored("account\nacct-0003")
+JO_ALONE = anchored("name\njo two")
+PINNED_MIRROR = (
+    page(
+        "1",
+        "One",
+        people=(PersonRole(role="author", name="Robin Example", account="acct-0001"),),
+    ),
+    issue(
+        "PROJ-1",
+        "Two",
+        updated=MOMENT + timedelta(days=1),
+        people=(PersonRole(role="creator", name="Robin Sample", account="acct-0001"),),
+    ),
+    *(
+        issue(key, "Same", people=(PersonRole(role="author", name="Jo Two", account=account),))
+        for key, account in (("PROJ-2", "acct-0002"), ("PROJ-3", "acct-0003"))
+    ),
+    worklog_document(
+        "meeting", "m-20261020-review", "Review", ("robin  EXAMPLE", "Sam Sample", "Kim", "Jo Two")
+    ),
+    worklog_document("transcript", "t-20261020-1", "Review", ("Sam", "Alex"), "m-20261020-review"),
+)
+PINNED_PERSONS = sorted(
+    [
+        (ROBIN, "Robin Sample"),
+        (SAM_ALONE, "Sam Sample"),
+        (ALEX, "Alex"),
+        (JO_2, "Jo Two"),
+        (JO_3, "Jo Two"),
+        (JO_ALONE, "Jo Two"),
+    ]
+)
+PINNED_SPELLINGS = sorted(
+    [
+        (ROBIN, "Robin Example", "robin example", "account"),
+        (ROBIN, "Robin Sample", "robin sample", "account"),
+        (ROBIN, "robin  EXAMPLE", "robin example", "name"),
+        (SAM_ALONE, "Sam Sample", "sam sample", "name"),
+        (SAM_ALONE, "Kim", "kim", "alias"),
+        (SAM_ALONE, "Sam", "sam", "meeting"),
+        (ALEX, "Alex", "alex", "name"),
+        (JO_2, "Jo Two", "jo two", "account"),
+        (JO_3, "Jo Two", "jo two", "account"),
+        (JO_ALONE, "Jo Two", "jo two", "name"),
+    ]
+)
+PINNED_PEOPLE = sorted(
+    [
+        ("confluence/ENG/1-one.md", "author", "Robin Example", "acct-0001", ROBIN),
+        ("jira/PROJ/PROJ-1.md", "creator", "Robin Sample", "acct-0001", ROBIN),
+        ("jira/PROJ/PROJ-2.md", "author", "Jo Two", "acct-0002", JO_2),
+        ("jira/PROJ/PROJ-3.md", "author", "Jo Two", "acct-0003", JO_3),
+        ("worklog/meetings/m-20261020-review.md", "participant", "robin  EXAMPLE", None, ROBIN),
+        ("worklog/meetings/m-20261020-review.md", "participant", "Sam Sample", None, SAM_ALONE),
+        ("worklog/meetings/m-20261020-review.md", "participant", "Kim", None, SAM_ALONE),
+        ("worklog/meetings/m-20261020-review.md", "participant", "Jo Two", None, JO_ALONE),
+        ("worklog/transcripts/t-20261020-1-review.md", "participant", "Sam", None, SAM_ALONE),
+        ("worklog/transcripts/t-20261020-1-review.md", "participant", "Alex", None, ALEX),
+    ]
+)
+
+
+def test_what_a_whole_build_joins_of_a_small_mirror_is_pinned_under_words(data: Path) -> None:
+    """Each person, each spelling and each row's person, as ``WORDS`` names them."""
+    for front in PINNED_MIRROR:
+        write(data / "docs", front)
+    report = build_index(
+        data / "docs", data / "index.sqlite", MOMENT, aliases={"Kim": "Sam Sample"}
+    )
+    assert WORDS == PINNED_WORDS, WORDS_CHANGED
+    index = data / "index.sqlite"
+    persons = rows_of(index, "SELECT id, name FROM persons ORDER BY 1")
+    assert persons == PINNED_PERSONS, WORDS_CHANGED
+    assert (
+        rows_of(index, "SELECT person, name, key, joined FROM person_names ORDER BY 1, 2, 3, 4")
+        == PINNED_SPELLINGS
+    ), WORDS_CHANGED
+    assert (
+        rows_of(
+            index,
+            "SELECT d.path, p.role, p.name, p.account, p.person"
+            " FROM people p JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3",
+        )
+        == PINNED_PEOPLE
+    ), WORDS_CHANGED
+    assert report.persons.ambiguous == (
+        Ambiguity(name="Jo Two", persons=frozenset({JO_2, JO_3})),
+    ), WORDS_CHANGED
+
+
+LEXICAL = 'search_mode = "lexical"\n'
+PAGES = 3  # the fillers of a test's mirror, Kafka's page aside
+KAFKA = page("196845", "Kafka", labels=("streaming",))
+KAFKA_PATH = location(KAFKA)
+
+
+def embedded(data: Path) -> None:
+    """Write a mirror of a few pages and Kafka's, and build its index whole, by meaning."""
+    fillers(data / "docs", PAGES)
+    write(data / "docs", KAFKA, BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(tiny(), data / "v.db"))
+
+
+def snapshot(index: Path) -> tuple[bytes, int, str]:
+    """Give an index's bytes, its time and its build: what a run that writes nothing keeps."""
+    with reading(index) as reader:
+        return index.read_bytes(), index.stat().st_mtime_ns, reader.build()
+
+
+# Each row of every document but one, with its rowids: what an update copies as it was.
+KEPT_ROWS = (
+    "SELECT * FROM documents WHERE path <> :path ORDER BY rowid",
+    """
+    SELECT l.* FROM labels l JOIN documents d ON d.rowid = l.document
+    WHERE d.path <> :path ORDER BY l.document, l.label
+    """,
+    """
+    SELECT p.document, p.role, p.name, p.account, p.at FROM people p
+    JOIN documents d ON d.rowid = p.document WHERE d.path <> :path
+    ORDER BY p.document, p.role, p.name
+    """,
+    """
+    SELECT s.* FROM sections s JOIN documents d ON d.rowid = s.document
+    WHERE d.path <> :path ORDER BY s.rowid
+    """,
+    """
+    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    JOIN documents d ON d.rowid = s.document WHERE d.path <> :path ORDER BY p.rowid
+    """,
+)
+# The rows of one document, by path.
+ITS_ROWS = (
+    "SELECT * FROM documents WHERE path = :path",
+    "SELECT l.* FROM labels l JOIN documents d ON d.rowid = l.document WHERE d.path = :path",
+    "SELECT p.* FROM people p JOIN documents d ON d.rowid = p.document WHERE d.path = :path",
+    "SELECT s.* FROM sections s JOIN documents d ON d.rowid = s.document WHERE d.path = :path",
+    """
+    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    JOIN documents d ON d.rowid = s.document WHERE d.path = :path
+    """,
+)
+
+
+def rows_by(index: Path, queries: Iterable[str], path: str) -> list[list[tuple[object, ...]]]:
+    """Read the rows that each query gives of a path, as they are written."""
+    with closing(sqlite3.connect(index)) as connection:
+        return [connection.execute(query, {"path": path}).fetchall() for query in queries]
+
+
+def test_nothing_changed_writes_nothing_and_says_so(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 035, criterion 3: the index's bytes, time and build as they were, exit 0.
+
+    The summary still counts what the index holds; ``index.unchanged`` says it.
+    """
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = snapshot(data / "index.sqlite")
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert out == f"documents: {PAGES}\nsections: {2 * PAGES}\nnothing written\nskipped: 0\n"
+    assert snapshot(data / "index.sqlite") == before
+    (unchanged,) = logged_as(data.parent / "home", "index.unchanged")
+    assert unchanged["documents"] == PAGES
+    assert (unchanged["sections"], unchanged["skipped"]) == (2 * PAGES, 0)
+    assert len(logged_as(data.parent / "home", "index.built")) == 1
+
+
+def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 3: 1 replaced; every other document's rows, rowids and pieces as they were.
+
+    The edited document has no pieces, awaiting vectors, and its new words find it; the
+    index stays in SQLite's rollback journal.
+    """
+    embedded(data)
+    kept = rows_by(data / "index.sqlite", KEPT_ROWS, KAFKA_PATH)
+    assert kept[0]
+    assert kept[-1]
+    write(data / "docs", KAFKA, BODY.replace("Seven days.", "Fourteen days."))
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert f"copied: {PAGES}\nadded: 0\nreplaced: 1\nremoved: 0\nskipped: 0\n" in out
+    assert out.endswith("awaiting vectors: 1\n")
+    assert rows_by(data / "index.sqlite", KEPT_ROWS, KAFKA_PATH) == kept
+    assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH)[4] == []
+    assert rows_of(data / "index.sqlite", "PRAGMA journal_mode") == [("delete",)]
+    with reading(data / "index.sqlite") as reader:
+        assert list(reader.scores('"fourteen"', Filters())[0]) == [KAFKA_PATH]
+        assert reader.scores('"seven"', Filters())[0] == {}
+
+
+def test_a_removed_file_leaves_no_row_and_full_text_search_whole(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 4: its document, labels, people, sections and pieces gone; FTS5 checks out.
+
+    A word that it alone held finds nothing, and its label is no value any more.
+    """
+    embedded(data)
+    assert all(rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH))
+    (data / "docs" / KAFKA_PATH).unlink()
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert f"copied: {PAGES}\nadded: 0\nreplaced: 0\nremoved: 1\n" in out
+    assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH) == [[]] * len(ITS_ROWS)
+    orphans = "SELECT count(*) FROM pieces WHERE section NOT IN (SELECT rowid FROM sections)"
+    assert rows_of(data / "index.sqlite", orphans) == [(0,)]
+    checked = data.parent / "checked.sqlite"
+    checked.write_bytes((data / "index.sqlite").read_bytes())
+    with closing(sqlite3.connect(checked)) as connection:
+        connection.execute("INSERT INTO chunks (chunks, rank) VALUES ('integrity-check', 1)")
+    with reading(data / "index.sqlite") as reader:
+        assert reader.scores('"retention"', Filters()) == ({}, True)
+        assert ("streaming", 1) not in reader.values("label")
+
+
+def made_before_digests(path: Path) -> None:
+    """Make an index as one of schema 6 was before plan 035: no digest, skipped or words."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("DELETE FROM meta WHERE name IN ('words', 'aliases')")
+        connection.execute("ALTER TABLE documents DROP COLUMN digest")
+        connection.execute("DROP TABLE skipped")
+        connection.commit()
+
+
+def another_schema(path: Path) -> None:
+    """Make an index of the schema before persons."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("UPDATE meta SET value = '5' WHERE name = 'schema'")
+        connection.commit()
+
+
+def unknown_chunking(path: Path) -> None:
+    """Make an index cut by a chunking that this version lacks."""
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("UPDATE meta SET value = 'paragraphs' WHERE name = 'chunking'")
+        connection.commit()
+
+
+@pytest.mark.parametrize(
+    ("made", "options", "reason"),
+    [
+        (made_before_digests, (), "another version"),
+        (another_schema, (), "unavailable"),
+        (unknown_chunking, (), "unavailable"),
+        (None, ("--rebuild",), "--rebuild"),
+    ],
+)
+def test_an_index_that_cannot_be_updated_is_rebuilt_whole_saying_why(
+    data: Path,
+    capsys: CaptureFixture[str],
+    made: Callable[[Path], None] | None,
+    options: tuple[str, ...],
+    reason: str,
+) -> None:
+    """Criterion 7: without digests, at another schema, cut otherwise, or --rebuild: whole.
+
+    ``index.whole`` says why, the summary too; nothing is copied; exit 0; the index then
+    holds every document with its digest, under this code's ``WORDS``, and no pieces.
+    """
+    embedded(data)
+    if made is not None:
+        made(data / "index.sqlite")
+    status, out, _ = index(data, capsys, LEXICAL, *options)
+    assert status == 0
+    assert f"copied: 0\nadded: {PAGES + 1}\nreplaced: 0\nremoved: 0\n" in out
+    assert f"rebuilt whole: {reason}\n" in out
+    (whole,) = logged_as(data.parent / "home", "index.whole")
+    assert whole["reason"] == reason
+    with reading(data / "index.sqlite") as reader:
+        held = reader.held()
+        assert (held.words, len(held.documents), reader.embedded()) == (WORDS, PAGES + 1, None)
+
+
+def test_an_index_of_another_words_is_rebuilt_whole(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 7: the constant changed by the test, the index read as another version's."""
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    monkeypatch.setattr(indexing_module, "WORDS", "another")
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert "rebuilt whole: another version\n" in out
+
+
+def damage(index: Path, table: str) -> None:
+    """Overwrite the root page of a table of the index, which ``reading`` alone passes."""
+    with closing(sqlite3.connect(index)) as connection:
+        root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (table,))
+        page_number = root.fetchone()[0]
+        size = connection.execute("PRAGMA page_size").fetchone()[0]
+    with index.open("r+b") as file:
+        file.seek((page_number - 1) * size)
+        file.write(b"\xff" * size)
+
+
+@pytest.mark.parametrize(
+    ("table", "changed"), [("documents", False), ("sections", True), ("labels", True)]
+)
+def test_a_damaged_index_is_rebuilt_whole(
+    data: Path, capsys: CaptureFixture[str], table: str, *, changed: bool
+) -> None:
+    """Criterion 7: a table's root page overwritten: ``index.whole``, reason damaged, exit 0.
+
+    That of documents, read whether anything changed; of sections, read for the summary;
+    of labels, which the copy alone reads, once a file changed.
+    """
+    fillers(data / "docs", PAGES)
+    write(data / "docs", KAFKA, BODY)
+    assert index(data, capsys)[0] == 0
+    damage(data / "index.sqlite", table)
+    if changed:
+        write(data / "docs", KAFKA, BODY + "\nEdited.\n")
+    status, out, err = index(data, capsys)
+    assert status == 0
+    assert "Traceback" not in err
+    assert "rebuilt whole: damaged\n" in out
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.listing(Filters())) == PAGES + 1
+        assert reader.values("label") == [("streaming", 1)]
+
+
+def test_an_index_written_meanwhile_starts_the_update_again_once(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 8: another build renamed in between the read and the write; then twice.
+
+    The other run builds the mirror as it was. Once, ``index.restarted`` says so, and the
+    update reads the new build and writes; twice, it stops, ``index.not_built`` naming
+    the other run, exit 1.
+    """
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = data.parent / "before"
+    shutil.copytree(data / "docs", before)
+    update = SqliteIndex.update
+    builds: list[str | None] = []
+    meanwhile_at = {1}
+
+    def meanwhile(self: SqliteIndex, change: object, expected: str | None) -> object:
+        builds.append(expected)
+        if len(builds) in meanwhile_at:
+            build_index(before, data / "index.sqlite", MOMENT)
+        return update(self, change, expected)
+
+    monkeypatch.setattr(SqliteIndex, "update", meanwhile)
+    write(data / "docs", KAFKA, BODY)
+    status, out, _ = index(data, capsys)
+    assert status == 0
+    assert "added: 1\n" in out
+    assert len(builds) == len(set(builds)) == len(meanwhile_at) + 1
+    assert len(logged_as(data.parent / "home", "index.restarted")) == 1
+    builds.clear()
+    meanwhile_at.add(2)
+    write(data / "docs", KAFKA, BODY + "\nEdited.\n")
+    status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert CHANGED_MEANWHILE in err
+    assert len(builds) == len(set(builds)) == len(meanwhile_at)
+
+
+def test_a_lock_held_too_long_fails_naming_it(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 8: a wait past WAIT_S, shortened here, said first: exit 1, the index in place."""
+    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", KAFKA, BODY)
+    lock = data / "index.sqlite.lock"
+    with lock.open("a") as file:
+        fcntl.flock(file, fcntl.LOCK_EX)
+        status, _, err = index(data, capsys)
+    assert status == 1
+    assert ("error", "index.not_built") in said(err)
+    assert f"{lock}: another kb-mcp index or kb-mcp embed held it" in err
+    (waited,) = logged_as(data.parent / "home", "index.lock_wait")
+    assert waited["lock"] == str(lock)
+    assert (data / "index.sqlite").read_bytes() == before
+    assert index(data, capsys)[0] == 0
+
+
+def test_an_update_that_fails_before_its_rename_leaves_the_index_as_it_was(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 9: its bytes as they were, no build file left, and the lock free."""
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", KAFKA, BODY)
+
+    def fail(*_: object) -> None:
+        raise RuntimeError
+
+    indexing = Indexing(
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=None,
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(sqlite_index.Writer, "join", fail)
+        with pytest.raises(RuntimeError):
+            update_index(indexing, MOMENT)
+    assert (data / "index.sqlite").read_bytes() == before
+    names = ["docs", "index.sqlite", "index.sqlite.lock"]
+    assert sorted(path.name for path in data.iterdir()) == names
+    assert index(data, capsys)[0] == 0
+
+
+def test_an_update_killed_leaves_the_index_as_it_was_and_its_lock_free(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 9: killed by SIGKILL in its join, its build file ignored by readers and prune.
+
+    No write-ahead log is beside the index; the next run takes the lock and updates.
+    """
+    fillers(data / "docs", PAGES)
+    assert index(data, capsys)[0] == 0
+    before = (data / "index.sqlite").read_bytes()
+    write(data / "docs", KAFKA, BODY)
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys, time\n"
+                "from kb_mcp.cli.main import main\n"
+                "from kb_mcp.search.adapters import sqlite_index\n"
+                "def join(self, aliases):\n"
+                "    print('joining', flush=True)\n"
+                "    time.sleep(60)\n"
+                "sqlite_index.Writer.join = join\n"
+                "sys.exit(main(['index', '--yes']))\n"
+            ),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=child_environment(data),
+        cwd=data.parent,
+    ) as child:
+        assert child.stdout is not None
+        assert child.stdout.readline() == "joining\n"
+        child.kill()
+        child.wait(30)
+    assert (data / "index.sqlite").read_bytes() == before
+    assert list(data.glob(f"{sqlite_index.BUILDING}*.sqlite"))
+    assert sqlite_index.indexes_in(data) == [data / "index.sqlite"]
+    assert not (data / "index.sqlite-wal").exists()
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.listing(Filters())) == PAGES
+    status, out, _ = index(data, capsys)
+    assert (status, "added: 1\n" in out) == (0, True)
+
+
+def test_a_whole_update_s_own_damage_is_raised_once_not_retried(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """A corrupt error as a whole update writes its new file: no index in place was read.
+
+    It is raised, after one attempt, rather than taken for the index's damage and tried
+    again whole without end.
+    """
+    fillers(data / "docs", PAGES)
+    attempts: list[object] = []
+
+    def corrupt(*arguments: object) -> None:
+        assert not attempts, "a whole update tried again"
+        attempts.append(arguments)
+        error = sqlite3.DatabaseError("database disk image is malformed")
+        error.sqlite_errorcode = sqlite3.SQLITE_CORRUPT
+        raise error
+
+    monkeypatch.setattr(sqlite_index.Writer, "update", corrupt)
+    indexing = Indexing(
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=None,
+    )
+    with pytest.raises(sqlite3.DatabaseError, match="malformed"):
+        update_index(indexing, MOMENT, rebuild=True)
+    assert len(attempts) == 1
+    assert sorted(path.name for path in data.iterdir()) == ["docs", "index.sqlite.lock"]
+    lock = data / "index.sqlite.lock"
+    with lock.open("a") as file:
+        fcntl.flock(file, fcntl.LOCK_EX | fcntl.LOCK_NB)  # free, or this raises

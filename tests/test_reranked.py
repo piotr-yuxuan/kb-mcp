@@ -15,8 +15,9 @@ from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
 from kb_mcp.mcp.app import responses
-from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.mcp.app.tools import LONGEST, Library, UnanswerableError
 from kb_mcp.search.adapters.reranking import Reranked, RerankError
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.search.app.reranking import Reranking
 from kb_mcp.search.domain.reranking import PLACES, split_order, written
@@ -45,6 +46,7 @@ LONG = "Lorem ipsum dolor sit amet. " * 160  # 4,480 characters
 DOWN = "no answer from the reranking server (ConnectError); is it running?"
 REFUSED = "qwen3-reranker-0.6b: the reranking server answered 400"
 SMALL_BUDGET = 300  # estimated tokens of an answer: a few passages a page
+DEEPEST_OFFSET = 100  # where a cursor's offset takes three digits
 
 
 def body(number: int) -> str:
@@ -87,7 +89,7 @@ def root(tmp_path_factory: TempPathFactory) -> Path:
 
 def library(root: Path, reranking: Reranking | None) -> Library:
     """Serve the index by words alone, reranked through ``reranking`` if any."""
-    return Library(root / "index.sqlite", root / "docs", None, "lexical", reranking)
+    return Library(SqliteIndex(root / "index.sqlite"), root / "docs", None, "lexical", reranking)
 
 
 def order(served: Library, query: str = QUERY) -> list[str]:
@@ -310,9 +312,9 @@ def test_a_cursor_s_shorter_order_applies_to_as_many_documents(root: Path) -> No
     """An order of two from the first document: those two swapped, the next as words put it."""
     scorer = Scripted()
     served = library(root, Reranking(scorer, DEPTH))
-    stamp = cursor_of(served.search(QUERY, limit=2)).partition("@")[2].partition(".")[0]
+    build = cursor_of(served.search(QUERY, limit=2)).partition("@")[2].partition(".")[0]
     before = order(library(root, None))
-    shown = titles(served.search(QUERY, limit=3, cursor=f"0@{stamp}.BA"))
+    shown = titles(served.search(QUERY, limit=3, cursor=f"0@{build}.BA"))
     assert shown == [title(root, path) for path in (before[1], before[0], before[2])]
     assert len(scorer.asked) == 1
 
@@ -332,6 +334,24 @@ def test_a_cursor_writes_the_deepest_order_and_reads_it_back() -> None:
     assert split_order(f"8@x{written(deepest)}") == ("8@x", deepest)
     assert split_order("8@x") == ("8@x", ())
     assert split_order(None) == (None, None)
+
+
+def test_a_cursor_at_a_reranking_s_deepest_fits_what_the_tools_take(tmp_path: Path) -> None:
+    """Depth MOST_TEXTS, from an offset of 100 on: within LONGEST, and each next page served."""
+    documents = [
+        (page(str(920000 + number), f"Release {number}"), "# Release\n\nrelease rollback\n")
+        for number in range(DEEPEST_OFFSET + 1)
+    ]
+    built(tmp_path, documents)
+    served = library(tmp_path, Reranking(Scripted(), MOST_TEXTS))
+    answer = served.search(QUERY, limit=50)
+    cursors = []
+    while found := continuation(answer):
+        cursors.append(str(found[1]["cursor"]))
+        answer = follow(served, answer) or ""
+    assert max(int(cursor.partition("@")[0]) for cursor in cursors) >= DEEPEST_OFFSET
+    assert {len(split_order(cursor)[1] or ()) for cursor in cursors} == {MOST_TEXTS}
+    assert max(len(cursor) for cursor in cursors) <= LONGEST["cursor"]
 
 
 # Pages of an index served over stdio: the more of "kafka retention" a text holds, the
@@ -377,7 +397,7 @@ def test_serve_reranks_its_searches_through_the_server_of_the_settings(tmp_path:
     found = results[0]["content"][0]["text"]
     (asked,) = answers.asked
     scores = [relevance(asked["query"], text) for text in asked["documents"]]
-    plain = Library(data / "index.sqlite", data / "docs", None, "lexical")
+    plain = Library(SqliteIndex(data / "index.sqlite"), data / "docs", None, "lexical")
     before = [shown.path for shown in plain.ranked("kafka retention", "lexical", limit=4)[0]]
     after = [before[place] for place in sorted(range(len(before)), key=lambda at: -scores[at])]
     assert titles(found)[: len(after)] == [title(data, path) for path in after]

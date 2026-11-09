@@ -33,7 +33,7 @@ from kb_mcp.evaluation.domain.evaluation import Question, Quoted, holm
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.model_api import ModelError
-from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import DIGEST, Scripted, nothing_listening, serving, tiny
@@ -96,7 +96,7 @@ def options(data: Path, url: str = "http://127.0.0.1:11434/v1") -> list[str]:
 
 def golden(data: Path, text: str = GOLDEN) -> list:
     """Read golden questions against the data directory's mirror."""
-    return read_golden(text, Library(data / "index.sqlite", data / "docs").resolve)
+    return read_golden(text, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve)
 
 
 @pytest.mark.parametrize(

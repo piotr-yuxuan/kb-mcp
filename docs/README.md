@@ -88,8 +88,8 @@ the command and those who change its code, unless it is marked for contributors.
   layers within each, the contracts that keep them, the records and the classes that
   stay dataclasses, and where a new module goes.
 - [A walkthrough of the code](explanation/code-walkthrough.md), for contributors: one
-  `fetch`, `prepare` and `embed` of a Confluence space, then one `search` by an agent,
-  followed through the functions and classes of `src/` that take each step.
+  `fetch`, `prepare`, `index` and `embed` of a Confluence space, then one `search` by an
+  agent, followed through the functions and classes of `src/` that take each step.
 - [Sources](explanation/sources.md): why a source is a declaration of three roles rather
   than a bundle, how the registry composes the settings and commands, what every source's
   documents share, and why the work log is read in place.

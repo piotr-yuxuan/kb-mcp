@@ -90,7 +90,7 @@ def left(folder: Path) -> dict[Path, bytes]:
 def test_no_run_at_debug_says_or_leaves_a_secret(
     home: Path, tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Fetch by the token, then by the session, embed, then serve: each secret used, none shown.
+    """Fetch by token, then by session, index, embed, then serve: each secret used, none shown.
 
     The site's one attached file that fails makes each fetch exit 1. The files are read
     after the first fetch too, as the second replaces its run report, both made within
@@ -119,6 +119,7 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
         with monkeypatch.context() as session_alone:
             session_alone.delenv(CREDENTIAL)
             assert main(["fetch", "--yes", *options]) == ExitStatus.FAILED
+        assert main(["index", "--yes", *options]) == ExitStatus.OK
         assert main(["embed", "--yes", *options]) == ExitStatus.OK
         port = int(url.rpartition(":")[2].partition("/")[0])
         given = {"ports": [port], "limit": 1.0, "report": str(tmp_path / "report.json")}

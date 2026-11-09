@@ -28,10 +28,10 @@ from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
-from kb_mcp.search.adapters.sqlite_index import UnavailableIndexError, reading
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, UNIT, around
+from kb_mcp.search.domain.indexes import UnavailableIndexError
 from kb_mcp.search.domain.reranking import (
     BODY,
     HEADING,
@@ -57,9 +57,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
-    from kb_mcp.search.adapters.sqlite_index import Reader
     from kb_mcp.search.app.meaning import Meaning
     from kb_mcp.search.app.reranking import Reranking
+    from kb_mcp.search.domain.indexes import SearchIndex, SearchReader
     from kb_mcp.search.domain.search import Entry
 
 SEARCH_LIMIT = 8
@@ -70,7 +70,9 @@ READ_CHARS = 12_000
 CHARS_LIMITS = (1, 40_000)
 LONGEST = {"query": LONGEST_QUERY, "ref": 300, "value": 100, "cursor": 100}
 VALUES_SHOWN = 100
-CURSOR_TIME = "%Y%m%dT%H%M%SZ"
+# The hex digits of the index's build that a cursor names, as many as a time took: the
+# whole id would take a reranking's deepest past LONGEST["cursor"], from an offset of 100.
+CURSOR_BUILD = 16
 NO_WORDS = (
     "The query has no words to search."
     ' Give words, or sort="updated" or "created" to list the newest by that date.'
@@ -161,7 +163,7 @@ class Asked(Record):
     order: tuple[int, ...] | None = None  # the order that a cursor carries: None, none yet
 
 
-def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
+def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Ranking:
     """Rank the documents for a query in a mode; documents it names by identifier first.
 
     Lexical: by words, as 006 ranks. Semantic: the nearest by meaning. Hybrid: both,
@@ -215,7 +217,7 @@ def ranking(reader: Reader, meaning: Meaning | None, asked: Asked) -> Ranking:
     )
 
 
-def passage_of(reader: Reader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
+def passage_of(reader: SearchReader, entry: Entry, ranked: Ranking, planned: Plan) -> Passage:
     """Find the section to show for a document: by meaning or by words, as it was ranked.
 
     A document shown by words opens at its best section for the query's words; one
@@ -241,7 +243,7 @@ def folded(text: str) -> str:
 
 
 def place_of(
-    reader: Reader, ranked: Ranking, planned: Plan, path: str
+    reader: SearchReader, ranked: Ranking, planned: Plan, path: str
 ) -> tuple[int, tuple[int, int]]:
     """Give a document's section, by its number, and its best place there, as a span of the body.
 
@@ -273,7 +275,9 @@ def place_of(
     return number, (hit, hit + 1)
 
 
-def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -> list[Passage]:
+def excerpts(
+    reader: SearchReader, ranked: Ranking, planned: Plan, paths: list[str]
+) -> list[Passage]:
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
     About each document's best place (``place_of``): by meaning, the unit of its best
@@ -299,7 +303,9 @@ def excerpts(reader: Reader, ranked: Ranking, planned: Plan, paths: list[str]) -
     return found
 
 
-def reranked(reader: Reader, asked: Asked, ranked: Ranking, reranking: Reranking | None) -> Ranking:
+def reranked(
+    reader: SearchReader, asked: Asked, ranked: Ranking, reranking: Reranking | None
+) -> Ranking:
     """Reorder the documents after those named, as many as the reranking's depth, by score.
 
     A page that continues another keeps the order that its cursor carries, reranked or
@@ -351,7 +357,7 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
     return given
 
 
-def narrowed(reader: Reader, given: Mapping[str, str]) -> Filters:
+def narrowed(reader: SearchReader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
     names = ("source", "space", "project", "status", "label", "issue_type")
     dates = (
@@ -376,7 +382,7 @@ PERSON_FILTERS = {
 }
 
 
-def who(reader: Reader, name: str, value: str | None) -> str | None:
+def who(reader: SearchReader, name: str, value: str | None) -> str | None:
     """Find the person whom a filter names, by their id or any name that a source writes.
 
     Of the persons with a document in the filter's role, in PERSON_FILTERS, the one of
@@ -421,7 +427,9 @@ def who(reader: Reader, name: str, value: str | None) -> str | None:
     raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
-def about(reader: Reader, filters: Filters, paths: Sequence[str]) -> tuple[str, dict[str, str]]:
+def about(
+    reader: SearchReader, filters: Filters, paths: Sequence[str]
+) -> tuple[str, dict[str, str]]:
     """Write the person that ``person`` narrows to, and their roles on each document shown.
 
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
@@ -464,7 +472,7 @@ def bounded(**values: tuple[str | None, int]) -> None:
             raise UnanswerableError(message)
 
 
-def canonical(reader: Reader, name: str, value: str | None) -> str | None:
+def canonical(reader: SearchReader, name: str, value: str | None) -> str | None:
     """Find the value that the index holds for a filter, without regard to case or accents.
 
     Values compare as hits show them, their spaces collapsed, composed and casefolded,
@@ -510,21 +518,21 @@ def instant(name: str, value: str | None) -> datetime | None:
         raise UnanswerableError(message) from None
 
 
-def start_of(cursor: str | None, built_at: datetime) -> int:
-    """Read a cursor that an answer gave: an offset, for the index built at that time."""
+def start_of(cursor: str | None, build: str) -> int:
+    """Read a cursor that an answer gave: an offset, for that build of the index."""
     if cursor is None:
         return 0
     offset, _, built = cursor.partition("@")
     if not offset.isascii() or not offset.isdigit() or not built:
         message = "cursor: give the one that the previous answer ended with"
         raise UnanswerableError(message)
-    if built != built_at.strftime(CURSOR_TIME):
+    if built != build[:CURSOR_BUILD]:
         message = "cursor: the index was rebuilt since; call again without the cursor"
         raise UnanswerableError(message)
     return int(offset)
 
 
-def continued(cursor: str | None, built_at: datetime) -> tuple[int, tuple[int, ...] | None]:
+def continued(cursor: str | None, build: str) -> tuple[int, tuple[int, ...] | None]:
     """Read a cursor of search or ask: its offset, and the order of the documents reranked.
 
     The order is None for no cursor, a first page, and empty for a cursor that carries
@@ -535,12 +543,12 @@ def continued(cursor: str | None, built_at: datetime) -> tuple[int, tuple[int, .
     except ValueError:
         message = "cursor: give the one that the previous answer ended with"
         raise UnanswerableError(message) from None
-    return start_of(base, built_at), order
+    return start_of(base, build), order
 
 
-def cursor_at(offset: int, built_at: datetime) -> str:
+def cursor_at(offset: int, build: str) -> str:
     """Write the cursor that continues a list at ``offset``, for this build of the index."""
-    return f"{offset}@{built_at.strftime(CURSOR_TIME)}"
+    return f"{offset}@{build[:CURSOR_BUILD]}"
 
 
 def clamp(value: int, limits: tuple[int, int]) -> int:
@@ -557,17 +565,17 @@ class Shown(Record):
 
 
 class Library:
-    """The four tools, over the index at one path."""
+    """The four tools, over one index."""
 
     def __init__(
         self,
-        index: Path,
+        index: SearchIndex,
         docs: Path,
         meaning: Meaning | None = None,
         mode: Mode = "lexical",
         reranking: Reranking | None = None,
     ) -> None:
-        """Answer from the index at ``index``, built from the mirror at ``docs``.
+        """Answer from ``index``, built from the mirror at ``docs``.
 
         Search ranks in ``mode``; by meaning, through ``meaning``, when it is given; its
         first documents are reranked through ``reranking``, when it is given.
@@ -583,14 +591,14 @@ class Library:
         return Library(self._index, self._docs, self._meaning, self._mode, reranking)
 
     @contextmanager
-    def _reading(self) -> Iterator[Reader]:
+    def _reading(self) -> Iterator[SearchReader]:
         try:
-            with reading(self._index) as reader:
+            with self._index.reading() as reader:
                 yield reader
         except UnavailableIndexError as error:
             raise UnanswerableError(str(error)) from None
 
-    def _find(self, reader: Reader, ref: str) -> Entry | None:
+    def _find(self, reader: SearchReader, ref: str) -> Entry | None:
         """Find a document by path, issue key, page or work-log id, or address, in that order."""
         named, path = identifiers(ref), ref.strip()
         ids = [path] if WORKLOG_ID.fullmatch(path) else named.ids[:1]
@@ -616,8 +624,8 @@ class Library:
         bounded(query=(query, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
         planned = plan(query)
         with self._reading() as reader:
-            built_at = reader.built_at()
-            (offset, order), size = continued(cursor, built_at), clamp(limit, SEARCH_LIMITS)
+            built_at, build = reader.built_at(), reader.build()
+            (offset, order), size = continued(cursor, build), clamp(limit, SEARCH_LIMITS)
             kept = narrowed(reader, given)
             if not planned.words and sort == "relevance":
                 return responses.answer(NO_WORDS)
@@ -657,7 +665,7 @@ class Library:
                 items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at) + written(ranked.order)
+            after = cursor_at(offset + count, build) + written(ranked.order)
             return responses.call(
                 self.search, query=query, filters=filters, sort=sort, limit=limit, cursor=after
             )
@@ -705,8 +713,8 @@ class Library:
         bounded(question=(question, LONGEST["query"]), cursor=(cursor, LONGEST["cursor"]))
         planned = plan(question)
         with self._reading() as reader:
-            built_at = reader.built_at()
-            offset, order = continued(cursor, built_at)
+            built_at, build = reader.built_at(), reader.build()
+            offset, order = continued(cursor, build)
             kept = narrowed(reader, given)
             asked = Asked(
                 query=question,
@@ -738,7 +746,7 @@ class Library:
         ]
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at) + written(ranked.order)
+            after = cursor_at(offset + count, build) + written(ranked.order)
             return responses.call(self.ask, question=question, filters=filters, cursor=after)
 
         allowed = responses.BUDGET - responses.tokens(ranked.note + person)
@@ -857,8 +865,8 @@ class Library:
                 keys += [f"project {key}" for key, _ in reader.values("project")]
                 message = "browse: give either space or project, one of:"
                 raise UnanswerableError(responses.refusal(message, keys[:VALUES_SHOWN], len(keys)))
-            built_at = reader.built_at()
-            offset = start_of(cursor, built_at)
+            built_at, build = reader.built_at(), reader.build()
+            offset = start_of(cursor, build)
             narrowed = Filters(
                 space=canonical(reader, "space", space),
                 project=canonical(reader, "project", project),
@@ -878,7 +886,7 @@ class Library:
         items = responses.tree(pairs[offset : offset + size], len(base))
 
         def more(count: int) -> str:
-            after = cursor_at(offset + count, built_at)
+            after = cursor_at(offset + count, build)
             return responses.call(
                 self.browse, space=space, project=project, parent=parent, limit=limit, cursor=after
             )

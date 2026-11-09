@@ -44,6 +44,7 @@ from kb_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
 from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.observability.adapters.progress import task
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 
@@ -325,7 +326,7 @@ def prepared(
     )
     # The model that the index names is this embedder's.
     meaning = Meaning({name: embedder}.__getitem__)
-    library = Library(index, settings.docs, meaning, "lexical")
+    library = Library(SqliteIndex(index), settings.docs, meaning, "lexical")
     refs = ((question.id, path) for question in questions for path in question.paths)
     missing = next(((id_, path) for id_, path in refs if not library.resolve(path)), None)
     if missing:

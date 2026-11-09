@@ -140,9 +140,10 @@ Signed in; the session is saved.
 
 Four commands, each one step, make the mirror and its index: `fetch` downloads the space
 into a store, `prepare` turns what the store holds into Markdown, `index` builds the search
-index of its words, and `embed` builds it again with vectors. A space that no run has
-fetched yet takes its last 7 days without `--since`; `--since all` takes the whole space.
-First, a dry run, which reads the site, says what it would fetch, and writes nothing:
+index of its words, and `embed` gives the index's pieces their vectors. A space that no
+run has fetched yet takes its last 7 days without `--since`; `--since all` takes the
+whole space. First, a dry run, which reads the site, says what it would fetch, and writes
+nothing:
 
 ```bash
 kb-mcp fetch --dry-run --since all
@@ -213,23 +214,34 @@ jira: done
   problems: 0
 ```
 
-`index` ends with what it indexed:
+`index` ends with what the index holds, then what it did: there was no index, so it
+built one whole, every document added:
 
 ```text
 documents: 13
 sections: 67
+copied: 0
+added: 13
+replaced: 0
+removed: 0
+skipped: 0
+rebuilt whole: unavailable
 ```
 
-and `embed` with the same, the pieces that it gave vectors, and the vector store:
+and `embed` with the pieces that the index holds, those it added and removed, the texts
+that the model embedded, and the vector store:
 
 ```text
-documents: 13
-sections: 67
 pieces: 45
+added: 45
+removed: 0
 embedded now: 45
 vectors pruned: 0
 vector store: 0.2 MB
 ```
+
+Run again, `index` reads only the files whose bytes changed, and `embed` embeds only the
+texts that changed; with nothing changed, each says `nothing written`.
 
 On macOS, `fetch` may not exit once its download is done: a known issue, which plan 013
 is to diagnose and fix, parked for now

@@ -1,9 +1,9 @@
 # Bring every source up to date
 
 Four commands, each one step, which you compose: `fetch` brings each source's changes into
-its store, `prepare` turns what each source holds into the Markdown mirror, `index` builds
-the index of the mirror's words, and `embed` builds it again with vectors, for search by
-meaning. Nothing runs them for you, and no command runs another.
+its store, `prepare` turns what each source holds into the Markdown mirror, `index` brings
+the index of the mirror's words up to the mirror, and `embed` gives the index's pieces their
+vectors, for search by meaning. Nothing runs them for you, and no command runs another.
 
 ## 1. Name the sources
 
@@ -64,16 +64,27 @@ every command that writes does.
    nothing to do. One that another run holds for more than a minute, or that breaks during
    the run, fails the prepare and stops it there; the next run tries again, on a new file
    if it broke. Deleting the file is also the remedy for a mirror that looks wrong.
-3. **`index`** builds the index of the mirror's words, whatever sources `prepare` took. It
+3. **`index`** brings the index of the mirror's words up to the mirror, whatever sources
+   `prepare` took. It reads only the files whose bytes changed, copies every other
+   document from the index in place, with its vectors, leaves out the documents gone, and
+   writes nothing when nothing changed; the first run, or `--rebuild`, builds it whole. It
    asks no endpoint, whatever `search_mode` says, and leaves `<data>/vectors.sqlite` as it
-   is. Until `embed` runs, search answers by words, and says why.
-4. **`embed`** builds the index again with vectors. By default it needs Ollama on this
+   is. Until `embed` runs, the documents added or changed have no vectors, and search
+   finds them by words alone; its summary says how many await them.
+4. **`embed`** gives the index's pieces their vectors. By default it needs Ollama on this
    machine, or any other OpenAI-compatible API, as [embeddings](embeddings.md) says: without
    them, it exits 1, and the index in place stays. It embeds what `<data>/vectors.sqlite`
    lacks: every piece of the mirror the first time, then only the pieces whose text changed,
    as [building the index](embeddings.md#3-build-the-index) says. An endpoint off this
    machine needs `--allow-remote-embeddings`, and is refused without it. `embed` then prunes
    the vector store of what no index reads.
+
+`embed` reads the index, not the mirror: `prepare && embed`, leaving out `index`, is a
+wrong use. `embed` then fills the index as the last `index` left it, so that a page that
+`prepare` removed, and an edited page's old text, stay served until the next `index`.
+`embed` compares the mirror's files with the index, and when they differ warns,
+`embed.mirror_changed`, naming `kb-mcp index`, then goes on, with the exit status it would
+have had: composing the commands is your choice. Run `index` between them.
 
 ## 3. Take some of the sources
 
@@ -91,8 +102,9 @@ source not taken, such as `--project` with `fetch confluence`, is said not appli
 
 `prepare confluence` prepares Confluence alone, so Jira's files whose links depend on
 Confluence's pages are rewritten only when Jira is prepared, and what they attach stays
-until then. `index` and `embed` read the whole mirror: `prepare worklog` refreshes the work
-log alone, and search still finds every page and issue mirrored.
+until then. `index` digests the whole mirror, and reads each file that changed, whichever
+source wrote it: `prepare worklog`, then `index`, refreshes the work log alone, and search
+still finds every page and issue mirrored.
 
 ## 4. Search by words alone
 
@@ -107,8 +119,8 @@ search_mode = "lexical"
 ```
 
 The setting tells the server not to ask for meaning. An `index` run after an `embed`
-replaces the index with one of words alone, whatever the mode, and its summary says so:
-search by meaning then waits for the next `embed`.
+keeps the vectors of the documents that did not change, which the server then never
+reads; `kb-mcp index --rebuild` writes an index without any.
 
 ## 5. Decide what to do on a failure
 

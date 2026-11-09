@@ -14,6 +14,7 @@ from kb_mcp.mcp.app.responses import page as fitted
 from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, RELATIONS, ROLES, SOLE, Link, PersonRole
 from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, CEILING, OPENING, built, continuation, estimate, follow, parts
 from tests.endpoint import connector
@@ -83,7 +84,9 @@ def by_meaning(with_vectors: Path, request: pytest.FixtureRequest) -> tuple[Libr
     """Serve the large mirror, searched by meaning or by both."""
     root = with_vectors
     meaning = Meaning(connector())
-    return Library(root / "index.sqlite", root / "docs", meaning, request.param), request.param
+    return Library(
+        SqliteIndex(root / "index.sqlite"), root / "docs", meaning, request.param
+    ), request.param
 
 
 @pytest.mark.parametrize(
@@ -109,7 +112,9 @@ def test_a_note_on_falling_back_leaves_the_answer_within_budget(with_vectors: Pa
         raise ModelError(message)
 
     meaning = Meaning(broken)
-    library = Library(with_vectors / "index.sqlite", with_vectors / "docs", meaning, "hybrid")
+    library = Library(
+        SqliteIndex(with_vectors / "index.sqlite"), with_vectors / "docs", meaning, "hybrid"
+    )
     for limit, ceiling in ((SEARCH_LIMIT, BUDGET), (50, CEILING)):
         answer = library.search("gamma", limit=limit)
         assert "Ranked by words alone" in answer

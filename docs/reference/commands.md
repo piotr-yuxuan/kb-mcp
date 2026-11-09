@@ -26,8 +26,7 @@ positional arguments:
     check        validate the settings and the data directory
     completion   print the code that completes the command in bash and zsh
     doctor       check the machine and each sign-in
-    embed        build the search index again with vectors, then prune the vector
-                 store
+    embed        give the index's pieces their vectors, then prune the vector store
     eval         measure search and ask on golden questions, by mode, model and
                  chunking
     eval-agents  evaluate ask through agents: prepare their runs, bridge their calls,
@@ -35,7 +34,7 @@ positional arguments:
     eval-rerank  measure search reranked at each depth on golden questions, against
                  the bar
     fetch        bring what changed in each source into its store
-    index        build the search index of the mirror's words
+    index        update the search index of the mirror's words to what changed
     login        sign in once, in a Chrome window
     model        check the embedding model and its endpoint
     prepare      turn what each source holds into the Markdown mirror
@@ -145,10 +144,12 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
 
-With --format json: report, the documents by type, the sections, the files skipped,
-the pieces by meaning, the texts embedded now and the files with a piece refused;
-index, its path; model, the one that embedded; pruned, what the prune of the vector
-store kept and deleted, or why it did not prune.
+With --format json: index, its path; model, the one that embedded; pieces, those that
+the index holds; documents, its documents; skipped, the files that it lacks; added and
+removed, the pieces; embedded, the texts embedded now; found, those that the vector
+store held; refused, the documents with a piece refused; unchanged, whether nothing
+was written; pruned, what the prune of the vector store kept and deleted, or why it
+did not prune.
 ```
 
 ## `eval`
@@ -410,6 +411,7 @@ fetch only planned.
 usage: kb-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
                     -v | --log-level {debug,info,warning,error}]
                     [--format {text,json}] [--summary {short,detailed}] [-y]
+                    [--rebuild]
 
 options:
   -h, --help            show this help message and exit
@@ -424,9 +426,13 @@ options:
   --summary {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
+  --rebuild             build the index whole, keeping nothing of it
 
-With --format json: report, the documents by type, the sections and the files skipped;
-index, its path; model and pruned, null.
+With --format json: report, the documents held by type, their sections, the files
+skipped, the documents copied, added, replaced and removed, those awaiting vectors,
+null when the index names no model, unchanged, whether nothing was written, and
+rebuilt, why the index was rebuilt whole, if it was; index, its path; model and
+pruned, null.
 ```
 
 ## `login`

@@ -43,6 +43,7 @@ from kb_mcp.kernel.tools import TOOLS
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.mirror.adapters import markdown
 from kb_mcp.observability.adapters.progress import task
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 
 if TYPE_CHECKING:
     import argparse
@@ -72,7 +73,7 @@ def prepared(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus,
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        questions = read_golden(golden, Library(settings.index, settings.docs).resolve)
+        questions = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
         asked = chosen(questions, arguments.sample, arguments.seed)
     except (GoldenError, OSError, UnanswerableError, AgentsError) as error:
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
@@ -141,7 +142,7 @@ def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, R
     The task ``runs`` reports the runs judged, each by its id.
     """
     settings = loaded.settings
-    library = Library(settings.index, settings.docs)
+    library = Library(SqliteIndex(settings.index), settings.docs)
 
     def body(path: str) -> str:
         text = (settings.docs / path).read_text(encoding="utf-8", newline="")

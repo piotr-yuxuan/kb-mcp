@@ -17,9 +17,9 @@ The setting `search_mode` says how `search` and `ask` rank:
 
 So `embed`, whatever the mode, and by default the server ask an embedding model. This
 program runs none itself: it asks any OpenAI-compatible embeddings API, by default Ollama
-at `http://127.0.0.1:11434/v1`. Without one, `embed` stops and names `kb-mcp index`, which
-builds the index by words alone, asking no endpoint, and the server answers by words,
-saying why.
+at `http://127.0.0.1:11434/v1`. Without one, `embed` stops, and the index that
+`kb-mcp index` wrote by words, asking no endpoint, stays as it is; the server answers by
+words, saying why.
 
 Hybrid search over windows is the default by the maintainer's choice
 ([plan 025](../work/changelog/025-windows-and-hybrid.md)): on plan 002's sandbox
@@ -52,12 +52,21 @@ downloads a model.
 ## 3. Build the index
 
 ```bash
-kb-mcp embed
+kb-mcp index && kb-mcp embed
 ```
 
-The first `embed` embeds every piece of the mirror and keeps the vectors in
-`<data>/vectors.sqlite`, so later builds embed only the texts that changed. A running
-server reads the new index from its next call on.
+`index` brings the index of the mirror's words up to the mirror, reading only the files
+that changed; `embed` then gives the index's pieces their vectors. The first `embed`
+embeds every piece of the mirror and keeps the vectors in `<data>/vectors.sqlite`, so
+later runs embed only the texts that changed, and write nothing when nothing did. A
+running server reads the new index from its next call on.
+
+Run them in that order after each `prepare`. `embed` reads the index, not the mirror:
+`prepare && embed`, leaving out `index`, is a wrong use, which keeps a page that
+`prepare` removed, and an edited page's old text, served until the next `index`. `embed`
+compares the mirror's files with the index, and when they differ warns,
+`embed.mirror_changed`, naming `kb-mcp index`, then goes on, with the exit status it
+would have had: composing the commands is your choice.
 
 Ollama unloads a model five minutes after its last use, so the first search after a
 pause waits for it to load; `OLLAMA_KEEP_ALIVE` (for instance `1h`) keeps it longer.
@@ -67,10 +76,10 @@ pause waits for it to load; `OLLAMA_KEEP_ALIVE` (for instance `1h`) keeps it lon
 Run `embed` again after `ollama pull` of a new version of the model: its vectors change.
 Until then, a server started after the pull says that the index is stale and answers by
 words, while one already running goes on with the new weights against the old vectors
-until the index is rebuilt.
+until `embed` writes the index again.
 
 An index built by an earlier version of this program names a model of its own, which
-Ollama does not have: run `embed`, rather than pull that model. A folder
+Ollama does not have: run `index`, then `embed`, rather than pull that model. A folder
 `<data>/models/` left by an earlier version can be deleted.
 
 ## After upgrading to hybrid search over windows
@@ -122,8 +131,9 @@ model = "<the model, as that server names it>"
 If the server needs a key, put it in the environment variable
 `KB_MCP_EMBEDDING_API_KEY`; the settings file refuses it. Such a server
 lists no digest of its models as Ollama does, so the vectors follow the model's name
-alone: after changing the weights behind a name, delete `<data>/vectors.sqlite` and run
-`embed`.
+alone: after changing the weights behind a name, delete `<data>/vectors.sqlite`, then
+run `index --rebuild` and `embed`, as the index keeps each piece, whose key the name
+alone makes.
 
 ## Reach an endpoint off this machine
 
@@ -133,8 +143,10 @@ machine: a literal loopback address, `127.0.0.1` or `[::1]`, not a name, not eve
 command is given `--allow-remote-embeddings`, on every run, and then only over https:
 
 ```bash
-kb-mcp embed --allow-remote-embeddings
+kb-mcp index && kb-mcp embed --allow-remote-embeddings
 ```
+
+`index` asks no endpoint, and refuses the flag.
 
 For the MCP server, that means registering it with the flag:
 
@@ -176,7 +188,9 @@ mode. Then tell the server not to ask either:
 search_mode = "lexical"
 ```
 
-Then the index holds no vectors, and nothing asks any endpoint.
+Then nothing asks any endpoint. An index that `embed` filled keeps the vectors of the
+documents whose files did not change, which the server then never reads;
+`kb-mcp index --rebuild` writes one without any.
 
 ## When the endpoint does not answer
 

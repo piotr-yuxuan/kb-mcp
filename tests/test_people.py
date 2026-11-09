@@ -75,7 +75,7 @@ ALEX_EXAMPLE = anchored("name\nalex example")
 ALEX = anchored("name\nalex")
 ROBIN_ALONE = anchored("name\nrobin")
 ROBIN_OTHER = anchored("name\nrobin other")
-# The documents, by rowid: meetings, then transcripts.
+# The documents, by number: meetings, then transcripts.
 STAND_UP, REVIEW, PLANNING = 11, 12, 13
 LINKED, UNLINKED, OTHER_UNLINKED, PLANNED, STOOD = 21, 22, 23, 24, 25
 LINKS = {LINKED: {REVIEW}, PLANNED: {PLANNING}, STOOD: {STAND_UP}}

@@ -229,10 +229,10 @@ What a run logs is for you, on this machine, and may hold titles and queries
 
 End to end,
 [`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py) runs
-`fetch` by the token, then by the session, `prepare`, `embed`, and a `serve` that answers
-one search, all at debug, each secret a sentinel that is really sent: the token, its Basic
-form and the key are in no file of the home or the data directory, nor on stdout or
-stderr, and the cookie is in `cookies.json` alone.
+`fetch` by the token, then by the session, `prepare`, `index`, `embed`, and a `serve`
+that answers one search, all at debug, each secret a sentinel that is really sent: the
+token, its Basic form and the key are in no file of the home or the data directory, nor
+on stdout or stderr, and the cookie is in `cookies.json` alone.
 [`test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug`](../../tests/test_telemetry.py)
 holds the same of telemetry, and [observability](observability.md#secrets-out-of-every-sink)
 says why each sink is so.

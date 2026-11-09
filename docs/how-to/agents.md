@@ -17,10 +17,11 @@ read-only, for agents that prefer files.
 
   With the work log alone, start at `prepare`: `fetch` has nothing to fetch, and is refused.
 
-  `embed` embeds the mirror with a model that Ollama serves, so set that up first, as
-  [embeddings](embeddings.md) says, or stop after `index` and set
-  `search_mode = "lexical"` to search by words alone. Build the index again after each
-  `prepare`; a running server reads the new index from its next call on. `status` tells
+  `embed` gives the index's pieces vectors by a model that Ollama serves, so set that up
+  first, as [embeddings](embeddings.md) says, or stop after `index` and set
+  `search_mode = "lexical"` to search by words alone. Run `index`, then `embed`, after
+  each `prepare`, never `embed` alone, which leaves the index as the last `index` wrote
+  it; a running server reads the new index from its next call on. `status` tells
   when the index was built. `fetch`, `prepare`, `index`, `embed` and `eval` write under
   the data directory, so each first says what it will do and asks `Proceed? [y/N]`;
   `--yes` runs it without the question, as a script needs.

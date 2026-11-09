@@ -14,6 +14,7 @@ import pytest
 from opentelemetry import trace
 
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 from tests.answers import BUDGET, built, continuation, estimate, follow, parts
@@ -324,7 +325,7 @@ def test_without_vectors_ask_answers_by_words_and_says_why(tmp_path: Path) -> No
     fillers(docs)
     write(docs, page("196845", "Kafka"), RETENTION)
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    library = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
+    library = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
     answer = library.ask("kafka retention")
     assert "Ranked by words alone: the index holds no vectors" in parts(answer)[0]
     assert passages(answer)[0]["ref"] == "196845"
@@ -366,7 +367,7 @@ def test_the_call_s_span_says_that_words_stood_in_for_meaning(
     fillers(docs)
     write(docs, page("196845", "Kafka"), RETENTION)
     build_index(docs, tmp_path / "index.sqlite", MOMENT)
-    library = Library(tmp_path / "index.sqlite", docs, Meaning(connector()), "hybrid")
+    library = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, Meaning(connector()), "hybrid")
     said = call_s_span(library, "kafka retention", telemetry)
     assert (said["kb_mcp.mode"], said["kb_mcp.fallback"]) == ("hybrid", True)
 
@@ -380,7 +381,7 @@ def by_meaning(
     write(docs, page("4002", title), body)
     embedding = Embedding(tiny(), root / "vectors.sqlite", chunking=chunking)
     build_index(docs, root / "index.sqlite", MOMENT, embedding)
-    return Library(root / "index.sqlite", docs, Meaning(connector()), "semantic")
+    return Library(SqliteIndex(root / "index.sqlite"), docs, Meaning(connector()), "semantic")
 
 
 @pytest.mark.parametrize(
