@@ -166,7 +166,7 @@ MB against 38 MB. What it costs:
   section shows.
 - **The first `embed` after upgrading** embeds every window of the mirror: no window's
   text is a section's, and vectors are kept by text, so none is found in the vector
-  store (unless an `eval` of `windows` with the same model embedded them already). On the
+  cache (unless an `eval` of `windows` with the same model embedded them already). On the
   sandbox that is 1.11 times the tokens of `sections`. The prune after it deletes the
   sections' vectors from `<data>/vectors.sqlite`, unless an evaluation's index cut by
   `sections` keeps them (plan 023).

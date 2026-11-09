@@ -1,7 +1,7 @@
 """Build the search index from the Markdown mirror, and from nothing else.
 
 With an embedding, each chunk of each section also gets its vector: from the vector
-store when it holds the chunk's text, else from the model, then kept there. A chunk
+cache when it holds the chunk's text, else from the model, then kept there. A chunk
 whose text the model refuses has no vector, and its document is named. Reading the files,
 joining persons and embedding are each a span; files and chunks are counted, as
 ``docs/reference/telemetry/index.md`` and ``embed.md`` list it. ``update_index`` is

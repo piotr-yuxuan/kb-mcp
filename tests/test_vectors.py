@@ -462,7 +462,7 @@ def test_two_runs_share_the_store_at_once(tmp_path: Path) -> None:
 
 
 def test_a_cache_written_before_its_rename_is_read_and_reused(tmp_path: Path) -> None:
-    """Plan 054: ``vectors.sqlite`` as the former ``VectorStore`` wrote it, rows unchanged.
+    """Plan 054: ``vectors.sqlite`` as the code before plan 054 wrote it, rows unchanged.
 
     Its table made by the former code's statement, in the default journal mode: a text
     whose key it holds is not embedded again.

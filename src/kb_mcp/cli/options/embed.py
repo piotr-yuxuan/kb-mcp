@@ -44,7 +44,7 @@ def register(
             " lacks; added and removed, the chunks; embedded, the texts embedded now; found,"
             " those that the vector cache held; refused, the documents with a chunk refused;"
             " unchanged, whether nothing was written; pruned, what the prune of the vector"
-            " store kept and deleted, or why it did not prune."
+            " cache kept and deleted, or why it did not prune."
         ),
     )
     actions, flags = add_settings_options(parser)

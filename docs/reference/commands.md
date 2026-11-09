@@ -149,7 +149,7 @@ With --format json: index, its path; model, the one that embedded; chunks, those
 the index holds; documents, its documents; skipped, the files that it lacks; added and
 removed, the chunks; embedded, the texts embedded now; found, those that the vector
 cache held; refused, the documents with a chunk refused; unchanged, whether nothing
-was written; pruned, what the prune of the vector store kept and deleted, or why it
+was written; pruned, what the prune of the vector cache kept and deleted, or why it
 did not prune.
 ```
 
