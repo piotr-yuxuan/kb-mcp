@@ -137,7 +137,7 @@ the id last named, which may be the other file's. So
 archiving one, with its folder, never hands its id to the other, unless the two folders
 have one name, as a copy's may.
 
-## 4. Mirror it
+## 4. Add it
 
 ```bash
 kb-mcp prepare worklog

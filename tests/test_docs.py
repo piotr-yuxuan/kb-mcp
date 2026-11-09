@@ -74,7 +74,7 @@ PARSER = MarkdownIt("commonmark").enable("table")
 # underscores, hyphens and spaces.
 UNSLUGGED = re.compile(r"[^\w\- ]")
 # A plan named by its number, as history names it: "plan 034", "plans 021 and 024".
-PLAN_NUMBER = re.compile(r"\b[Pp]lans? \d{3}\b")
+PLAN_NUMBER = re.compile(r"\b[Pp]lans?\s+\d{3}\b")
 # The pages that name plans, being history told outside the records; none may join them.
 TELLING_HISTORY = (
     "docs/README.md",
@@ -304,14 +304,11 @@ def test_no_page_names_a_plan_but_those_that_still_tell_their_history(
     """A page says what is true now; a plan's number is history, kept in ``docs/work/``.
 
     The pages that name plans when this check came are listed, so that the list only
-    shrinks; no other page may name one.
+    shrinks; no other page may name one. A link to a record that does not say "plan" is
+    not seen.
     """
     pages = sorted(
-        path
-        for path in checkout
-        if path.endswith(".md")
-        and not path.startswith("docs/work/")
-        and not any(path.startswith(f"{folder}/") for folder in SEEDED)
+        path for path in checkout if path.endswith(".md") and not path.startswith("docs/work/")
     )
     naming = [path for path in pages if PLAN_NUMBER.search((ROOT / path).read_text("utf-8"))]
     assert [path for path in naming if path not in TELLING_HISTORY] == []

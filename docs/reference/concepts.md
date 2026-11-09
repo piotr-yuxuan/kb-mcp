@@ -215,7 +215,6 @@ the same document at other stages,
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py) and
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
-[`Folder`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), a container;
 [`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py); the type lists
 [`TYPES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) and
 [`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py);
@@ -284,7 +283,7 @@ other role once for each spelling and identity. A mention has:
 - a role, from one closed set that every connector maps onto: from the origin's fields,
   `author`, `creator` and `assignee`; from activity, `commenter`, with the times of the
   comments; from attendance, `participant`; from the text, `tagged`, for a person
-  @-mentioned, which no connector extracts yet;
+  @-mentioned, a role that no connector extracts;
 - an identity, when the origin gives one: (issuer, value), the issuer being the
   authority that issued the value, as the connector declares it for each source. Several
   sites of one cloud service may share one issuer; an origin hosted by a client issues
@@ -330,9 +329,8 @@ would mislead. Elsewhere a first word only informs: a tool that narrows to a per
 shows, as "perhaps the same, not joined", each person by name whose one-word key begins
 one of that person's spellings, with the alias line that would join them.
 
-For example, a Jira issue's reporter (`author`), creator, assignee, each comment's
-author (`commenter`) and each person @-mentioned in its text (`tagged`) are mentions
-whose identity is the account id; a meeting of the work log names its participants by
+For example, a Jira issue's reporter (`author`), creator, assignee and each comment's
+author (`commenter`) are mentions whose identity is the account id; a meeting of the work log names its participants by
 spelling alone.
 
 **Composes.** Persons are derived by index, after the mirror, from the mentions and the
@@ -451,8 +449,7 @@ whose run enables it alone, in this order:
 These four, in this order, are the pipeline. A stage is defined by what it reads and
 writes, its grain (per source, or over the whole) and its change test, never by a run.
 Each runs after the one before it, over what that one left. Each is incremental, redoing
-only what its change test finds changed, and idempotent: applied again with nothing
-changed, it changes nothing. A connector takes part in fetch and prepare only. Not
+only what its change test finds changed, and idempotent as a [run](#run) is. A connector takes part in fetch and prepare only. Not
 `eval-agents prepare`, nor any other step of `eval-agents`.
 
 **Composes.** A run applies the stages that its configuration enables, each at its grain

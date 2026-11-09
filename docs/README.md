@@ -119,7 +119,7 @@ the command and those who change its code, unless it is marked for contributors.
 - [The README](../README.md): what the command does and needs, and its first command.
 - [The roadmap](work/README.md), for contributors: the programme of plans, each plan's
   record in [`plans/`](work/plans/) while it is built, then in
-  [`changelog/`](work/changelog/).
+  [`changelog/`](work/changelog/); parked plans are in [`held/`](work/held/).
 - [Instructions for coding agents](../AGENTS.md), for contributors: the workflow, the
   checks and the sandbox's credentials.
 - [The sandbox corpus](../sandbox/README.md), for contributors: the fictional company

@@ -76,7 +76,7 @@ def loopback(url: str) -> bool:
 
 
 def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str | None:
-    """Say why a run may not send the mirror's text to a service, or None when it may.
+    """Say why a run may not send text to a service, or None when it may.
 
     An address that is not a literal one of this machine needs the run's word,
     ``remote_allowed``, and https even then. The message names the service's setting,

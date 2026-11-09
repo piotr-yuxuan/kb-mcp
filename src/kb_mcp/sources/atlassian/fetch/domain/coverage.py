@@ -2,9 +2,9 @@
 
 A target (a space or a project) is covered over one period, over which every change was
 asked for; the period is exact when every change in it is known stored, and an inexact
-one may hide a failure. Without --since, a run fetches what changed since each target's last fetch:
-a project from its covered end, a space from its covered start, since its listing is read
-whole anyway; a target never covered, its last week.
+one may hide a failure. Without --since, a run fetches what changed since each target's
+last fetch: a project from its covered end, a space from its covered start, since its
+listing is read whole anyway; a target never covered, its last week.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ class Target(Record):
 
 
 class Coverage(Record):
-    """Each target's covered period: every document updated in it is stored.
+    """Each target's covered period, over which every change was asked for.
 
     A space is listed whole on every run, so a failure within its period (a document
     whose fetch failed, an entry the adapter refuses) leaves no hole for long: a run

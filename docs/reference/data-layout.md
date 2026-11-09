@@ -187,7 +187,8 @@ conversions, and exits 0; the next `index` then drops their documents. The work 
 alike: a folder that lists no file removes every work-log file, and a journal
 (`todo.org`) that is missing, not a regular file or empty removes the documents drawn
 from it. Check that `raw/` and the work log's folder are in place before a `prepare`;
-`kb-mcp fetch` fills the raw store again.
+`kb-mcp fetch`, with a `--since` that reaches back far enough, fills the raw store
+again.
 
 **Some broken files end in a traceback, not a refusal.** A damaged vector store ends
 `embed` and `eval`; an attached file missing from the raw store ends `prepare`; one

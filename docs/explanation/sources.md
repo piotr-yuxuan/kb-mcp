@@ -4,7 +4,7 @@ The mirror has three [sources](../reference/concepts.md#source): Confluence and 
 work log, a folder of org files on this machine. A source is a declaration and the code
 that it names, and the three are declared alike, so that a new one is a package and one
 line of a registry. This page says why a source is put together as it is; [bring every
-source up to date](../how-to/refresh.md) and [mirror the work log](../how-to/work-log.md)
+source up to date](../how-to/refresh.md) and [add the work log](../how-to/work-log.md)
 say how to use them, and [add a source](../how-to/add-a-source.md) how to write one.
 
 ## Three stages, not a bundle
