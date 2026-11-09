@@ -200,7 +200,7 @@ or a dated transcript, dated afresh by its day; another is converted again
 - **One document's failure**, a file that links out of the folder
   ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
   over 32 MiB or is not UTF-8
-  ([`source`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
+  ([`org_text`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content, with what it holds
   back ([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
   the run goes on, writes no file that a file not read builds, every one for `todo.org`

@@ -63,7 +63,7 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.output import Summary
     from kb_mcp.mirror.adapters.pandoc import Pandoc
     from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.sources.worklog.prepare.domain.worklog import Source
+    from kb_mcp.sources.worklog.prepare.domain.worklog import OrgText
 
 TRACER = trace.get_tracer(__name__)
 
@@ -168,13 +168,13 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     with TRACER.start_as_current_span("worklog.read"):
         listing = files.listed(folder, archives=archives)
         unread = [(each.path, each.reason) for each in listing.problems]
-        sources: list[Source] = []
+        org_texts: list[OrgText] = []
         for relative in listing.paths:
             try:
-                sources.append(files.source(listing.root, relative))
+                org_texts.append(files.org_text(listing.root, relative))
             except files.UnreadableError as error:
                 unread.append((str(relative), str(error)))
-        found = {each.path: each for each in sources}
+        found = {each.path: each for each in org_texts}
         # A file linking out is a problem, never listed: its path names it all the same.
         # A folder not listed, though its name may end in .org, names none.
         out = [
@@ -185,7 +185,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
             Problem(where=where, reason=reason, held_back=held_back(where, ids))
             for where, reason in unread
         ]
-        named = transcripts(sources, ids, archives=archives)
+        named = transcripts(org_texts, ids, archives=archives)
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=ids)
         documents_read = writable(
@@ -289,7 +289,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                 except PandocFailedError as error:
                     problems.append(
                         Problem(
-                            where=f"{document.source.path}, {document.id}",
+                            where=f"{document.file.path}, {document.id}",
                             reason=str(error),
                             held_back=document.id,
                         )
@@ -298,7 +298,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
                     continue
                 outcome = "mirrored"
                 created, updated = document.dates(None if old is None else old.created)
-                fetched_at = document.source.fetched_at
+                fetched_at = document.file.fetched_at
                 CONVERSION_DURATION.record(time.perf_counter() - began, kind)
             DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **kind})
             matter = WorklogFrontMatter(

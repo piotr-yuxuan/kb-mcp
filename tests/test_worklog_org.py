@@ -33,7 +33,7 @@ from kb_mcp.sources.worklog.prepare.domain.worklog import (
     TRANSCRIBED,
     WORKLOG_REVISION,
     Document,
-    Source,
+    OrgText,
     WorklogFrontMatter,
     held_back,
     journal,
@@ -72,27 +72,27 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-def todo(text: str, modified: datetime = MODIFIED) -> Source:
+def todo(text: str, modified: datetime = MODIFIED) -> OrgText:
     """Return ``todo.org`` holding ``text``."""
-    return Source(path=PurePosixPath("todo.org"), text=text, modified=modified)
+    return OrgText(path=PurePosixPath("todo.org"), text=text, modified=modified)
 
 
-def transcript(path: str, text: str = "Words.\n", modified: datetime = MODIFIED) -> Source:
+def transcript(path: str, text: str = "Words.\n", modified: datetime = MODIFIED) -> OrgText:
     """Return a transcript at ``transcripts/<path>``."""
-    return Source(path=PurePosixPath("transcripts", path), text=text, modified=modified)
+    return OrgText(path=PurePosixPath("transcripts", path), text=text, modified=modified)
 
 
 def transcribed(
-    sources: list[Source], *, archives: bool = True
+    org_texts: list[OrgText], *, archives: bool = True
 ) -> tuple[list[Document], list[str]]:
     """Return the transcripts of ``sources``, every one read, and the warnings on their ids."""
-    ids, warnings = transcript_ids([each.path for each in sources], archives=archives)
-    return transcripts(sources, ids, archives=archives), warnings
+    ids, warnings = transcript_ids([each.path for each in org_texts], archives=archives)
+    return transcripts(org_texts, ids, archives=archives), warnings
 
 
 def by_path(documents: list[Document]) -> dict[PurePosixPath, str]:
     """Return each transcript's id by its path, as ``journal`` takes those found."""
-    return {each.source.path: each.id for each in documents}
+    return {each.file.path: each.id for each in documents}
 
 
 def one(text: str) -> dict[str, str]:
@@ -632,7 +632,7 @@ def test_same_titled_entries_are_numbered_in_reading_order() -> None:
     """The second and third of one title take -2 and -3; distinct :CREATED: tell apart."""
     found, _ = journal(
         todo("* Retro\none\n* Retro\ntwo\n* Retro\nthree\n"),
-        Source(path=PurePosixPath("todo.org_archive"), text="* Retro\nfour\n", modified=MODIFIED),
+        OrgText(path=PurePosixPath("todo.org_archive"), text="* Retro\nfour\n", modified=MODIFIED),
         archives=True,
         transcripts={},
     )
@@ -700,7 +700,7 @@ def test_an_entry_describes_its_title_status_labels_and_file() -> None:
     parent = DECLARED + "#+FILETAGS: :work:\n"
     found, _ = journal(
         todo(parent + "* WAITING [#A] Review [1/3] :review:work:\n* Old :ARCHIVE:\n* Plain\n"),
-        Source(
+        OrgText(
             path=PurePosixPath("todo.org_archive"),
             text="* WAITING Vendor :vendor:\n",
             modified=MODIFIED,
@@ -722,7 +722,7 @@ def test_without_archives_the_archive_file_and_archived_entries_are_left_out() -
     """The archive file's entries and those tagged ARCHIVE; arch:nil for the rest."""
     found, _ = journal(
         todo("* Old :ARCHIVE:\n* Kept\n** Gone :ARCHIVE:\n"),
-        Source(path=PurePosixPath("todo.org_archive"), text="* Vendor\n", modified=MODIFIED),
+        OrgText(path=PurePosixPath("todo.org_archive"), text="* Vendor\n", modified=MODIFIED),
         archives=False,
         transcripts={},
     )
@@ -793,7 +793,7 @@ def test_transcript_ids_name_the_day_and_the_name_else_a_slug_else_a_digest(
     (the user, 2026-10-29, plan 044).
     """
     (found,), warnings = transcribed(
-        [Source(path=PurePosixPath(path), text="", modified=MODIFIED)], archives=True
+        [OrgText(path=PurePosixPath(path), text="", modified=MODIFIED)], archives=True
     )
     assert (found.id, warnings) == (expected, [])
     assert WORKLOG_ID.fullmatch(found.id)
@@ -803,8 +803,10 @@ def test_one_day_s_first_file_in_both_folders_takes_two_ids() -> None:
     """meetings/<day>/1.org and transcripts/current/<day>/1.org: distinct, no warning."""
     found, warnings = transcribed(
         [
-            Source(path=PurePosixPath("meetings/2026-10-27 Tue/1.org"), text="", modified=MODIFIED),
-            Source(
+            OrgText(
+                path=PurePosixPath("meetings/2026-10-27 Tue/1.org"), text="", modified=MODIFIED
+            ),
+            OrgText(
                 path=PurePosixPath("transcripts/current/2026-10-27 Tue/1.org"),
                 text="",
                 modified=MODIFIED,
@@ -823,7 +825,7 @@ def test_a_copy_keeps_the_id_and_the_other_takes_its_whole_path() -> None:
     copy = "archive/2026/2026-10/2026-10-20 Tue/1.org"
     original = "current/2026-10-20 Tue/1.org"
     found, warnings = transcribed([transcript(original), transcript(copy)], archives=True)
-    assert [(str(each.source.path), each.id) for each in found] == [
+    assert [(str(each.file.path), each.id) for each in found] == [
         (f"transcripts/{copy}", "t-20261020-1"),
         (f"transcripts/{original}", f"t-{sha(f'/transcripts/{original}')}"),
     ]
@@ -885,7 +887,7 @@ def test_a_whole_path_digest_is_never_another_file_s_digest() -> None:
         ],
         archives=True,
     )
-    assert {str(each.source.path): each.id for each in found} == {
+    assert {str(each.file.path): each.id for each in found} == {
         "transcripts/aa/a.org": f"t-{sha('a.org')}",
         "transcripts/F/transcripts/misc/a.org": f"t-{sha('/transcripts/F/transcripts/misc/a.org')}",
         "transcripts/misc/a.org": f"t-{sha('/transcripts/misc/a.org')}",
@@ -904,7 +906,7 @@ def test_archiving_one_of_two_files_of_one_id_never_hands_it_the_other_s() -> No
     for other in (vendor_b, archived):
         for paths in ([vendor_a, other], [other, vendor_a]):
             found, warnings = transcribed([transcript(path) for path in paths], archives=True)
-            ids = {each.source.path.parts[-2]: each.id for each in found}
+            ids = {each.file.path.parts[-2]: each.id for each in found}
             assert ids == {
                 "vendor-a": f"t-{sha('notes.org')}",
                 "vendor-b": f"t-{sha(f'/transcripts/{other}')}",
@@ -967,7 +969,7 @@ def test_without_archives_archived_transcripts_are_left_out() -> None:
         [transcript("archive/2026/x/1.org"), transcript("current/archive/1.org")],
         archives=False,
     )
-    assert [str(each.source.path) for each in found] == ["transcripts/current/archive/1.org"]
+    assert [str(each.file.path) for each in found] == ["transcripts/current/archive/1.org"]
 
 
 def test_a_revision_names_the_input_and_the_converter() -> None:
@@ -1303,9 +1305,9 @@ SAMPLE = (
 CONDENSED = "From <2026-10-05 Mon> to <2026-10-09 Fri> (summary)"
 
 
-def archived(text: str) -> Source:
+def archived(text: str) -> OrgText:
     """Return ``todo.org_archive`` holding ``text``."""
-    return Source(path=PurePosixPath("todo.org_archive"), text=text, modified=MODIFIED)
+    return OrgText(path=PurePosixPath("todo.org_archive"), text=text, modified=MODIFIED)
 
 
 def body(document: Document) -> list[str]:
@@ -1320,7 +1322,7 @@ def test_the_plan_s_sample_is_a_day_a_meeting_and_a_range() -> None:
     """
     (record,), _ = transcribed(
         [
-            Source(
+            OrgText(
                 path=PurePosixPath("meetings/2026-10-27 Tue/1.org"),
                 text="Words.\n",
                 modified=MODIFIED,
@@ -1693,7 +1695,7 @@ def test_a_file_not_read_holds_back_every_document_for_the_journal_s_alone(
     """
     read, _ = transcribed(
         [
-            Source(
+            OrgText(
                 path=PurePosixPath("meetings/2026-10-27 Tue/1.org"),
                 text="Words.\n",
                 modified=MODIFIED,

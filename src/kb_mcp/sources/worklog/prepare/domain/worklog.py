@@ -94,7 +94,7 @@ TURN = re.compile(r"[ \t]*(?:\[[^\[\]]*\][ \t]+)?([^\W\d_][^:\[\]]{0,63}?)[ \t]*
 NOT_SPEAKERS = frozenset({"SCHEDULED", "DEADLINE", "CLOSED", "CLOCK"})
 
 
-class Source(Record):
+class OrgText(Record):
     """An org file of the work log, as read.
 
     ``modified`` is aware, in the time zone of the machine that read it: org writes the
@@ -135,7 +135,7 @@ class Document(Record):
     text: str  # pandoc's input
     events: tuple[datetime, ...]
     day: datetime | None  # a day's, a meeting's or a dated transcript's, at midnight UTC
-    source: Source
+    file: OrgText
 
     def dates(self, created: datetime | None) -> tuple[datetime, datetime]:
         """Return when it was created and last updated.
@@ -147,7 +147,7 @@ class Document(Record):
             return self.day, self.day
         if self.events:
             return min(self.events), max(self.events)
-        return created or self.source.fetched_at, self.source.fetched_at
+        return created or self.file.fetched_at, self.file.fetched_at
 
 
 class WorklogFrontMatter(FrontMatter):
@@ -188,7 +188,7 @@ class Part(Record):
 
     subtree: org.Subtree
     path: tuple[str, ...]
-    source: Source
+    file: OrgText
     parsed: org.OrgFile
     archived: bool
     inherited: tuple[str, ...]
@@ -241,7 +241,7 @@ class Part(Record):
             Part(
                 subtree=child,
                 path=(*self.path, self.subtree.heading.title),
-                source=self.source,
+                file=self.file,
                 parsed=self.parsed,
                 archived=self.archived or org.ARCHIVE in child.heading.tags,
                 inherited=(*self.inherited, *self.subtree.heading.tags),
@@ -327,7 +327,7 @@ class Meeting(Record):
         """
         link = part.subtree.properties.get(LINKED, "")
         target = org.link_target(link)
-        file = None if target is None else part.source.path.parent / target
+        file = None if target is None else part.file.path.parent / target
         transcript: str | None = None
         if file is not None:
             transcript = ids.get(file)
@@ -356,8 +356,8 @@ class Day(Record):
 
 
 def journal(
-    todo: Source | None,
-    archive: Source | None,
+    todo: OrgText | None,
+    archive: OrgText | None,
     *,
     archives: bool,
     transcripts: Mapping[PurePosixPath, str],
@@ -376,7 +376,7 @@ def journal(
     those found, read or not, by path, which a meeting may link to; each meeting whose
     ``:MEETING:`` links none is named too, as ``days_and_meetings`` says.
     """
-    files: list[tuple[Source, org.OrgFile]] = []
+    files: list[tuple[OrgText, org.OrgFile]] = []
     first = None
     if todo is not None:
         first = org.read(todo.text)
@@ -384,14 +384,14 @@ def journal(
     if archive is not None and archives:
         files.append((archive, org.read(archive.text, first)))
     parts: list[Part] = []
-    for source, parsed in files:
+    for org_text, parsed in files:
         for subtree in parsed.subtrees:
-            archived = source.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
+            archived = org_text.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
             path = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
             top = Part(
                 subtree=subtree,
                 path=path,
-                source=source,
+                file=org_text,
                 parsed=parsed,
                 archived=archived,
                 inherited=(),
@@ -422,7 +422,7 @@ def journal(
                 title=title,
                 status=heading.keyword or CURRENT,
                 labels=tuple(dict.fromkeys(part.labels)),
-                breadcrumb=(part.source.path.name, *part.path),
+                breadcrumb=(part.file.path.name, *part.path),
                 people=(),
                 links=(),
                 text=org.pandoc_input(
@@ -431,9 +431,9 @@ def journal(
                     part.parsed.keywords,
                     archives=archives,
                 ),
-                events=part.source.events(part.subtree.lines),
+                events=part.file.events(part.subtree.lines),
                 day=None,
-                source=part.source,
+                file=part.file,
             )
         )
     dated, unlinked = days_and_meetings(kept, archives=archives, transcripts=transcripts)
@@ -479,7 +479,7 @@ def days_and_meetings(
                 part.day,
                 Day(
                     title=part.subtree.heading.title,
-                    breadcrumb=(part.source.path.name, *part.path),
+                    breadcrumb=(part.file.path.name, *part.path),
                     first=part,
                 ),
             )
@@ -502,7 +502,7 @@ def days_and_meetings(
                 date,
                 Day(
                     title=part.path[place],
-                    breadcrumb=(part.source.path.name, *part.path[:place]),
+                    breadcrumb=(part.file.path.name, *part.path[:place]),
                     first=part,
                 ),
             )
@@ -559,7 +559,7 @@ def days_and_meetings(
                 ),
                 events=(),
                 day=date,
-                source=day.first.source,
+                file=day.first.file,
             )
         )
         for each, identifier in zip(day.meetings, ids, strict=True):
@@ -572,7 +572,7 @@ def days_and_meetings(
                     title=heading.title,
                     status=heading.keyword or CURRENT,
                     labels=tuple(dict.fromkeys(meeting.labels)),
-                    breadcrumb=(meeting.source.path.name, *meeting.path),
+                    breadcrumb=(meeting.file.path.name, *meeting.path),
                     people=participants(meeting.subtree.properties.get(NAMED, "")),
                     links=() if transcript is None else ((TRANSCRIBED, transcript),),
                     text=org.pandoc_input(
@@ -583,7 +583,7 @@ def days_and_meetings(
                     ),
                     events=(),
                     day=date,
-                    source=meeting.source,
+                    file=meeting.file,
                 )
             )
     return found, unlinked
@@ -685,26 +685,26 @@ def transcript_ids(
 
 
 def transcripts(
-    sources: Iterable[Source], ids: Mapping[PurePosixPath, str], *, archives: bool
+    org_texts: Iterable[OrgText], ids: Mapping[PurePosixPath, str], *, archives: bool
 ) -> list[Document]:
     """Return the transcripts read, in the order of ``ids``, each of the id given there.
 
-    ``ids`` are ``transcript_ids``'s; a source of no id there, such as one archived and
+    ``ids`` are ``transcript_ids``'s; an org text of no id there, such as one archived and
     left out, is passed over. Its people are its ``speakers``; a dated one is its day, as
     ``named_day`` reads it, whatever its turns and timestamps hold, and an undated one is
     dated by its events. Without ``archives``, its text is converted without the
     subtrees tagged ARCHIVE.
     """
-    read = {each.path: each for each in sources}
+    read = {each.path: each for each in org_texts}
     found: list[Document] = []
     for path, identifier in ids.items():
-        source = read.get(path)
-        if source is None:
+        org_text = read.get(path)
+        if org_text is None:
             continue
         archived = in_archive(path)
         stem = path.name.removesuffix(ORG)
         named = named_day(path)
-        parsed = org.read(source.text)
+        parsed = org.read(org_text.text)
         fallback = f"Transcript, {named[0]}, {stem}" if named else f"Transcript, {stem}"
         first = next((each.title for each in parsed.headings if each.title), fallback)
         found.append(
@@ -722,9 +722,9 @@ def transcripts(
                 text=org.pandoc_input(
                     parsed.declarations, parsed.lines, parsed.keywords, archives=archives
                 ),
-                events=source.events(parsed.lines),
+                events=org_text.events(parsed.lines),
                 day=named[1] if named else None,
-                source=source,
+                file=org_text,
             )
         )
     return found

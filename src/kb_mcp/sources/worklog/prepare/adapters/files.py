@@ -2,7 +2,7 @@
 
 ``listed`` finds ``todo.org``, ``todo.org_archive`` and every ``*.org`` under the folders
 of transcripts, ``transcripts/`` and ``meetings/``, and counts the HTML transcripts, which
-are never read; ``source`` reads one of them. Names beginning with ``.`` or ``#`` or
+are never read; ``org_text`` reads one of them. Names beginning with ``.`` or ``#`` or
 ending in ``~`` (hidden files, and Emacs's lock, autosave and backup files) are passed
 over. A link is followed only to a file or a folder inside the work log. A file over a
 bound, linking out or not UTF-8 is named by its path, never by its content.
@@ -22,7 +22,7 @@ from kb_mcp.sources.worklog.prepare.domain.worklog import (
     TODO,
     TODO_ARCHIVE,
     TRANSCRIPTS,
-    Source,
+    OrgText,
 )
 
 MEBIBYTE = 1024 * 1024
@@ -127,7 +127,7 @@ def listed(folder: Path, *, archives: bool) -> Listing:
     return Listing(root=root, paths=paths, html=html, problems=tuple(problems))
 
 
-def source(root: Path, relative: PurePosixPath) -> Source:
+def org_text(root: Path, relative: PurePosixPath) -> OrgText:
     """Read one org file that ``listed`` found under ``root``.
 
     Raises ``UnreadableError`` for a file that is not regular, is over 32 MiB, is not
@@ -153,4 +153,4 @@ def source(root: Path, relative: PurePosixPath) -> Source:
     except UnicodeDecodeError:
         message = "not UTF-8"
         raise UnreadableError(message) from None
-    return Source(path=relative, text=text, modified=modified)
+    return OrgText(path=relative, text=text, modified=modified)

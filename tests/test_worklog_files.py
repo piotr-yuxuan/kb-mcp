@@ -221,7 +221,7 @@ def test_a_file_is_read_with_its_time_of_change(worklog: Path) -> None:
     """Its text, and its modification time in the local zone, the same instant."""
     moment = datetime(2026, 10, 22, 12, 0, 5, tzinfo=UTC)
     os.utime(worklog / "todo.org", (moment.timestamp(), moment.timestamp()))
-    read = files.source(worklog, PurePosixPath("todo.org"))
+    read = files.org_text(worklog, PurePosixPath("todo.org"))
     assert (read.path, read.text, read.modified) == (
         PurePosixPath("todo.org"),
         "* Heading\n",
@@ -246,7 +246,7 @@ def test_a_file_off_the_rules_is_named_without_its_content(
     else:
         path.write_bytes(data)
     with pytest.raises(files.UnreadableError) as raised:
-        files.source(worklog, PurePosixPath("todo.org"))
+        files.org_text(worklog, PurePosixPath("todo.org"))
     assert str(raised.value) == reason
     assert CONTENT not in str(raised.value)
 
@@ -272,10 +272,10 @@ def test_a_time_of_change_out_of_range_is_a_reason(
 
     monkeypatch.setattr(files, "datetime", Far)
     with pytest.raises(files.UnreadableError, match=rf"^not read \({error.__name__}\)$"):
-        files.source(worklog, PurePosixPath("todo.org"))
+        files.org_text(worklog, PurePosixPath("todo.org"))
 
 
 def test_a_file_of_exactly_32_mib_is_read(worklog: Path) -> None:
     """The bound is inclusive."""
     (worklog / "todo.org").write_bytes(b"x" * files.FILE_BYTES)
-    assert len(files.source(worklog, PurePosixPath("todo.org")).text) == files.FILE_BYTES
+    assert len(files.org_text(worklog, PurePosixPath("todo.org")).text) == files.FILE_BYTES

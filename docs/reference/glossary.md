@@ -246,7 +246,7 @@ The user's folder of org files, read in place and never written, whose documents
 days, meetings, entries and transcripts. Not "entries" for its entries, days and meetings
 together.
 
-- In the code: [`Source`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
+- In the code: [`OrgText`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
   [`OrgFile`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py),
   [`Document`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
   [`Problem`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py).
