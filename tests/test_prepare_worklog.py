@@ -36,10 +36,10 @@ from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
-    Outcome,
-    Planned,
-    mirror_worklog,
+    WorklogDryRun,
+    WorklogPrepareOutcome,
     plan_worklog,
+    prepare_worklog,
 )
 
 if TYPE_CHECKING:
@@ -130,14 +130,16 @@ class Run:
     docs: Path
     runs: list[list[tuple[str, ...]]] = field(default_factory=list)
 
-    def __call__(self, *, archives: bool = True, failing: str | None = None) -> Outcome:
+    def __call__(
+        self, *, archives: bool = True, failing: str | None = None
+    ) -> WorklogPrepareOutcome:
         """Mirror the work log; return what the run did."""
         pandoc = Counting(path=Pandoc.find().path, failing=failing)
-        outcome = mirror_worklog(self.root, self.docs, pandoc, archives=archives)
+        outcome = prepare_worklog(self.root, self.docs, pandoc, archives=archives)
         self.runs.append(pandoc.runs)
         return outcome
 
-    def plan(self, *, archives: bool = True) -> Planned:
+    def plan(self, *, archives: bool = True) -> WorklogDryRun:
         """Say what mirroring would do; pandoc's runs are recorded as for a run."""
         pandoc = Counting(path=Pandoc.find().path)
         planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)

@@ -45,7 +45,7 @@ from kb_mcp.sources.worklog.prepare.domain.worklog import (
     SOURCE,
     TODO,
     TODO_ARCHIVE,
-    Document,
+    WorklogDocument,
     WorklogFrontMatter,
     held_back,
     journal,
@@ -89,13 +89,13 @@ class Read(Record):
     do not.
     """
 
-    documents: tuple[Document, ...]
+    documents: tuple[WorklogDocument, ...]
     html: int
     problems: tuple[Problem, ...]
     warnings: tuple[str, ...]
 
 
-class Outcome(Record):
+class WorklogPrepareOutcome(Record):
     """What a run did: documents mirrored, files changed, HTML transcripts left out.
 
     Problems stop removals but of a written document's old files; warnings, such as two
@@ -125,7 +125,7 @@ class Outcome(Record):
         )
 
 
-class Planned(Record):
+class WorklogDryRun(Record):
     """What a run would do: documents, those to convert, files to remove, HTML left out."""
 
     documents: int
@@ -166,21 +166,23 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     holds no removal back.
     """
     with TRACER.start_as_current_span("worklog.read"):
-        listing = files.listed(folder, archives=archives)
-        unread = [(each.path, each.reason) for each in listing.problems]
+        org_files = files.listed(folder, archives=archives)
+        unread = [(each.path, each.reason) for each in org_files.problems]
         org_texts: list[OrgText] = []
-        for relative in listing.paths:
+        for relative in org_files.paths:
             try:
-                org_texts.append(files.org_text(listing.root, relative))
+                org_texts.append(files.org_text(org_files.root, relative))
             except files.UnreadableError as error:
                 unread.append((str(relative), str(error)))
         found = {each.path: each for each in org_texts}
         # A file linking out is a problem, never listed: its path names it all the same.
         # A folder not listed, though its name may end in .org, names none.
         out = [
-            PurePosixPath(each.path) for each in listing.problems if each.reason == files.LINKS_OUT
+            PurePosixPath(each.path)
+            for each in org_files.problems
+            if each.reason == files.LINKS_OUT
         ]
-        ids, warnings = transcript_ids([*listing.paths, *out], archives=archives)
+        ids, warnings = transcript_ids([*org_files.paths, *out], archives=archives)
         problems = [
             Problem(where=where, reason=reason, held_back=held_back(where, ids))
             for where, reason in unread
@@ -199,14 +201,14 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         days=kinds[DAY_TYPE],
         meetings=kinds[MEETING_TYPE],
         transcripts=len(named),
-        html=listing.html,
+        html=org_files.html,
         problems=len(problems),
     )
     if unlinked:
         log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
     return Read(
         documents=tuple(documents_read),
-        html=listing.html,
+        html=org_files.html,
         problems=tuple(problems),
         warnings=tuple(warnings),
     )
@@ -245,7 +247,9 @@ def moved(
     return {path for each in identifiers for path in placed.get(each, ())}
 
 
-def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Outcome:
+def prepare_worklog(
+    folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
+) -> WorklogPrepareOutcome:
     """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
 
     Without ``archives``, the archive file, ``transcripts/archive/``,
@@ -355,7 +359,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
         removed=changes.removed,
         problems=len(problems),
     )
-    return Outcome(
+    return WorklogPrepareOutcome(
         documents=len(wanted),
         changes=changes,
         html=read.html,
@@ -364,7 +368,9 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     )
 
 
-def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True) -> Planned:
+def plan_worklog(
+    folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
+) -> WorklogDryRun:
     """Say what mirroring the work log would do, converting and writing nothing.
 
     A document is to convert when no file holds its revision; a file is to remove when no
@@ -394,7 +400,7 @@ def plan_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = T
         to_remove=to_remove,
         problems=len(read.problems),
     )
-    return Planned(
+    return WorklogDryRun(
         documents=len(read.documents),
         to_convert=to_convert,
         to_remove=to_remove,

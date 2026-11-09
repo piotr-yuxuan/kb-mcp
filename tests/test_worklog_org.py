@@ -32,8 +32,8 @@ from kb_mcp.sources.worklog.prepare.domain.worklog import (
     SUMMARY,
     TRANSCRIBED,
     WORKLOG_REVISION,
-    Document,
     OrgText,
+    WorklogDocument,
     WorklogFrontMatter,
     held_back,
     journal,
@@ -84,13 +84,13 @@ def transcript(path: str, text: str = "Words.\n", modified: datetime = MODIFIED)
 
 def transcribed(
     org_texts: list[OrgText], *, archives: bool = True
-) -> tuple[list[Document], list[str]]:
+) -> tuple[list[WorklogDocument], list[str]]:
     """Return the transcripts of ``sources``, every one read, and the warnings on their ids."""
     ids, warnings = transcript_ids([each.path for each in org_texts], archives=archives)
     return transcripts(org_texts, ids, archives=archives), warnings
 
 
-def by_path(documents: list[Document]) -> dict[PurePosixPath, str]:
+def by_path(documents: list[WorklogDocument]) -> dict[PurePosixPath, str]:
     """Return each transcript's id by its path, as ``journal`` takes those found."""
     return {each.file.path: each.id for each in documents}
 
@@ -1310,7 +1310,7 @@ def archived(text: str) -> OrgText:
     return OrgText(path=PurePosixPath("todo.org_archive"), text=text, modified=MODIFIED)
 
 
-def body(document: Document) -> list[str]:
+def body(document: WorklogDocument) -> list[str]:
     """Return the lines that pandoc converts for a document, without the settings before them."""
     return [line for line in document.text.splitlines() if not line.startswith("#+")]
 

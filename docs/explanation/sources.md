@@ -407,7 +407,7 @@ what pandoc reads and of pandoc's version
 that file's body: an edit elsewhere in `todo.org`, which changes the file's time, moves
 no other entry's dates. A day, a meeting and a dated transcript are dated by their day,
 and linked, afresh at each run
-([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)): the
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)): the
 transcript may be saved after the meeting's notes, so a meeting's links are not part of
 its revision, nor are its dates, so that a file that held another date takes its day
 without a conversion. The work log gives the day of a meeting, never its time, so no
@@ -440,7 +440,7 @@ which search ranks, `read` opens and the filters narrow to. The rule reads the
 outline's shape, not the journal's name: a day is a heading titled by a date alone
 ([`date_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)),
 a meeting a child of a day with a meeting's property
-([`Part.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 So a renamed journal reads as the old one, and so does the archive file, where org
 moves a day to the top and names, in `:ARCHIVE_OLPATH:`, the day of a meeting archived
 alone
@@ -486,7 +486,7 @@ it has ([`front_matter`](../../src/kb_mcp/sources/atlassian/prepare/domain/catal
 page or a blog post, its author; an issue, its reporter as its author, its creator, its
 assignee, and each commenter with the times of their comments. The work log fills
 `participant` alone
-([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)):
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)):
 a meeting's names as its `:PARTICIPANTS:` writes them
 ([`participants`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 a transcript's speakers

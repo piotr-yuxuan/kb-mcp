@@ -138,7 +138,7 @@ counts and how they read as text. Mind what the writer and the front matter ask:
 
 A larger source splits this module by layer, its effects in `prepare/adapters/` and its
 rules in `prepare/domain/`, as the work log's does
-([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). Create
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). Create
 `src/kb_mcp/sources/notes/prepare/app/preparer.py`:
 
 ```python

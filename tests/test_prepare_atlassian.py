@@ -42,8 +42,8 @@ from tests.samples import (
     v3_comment,
     v3_issue,
 )
+from tests.test_prepare_worklog import Counting
 from tests.test_pruning import events_named
-from tests.test_worklog_mirror import Counting
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

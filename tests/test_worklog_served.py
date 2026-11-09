@@ -24,8 +24,8 @@ from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from tests.answers import parts
 from tests.mirrors import page, write
+from tests.test_prepare_worklog import FIXTURE, settle
 from tests.test_surface import seen
-from tests.test_worklog_mirror import FIXTURE, settle
 
 if TYPE_CHECKING:
     from pathlib import Path

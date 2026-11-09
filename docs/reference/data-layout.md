@@ -158,7 +158,7 @@ The store's interface for snapshots:
   names a missing file. For a revision stored already, `put` keeps the responses and
   records the new blobs.
 - `add_blobs(document, blobs)` records files downloaded later, such as on a retry,
-  replacing the record alone, whole. It, `has` and `read` take a `Document` or a
+  replacing the record alone, whole. It, `has` and `read` take a `FetchedDocument` or a
   `Listed`.
 - `has(document)`; `read(document)`, which returns a `StoredSnapshot` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
@@ -336,7 +336,7 @@ order or type, by name.
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision mirrored; a work-log document's, 16 hex digits, [below](#the-work-log) |
-| `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `Document.url`; `null` when no site is set, and for the work log |
+| `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
 | `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 

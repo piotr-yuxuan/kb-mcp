@@ -188,7 +188,7 @@ function for `prepare`'s work.
 - In the code: the context [`kb_mcp.mirror`](../../src/kb_mcp/mirror/),
   [`Settings.docs`](../../src/kb_mcp/config/domain/settings.py).
 - User-facing: `docs/`, `mirrored`.
-- Retires: `mirror_layout.py`.
+- Retires: `mirror_layout.py`, `mirror_worklog`.
 
 ### document
 
@@ -200,6 +200,7 @@ YAML header whose keys are fixed in name, type and order.
   [`WorklogFrontMatter`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
   [`FRONT_MATTER_KEYS`](../../src/kb_mcp/mirror/adapters/markdown.py).
 - User-facing: `source`, `id`, `title`.
+- Retires: `Document`.
 
 ### ref
 
@@ -254,8 +255,8 @@ together.
 
 - In the code: [`OrgText`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
   [`OrgFile`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py),
-  [`Document`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
-  [`Problem`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py).
+  [`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
+  [`UnreadFile`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py).
 - User-facing: `sources.worklog.path`, `docs/worklog/`.
 
 ## People

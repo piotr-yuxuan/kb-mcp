@@ -41,7 +41,7 @@ from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
-from kb_mcp.sources.worklog.prepare.app.prepare import Outcome, Planned
+from kb_mcp.sources.worklog.prepare.app.prepare import WorklogDryRun, WorklogPrepareOutcome
 from tests.composed import MODEL
 from tests.samples import v2_space
 from tests.test_fetching import SITE, FakeSite
@@ -53,8 +53,8 @@ from tests.test_prepare_atlassian import (
     listing_page,
     page_responses,
 )
+from tests.test_prepare_worklog import FIXTURE, settle
 from tests.test_sources import WORKLOG_DOCUMENTS
-from tests.test_worklog_mirror import FIXTURE, settle
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -612,12 +612,12 @@ def test_the_work_log_s_preparer_counts_in_a_dry_run_then_mirrors_its_folder(
     preparer = preparer_of(WORKLOG)
     planned = preparer.prepare(run_of(WORKLOG, settings, dry_run=True))
     assert planned.outcome == "done"
-    assert isinstance(planned.mirrored, Planned)
+    assert isinstance(planned.mirrored, WorklogDryRun)
     assert planned.mirrored.to_convert == WORKLOG_DOCUMENTS
     assert not settings.docs.exists()
     done = preparer.prepare(run_of(WORKLOG, settings))
     assert done.outcome == "done"
-    assert isinstance(done.mirrored, Outcome)
+    assert isinstance(done.mirrored, WorklogPrepareOutcome)
     assert done.mirrored.documents == WORKLOG_DOCUMENTS
     assert folders(settings.docs) == {"worklog"}
 

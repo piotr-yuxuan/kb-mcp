@@ -53,7 +53,7 @@ download of the spaces or projects that its table names
 ([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)); `prepare`, each
 source's preparer, [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,
-[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
+[`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
 `index`, the words of the mirror's files that changed, whichever sources were prepared
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); and `embed`, the vectors of
 the pieces that the index lacks, then the prune
@@ -176,7 +176,7 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 
 ## The work log: from org files to Markdown
 
-[`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work log's
+[`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work log's
 row of `prepare`, reads its folder in place and never writes there, following a link
 only inside it ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)).
 It has no raw store: its files are already on this machine, and reading them whole costs
@@ -407,9 +407,9 @@ file keeps its name. Its text changed, so its revision did
 ([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)): the
 entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
 its timestamps up to the file's time of change, usually the closing one
-([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 Every other entry keeps its file as it was, dates included, though `todo.org`'s time
-changed ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
+changed ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
 entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled
 `ARCHIVE`, or removed when `archives = false`;
 [sources](sources.md#identity-that-survives-orgs-edits) says why identity is kept so.

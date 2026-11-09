@@ -49,9 +49,9 @@ from tests.test_evaluate import GOLDEN
 from tests.test_fetching import SITE, FakeSite
 from tests.test_prepare_atlassian import FETCHED, SPACE_ID, listing_page, page_responses
 from tests.test_prepare_command import fake_pandoc
+from tests.test_prepare_worklog import FIXTURE as WORKLOG_FIXTURE
 from tests.test_serve import talk
 from tests.test_settings import user_log_folder
-from tests.test_worklog_mirror import FIXTURE as WORKLOG_FIXTURE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -261,7 +261,7 @@ def test_prepare_records_as_documented(
         with emitted.gathering(telemetry, "prepare"):
             assert main(worklog_alone) == ExitStatus.FAILED
     with monkeypatch.context() as patch:
-        patch.setattr(worklog_preparer, "mirror_worklog", stopped)
+        patch.setattr(worklog_preparer, "prepare_worklog", stopped)
         with emitted.gathering(telemetry, "prepare"):
             assert main(worklog_alone) == ExitStatus.INTERRUPTED
     monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path / "absent"))

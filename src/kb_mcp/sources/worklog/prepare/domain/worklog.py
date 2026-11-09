@@ -40,8 +40,8 @@ EVERY_DOCUMENT = "every document"
 UNDER_IT = "the transcripts not read under it"
 # The folders of transcripts: those saved, and the meeting files that a meeting's
 # :MEETING: links, as the user's meeting notes save them.
-MEETINGS = "meetings"
-TRANSCRIPTS = ("transcripts", MEETINGS)
+MEETINGS_FOLDER = "meetings"
+TRANSCRIPT_FOLDERS = ("transcripts", MEETINGS_FOLDER)
 # What a file under meetings/ takes before its name in its id, so that one day's 1.org
 # in both folders never shares an id.
 MEETING_FILE = "meeting-"
@@ -116,7 +116,7 @@ class OrgText(Record):
         return tuple(moment for moment in org.timestamps(lines) if moment <= limit)
 
 
-class Document(Record):
+class WorklogDocument(Record):
     """One document of the work log: what the mirror says of it, and what pandoc converts.
 
     ``people`` names its participants as written; ``links`` holds each relation to another
@@ -176,10 +176,10 @@ class WorklogFrontMatter(FrontMatter):
         return self
 
 
-class Part(Record):
-    """A heading of ``todo.org`` or its archive, and the titles above it: org's outline path.
+class PlacedHeading(Record):
+    """A heading of ``todo.org`` or its archive, and the titles above it: org's outline.
 
-    Below the journal, the path is the journal's title, then for a meeting its day's; at
+    Below the journal, the outline is the journal's title, then for a meeting its day's; at
     the top of a file, it is what org wrote in ``:ARCHIVE_OLPATH:`` when it archived the
     heading, else empty. It is ``archived`` when its file is the archive or it, or a
     heading above it, is tagged ARCHIVE; ``inherited`` are the tags of the headings above
@@ -187,7 +187,7 @@ class Part(Record):
     """
 
     subtree: org.Subtree
-    path: tuple[str, ...]
+    outline: tuple[str, ...]
     file: OrgText
     parsed: org.OrgFile
     archived: bool
@@ -205,7 +205,7 @@ class Part(Record):
         return next(
             (
                 (place, date)
-                for place, title in enumerate(self.path)
+                for place, title in enumerate(self.outline)
                 if (date := org.date_title(title)) is not None
             ),
             None,
@@ -217,7 +217,7 @@ class Part(Record):
         within, properties = self.within, self.subtree.properties
         return (
             within is not None
-            and within[0] == len(self.path) - 1
+            and within[0] == len(self.outline) - 1
             and (LINKED in properties or NAMED in properties)
         )
 
@@ -235,12 +235,12 @@ class Part(Record):
         ]
 
     @property
-    def children(self) -> list[Part]:
+    def children(self) -> list[PlacedHeading]:
         """Return its children, below its path and title, archived when it is, given its tags."""
         return [
-            Part(
+            PlacedHeading(
                 subtree=child,
-                path=(*self.path, self.subtree.heading.title),
+                outline=(*self.outline, self.subtree.heading.title),
                 file=self.file,
                 parsed=self.parsed,
                 archived=self.archived or org.ARCHIVE in child.heading.tags,
@@ -309,14 +309,16 @@ class Meeting(Record):
     the archived headings that join it.
     """
 
-    part: Part
+    part: PlacedHeading
     link: str
     file: PurePosixPath | None
     transcript: str | None
     added: list[str] = Field(default_factory=list)
 
     @classmethod
-    def read(cls, part: Part, ids: Mapping[PurePosixPath, str], known: Collection[str]) -> Meeting:
+    def read(
+        cls, part: PlacedHeading, ids: Mapping[PurePosixPath, str], known: Collection[str]
+    ) -> Meeting:
         """Read a meeting, its link resolved from the folder of its file.
 
         ``ids`` are the transcripts found, read or not, by their path from the work log's
@@ -331,7 +333,7 @@ class Meeting(Record):
         transcript: str | None = None
         if file is not None:
             transcript = ids.get(file)
-            if transcript is None and file.parts[0] in TRANSCRIPTS:
+            if transcript is None and file.parts[0] in TRANSCRIPT_FOLDERS:
                 moved = transcript_id(file)
                 transcript = moved if moved in known else None
         return cls(part=part, link=link, file=file, transcript=transcript)
@@ -349,8 +351,8 @@ class Day(Record):
 
     title: str
     breadcrumb: tuple[str, ...]
-    first: Part
-    headings: list[Part] = Field(default_factory=list)
+    first: PlacedHeading
+    headings: list[PlacedHeading] = Field(default_factory=list)
     lines: list[str] = Field(default_factory=list)
     meetings: list[Meeting] = Field(default_factory=list)
 
@@ -361,7 +363,7 @@ def journal(
     *,
     archives: bool,
     transcripts: Mapping[PurePosixPath, str],
-) -> tuple[list[Document], list[str]]:
+) -> tuple[list[WorklogDocument], list[str]]:
     """Return the entries, then the days and meetings, of ``todo.org`` and its archive.
 
     The journal is a top-level heading with a day among its children: its days are days,
@@ -383,14 +385,14 @@ def journal(
         files.append((todo, first))
     if archive is not None and archives:
         files.append((archive, org.read(archive.text, first)))
-    parts: list[Part] = []
+    parts: list[PlacedHeading] = []
     for org_text, parsed in files:
         for subtree in parsed.subtrees:
             archived = org_text.path.name == TODO_ARCHIVE or org.ARCHIVE in subtree.heading.tags
-            path = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
-            top = Part(
+            outline = tuple(filter(None, subtree.properties.get(OUTLINE_PATH, "").split("/")))
+            top = PlacedHeading(
                 subtree=subtree,
-                path=path,
+                outline=outline,
                 file=org_text,
                 parsed=parsed,
                 archived=archived,
@@ -405,7 +407,7 @@ def journal(
             parts.extend([own] if any(line.strip() for line in text) else [])
             parts.extend(children)
     kept = [part for part in parts if archives or not part.archived]
-    found: list[Document] = []
+    found: list[WorklogDocument] = []
     taken: Counter[str] = Counter()
     for part in kept:
         if part.day is not None or part.within is not None:
@@ -416,13 +418,13 @@ def journal(
         base = digest(properties.get("ID") or (f"{title}\n{created}" if created else title))
         taken[base] += 1
         found.append(
-            Document(
+            WorklogDocument(
                 type=ENTRY,
                 id=f"e-{base}" if taken[base] == 1 else f"e-{base}-{taken[base]}",
                 title=title,
                 status=heading.keyword or CURRENT,
                 labels=tuple(dict.fromkeys(part.labels)),
-                breadcrumb=(part.file.path.name, *part.path),
+                breadcrumb=(part.file.path.name, *part.outline),
                 people=(),
                 links=(),
                 text=org.pandoc_input(
@@ -441,8 +443,8 @@ def journal(
 
 
 def days_and_meetings(
-    parts: Sequence[Part], *, archives: bool, transcripts: Mapping[PurePosixPath, str]
-) -> tuple[list[Document], list[str]]:
+    parts: Sequence[PlacedHeading], *, archives: bool, transcripts: Mapping[PurePosixPath, str]
+) -> tuple[list[WorklogDocument], list[str]]:
     """Return each day of the journal's parts, then its meetings, by date of first part.
 
     ``parts`` are those kept, in reading order. One date makes one day, ``d-`` and the
@@ -458,9 +460,9 @@ def days_and_meetings(
     the folder of the file that holds it, or that the file's path gives, as
     ``Meeting.read`` says, read or not, ``transcripts`` being the ids of those found by
     path; its id is as ``meeting_ids`` gives it. A day and each of its meetings are
-    dated by that day, whatever a transcript holds. Labels: a meeting's, as ``Part.labels`` gives
-    them; a day's, those of each of its headings, else, when it has none, its first
-    part's file's ``#+FILETAGS`` and ARCHIVE.
+    dated by that day, whatever a transcript holds. Labels: a meeting's, as
+    ``PlacedHeading.labels`` gives them; a day's, those of each of its headings, else, when
+    it has none, its first heading's file's ``#+FILETAGS`` and ARCHIVE.
 
     Also returned, in the order of the meetings, each whose ``:MEETING:`` links no
     transcript: by the file that it names, from the work log's folder, when it is a link
@@ -471,7 +473,7 @@ def days_and_meetings(
     """
     known = set(transcripts.values())
     days: dict[datetime, Day] = {}
-    joining: list[tuple[Day, str, Part]] = []  # its day, its path after the day, it
+    joining: list[tuple[Day, str, PlacedHeading]] = []  # its day, its path after the day, it
     for part in parts:
         within = part.within
         if part.day is not None:
@@ -479,7 +481,7 @@ def days_and_meetings(
                 part.day,
                 Day(
                     title=part.subtree.heading.title,
-                    breadcrumb=(part.file.path.name, *part.path),
+                    breadcrumb=(part.file.path.name, *part.outline),
                     first=part,
                 ),
             )
@@ -501,8 +503,8 @@ def days_and_meetings(
             day = days.setdefault(
                 date,
                 Day(
-                    title=part.path[place],
-                    breadcrumb=(part.file.path.name, *part.path[:place]),
+                    title=part.outline[place],
+                    breadcrumb=(part.file.path.name, *part.outline[:place]),
                     first=part,
                 ),
             )
@@ -510,7 +512,7 @@ def days_and_meetings(
                 day.meetings.append(Meeting.read(part, transcripts, known))
                 day.lines.extend(org.shifted(part.subtree.lines[:1], JOINED_LEVEL))
             else:
-                joining.append((day, "/".join(part.path[place + 1 :]), part))
+                joining.append((day, "/".join(part.outline[place + 1 :]), part))
     for day, rest, part in joining:
         # Org joins the titles of a path by a / that it does not escape, so that a title
         # such as 1/1 with Robin spans two parts: the longest title that begins the rest.
@@ -525,7 +527,7 @@ def days_and_meetings(
         chosen = [added for length, added in named if length == longest]
         target = chosen[0] if len(chosen) == 1 else day.lines
         target.extend(org.shifted(part.subtree.lines, JOINED_LEVEL))
-    found: list[Document] = []
+    found: list[WorklogDocument] = []
     unlinked: list[str] = []
     for date, day in days.items():
         ids = meeting_ids(date, [each.part.subtree.heading.title for each in day.meetings])
@@ -542,7 +544,7 @@ def days_and_meetings(
             else [*day.first.parsed.filetags, org.ARCHIVE]
         )
         found.append(
-            Document(
+            WorklogDocument(
                 type=DAY_TYPE,
                 id=f"d-{date:%Y%m%d}",
                 title=day.title,
@@ -566,13 +568,13 @@ def days_and_meetings(
             meeting, transcript = each.part, each.transcript
             heading = meeting.subtree.heading
             found.append(
-                Document(
+                WorklogDocument(
                     type=MEETING_TYPE,
                     id=identifier,
                     title=heading.title,
                     status=heading.keyword or CURRENT,
                     labels=tuple(dict.fromkeys(meeting.labels)),
-                    breadcrumb=(meeting.file.path.name, *meeting.path),
+                    breadcrumb=(meeting.file.path.name, *meeting.outline),
                     people=participants(meeting.subtree.properties.get(NAMED, "")),
                     links=() if transcript is None else ((TRANSCRIBED, transcript),),
                     text=org.pandoc_input(
@@ -632,7 +634,7 @@ def transcript_id(path: PurePosixPath) -> str:
     own = path.name
     stem = own.removesuffix(ORG)
     named = named_day(path)
-    prefix = MEETING_FILE if path.parts[0] == MEETINGS else ""
+    prefix = MEETING_FILE if path.parts[0] == MEETINGS_FOLDER else ""
     dated = [
         f"t-{named[1]:%Y%m%d}-{prefix}{part}"
         for part in (stem, slug(stem), digest(own))
@@ -670,7 +672,7 @@ def transcript_ids(
     warnings: list[str] = []
     keepers: dict[str, PurePosixPath] = {}
     for path in sorted(
-        (each for each in paths if each.suffix == ORG and each.parts[0] in TRANSCRIPTS),
+        (each for each in paths if each.suffix == ORG and each.parts[0] in TRANSCRIPT_FOLDERS),
         key=lambda each: (each.parts[0], each.parts[1:-1][-1:], each.name, each.as_posix()),
     ):
         if in_archive(path) and not archives:
@@ -686,7 +688,7 @@ def transcript_ids(
 
 def transcripts(
     org_texts: Iterable[OrgText], ids: Mapping[PurePosixPath, str], *, archives: bool
-) -> list[Document]:
+) -> list[WorklogDocument]:
     """Return the transcripts read, in the order of ``ids``, each of the id given there.
 
     ``ids`` are ``transcript_ids``'s; an org text of no id there, such as one archived and
@@ -696,7 +698,7 @@ def transcripts(
     subtrees tagged ARCHIVE.
     """
     read = {each.path: each for each in org_texts}
-    found: list[Document] = []
+    found: list[WorklogDocument] = []
     for path, identifier in ids.items():
         org_text = read.get(path)
         if org_text is None:
@@ -708,7 +710,7 @@ def transcripts(
         fallback = f"Transcript, {named[0]}, {stem}" if named else f"Transcript, {stem}"
         first = next((each.title for each in parsed.headings if each.title), fallback)
         found.append(
-            Document(
+            WorklogDocument(
                 type=TRANSCRIPT,
                 id=identifier,
                 title=parsed.title or first,
@@ -730,7 +732,9 @@ def transcripts(
     return found
 
 
-def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) -> list[Document]:
+def linked_back(
+    transcripts: Iterable[WorklogDocument], documents: Iterable[WorklogDocument]
+) -> list[WorklogDocument]:
     """Return the transcripts, each linked back to the documents that link to it.
 
     A transcript gains ``summary`` and a document's id for each of ``documents`` whose
@@ -747,7 +751,9 @@ def linked_back(transcripts: Iterable[Document], documents: Iterable[Document]) 
     ]
 
 
-def writable(documents: Iterable[Document], unread: Collection[str]) -> list[Document]:
+def writable(
+    documents: Iterable[WorklogDocument], unread: Collection[str]
+) -> list[WorklogDocument]:
     """Return the documents whose files a run may write, when ``unread`` were not read.
 
     ``unread`` names each file or folder of the work log not read, by its path from the

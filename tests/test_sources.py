@@ -55,8 +55,8 @@ from tests.composed import MODEL
 from tests.reference import Emitted
 from tests.test_fetching import PAGES, SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
+from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
 from tests.test_question import QUESTION, Terminal
-from tests.test_worklog_mirror import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
     import argparse

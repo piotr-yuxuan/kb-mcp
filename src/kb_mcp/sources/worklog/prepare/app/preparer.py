@@ -15,10 +15,10 @@ import structlog
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
 from kb_mcp.sources.stages import Result
 from kb_mcp.sources.worklog.prepare.app.prepare import (
-    Outcome,
-    Planned,
-    mirror_worklog,
+    WorklogDryRun,
+    WorklogPrepareOutcome,
     plan_worklog,
+    prepare_worklog,
 )
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class WorklogPrepared(Result):
     """A prepare: how it ended, and what it did or a dry run would, None when it could not."""
 
-    mirrored: Outcome | Planned | None
+    mirrored: WorklogPrepareOutcome | WorklogDryRun | None
 
     def text(self, summary: Summary) -> str:
         """Write the work log's counts; nothing when it could not run."""
@@ -54,7 +54,7 @@ def prepare(run: SourceRun) -> WorklogPrepared:
     run, removed nothing, ``worklog.nothing_removed``.
     """
     table = run.source_table
-    act = plan_worklog if run.dry_run else mirror_worklog
+    act = plan_worklog if run.dry_run else prepare_worklog
     try:
         done = act(table.path, run.settings.docs, Pandoc.find(), archives=table.archives)
     except (PandocMissingError, PandocFailedError) as error:

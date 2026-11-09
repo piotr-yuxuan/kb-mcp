@@ -330,9 +330,9 @@ title, is no longer one entry: each day is a document, and each meeting of a day
 Both are found by their shape alone. A day is a heading at level 1 or 2 titled by one
 active timestamp of a date alone, such as `<2026-10-28 Wed>`
 ([`date_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py),
-[`Part.day`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
+[`PlacedHeading.day`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
 a meeting, a child of a day with `:MEETING:` or `:PARTICIPANTS:` in its drawer
-([`Part.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OLPATH:`
 names, and every part of one date makes one day
 ([`days_and_meetings`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
@@ -348,9 +348,9 @@ a meeting links the transcript whose file its `:MEETING:` names
 which links it back
 ([`linked_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
 A day, a meeting and a dated transcript are dated by their day
-([`Document.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 afresh at each run
-([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 
 - **Why.** The journal was one entry of about 2 MB: a hit in any meeting named the
   whole journal, its meetings named nobody,
@@ -446,7 +446,7 @@ a transcript, its own, whose last copy stays. A meeting needs nothing of its tra
 but the id, which the path gives, so that it links a transcript read or not
 ([`transcript_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 and a link is written when its other end is written in that run or kept from an
-earlier one ([`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
+earlier one ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 A run that meets a problem still removes no file but the old one of a document written
 again under another title's path, and `prepare` exits 1.
 
