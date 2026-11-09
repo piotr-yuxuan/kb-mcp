@@ -130,7 +130,7 @@ def test_refused_settings_exit_two(home: Path, capsys: CaptureFixture[str]) -> N
     assert "site" in capsys.readouterr().err
 
 
-def test_an_empty_store_mirrors_nothing_and_exits_zero(
+def test_an_empty_store_prepares_nothing_and_exits_zero(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """A data directory without a raw store gives an empty mirror, and counts of zero.

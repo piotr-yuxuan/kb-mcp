@@ -621,8 +621,8 @@ def test_read_names_ten_people_of_a_role_whole_then_how_many_more(tmp_path: Path
 
 def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> None:
     """The mirror keeps each person's account id; the tools serve names alone."""
-    mirrored = (tmp_path / "docs" / location(COMMENTED[0])).read_text(encoding="utf-8")
-    assert ACCOUNTS["A Person"] in mirrored
+    markdown = (tmp_path / "docs" / location(COMMENTED[0])).read_text(encoding="utf-8")
+    assert ACCOUNTS["A Person"] in markdown
     answers = [
         commented.search("broker"),
         commented.search(filters={"commenter": "a person"}, sort="created"),

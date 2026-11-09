@@ -186,7 +186,7 @@ def test_the_sandbox_s_golden_set_reads_as_written() -> None:
 
 
 def test_refs_resolve_as_read_takes_them(data: Path) -> None:
-    """A page id, an address and an issue key all name their mirrored path."""
+    """A page id, an address and an issue key all name their path in the mirror."""
     q1, q2, q3 = golden(data)
     assert q1.expected == ("confluence/ENG/4002-holiday-canteen.md",)
     assert q2.partial == q1.expected

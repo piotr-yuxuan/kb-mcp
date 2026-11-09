@@ -404,7 +404,7 @@ def test_the_mirror_leaves_out_a_confirmed_tombstone(
 
 
 def test_the_mirror_places_a_page_in_the_space_that_lists_it(tmp_path: Path) -> None:
-    """A page listed in another space than its snapshot names is mirrored there."""
+    """A page listed in another space than its snapshot names is prepared there."""
     store = RawStore(tmp_path / "raw")
     responses = {
         "document.json": v2_page(),

@@ -52,7 +52,7 @@ def test_a_listed_page_without_labels_has_none() -> None:
 
 
 def test_a_blog_post_is_its_own_kind() -> None:
-    """A blog post is stored and mirrored apart from pages."""
+    """A blog post is stored and prepared apart from pages."""
     post = confluence_v2.document(Fields(v2_page(parentId=None), "post"), BlogPost)
     assert isinstance(post, BlogPost)
     assert not isinstance(post, Page)
