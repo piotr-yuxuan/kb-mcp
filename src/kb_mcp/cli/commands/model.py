@@ -55,7 +55,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Read
     )
 
 
-def text(ready: Ready, _summary: Detail) -> str:
+def text(ready: Ready, _detail: Detail) -> str:
     """Write the dimensions, the endpoint, the short digest, and whether prefixes are known."""
     return (
         f"{ready.name}: {ready.dimensions} dimensions, from {ready.url};"

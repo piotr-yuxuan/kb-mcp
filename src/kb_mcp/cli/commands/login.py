@@ -34,6 +34,6 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sign
     return (ExitStatus.SIGN_IN_AGAIN, None) if signed is None else (ExitStatus.OK, signed)
 
 
-def text(_signed_in: SignedIn, _summary: Detail) -> str:
+def text(_signed_in: SignedIn, _detail: Detail) -> str:
     """Say that the session is saved."""
     return "Signed in; the session is saved.\n"
