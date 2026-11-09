@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 
 # Why an update keeps nothing of the index in place: none that this version reads, one
-# written by another version of the cut (``search.WORDS``) or before it was recorded, one
+# written by another version of ``search.WORDS`` or before it was recorded, one
 # damaged, or the run's --rebuild.
 type Whole = Literal["unavailable", "another version", "damaged", "--rebuild"]
 

@@ -126,7 +126,7 @@ A transcript's id is the day that begins its folder's name (or its own) and its 
 under `transcripts/archive/`. A name holding other characters than ASCII letters,
 digits, `_` and `-` takes its slug, as a file name does: `notes on x.org` of 21 October
 is `t-20261021-notes-on-x`. A file under `meetings/` takes `meeting-` before its name,
-so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a handle
+so that `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. A name is a label
 alone, a number or words: `meetings/2026-10-27 Tue/Vendor call.org` is
 `t-20261027-meeting-vendor-call`, and no order or time is read from it. A file without
 a day takes a digest of its name. Of two files of one id, such as a copy and its

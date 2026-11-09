@@ -17,7 +17,7 @@ read until the new one is in place. A build with vectors is [`embed`](embed.md)'
 | Event | Level | Fields | When |
 |---|---|---|---|
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror, added or changed, is read: its path, its document's type, its sections |
-| `index.whole` | info | `reason` | The index is rebuilt whole, nothing kept of the one in place: `unavailable`, none that this version reads; `another version`, one written by another version of the cut, or before plan 035; `damaged`, one of whose tables cannot be read; `--rebuild`, asked |
+| `index.whole` | info | `reason` | The index is rebuilt whole, nothing kept of the one in place: `unavailable`, none that this version reads; `another version`, one written by another version of `WORDS`, or before plan 035; `damaged`, one of whose tables cannot be read; `--rebuild`, asked |
 | `index.lock_wait` | info | `lock` | Another `index` or `embed` holds the index's lock: the run waits for it, at most 60 s, past which the index is not written |
 | `index.restarted` | info | | Another run wrote the index between this run's read and its write: the update starts again, once |
 | `index.built` | info | `documents`, `sections`, `skipped`, `people`, `copied`, `added`, `replaced`, `removed` | The index is written: what it holds, the files skipped, the persons that the documents' people make; of the documents of the index before, those copied, replaced by their file changed, and removed; those added |

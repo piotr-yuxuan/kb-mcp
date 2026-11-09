@@ -255,7 +255,7 @@ ls ~/kb-mcp/docs/confluence/<KEY>
 
 A Markdown file per page, named by the page's id and its title, and `_tree.md`, the
 space's tree of pages. The id is the page's ref, by which agents cite it. Each file
-begins with front matter, where `fetched_at` is the page's mirror date: the time `fetch`
+begins with front matter, where `fetched_at` is the page's fetch time: the time `fetch`
 fetched it.
 
 ## 7. Give the mirror to Claude Code
@@ -292,7 +292,7 @@ Start `claude` in any folder, and ask, with your space's key:
 > date.
 
 Claude calls the server's tools, such as `ask`, then answers from the page. Its answer
-should name the page's ref, the id that begins its file's name, and its mirror date,
+should name the page's ref, the id that begins its file's name, and its fetch time,
 today's: the content is as of that date, not live. Keep Ollama running: without it, the
 server ranks by words alone, and says so.
 

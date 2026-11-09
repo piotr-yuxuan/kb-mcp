@@ -655,8 +655,8 @@ class Fetching:
         with TRACER.start_as_current_span("fetch.users"):
             users: list[object] = []
             authors = sorted(self.authors)
-            for chunk in batched(authors, confluence_v2.USERS_PER_REQUEST, strict=False):
-                request = confluence_v2.users_request(chunk)
+            for batch in batched(authors, confluence_v2.USERS_PER_REQUEST, strict=False):
+                request = confluence_v2.users_request(batch)
                 try:
                     users += self.collect(request, confluence_v2.users_page)
                 except (RepresentationError, SiteError) as error:

@@ -598,7 +598,7 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   name: `notes on x.org` of 21 October is `t-20261021-notes-on-x`,
   `meetings/2026-10-27 Tue/1.org` is `t-20261027-meeting-1`. Without a day, it is `t-`
   and the digest of its name, `meeting-` before it under `meetings/`. No folder below
-  the first is in an id, so a move under `archive/` keeps it. The name is a handle
+  the first is in an id, so a move under `archive/` keeps it. The name is a label
   alone, from which no number, order or time is read. Of two files of one id, the
   second in order of first folder, the folder that holds it, name, then path takes the
   digest of its whole path from the work log's root, written with a leading `/`, which

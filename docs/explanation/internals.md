@@ -269,7 +269,7 @@ piece that the index lacks
   persons, or an alias that changes nothing, is a warning, once a build, and the exit
   status stays. Only an alias file that cannot be read or is refused stops `index`, and
   an endpoint that does not answer, or lacks the model, or an index that another
-  version of the cut wrote or that is damaged, stops `embed`: the old index stays.
+  version of `WORDS` wrote or that is damaged, stops `embed`: the old index stays.
 - **Offline**, the words and the persons: the index is updated from the mirror and the
   alias file alone. Meaning needs the endpoint, but only for texts that the vector store
   lacks (below).
@@ -431,7 +431,7 @@ sections, persons are joined again over every document, and the file is renamed 
 place under the index's lock
 ([`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). So nothing
 stale is left in the index, and a run that fails leaves the old one whole. An index that
-cannot be updated, written before plan 035 or by another version of the cut, damaged,
+cannot be updated, written before plan 035 or by another version of `WORDS`, damaged,
 or on `index --rebuild`, is rebuilt whole, with no pieces.
 
 Until `embed` runs, the edited page has no vectors: search finds its new text by words,

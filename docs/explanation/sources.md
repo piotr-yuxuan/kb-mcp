@@ -465,7 +465,7 @@ trade-offs](trade-offs.md#the-journal-split-by-shape)). Transcripts are named by
 that name's slug, never by their folders, and by their path alone, read or not
 ([`transcript_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 so that moving one under `transcripts/archive/` keeps its id, and a copy left beside
-its original is told apart by its path, with a warning. A name is a handle: no number,
+its original is told apart by its path, with a warning. A name is a label: no number,
 order or time is read from it.
 
 ## One front matter for every source

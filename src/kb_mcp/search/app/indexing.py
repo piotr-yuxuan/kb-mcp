@@ -6,7 +6,7 @@ whose text the model refuses has no vector, and its document is named. Reading t
 joining persons and embedding are each a span; files and pieces are counted, as
 ``docs/reference/telemetry/index.md`` and ``embed.md`` list it. ``update_index`` is
 ``index``'s: only the files whose bytes changed are read, and the index takes them
-through its update. ``refresh`` is ``embed``'s: the pieces that the index's documents
+through its update. ``fill_and_prune`` is ``embed``'s: the pieces that the index's documents
 want are filled, from the index alone, the mirror read for its digests; then the
 vector store is pruned to what the indexes on disk read. ``build_index`` builds an
 index whole, as ``eval`` does.

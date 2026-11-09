@@ -95,7 +95,7 @@ def person_id(anchor: str, value: str) -> str:
     """Give the id of the person that an account id, or a name's key, anchors.
 
     ``anchor`` is BY_ACCOUNT or BY_NAME. The id is ``p-`` and the first 16 hex digits of the
-    SHA-256 of the anchor, a line feed and the value: an opaque handle, stable while what
+    SHA-256 of the anchor, a line feed and the value: an opaque id, stable while what
     anchors the person stays, so that no account id is served. It protects nothing:
     hashing a known account id finds it again. A second note on a name, which parts its
     annotated spellings by ``Joining.compared_key``, anchors each of them anew; the bare name

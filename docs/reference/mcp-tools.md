@@ -42,7 +42,7 @@ says why.
 
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
 with its best section's `read()` call and a snippet. A [hit](glossary.md#hit)'s second line gives its ref,
-path, update and mirror date, then what the document has of its issue type, its status
+path, update and fetch time, labelled `mirrored`, then what the document has of its issue type, its status
 unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
 otherwise than its author, and `created <day>`, such as
@@ -117,7 +117,7 @@ Other filters of people add neither.
 ### read
 
 Reads a document, or one of its sections, from a character offset, in slices. Each
-slice opens with the document's title, path and mirror date, and one from the body's
+slice opens with the document's title, path and fetch time, and one from the body's
 start with its front matter, a `key: value` line each, of what it has: its ref, type,
 space, project, issue type, status, labels, breadcrumb, people, links, created and updated
 days and address. People come there one line

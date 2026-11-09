@@ -488,8 +488,8 @@ class HtmlLink(Construct):
             found += parse_qs(query).get(VIEW_PAGE_ID, [])
         issue = ISSUE_ADDRESS.fullmatch(path)
         linked = element.get(LINKED_ID) if element.get(LINKED_TYPE) in LINKED_DOCUMENTS else None
-        handle = linked or (found[0] if found else issue["key"] if issue else "")
-        target = context.link_targets.documents.get(handle)
+        ref = linked or (found[0] if found else issue["key"] if issue else "")
+        target = context.link_targets.documents.get(ref)
         address = context.absolute(href)
         if target is not None:
             element.set("href", context.relative(target))

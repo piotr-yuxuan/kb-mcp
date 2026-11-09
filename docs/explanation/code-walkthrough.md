@@ -574,7 +574,7 @@ show, by meaning or by words, as the document was ranked;
 [`call`](../../src/kb_mcp/mcp/app/responses.py) writes the `read(...)` call
 that opens it from `read`'s own signature, so that a call never names a parameter the
 tool lacks; and [`hit`](../../src/kb_mcp/mcp/app/responses.py) writes the
-hit, with its mirror date. [`page`](../../src/kb_mcp/mcp/app/responses.py)
+hit, with its fetch time. [`page`](../../src/kb_mcp/mcp/app/responses.py)
 keeps as many hits as fit the budget,
 [`BUDGET`](../../src/kb_mcp/mcp/app/responses.py) estimated tokens
 ([`tokens`](../../src/kb_mcp/mcp/app/responses.py)), and ends a list that it

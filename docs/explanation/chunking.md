@@ -219,7 +219,7 @@ until then, an edited page keeps its old text in the index, pieces included.
 
 ## Not compared
 
-Contextual chunks, a summary of the document written before each piece by a chat model
+Contextual retrieval, a summary of the document written before each piece by a chat model
 (35% fewer retrieval failures in Anthropic's measure, [contextual]), and a reranker
 both need a model that the embedding endpoint does not reach: later plans, measured by
 this `eval`.
