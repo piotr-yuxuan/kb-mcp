@@ -66,7 +66,7 @@ METER = metrics.get_meter(__name__)
 # or refused one, that each build counts.
 FILES = METER.create_counter("kb_mcp.index.files", unit="{file}", description="Files, by outcome")
 CHUNKS = METER.create_counter(
-    "kb_mcp.index.chunks", unit="{chunk}", description="ChunkVectors by meaning, by outcome"
+    "kb_mcp.index.chunks", unit="{chunk}", description="Chunks by meaning, by outcome"
 )
 
 
