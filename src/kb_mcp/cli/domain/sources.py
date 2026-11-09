@@ -8,15 +8,13 @@ whatever the store holds, and each read in place when it is configured, or those
 Each is taken once, in the registry's order, whatever the order typed. A source's options
 and light checks are its fetch's: each source taken says what the summary says of it, by
 its declaration; an option that no setting holds, given, is said ignored by each source
-taken that does not declare it. The exit status ranks how the rows ended. Beside them,
-``accounts_to_check``: which sign-ins ``doctor`` checks, by the same settings.
+taken that does not declare it. Beside them, ``accounts_to_check``: which sign-ins
+``doctor`` checks, by the same settings.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
-
-from kb_mcp.kernel.exit_status import ExitStatus
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import argparse
@@ -26,15 +24,6 @@ if TYPE_CHECKING:
 
 # The commands over sources, whose names a run reads.
 FETCH, PREPARE = "fetch", "prepare"
-# How a row ended, as it says.
-type RowOutcome = Literal["done", "failed", "sign in", "interrupted", "not run"]
-# How the run ends, by the first of these outcomes that it had, else OK: interrupted, then
-# to sign in again, then failed.
-RANKED: tuple[tuple[RowOutcome, ExitStatus], ...] = (
-    ("interrupted", ExitStatus.INTERRUPTED),
-    ("sign in", ExitStatus.SIGN_IN_AGAIN),
-    ("failed", ExitStatus.FAILED),
-)
 
 
 def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:

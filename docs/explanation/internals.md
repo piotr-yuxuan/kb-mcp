@@ -74,7 +74,7 @@ names given choose among those that a command can take
   ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
   the row it stops and runs no later one. The exit status ranks how the rows ended:
   interrupted, then to sign in again, then failed
-  ([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)).
+  ([`RANKED`](../../src/kb_mcp/cli/domain/rows.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 
 ## Fetch: from the site to the raw store

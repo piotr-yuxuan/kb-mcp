@@ -333,7 +333,7 @@ package, but each is a source: a row, a report and a set of files of its own.
 [`run_each`](../../src/kb_mcp/cli/app/sources.py) is one use case over the sources taken:
 every `preflight`, then each role, a row each. Each row runs even when an earlier one failed,
 since the next reads what is on disk, Ctrl-C stops the rest, and the rows rank the exit status
-([`RANKED`](../../src/kb_mcp/cli/domain/sources.py)). A row names its source, with its
+([`RANKED`](../../src/kb_mcp/cli/domain/rows.py)). A row names its source, with its
 result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,
 `index` reading the mirror whatever sources it holds, and `embed` the index.
 

@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import trace
 
-from kb_mcp.cli.domain.rows import Ran, Row
-from kb_mcp.cli.domain.sources import FETCH, PREPARE, RANKED
+from kb_mcp.cli.domain.rows import RANKED, Ran, Row
+from kb_mcp.cli.domain.sources import FETCH, PREPARE
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.stages import Fetcher, Preparer, Result, SourceRun
@@ -28,7 +28,7 @@ from kb_mcp.sources.stages import Fetcher, Preparer, Result, SourceRun
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.cli.domain.sources import RowOutcome
+    from kb_mcp.cli.domain.rows import RowOutcome
     from kb_mcp.sources.declaration import Source
 
 

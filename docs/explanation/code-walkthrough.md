@@ -141,7 +141,7 @@ there, here `given`; a `--since` that does not come before the windows' end rais
 exit 2, naming both options. Then each row runs in turn, each source's role within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
 one before it failed, as it reads what is on disk. The exit status is the first outcome
-of [`RANKED`](../../src/kb_mcp/cli/domain/sources.py) that a row had:
+of [`RANKED`](../../src/kb_mcp/cli/domain/rows.py) that a row had:
 interrupted, then sign in, then failed; else 0.
 
 ### 4. The source and the site's port
