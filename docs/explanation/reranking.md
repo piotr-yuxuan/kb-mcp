@@ -4,7 +4,7 @@ Search finds documents in two stages when reranking is on. The first is this pro
 own, by words, by meaning or both; the second sends the first documents it found, with
 the question, to a reranking server on this machine, and shows them in the order of the
 server's scores. Plan 022 added it, with a bar written before any run. It is off by
-default: on the sandbox it ranked worse, and the user chose the more accurate results;
+default: on the sandbox it ranked worse, and the maintainer chose the more accurate results;
 the bar's verdict, measured on the machine that serves agents with its own questions,
 tells whether to turn it on there, and at which depth.
 [The how-to](../how-to/reranking.md) sets it up, turns it on and measures it.
@@ -89,7 +89,7 @@ Off, the default, the server is never asked.
 
 ## The bar, fixed before the run
 
-"Data-driven inspires me confidence", the user said: the defaults follow a rule
+"Data-driven inspires me confidence", the maintainer said: the defaults follow a rule
 written before any measure, applied by `eval-rerank` on the golden questions to depths
 10, 20, 30 and 50 exactly. A depth qualifies if:
 
@@ -103,7 +103,7 @@ written before any measure, applied by `eval-rerank` on the golden questions to 
 Among the depths that qualify, the smallest whose MRR@10 is not shown lower than the
 best's (the same test, p of 0.05 or more) is the depth to set as `rerank.depth`. If
 none qualifies, `eval-rerank` says to leave reranking off. The bar was written to decide
-the default; the user chose first reranking on by default, then, with the measures,
+the default; the maintainer chose first reranking on by default, then, with the measures,
 off, for the more accurate results, so its verdict is now advice: whether to turn it on
 on the machine measured. Values
 compare as reported: means to three decimals, a group's loss as the difference of its
@@ -119,7 +119,7 @@ loss to show, and `eval-rerank` says `n/a`.
   mean would then show, by chance, a loss past 0.02 about one time in three, and past
   0.05 about one time in six; and a real loss like hybrid's 0.061 on identifiers in
   plan 018 would still be caught more often than not.
-- **Clause 3** is the user's figure ("Happy to wait 5s"), within the 10 seconds or so
+- **Clause 3** is the maintainer's figure ("Happy to wait 5s"), within the 10 seconds or so
   for which a person keeps attention ([nielsen]). A query by meaning was asked 200 ms
   in plan 018, but it embeds ten words where a reranker reads N passages, and an
   agent's own turn takes seconds. By the estimate above, it admits a depth of about 30.
@@ -169,7 +169,7 @@ benchmarking candidates here:
 
 ## Why a server of its own
 
-The user wanted the model "on the side as a separate (local-only) component of the
+The maintainer wanted the model "on the side as a separate (local-only) component of the
 system", never inside this program. llama.cpp's `llama-server` answers a rerank
 request of the shape that Jina's API made common, and applies Qwen3-Reranker's prompt;
 Ollama, which serves the embeddings by default, as any OpenAI-compatible API may, has

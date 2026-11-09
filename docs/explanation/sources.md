@@ -352,7 +352,7 @@ from the registry: its run, its checks and its light rules, each named by its
 
 ## Kept for the extras, later
 
-No extra is built, by the user's word. What makes them, later, a change of `pyproject.toml`
+No extra is built, by the maintainer's word. What makes them, later, a change of `pyproject.toml`
 alone is kept: Playwright (138 MB installed) and lxml (12 MB) stay inside the Atlassian
 package, by [contract K](code-layout.md#the-contracts). Of `sources/atlassian/`,
 [its browser](../../src/kb_mcp/sources/atlassian/fetch/adapters/browser.py) alone imports

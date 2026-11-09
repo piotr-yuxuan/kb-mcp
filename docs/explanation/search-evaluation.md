@@ -389,7 +389,7 @@ questions, a request passed the run's deadline of 300 seconds three times.
 
 So no depth met the bar here: clauses 1 and 2, which hold for any machine, failed at
 10, 20 and 30, and clause 3, by this laptop's times, at every depth. Reranking is off by
-default, as the user chose the more accurate results; a measure on the machine that
+default, as the maintainer chose the more accurate results; a measure on the machine that
 serves agents, with its own questions, tells whether to turn it on there: a GPU, a
 later llama.cpp or another model may change the times, the scores of another corpus
 the ranks.
