@@ -223,11 +223,12 @@ def test_each_prompt_holds_what_serve_lists_for_its_surface(world: World) -> Non
 REMOTE = "https://embeddings.example.invalid/v1"
 
 
-def remote(world: World) -> None:
-    """Point the world's settings at an embedding endpoint off this machine."""
+def remote(world: World, url: str = REMOTE, mode: str = "hybrid") -> None:
+    """Point the world's settings at an embedding endpoint off this machine, in a mode."""
     config = world.home / ".config" / "kb-mcp" / "config.toml"
-    kept = [line for line in config.read_text("utf-8").splitlines() if "embedding_url" not in line]
-    config.write_text("\n".join([f"embedding_url = {json.dumps(REMOTE)}", *kept]) + "\n", "utf-8")
+    text = config.read_text("utf-8").replace('search_mode = "hybrid"', f'search_mode = "{mode}"')
+    kept = [line for line in text.splitlines() if "embedding_url" not in line]
+    config.write_text("\n".join([f"embedding_url = {json.dumps(url)}", *kept]) + "\n", "utf-8")
 
 
 @pytest.mark.parametrize("off_this_machine", [False, True])
@@ -254,6 +255,39 @@ def test_prepare_without_the_consent_to_a_remote_endpoint_is_refused(
     assert prepared(world, out, "--sample", "1") == REFUSED
     assert "embedding_url: not an address of this machine" in capsys.readouterr().err
     assert not out.exists()
+
+
+def test_prepare_refuses_an_endpoint_off_this_machine_over_http_even_with_the_consent(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Exit 2 before anything is written: off this machine, https alone."""
+    remote(world, "http://embeddings.example.invalid/v1")
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == REFUSED
+    said = capsys.readouterr().err
+    assert "embedding_url: an endpoint off this machine is reached over https only" in said
+    assert not out.exists()
+
+
+def test_runs_by_words_need_no_consent_whatever_the_endpoint(
+    world: World, monkeypatch: MonkeyPatch
+) -> None:
+    """The lexical mode sends nothing to the endpoint: prepared and called without the flag."""
+    remote(world, mode="lexical")
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    written = json.loads((out / "runs.json").read_text("utf-8"))
+    assert written["remote_embeddings"] is False
+    started: list[list[str]] = []
+
+    def recorded(command: list[str], *_: object) -> Answered:
+        started.append(command)
+        return Answered(text="an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    run = runs_of(out)[0]
+    assert main(bridged(out, run["id"], "search", {"query": "kafka"})) == 0
+    assert started == [[*written["server"], "--tools", ",".join(run["tools"])]]
 
 
 @pytest.mark.parametrize("off_this_machine", [False, True])
