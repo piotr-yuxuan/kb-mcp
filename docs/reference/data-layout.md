@@ -200,7 +200,7 @@ newest name wins. They are read, each entry by its adapter, with `spaces()`,
 adapter refuses comes back as an `Unreadable` at its index, and the others are read.
 
 Listings give 005 the whole tree, titles and breadcrumbs, even of pages whose bodies are
-outside the period downloaded, folders included (`Page.parent_type` says whether a parent
+outside the period fetched, folders included (`Page.parent_type` says whether a parent
 is a page or a folder), and the names of Confluence authors, whom v2 gives by account id
 only.
 
