@@ -26,7 +26,7 @@ that waits past 60 s is `eval.not_evaluated`.
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `eval.model` | internal | `gen_ai.request.model`, `kb_mcp.chunking` | A target, a model and a chunking: its index built, then every question ranked and answered in every mode |
+| `eval.model` | internal | `gen_ai.request.model`, `kb_mcp.chunking` | An evaluated index, a model and a chunking: its index built, then every question ranked and answered in every mode |
 | `index.files` | internal | | The mirror's files read and indexed by words |
 | `index.join` | internal | | The documents' people joined into persons, once the files are read |
 | `index.embed` | internal | | The pieces by meaning: their vectors read from the vector store, or embedded |
