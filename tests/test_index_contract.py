@@ -55,7 +55,7 @@ EPSILON = 1e-6
 
 
 class FilledChunk(Record):
-    """A chunk of a document to fill: its section's number, span, key and vector."""
+    """A chunk of a document to fill: its section's number, range, key and vector."""
 
     number: int
     start: int  # in the document's body

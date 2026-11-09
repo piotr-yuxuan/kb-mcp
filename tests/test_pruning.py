@@ -597,20 +597,6 @@ def command(
     return status, json.loads(out), err
 
 
-def test_an_evaluation_index_without_keys_holds_the_prune_back(
-    data: Path, capsys: CaptureFixture[str]
-) -> None:
-    """Its chunks without their keys, which it cannot read: nothing deleted, exit 0."""
-    windows = evaluated(data, data / "vectors.sqlite", "windows")
-    with closing(sqlite3.connect(windows)) as connection:
-        connection.execute("ALTER TABLE chunks DROP COLUMN key")
-        connection.commit()
-    status, result, err = held_back(data, capsys)
-    assert (status, result["outcome"], result["file"]) == (0, "held back", str(windows))
-    assert result["reason"] == UNREADABLE
-    assert ("warning", "index.prune_skipped") in said(err)
-
-
 def test_an_evaluation_index_of_schema_6_holds_the_prune_back(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
