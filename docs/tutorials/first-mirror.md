@@ -183,7 +183,7 @@ fetch, with these settings:
   accounts.atlassian.site: https://<your-site>.atlassian.net
 ```
 
-and ends its preview with `Proceed? [y/N]`: answer `y`, four times. A space of tens of
+and ends its echo with `Proceed? [y/N]`: answer `y`, four times. A space of tens of
 pages takes a minute or so. `fetch` ends with Confluence's row, and its counts:
 
 ```text

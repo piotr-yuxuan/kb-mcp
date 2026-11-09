@@ -326,7 +326,7 @@ def test_a_note_is_mirrored_found_and_gone_with_its_file(tmp_path: Path) -> None
 
 Some tests name the registry whole, or give every setting by its path, so they name a new
 source too: those of `tests/test_registry.py`, `tests/test_stages.py`, `tests/test_settings.py`,
-`tests/test_cli.py`, `tests/test_sources.py`, `tests/test_preview.py` and `tests/test_docs.py`
+`tests/test_cli.py`, `tests/test_sources.py`, `tests/test_echo.py` and `tests/test_docs.py`
 that do fail until they do, each naming what it lacks, such as
 `KeyError: 'sources.notes.folder'`. Run them all, and give each its line:
 

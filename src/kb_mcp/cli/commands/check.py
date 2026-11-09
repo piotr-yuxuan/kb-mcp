@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.preview import setting_line
+from kb_mcp.cli.domain.echo import setting_line
 from kb_mcp.kernel.exit_status import ExitStatus
 
 if TYPE_CHECKING:

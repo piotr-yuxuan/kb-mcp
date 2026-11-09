@@ -863,8 +863,8 @@ A subcommand of `kb-mcp`; each invocation of one is a [run](#run), save `complet
 What a [run](#run) writes on stderr before it acts or asks: the resolved settings and
 their layers, each source's lines, and the command to copy.
 
-- **In the code.** The module [preview.py](../../src/kb_mcp/cli/domain/preview.py), with
-  [`before`](../../src/kb_mcp/cli/domain/preview.py).
+- **In the code.** The module [echo.py](../../src/kb_mcp/cli/domain/echo.py), with
+  [`before`](../../src/kb_mcp/cli/domain/echo.py).
 
 ### detail
 

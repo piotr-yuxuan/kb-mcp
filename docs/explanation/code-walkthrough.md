@@ -58,7 +58,7 @@ parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is o
 to stderr until the settings are read, and `main` imports the
 [`ENTRY_MODULE`](../../src/kb_mcp/cli/main.py) shared by every observed command.
 
-### 2. Settings, the guard and the preview
+### 2. Settings, the guard and the echo
 
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) maps each flag given to
 its setting ([`Command.setting_flags`](../../src/kb_mcp/cli/domain/command.py))
@@ -102,9 +102,9 @@ off this machine without `--allow-remote-embeddings`, or over plain http even wi
 is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
-Then [`before`](../../src/kb_mcp/cli/domain/preview.py) writes the preview
+Then [`before`](../../src/kb_mcp/cli/domain/echo.py) writes the echo
 on stderr: each setting that the command reads, with its value, a secret only as set or not
-([`setting_line`](../../src/kb_mcp/cli/domain/preview.py)); the sources
+([`setting_line`](../../src/kb_mcp/cli/domain/echo.py)); the sources
 taken and left out ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py));
 each value ignored, and why; and the command to copy
 ([`command_line`](../../src/kb_mcp/cli/domain/command_line.py)).
@@ -488,7 +488,7 @@ and `embed` have one result each, written by their own `text`
 
 An agent starts the command with no arguments, as [coding agents](../how-to/agents.md)
 set it up, and `main` reads that as `serve`. The entry is the one of step 2, without a
-preview or a question, as `serve` writes nothing, and its
+echo or a question, as `serve` writes nothing, and its
 [`Command`](../../src/kb_mcp/cli/domain/command.py) is not `traced`: each
 request will be a trace of its own.
 
@@ -623,7 +623,7 @@ document fetched is a trace of its own.
 
 Each step has its tests, which say what the code must do in the requirement's words:
 [`test_settings.py`](../../tests/test_settings.py),
-[`test_preview.py`](../../tests/test_preview.py) and
+[`test_echo.py`](../../tests/test_echo.py) and
 [`test_confirmation.py`](../../tests/test_confirmation.py) for step 2;
 [`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
 [`test_fetching.py`](../../tests/test_fetching.py),

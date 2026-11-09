@@ -43,7 +43,7 @@ every command that writes does.
 1. **`fetch`** brings what changed of each configured source that has a fetcher,
    Confluence's spaces then Jira's projects, a row each. Without `--since`, each space and
    project fetches what changed since its last fetch, and asks again for what failed; one
-   never fetched takes its last 7 days, as the preview before the question says. `--since`
+   never fetched takes its last 7 days, as the echo before the question says. `--since`
    (`12h`, `7d`, `6mo`, an ISO date or time, or `all`) and `--until` set the period, and
    `--max-file-mb` the largest file kept. `--space` and `--project` replace a setting for
    one run. Each source's report goes to `<data>/runs/<time>-<source>.json`.

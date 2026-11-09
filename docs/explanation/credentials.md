@@ -218,9 +218,9 @@ What a run logs is for you, on this machine, and may hold titles and queries
   query on the site's host alone, as a media redirect carries a signed token in its
   query
   ([`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py)).
-- A secret setting is never shown: the preview before a run and `check` say whether it
+- A secret setting is never shown: the echo before a run and `check` say whether it
   is set
-  ([`setting_line`](../../src/kb_mcp/cli/domain/preview.py),
+  ([`setting_line`](../../src/kb_mcp/cli/domain/echo.py),
   [`test_check_shows_no_secret_in_any_format_or_summary`](../../tests/test_api_token.py)),
   and `run.start` masks it.
 - A refused setting is named with the layer that gave it, never with its value, since

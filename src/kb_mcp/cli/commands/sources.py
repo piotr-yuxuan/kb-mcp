@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.app.sources import SourcesRefusedError, run_each
-from kb_mcp.cli.domain.preview import values_of
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.sources import FETCH, PREPARE, chosen, given
 from kb_mcp.kernel.exit_status import ENDED, ExitStatus
 from kb_mcp.sources.stages import SourceRun
