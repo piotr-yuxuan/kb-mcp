@@ -37,6 +37,7 @@ from kb_mcp.search.app.indexing import (
     update_index,
 )
 from kb_mcp.search.app.meaning import Meaning
+from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
 from kb_mcp.search.domain.search import Chunk, Embedded, Filters, sections
 from tests.answers import parts
@@ -760,6 +761,24 @@ def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
         assert embedded.chunking == cut
 
 
+# The key of the last chunk of BODY, under a fingerprint "tiny", by chunking, as the code
+# before plan 054 gave it: the vector cache keeps serving the vectors it holds.
+KEYS = {
+    "sections": "c48ff3c13ed1f13c569f32215e7d048dba9f9e7e97a34d6ceb0455e2200d59dc",
+    "windows": "d3a63b813868fd354ff54ca9e40d91f04ce42ffc26862086d067cbfbed3b04a7",
+    "section-paths": "493baf6ee934c0a0c8f5f9fa9941345431bea264ad51beaf120ac7117d1f347c",
+    "small-to-big": "493baf6ee934c0a0c8f5f9fa9941345431bea264ad51beaf120ac7117d1f347c",
+}
+
+
+@pytest.mark.parametrize("chunking", CHUNKINGS)
+def test_a_chunk_s_vector_key_stays_what_it_was(chunking: Chunking) -> None:
+    """Plan 054: no rename nor offset changes the text embedded, which the key names."""
+    front = page("196845", "Rollback", breadcrumb=("Handbook", "Payments"))
+    *_, text = CHUNKERS[chunking].cut(front, sections(BODY))[-1]
+    assert vector_cache.vector_key("tiny", text) == KEYS[chunking]
+
+
 def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
     data: Path,
 ) -> None:
@@ -771,6 +790,10 @@ def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
     """
     filled_by(data, chunking="windows")
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
+        schema = connection.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone()
+        assert ({"chunks", "section_words"} <= tables, "pieces" in tables) == (True, False)
+        assert schema == ("7",)
         connection.execute('ALTER TABLE chunks RENAME COLUMN "end" TO stop')
         connection.execute("ALTER TABLE chunks RENAME TO pieces")
         connection.execute("ALTER TABLE section_words RENAME TO chunks")
