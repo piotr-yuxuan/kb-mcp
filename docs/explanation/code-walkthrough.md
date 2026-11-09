@@ -626,12 +626,12 @@ Each step has its tests, which say what the code must do in the requirement's wo
 [`test_preview.py`](../../tests/test_preview.py) and
 [`test_confirmation.py`](../../tests/test_confirmation.py) for step 2;
 [`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
-[`test_download.py`](../../tests/test_fetching.py),
+[`test_fetching.py`](../../tests/test_fetching.py),
 [`test_http.py`](../../tests/test_http.py) and
 [`test_raw_store.py`](../../tests/test_raw_store.py) for 4 to 6;
 [`test_adapters.py`](../../tests/test_adapters.py) and
 [`test_fields.py`](../../tests/test_fields.py) for 5;
-[`test_mirror.py`](../../tests/test_prepare_atlassian.py) and
+[`test_prepare_atlassian.py`](../../tests/test_prepare_atlassian.py) and
 [`test_site_html.py`](../../tests/test_site_html.py) for 7;
 [`test_index.py`](../../tests/test_index.py),
 [`test_index_contract.py`](../../tests/test_index_contract.py),

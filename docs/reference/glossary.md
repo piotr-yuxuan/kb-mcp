@@ -36,9 +36,10 @@ work log's org text or the sync command's source.
 
 ### resource type
 
-What a source reads, named in the plural, which is also a folder of its raw store:
-`pages`, `blogposts`, `issues`, `entries`, `days`, `meetings`, `transcripts`. Each is
-read one way: `listed`, `searched` or `in place`. Not "kind".
+What a source reads, named in the plural: `pages`, `blogposts` and `issues`, each a folder
+of the raw store; `entries`, `days`, `meetings` and `transcripts`, each a folder of the
+work log's part of the mirror. Each is read one way: `listed`, `searched` or `in place`.
+Not "kind".
 
 - In the code: [`ResourceType`](../../src/kb_mcp/sources/declaration.py),
   [names.py](../../src/kb_mcp/sources/atlassian/fetch/domain/names.py),

@@ -53,6 +53,9 @@ def test_the_server_and_the_index_spell_only_sources_that_the_registry_declares(
     assert spelt <= {each.name for each in SOURCES}
 
 
+# Not a blog post's address without its date, /wiki/spaces/MFS/blog/40, which the site's
+# HTML reads and search does not: a difference that plan 052 found and left, as its fix
+# would change what search finds.
 @pytest.mark.parametrize(
     "address",
     [
@@ -62,9 +65,6 @@ def test_the_server_and_the_index_spell_only_sources_that_the_registry_declares(
         "/wiki/pages/viewpage.action?pageId=196845",
     ],
 )
-# Not a blog post's address without its date, /wiki/spaces/MFS/blog/40, which the site's
-# HTML reads and search does not: a difference that plan 052 found and left, as its fix
-# would change what search finds.
 def test_search_reads_a_document_s_id_in_its_address_as_the_site_s_html_does(address: str) -> None:
     """A page's or a blog post's address on the site gives one id, to both alike."""
     page, _, query = address.partition("?")

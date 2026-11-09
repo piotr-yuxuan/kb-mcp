@@ -249,7 +249,7 @@ def build_index(
     and its document named in the report. With an embedding,
     the build holds the vector store's lock shared, from before it reads the mirror until
     its index is in place, so that no prune deletes what it embeds; it waits for a prune
-    in progress, and raises TimeoutError past ``vector_store.WAIT_S``. The task ``files``
+    in progress, and raises TimeoutError past ``conversions.WAIT_S``. The task ``files``
     reports the files read, each by its path, then the vector store its own. The spans
     ``index.files``, ``Writer.join``'s ``index.join`` and ``index.embed`` hold reading the
     files, joining persons and embedding the pieces;
