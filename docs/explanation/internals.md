@@ -2,10 +2,10 @@
 
 How the program turns its sources into answers for agents: Confluence and Jira, on the
 site, and the user's work log, a folder of org files on this machine
-([sources](sources.md) says why these three are put together as they are). Five stages,
-each a command that the user composes, each reading what an earlier one wrote. Of the
-stages, only `fetch` reads the site; every later one can be run again offline, from what
-is on the disk. This page follows the data through them, then follows one change, from a
+([sources](sources.md) says why these three are put together as they are). Four stages,
+each a command that the user composes, each reading what an earlier one wrote, then
+`serve`, which answers agents from what they wrote. Only `fetch` reads the site; every
+later command can be run again offline, from what is on the disk. This page follows the data through them, then follows one change, from a
 page edited on the site, or an entry of the work log closed, to the next search. The
 formats of what each stage writes are in [the data layout](../reference/data-layout.md);
 where the code of each lives, in [the code's layout](code-layout.md), and the code itself,
@@ -37,7 +37,7 @@ flowchart LR
     docs -- "files, read-only" --> agents
 ```
 
-| Stage | Reads | Writes | Never half-written, by | When one thing fails |
+| Command | Reads | Writes | Never half-written, by | When one thing fails |
 |---|---|---|---|---|
 | `fetch` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `prepare` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
