@@ -56,6 +56,9 @@ the command and those who change its code, unless it is marked for contributors.
 
 ## Reference
 
+- [Glossary](reference/glossary.md): each word of the program defined once, where it
+  lives in the code and what a user meets of it, and the names it retires; the other
+  pages link it.
 - [Commands](reference/commands.md): what the command and each subcommand say with
   `--help`, and the exit statuses; generated from the parser.
 - [Settings](reference/settings.md): each setting's key, variable, type, default and

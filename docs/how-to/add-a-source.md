@@ -1,7 +1,7 @@
 # Add a source
 
 For contributors: how to add a source of documents, so that the settings, `check`, `prepare`
-and search know it. A source is a package and one line of the registry; [sources](../explanation/sources.md)
+and search know it. A [source](../reference/glossary.md#source) is added as a package and one line of the registry; [sources](../explanation/sources.md)
 says why. The example here is a folder of text files, read in place, under the name `notes`.
 [`kb_memo`](../../tests/fixtures/memo_source/kb_memo/declared.py), in the tests, is the same
 source, outside `src/`, which [its test](../../tests/test_memo_source.py) registers and runs.
@@ -84,7 +84,7 @@ class NotesSource(BaseModel):
 
 The declaration is data ([`Declared`](../../src/kb_mcp/sources/declaration.py)), in the
 standard library alone, since `--help` imports it: it names the table and the roles by
-module path. Each resource type says what the source reads and how
+module path. Each [resource type](../reference/glossary.md#resource-type) says what the source reads and how
 ([`ResourceType`](../../src/kb_mcp/sources/declaration.py)). A source that signs in also
 names its `account`, and one with a fetcher its `fetcher`; a light check that `fetch` asks
 before anything else goes in `refused`, as Confluence's does

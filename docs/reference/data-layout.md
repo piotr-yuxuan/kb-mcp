@@ -53,16 +53,19 @@ reference](telemetry/README.md) gives the file's fields.
 
 The site's responses and its HTML change without notice. So that a change stays local:
 
-- **One vocabulary.** `sources.atlassian.fetch.domain.content` names what the fetch of
-  Confluence and Jira stores and their prepare reads: `Space`, `Folder`, `Page` and
-  `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment`, `Comment`, `Person`,
-  and `Snapshot`, a document at one revision with its rendered body. `Listed` is what a
-  listing says of a document (its type, id, revision, update time and Confluence
-  version), read apart from the rest of the entry, so that an entry whose other fields
-  have changed still lets the document be fetched.
-  `mirror.domain.mirror.FrontMatter` names what the mirror says of each document. A
-  document knows where it is stored (`source`, `kind`) and names its state (`revision`).
-  Every layer above the adapters works with these types alone.
+- **One vocabulary.** [The glossary](glossary.md) defines each word; this bullet says
+  which module holds which record. `sources.atlassian.fetch.domain.content` holds what
+  the fetch of Confluence and Jira stores and their prepare reads: `Space`, `Folder`,
+  `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment` (an
+  [attachment](glossary.md#attachment)), `Comment`, `Person` (a site user, of an
+  [account](glossary.md#account)), and `Snapshot` (a [snapshot](glossary.md#snapshot),
+  with its rendered body). `Listed` is what a [listing](glossary.md#listing) says of a
+  document (its type, id, revision, update time and Confluence version), read apart from
+  the rest of the entry, so that an entry whose other fields have changed still lets the
+  document be fetched. `mirror.domain.mirror.FrontMatter` holds what the mirror says of
+  each [document](glossary.md#document). A fetched document knows where it is stored
+  (`source`, `kind`) and names its state (`revision`). Every layer above the adapters
+  works with these types alone.
 - **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
   and `sources.atlassian.fetch.adapters.jira_v3` hold all that the code knows of those
   JSON responses: field names, which response holds what, and the file names a snapshot
@@ -99,7 +102,7 @@ it; every method that writes refuses to run outside it.
 
 ### Snapshots
 
-A snapshot is one document at one revision:
+A [snapshot](glossary.md#snapshot) lies at:
 
 ```
 <data>/raw/<source>/<kind>/<id>/<revision>/<file>.json
@@ -674,7 +677,9 @@ which writes the pieces' vectors; since plan 035 each writes only what changed
 ([below](#updates)). `<data>/index.sqlite` holds the documents of `<data>/docs/` alone,
 the work log's among them, read with `mirror.adapters.markdown`, and each write goes
 into a temporary file beside it that is then renamed into place. Its schema is defined
-in 006's plan; schema 3 (011) adds the
+in 006's plan: the tables `documents` and `sections`, and the FTS5 table `chunks`, the
+words of each section's title, labels, breadcrumb, heading and body, whose content is
+`sections`; schema 3 (011) adds the
 table `pieces` (each piece of a section's body, its span and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row

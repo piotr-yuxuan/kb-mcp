@@ -1,6 +1,6 @@
 # Sources
 
-The mirror has three sources: Confluence and Jira, on the Atlassian site, and the user's
+The mirror has three [sources](../reference/glossary.md#source): Confluence and Jira, on the Atlassian site, and the user's
 work log, a folder of org files on this machine. A source is a declaration and the code
 that it names, and the three are declared alike, so that a new one is a package and one
 line of a registry. This page says why a source is put together as it is; [bring every
@@ -116,7 +116,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
 ## Resource types
 
-A source declares what it can read, each a
+A source declares what it can read, each a [resource type](../reference/glossary.md#resource-type), a
 [`ResourceType`](../../src/kb_mcp/sources/declaration.py): its name, a summary, how it is
 read ([`Reading`](../../src/kb_mcp/sources/declaration.py)), and its options, each an
 [`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds. They match the
@@ -217,7 +217,8 @@ the registry alone, and the names given choose among them. What a run does not a
 as Jira's projects in a `fetch confluence`, is said, not refused: the same settings serve
 every run.
 
-An account is what a fetcher signs in with: a light record in the declaration
+An [account](../reference/glossary.md#account), what a fetcher signs in with, is a light record in the
+declaration
 ([`ATLASSIAN`](../../src/kb_mcp/sources/atlassian/declared.py), an
 [`Account`](../../src/kb_mcp/sources/declaration.py)) and a table in the package
 ([`AtlassianAccount`](../../src/kb_mcp/sources/atlassian/settings.py)). Confluence and Jira
