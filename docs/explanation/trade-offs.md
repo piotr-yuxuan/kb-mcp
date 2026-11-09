@@ -496,7 +496,7 @@ a person by name alone, shared by every name of its key. Names compare by a key,
 case, accents, runs of spaces or a trailing part in brackets
 ([`name_key`](../../src/kb_mcp/search/domain/people.py)), but for the
 parts that tell two names of one key apart
-([`Joining.key`](../../src/kb_mcp/search/domain/people.py)). A name that
+([`Joining.compared_key`](../../src/kb_mcp/search/domain/people.py)). A name that
 could be several persons joins none of them, a speaker whose meeting names another
 than the one account of its name among them, and the build warns of it, as of an alias
 that changes nothing

@@ -50,7 +50,7 @@ from kb_mcp.search.domain.indexes import (
     UnavailableIndexError,
     Whole,
 )
-from kb_mcp.search.domain.people import Outcome, aliases_digest
+from kb_mcp.search.domain.people import JoinOutcome, aliases_digest
 from kb_mcp.search.domain.search import WORDS, Embedded, sections
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ class IndexReport(Record):
     embedded: int = 0  # texts that the model embedded, the store lacking them
     unembedded: list[str] = Field(default_factory=list)  # paths with a piece refused
     characters: int = 0  # of the texts that the pieces embed, whatever the store held
-    persons: Outcome = Field(default_factory=Outcome)  # that the documents' people make
+    persons: JoinOutcome = Field(default_factory=JoinOutcome)  # that the documents' people make
     # An update's documents: kept from the index in place, new to it, put in place of
     # its own, or gone; those awaiting vectors, of an index that names a model.
     copied: int = 0
@@ -405,7 +405,7 @@ def updated(
                 types=Counter(summary.types),
                 sections=summary.sections,
                 skipped=[(path, held.skipped[path].reason) for path in sorted(held.skipped)],
-                persons=Outcome(count=summary.people.count),
+                persons=JoinOutcome(count=summary.people.count),
                 awaiting=summary.awaiting if summary.model else None,
                 unchanged=True,
             )
@@ -493,7 +493,7 @@ def update_index(
             "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
         )
     for alias in report.persons.unused:
-        log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
+        log.warning("index.alias_unused", alias=alias.name, key=alias.name_key, reason=alias.reason)
     return Indexed(report=report, index=indexing.index, model=None)
 
 

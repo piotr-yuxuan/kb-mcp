@@ -39,10 +39,10 @@ RESERVE = 100
 SPACES = re.compile(r"\s+")
 # How each name of a person joined them, as a person's answer says it.
 JOINED = {
-    people.ACCOUNT: "by its account",
-    people.ALIAS: "by an alias",
-    people.NAME: "by name",
-    people.MEETING: "as a speaker, by the meeting of each transcript",
+    people.BY_ACCOUNT: "by its account",
+    people.BY_ALIAS: "by an alias",
+    people.BY_NAME: "by name",
+    people.BY_MEETING: "as a speaker, by the meeting of each transcript",
 }
 
 
@@ -174,7 +174,7 @@ def person(found: Activity, alike: Sequence[tuple[str, str]]) -> str:
     hit's.
     """
     order = list(JOINED)
-    names = sorted(found.person.names, key=lambda each: order.index(each.how))
+    names = sorted(found.person.spellings, key=lambda each: order.index(each.how))
     ways = [
         (said, [short(each.name, LABEL) for each in names[:NAMES] if each.how == how])
         for how, said in JOINED.items()

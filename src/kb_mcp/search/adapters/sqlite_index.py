@@ -527,7 +527,7 @@ class Writer:
         )
 
     @TRACER.start_as_current_span("index.join")
-    def join(self, aliases: Mapping[str, str]) -> people.Outcome:
+    def join(self, aliases: Mapping[str, str]) -> people.JoinOutcome:
         """Join the people of the documents added into persons, as ``people.joined`` rules.
 
         Once the last document is added: every row of ``people`` is given its person, and
@@ -544,7 +544,7 @@ class Writer:
         self.aliases = people.aliases_digest(aliases)
         places = dict(self._connection.execute(BY_PATH))
         rows = {
-            rowid: people.Row(
+            rowid: people.PersonRow(
                 document=places[document],
                 role=role,
                 name=name,
@@ -570,12 +570,12 @@ class Writer:
         self._connection.executemany(
             "INSERT INTO person_names (person, name, key, joined) VALUES (?, ?, ?, ?)",
             [
-                (person.id, spelling.name, spelling.key, spelling.how)
+                (person.id, spelling.name, spelling.name_key, spelling.how)
                 for person in found.persons
-                for spelling in person.names
+                for spelling in person.spellings
             ],
         )
-        return people.Outcome(
+        return people.JoinOutcome(
             count=len(found.persons), ambiguous=found.ambiguous, unused=found.unused
         )
 
@@ -888,7 +888,7 @@ class Reader:
     def persons(self, key: str, joined: str | None = None) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
         """
         rows = self._connection.execute(
             "SELECT DISTINCT person FROM person_names"
@@ -911,11 +911,13 @@ class Reader:
             " ORDER BY name, key, joined",
             (person,),
         )
-        spellings = tuple(people.Spelling(name=name, key=key, how=how) for name, key, how in rows)
+        spellings = tuple(
+            people.Spelling(name=name, name_key=key, how=how) for name, key, how in rows
+        )
         roles = self._connection.execute(PERSON_ROLES, {"person": person})
         sources = self._connection.execute(PERSON_SOURCES, {"person": person}).fetchall()
         return Activity(
-            person=people.Person(id=person, name=name[0], names=spellings),
+            person=people.Person(id=person, name=name[0], spellings=spellings),
             roles={row[0]: row[1] for row in roles},
             sources={row[0]: row[1] for row in sources},
             last=max(datetime.fromisoformat(row[2]) for row in sources),

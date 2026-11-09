@@ -420,7 +420,7 @@ def who(reader: SearchReader, name: str, value: str | None) -> str | None:
         each
         for each in found
         if written != wanted
-        and written in {people.written_key(spelling.name) for spelling in each.person.names}
+        and written in {people.written_key(spelling.name) for spelling in each.person.spellings}
     ]
     if len(found) == 1 or len(exact) == 1:
         return (exact or found)[0].person.id
@@ -454,11 +454,11 @@ def about(
     if filters.person is None:
         return "", {}
     found = reader.person(filters.person)
-    words = sorted({people.first_word(spelling.name) for spelling in found.person.names})
+    words = sorted({people.first_word(spelling.name) for spelling in found.person.spellings})
     moved = [
-        (word, reader.persons(word, people.NAME))
+        (word, reader.persons(word, people.BY_NAME))
         for word in words
-        if not reader.persons(word, people.ACCOUNT)
+        if not reader.persons(word, people.BY_ACCOUNT)
     ]
     alike = [
         (word, reader.person(ids[0]))
@@ -466,7 +466,10 @@ def about(
         if len(ids) == 1 and ids[0] != filters.person
     ]
     others = [
-        (next(each.name for each in other.person.names if each.key == word), other.person.id)
+        (
+            next(each.name for each in other.person.spellings if each.name_key == word),
+            other.person.id,
+        )
         for word, other in alike
         if other
     ]

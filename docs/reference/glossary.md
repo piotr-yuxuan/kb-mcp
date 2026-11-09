@@ -278,7 +278,7 @@ each spelling of its name that a source writes. Not "people" for a count of pers
 in the names that telemetry and `status` keep.
 
 - In the code: [`Person`](../../src/kb_mcp/search/domain/people.py),
-  [`Person.names`](../../src/kb_mcp/search/domain/people.py).
+  [`Person.spellings`](../../src/kb_mcp/search/domain/people.py).
 - User-facing: `person`, `persons`, `person_names`.
 
 ### alias

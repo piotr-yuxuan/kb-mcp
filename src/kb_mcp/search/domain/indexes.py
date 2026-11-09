@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter
-from kb_mcp.search.domain.people import Outcome
+from kb_mcp.search.domain.people import JoinOutcome
 from kb_mcp.search.domain.search import Section
 
 if TYPE_CHECKING:
@@ -139,7 +139,7 @@ class Updated(Record):
     sections: int
     awaiting: int | None
     skipped: tuple[Skipped, ...]
-    persons: Outcome  # what the join left apart
+    persons: JoinOutcome  # what the join left apart
 
 
 class WordsReader(Protocol):
@@ -209,7 +209,7 @@ class WordsReader(Protocol):
     def persons(self, key: str, joined: str | None = None) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
         """
 
     def person(self, person: str) -> Activity | None:

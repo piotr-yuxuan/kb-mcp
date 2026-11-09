@@ -405,8 +405,8 @@ def test_a_person_is_read_back(written: Written) -> None:
     with written(ATTENDED).reading() as reader:
         key = people.name_key(ADA)
         (ada,) = reader.persons(key)
-        assert reader.persons(key, people.ACCOUNT) == [ada]
-        assert reader.persons(key, people.NAME) == [ada]  # the meeting's, by her name alone
+        assert reader.persons(key, people.BY_ACCOUNT) == [ada]
+        assert reader.persons(key, people.BY_NAME) == [ada]  # the meeting's, by her name alone
         assert reader.persons("nobody") == []
         activity = reader.person(ada)
         assert activity is not None
@@ -737,7 +737,7 @@ def test_a_person_s_rows_follow_an_account_put_or_removed_in_another_document(
     assert done.persons.ambiguous == ()
     (joined,) = participant()
     with index.reading() as reader:
-        assert reader.persons(key) == reader.persons(key, people.ACCOUNT) == [joined]
+        assert reader.persons(key) == reader.persons(key, people.BY_ACCOUNT) == [joined]
     done = index.update(change(put=[second]), done.build)
     assert done is not None
     assert [each.name for each in done.persons.ambiguous] == [SAM]

@@ -37,7 +37,7 @@ from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
 from kb_mcp.search.domain.people import (
     UNHELD,
     Ambiguity,
-    Outcome,
+    JoinOutcome,
     Person,
     Spelling,
 )
@@ -641,34 +641,37 @@ def persons(data: Path) -> Path:
 # spellings' first in the order of the files, all being as frequent: the review's Alex
 # Example, the stand-up's Sam Sample.
 ROBIN_SPELT = (
-    Spelling(name="Robin", key="robin", how="meeting"),
-    Spelling(name="Robin Example", key="robin example", how="account"),
-    Spelling(name="Robin Example", key="robin example", how="name"),
-    Spelling(name="Robin Sample", key="robin sample", how="account"),
-    Spelling(name="robin  EXAMPLE", key="robin example", how="name"),
+    Spelling(name="Robin", name_key="robin", how="meeting"),
+    Spelling(name="Robin Example", name_key="robin example", how="account"),
+    Spelling(name="Robin Example", name_key="robin example", how="name"),
+    Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+    Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
 )
 JOINED = {
     ROBIN: ("Robin Sample", ROBIN_SPELT),
-    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", key="sam sample", how="account"),)),
-    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", key="sam sample", how="account"),)),
+    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
+    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
     SAM_ALONE: (
         "Sam Sample",
         (
-            Spelling(name="Sam", key="sam", how="meeting"),
-            Spelling(name="Sam Sample", key="sam sample", how="name"),
+            Spelling(name="Sam", name_key="sam", how="meeting"),
+            Spelling(name="Sam Sample", name_key="sam sample", how="name"),
         ),
     ),
     ALEX_EXAMPLE: (
         "Alex Example",
         (
-            Spelling(name="Alex", key="alex", how="meeting"),
-            Spelling(name="Alex Example", key="alex example", how="name"),
-            Spelling(name="Alex Example (not in the header)", key="alex example", how="name"),
+            Spelling(name="Alex", name_key="alex", how="meeting"),
+            Spelling(name="Alex Example", name_key="alex example", how="name"),
+            Spelling(name="Alex Example (not in the header)", name_key="alex example", how="name"),
         ),
     ),
-    ALEX: ("Alex", (Spelling(name="Alex", key="alex", how="name"),)),
-    ROBIN_ALONE: ("Robin", (Spelling(name="Robin", key="robin", how="name"),)),
-    ROBIN_OTHER: ("Robin Other", (Spelling(name="Robin Other", key="robin other", how="name"),)),
+    ALEX: ("Alex", (Spelling(name="Alex", name_key="alex", how="name"),)),
+    ROBIN_ALONE: ("Robin", (Spelling(name="Robin", name_key="robin", how="name"),)),
+    ROBIN_OTHER: (
+        "Robin Other",
+        (Spelling(name="Robin Other", name_key="robin other", how="name"),),
+    ),
 }
 # The person of each document's people, by the document's key or id and the name.
 PERSON_OF = {
@@ -724,7 +727,7 @@ def test_every_row_of_people_has_its_person_as_the_rules_join_them(persons: Path
     held, names, person_of = joined_rows(persons)
     assert held == [(person, name) for person, (name, _) in sorted(JOINED.items())]
     assert names == [
-        (person, spelling.name, spelling.key, spelling.how)
+        (person, spelling.name, spelling.name_key, spelling.how)
         for person, (_, spellings) in sorted(JOINED.items())
         for spelling in spellings
     ]
@@ -736,7 +739,7 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
     for front in PERSONS:
         write(data / "docs", front)
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
-    assert report.persons == Outcome(
+    assert report.persons == JoinOutcome(
         count=len(JOINED),
         ambiguous=(
             Ambiguity(name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})),
@@ -853,7 +856,7 @@ def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -
         robin = reader.person(ROBIN)
         assert reader.person("p-0123456789abcdef") is None
     assert robin is not None
-    assert robin.person == Person(id=ROBIN, name="Robin Sample", names=ROBIN_SPELT)
+    assert robin.person == Person(id=ROBIN, name="Robin Sample", spellings=ROBIN_SPELT)
     assert list(robin.roles.items()) == [
         ("participant", 4),
         ("author", 1),
@@ -1136,7 +1139,7 @@ def test_an_index_built_before_digests_is_read_as_any_other(data: Path) -> None:
     assert (summary.types, summary.skipped) == ({"page": 1}, 0)
 
 
-def written_backwards(index: Path, fronts: Iterable[FrontMatter]) -> Outcome:
+def written_backwards(index: Path, fronts: Iterable[FrontMatter]) -> JoinOutcome:
     """Write documents the last by path first, join them, and give what the join said.
 
     Their rowids then go against their paths, as they do where an edited file comes last.
