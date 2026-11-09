@@ -37,8 +37,8 @@ from kb_mcp.search.app.indexing import (
     update_index,
 )
 from kb_mcp.search.app.meaning import Meaning
-from kb_mcp.search.domain.indexes import Chunk, Put, UnavailableIndexError
-from kb_mcp.search.domain.search import Embedded, Filters, sections
+from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
+from kb_mcp.search.domain.search import Chunk, Embedded, Filters, sections
 from tests.answers import parts
 from tests.endpoint import (
     DIMENSIONS,
@@ -1007,7 +1007,7 @@ def test_a_fill_killed_leaves_the_index_as_it_was(data: Path, capsys: CaptureFix
                 (
                     "import sys, time\n"
                     "from kb_mcp.cli.main import main\n"
-                    "from kb_mcp.search.domain.indexes import Chunk\n"
+                    "from kb_mcp.search.domain.search import Chunk\n"
                     "def model_dump(self):\n"
                     "    print('filling', flush=True)\n"
                     "    time.sleep(60)\n"

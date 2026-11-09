@@ -233,6 +233,16 @@ class Section(Record):
         return self.head + self.body
 
 
+class Chunk(Record):
+    """A chunk of a document that a vector stands for, as ``search.domain.chunking`` cuts it."""
+
+    path: str  # the document's
+    number: int  # the section holding its middle, numbered from 1
+    start: int  # its range in the document's body
+    end: int
+    vector_key: str  # its vector's in the vector cache
+
+
 class Score(Record):
     """How well a document matches one expression, by its best section."""
 

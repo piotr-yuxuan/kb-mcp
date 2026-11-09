@@ -43,7 +43,6 @@ from kb_mcp.search.app.pruning import Pruned, Written, prune
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
     Change,
-    Chunk,
     DamagedIndexError,
     Put,
     Skipped,
@@ -51,7 +50,7 @@ from kb_mcp.search.domain.indexes import (
     Whole,
 )
 from kb_mcp.search.domain.people import JoinOutcome, aliases_digest
-from kb_mcp.search.domain.search import WORDS, Embedded, sections
+from kb_mcp.search.domain.search import WORDS, Chunk, Embedded, sections
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

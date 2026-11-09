@@ -24,14 +24,13 @@ from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
     Change,
-    Chunk,
     IndexedBody,
     Put,
     SearchReader,
     Skipped,
     UnavailableIndexError,
 )
-from kb_mcp.search.domain.search import WORDS, Embedded, Filters, quote, sections
+from kb_mcp.search.domain.search import WORDS, Chunk, Embedded, Filters, quote, sections
 from tests.mirrors import MOMENT, issue, location, page, worklog_document
 
 if TYPE_CHECKING:

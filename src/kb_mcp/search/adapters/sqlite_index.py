@@ -35,7 +35,6 @@ from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
-    Chunk,
     DamagedIndexError,
     Held,
     IndexedBody,
@@ -46,6 +45,7 @@ from kb_mcp.search.domain.indexes import (
 from kb_mcp.search.domain.search import (
     WORDS,
     Activity,
+    Chunk,
     ChunkVectors,
     Embedded,
     Filters,

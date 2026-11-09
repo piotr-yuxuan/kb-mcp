@@ -263,7 +263,7 @@ placed the document.
 **In the code.** [`Section`](../../src/kb_mcp/search/domain/search.py),
 [`sections`](../../src/kb_mcp/search/domain/search.py) and
 [`ChunkVectors`](../../src/kb_mcp/search/domain/search.py), the chunks with their vectors;
-[`Chunk`](../../src/kb_mcp/search/domain/indexes.py);
+[`Chunk`](../../src/kb_mcp/search/domain/search.py);
 [`Chunker`](../../src/kb_mcp/search/domain/chunking.py),
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py),
 [`Cut`](../../src/kb_mcp/search/domain/chunking.py) and

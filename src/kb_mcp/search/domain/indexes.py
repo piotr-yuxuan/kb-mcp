@@ -10,8 +10,8 @@ opens one, so that all that a call reads comes through one reader. A search read
 and vectors in one use, hence ``SearchIndex``, the two interfaces together, whose
 reader reads both. ``Put`` and ``Skipped`` say what an index takes of each file of the
 mirror; ``Held`` what it holds of them, ``Change`` what an update changes, all of it or
-none, and ``Updated`` what that did. ``IndexedBody`` is a document as the index holds it,
-and ``Chunk`` a chunk of one that a vector stands for.
+none, and ``Updated`` what that did. ``IndexedBody`` is a document as the index holds
+it.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter
 from kb_mcp.search.domain.people import JoinOutcome
-from kb_mcp.search.domain.search import Section
+from kb_mcp.search.domain.search import Chunk, Section
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
@@ -80,16 +80,6 @@ class IndexedBody(Record):
     path: str
     front: FrontMatter
     body: str
-
-
-class Chunk(Record):
-    """A chunk of a document that a vector stands for, as ``search.domain.chunking`` cuts it."""
-
-    path: str  # the document's
-    number: int  # the section holding its middle, numbered from 1
-    start: int  # its range in the document's body
-    end: int
-    vector_key: str  # its vector's in the vector cache
 
 
 class Held(Record):
