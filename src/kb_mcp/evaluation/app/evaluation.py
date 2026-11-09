@@ -1,7 +1,7 @@
 """Evaluating the search strategies on golden questions, for each model and chunking.
 
 Each evaluated index, a model connected and a chunking, gets its own file, built from the
-mirror like any other with the vector store, so a second evaluation embeds nothing new.
+mirror like any other with the vector cache, so a second evaluation embeds nothing new.
 Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answered by
 ``Library.quoted``, as ``ask`` answers, in each mode; the measures and the paired tests
 of ``evaluation.domain.evaluation`` say how the modes compare, and its rule which
@@ -158,7 +158,7 @@ class EvaluatedIndex:
 
 
 class Costs(Record):
-    """What an evaluated index holds and cost, whatever the vector store held before."""
+    """What an evaluated index holds and cost, whatever the vector cache held before."""
 
     chunks: int
     characters: int  # of the texts that the chunks embed

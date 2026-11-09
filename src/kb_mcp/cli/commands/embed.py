@@ -17,9 +17,9 @@ if TYPE_CHECKING:
     from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned
 
-# Bytes in a megabyte, as the result says the vector store's size.
+# Bytes in a megabyte, as the result says the vector cache's size.
 MB = 1_000_000
-# A vector store made by an earlier version, converted to give freed space back.
+# A vector cache made by an earlier version, converted to give freed space back.
 CONVERTED = "; converted, as made by an earlier version, so that it gives freed space back"
 # One whose conversion failed, its reason given, which the next prune tries again.
 SHRINKS_NOT = (
@@ -46,7 +46,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Fill
 def prune_text(pruned: Pruned | None, summary: Detail) -> str:
     """Say what the prune that followed the build did.
 
-    Short gives the vectors deleted and the vector store's size. Detailed gives the
+    Short gives the vectors deleted and the vector cache's size. Detailed gives the
     vectors kept, of which for the evaluation alone, those deleted, the store's size
     before and after, and whether it gives space back; or why it did not prune.
     """
@@ -55,13 +55,13 @@ def prune_text(pruned: Pruned | None, summary: Detail) -> str:
     if summary == "short":
         if pruned.outcome != "pruned":
             return f"vectors pruned: none, {pruned.outcome}\n"
-        return f"vectors pruned: {pruned.deleted}\nvector store: {pruned.bytes_after / MB:.1f} MB\n"
+        return f"vectors pruned: {pruned.deleted}\nvector cache: {pruned.bytes_after / MB:.1f} MB\n"
     if pruned.outcome != "pruned":
         place = f" ({pruned.file})" if pruned.file else ""
-        return f"vector store not pruned, {pruned.outcome}: {pruned.reason}{place}\n"
+        return f"vector cache not pruned, {pruned.outcome}: {pruned.reason}{place}\n"
     written = (
         f"kept {pruned.kept} vectors ({pruned.kept_for_evaluation} for the evaluation"
-        f" alone), pruned {pruned.deleted}; the vector store from"
+        f" alone), pruned {pruned.deleted}; the vector cache from"
         f" {pruned.bytes_before / MB:.1f} to {pruned.bytes_after / MB:.1f} MB in"
         f" {pruned.seconds:.1f} s"
     )
@@ -78,7 +78,7 @@ def text(filled: Filled, summary: Detail) -> str:
     """Write the chunks that the index holds and what changed of them, then the prune.
 
     Short gives the chunks, those added and removed, or that nothing was written, and
-    the texts embedded now; detailed, the texts found in the vector store, the documents
+    the texts embedded now; detailed, the texts found in the vector cache, the documents
     with a chunk refused, the index, and the model with its prefixes too.
     """
     if summary == "short":
@@ -97,7 +97,7 @@ def text(filled: Filled, summary: Detail) -> str:
             if filled.unchanged
             else f"{filled.chunks} chunks by meaning in {filled.index}, with {model}:"
             f" {filled.added} added, {filled.removed} removed; {filled.embedded} texts embedded"
-            f" now, {filled.found} found in the vector store;"
+            f" now, {filled.found} found in the vector cache;"
             f" {len(filled.refused)} documents with a chunk refused\n"
         )
     return written + prune_text(filled.pruned, summary)

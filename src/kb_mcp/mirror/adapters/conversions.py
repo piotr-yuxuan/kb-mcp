@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 # How long a write to a store of SQLite waits for another run's, in seconds: about one
-# batch's embedding, for the vector store's.
+# batch's embedding, for the vector cache's.
 WAIT_S = 60
 CREATE = (
     "CREATE TABLE IF NOT EXISTS conversions (source TEXT NOT NULL, key TEXT NOT NULL,"

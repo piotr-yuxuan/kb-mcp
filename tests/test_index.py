@@ -23,7 +23,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, PersonRole
-from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
 from kb_mcp.search.app.indexing import (
@@ -1820,7 +1820,7 @@ def test_a_lock_held_too_long_fails_naming_it(
     data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
 ) -> None:
     """Criterion 8: a wait past WAIT_S, shortened here, said first: exit 1, the index in place."""
-    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
     fillers(data / "docs", PAGES)
     assert index(data, capsys)[0] == 0
     before = (data / "index.sqlite").read_bytes()

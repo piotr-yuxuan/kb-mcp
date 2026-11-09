@@ -89,7 +89,7 @@ class Chunk(Record):
     number: int  # the section holding its middle, numbered from 1
     start: int  # its span in that section's body, its heading line aside
     end: int
-    vector_key: str  # its vector's in the vector store
+    vector_key: str  # its vector's in the vector cache
 
 
 class Held(Record):
@@ -256,7 +256,7 @@ class VectorReader(Protocol):
         """Give every chunk that has its vector, by path, section number and start."""
 
     def keys(self) -> set[str]:
-        """Give the vector store's keys of the chunks' vectors: what the index reads of it.
+        """Give the vector cache's keys of the chunks' vectors: what the index reads of it.
 
         Raises UnavailableIndexError for an index that cannot say which vectors it reads,
         such as one with no model: a prune must then keep them all.

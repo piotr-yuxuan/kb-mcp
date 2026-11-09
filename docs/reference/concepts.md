@@ -670,7 +670,7 @@ as it was, and the conversion cache.
 [`SqliteIndex`](../../src/kb_mcp/search/adapters/sqlite_index.py) and
 [`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py);
 [`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py) and
-[`VectorStore`](../../src/kb_mcp/search/adapters/vector_store.py); the locks
+[`VectorCache`](../../src/kb_mcp/search/adapters/vector_cache.py); the locks
 `raw/.lock`, `index.sqlite.lock` and `vectors.sqlite.lock`. The fingerprints are
 [`WORDS`](../../src/kb_mcp/search/domain/search.py), for sections, words and persons;
 [`Embedded.chunking`](../../src/kb_mcp/search/domain/search.py);
@@ -679,7 +679,7 @@ as it was, and the conversion cache.
 converter name, version line and arguments
 ([`Pandoc.html_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py),
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)). The cache keys
-are [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py) and the conversion
+are [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py) and the conversion
 cache's key, each the SHA-256 of a fingerprint, a NUL and the input. A server that lists
 no digest of its model leaves the embedding's fingerprint blind to new weights under one
 name.
@@ -820,8 +820,8 @@ the documents, their sections and words, the persons and the vectors. Not the
 The memo [store](#store) of the embedding derivation, under `<data>/vectors.sqlite`:
 each vector under its cache key, from the embedding's fingerprint and the text embedded.
 
-- **In the code.** [`VectorStore`](../../src/kb_mcp/search/adapters/vector_store.py) and
-  [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py).
+- **In the code.** [`VectorCache`](../../src/kb_mcp/search/adapters/vector_cache.py) and
+  [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py).
 
 ### golden question
 

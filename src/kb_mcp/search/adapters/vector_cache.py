@@ -78,7 +78,7 @@ class Swept(Record):
     unreclaimed: str = ""
 
 
-class VectorStore:
+class VectorCache:
     """Vectors by key, in an open store."""
 
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -180,7 +180,7 @@ class VectorStore:
 
 
 @contextmanager
-def opened(path: Path) -> Iterator[VectorStore]:
+def opened(path: Path) -> Iterator[VectorCache]:
     """Open the store at ``path``, creating it when there is none; close it after use.
 
     Two runs may use the store at once, an index and an evaluation: in WAL mode, reads
@@ -199,7 +199,7 @@ def opened(path: Path) -> Iterator[VectorStore]:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute(CREATE)
         connection.commit()
-        yield VectorStore(connection)
+        yield VectorCache(connection)
     finally:
         connection.close()
 
@@ -241,7 +241,7 @@ def shared(store: Path) -> Iterator[None]:
     ``vectors.lock_wait``, then waits, and raises TimeoutError, naming the lock, once
     WAIT_S seconds have passed.
     """
-    with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector store"):
+    with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector cache"):
         yield
 
 

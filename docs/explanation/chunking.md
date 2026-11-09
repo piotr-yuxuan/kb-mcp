@@ -56,7 +56,7 @@ first call meets it ([golden questions](../how-to/golden-questions.md)): `search
 011's measures, and `ask` by Found@ask and Evidence@ask, the share of expected
 documents among its passages and the share whose evidence their passage holds, within
 its fixed budget. The costs are the characters of the texts that each index embeds,
-whatever the vector store held, and their tokens; the texts embedded in the run, its
+whatever the vector cache held, and their tokens; the texts embedded in the run, its
 seconds and the tokens reported; the index's bytes; and the times of `search` and `ask`.
 Vectors are kept by model and text, so a text that two chunkings share is embedded once.
 
@@ -212,7 +212,7 @@ depend on the cuts alone, not on the model), after editing one page of 17 sectio
 | `section-paths` | 6,729 | 1 | 2 |
 | `small-to-big` | 9,149 | 2 | 4 |
 
-A vector stays in the vector store when its text leaves the mirror, read by nothing until the
+A vector stays in the vector cache when its text leaves the mirror, read by nothing until the
 prune after the next `embed` deletes it. Once `index` has run, the index holds no vector
 whose text the mirror no longer has, as a document changed or gone loses its chunks;
 until then, an edited page keeps its old text in the index, chunks included.

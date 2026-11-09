@@ -3,7 +3,7 @@
 Only this module knows SQL. ``building`` writes a new index beside the old one and
 renames it into place once complete; ``reading`` opens one read-only for one use, so
 that a replaced file is read from the next use on. An index built with a model also
-holds the vector of each chunk of each section, with its key in the vector store, and
+holds the vector of each chunk of each section, with its key in the vector cache, and
 names the model. ``SqliteIndex`` is one file as ``search.domain.indexes`` declares an
 index: an update builds the new file beside it too, copying what it keeps of the old,
 and a fill copies it whole beside it to add and remove chunks, each under a lock beside
@@ -31,7 +31,7 @@ from opentelemetry import trace
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
-from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
@@ -512,7 +512,7 @@ class Writer:
     def add_chunks(self, chunks: Iterable[tuple[int, int, int, str, bytes]]) -> None:
         """Add chunks: each its section's rowid, its span in the section's body, its vector.
 
-        Each vector comes with its key in the vector store, which only pruning reads.
+        Each vector comes with its key in the vector cache, which only pruning reads.
         """
         self._connection.executemany(
             'INSERT INTO chunks (section, start, "end", key, vector) VALUES (?, ?, ?, ?, ?)',
@@ -1003,7 +1003,7 @@ class Reader:
         )
 
     def keys(self) -> set[str]:
-        """Give the vector store's keys of the chunks' vectors: what the index reads of it.
+        """Give the vector cache's keys of the chunks' vectors: what the index reads of it.
 
         An index built by words alone names no vector, and one of this schema built before
         chunks recorded their keys reads as any other: neither can say which vectors a
@@ -1026,8 +1026,8 @@ class Reader:
     def vectors(self) -> ChunkVectors:
         """Read every chunk's vector, with where the chunk is: what meaning searches."""
         rows = self._connection.execute(CHUNKS).fetchall()
-        dimensions = len(rows[0]["vector"]) // vector_store.LAYOUT.itemsize if rows else 0
-        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_store.LAYOUT)
+        dimensions = len(rows[0]["vector"]) // vector_cache.LAYOUT.itemsize if rows else 0
+        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_cache.LAYOUT)
         return ChunkVectors(
             documents=tuple(row["document"] for row in rows),
             paths={row["document"]: row["path"] for row in rows},
@@ -1167,8 +1167,8 @@ class SqliteIndex:
         of it found damaged raises DamagedIndexError. A failure leaves the index in place,
         and removes the new file.
         """
-        lock = vector_store.lock_of(self._path)
-        with vector_store.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
+        lock = vector_cache.lock_of(self._path)
+        with vector_cache.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
             embedded = None
             if not change.whole:
                 try:
@@ -1202,8 +1202,8 @@ class SqliteIndex:
         removes and adds the chunks, each resolving its section to a rowid, and names the
         model and a new build; the index's time stays its update's.
         """
-        lock = vector_store.lock_of(self._path)
-        with vector_store.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
+        lock = vector_cache.lock_of(self._path)
+        with vector_cache.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
             try:
                 with reading(self._path) as reader:
                     if reader.build() != expected_build:
@@ -1225,7 +1225,7 @@ class SqliteIndex:
                     added = copy.executemany(
                         FILL_ADD,
                         [
-                            chunk.model_dump() | {"vector": vector_store.as_bytes(vector)}
+                            chunk.model_dump() | {"vector": vector_cache.as_bytes(vector)}
                             for chunk, vector in add.items()
                         ],
                     ).rowcount

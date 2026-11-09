@@ -292,7 +292,7 @@ that what read the two keys, a hit's line among them
   then `index`, then `embed`: `prepare` writes the files again before `index` rebuilds
   the index, where `index` alone would skip every file of the old format
   ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)). Each
-  evaluation's index built before then holds every prune back, the vector store growing
+  evaluation's index built before then holds every prune back, the vector cache growing
   meanwhile, until `eval` rebuilds it, for each model and chunking still wanted, or
   `<data>/eval/indexes/` is deleted
   ([`prune`](../../src/kb_mcp/search/app/pruning.py)). A program that

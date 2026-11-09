@@ -229,7 +229,7 @@ rebuilt whole: unavailable
 ```
 
 and `embed` with the chunks that the index holds, those it added and removed, the texts
-that the model embedded, and the vector store:
+that the model embedded, and the vector cache:
 
 ```text
 chunks: 45
@@ -237,7 +237,7 @@ added: 45
 removed: 0
 embedded now: 45
 vectors pruned: 0
-vector store: 0.2 MB
+vector cache: 0.2 MB
 ```
 
 Run again, `index` reads only the files whose bytes changed, and `embed` embeds only the

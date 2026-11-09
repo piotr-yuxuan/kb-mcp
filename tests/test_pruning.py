@@ -1,4 +1,4 @@
-"""Pruning the vector store to what the indexes on disk read (plan 023)."""
+"""Pruning the vector cache to what the indexes on disk read (plan 023)."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
 from kb_mcp.search.app.indexing import (
     Embedding,
@@ -128,7 +128,7 @@ def data(tmp_path: Path) -> Path:
 
 
 def built(data: Path, embedder: Embedder | None = None) -> None:
-    """Build the data directory's index by meaning, with its vector store."""
+    """Build the data directory's index by meaning, with its vector cache."""
     embedding = Embedding(embedder or tiny(), data / "v.db")
     build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
 
@@ -147,14 +147,14 @@ def test_a_build_holds_the_lock_until_its_index_is_in_place(
     held_at_rename: list[bool] = []
 
     def watched(self: Path, target: Path) -> Path:
-        with vector_store.exclusive(data / "v.db") as held:
+        with vector_cache.exclusive(data / "v.db") as held:
             held_at_rename.append(held)
         return rename(self, target)
 
     monkeypatch.setattr(Path, "replace", watched)
     built(data)
     assert held_at_rename == [False]
-    with vector_store.exclusive(data / "v.db") as held:
+    with vector_cache.exclusive(data / "v.db") as held:
         assert held
 
 
@@ -163,7 +163,7 @@ def test_a_build_started_during_a_prune_waits_then_embeds_nothing_kept(data: Pat
     built(data)
     embedder = Counting(tiny())
     with capture_logs() as events:
-        with vector_store.exclusive(data / "v.db") as held:
+        with vector_cache.exclusive(data / "v.db") as held:
             assert held
             build = threading.Thread(target=built, args=(data, embedder))
             build.start()
@@ -182,9 +182,9 @@ def test_a_build_waits_for_a_prune_at_most_wait_s_then_names_the_lock(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Past the wait, the build gives up, its index not built, naming the lock it waited on."""
-    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
     lock = re.escape(str(data / "v.db.lock"))
-    with vector_store.exclusive(data / "v.db") as held:
+    with vector_cache.exclusive(data / "v.db") as held:
         assert held
         with pytest.raises(TimeoutError, match=lock):
             built(data)
@@ -210,11 +210,11 @@ def test_a_build_killed_while_it_holds_the_lock_leaves_it_free(data: Path) -> No
     ) as child:
         assert child.stdout is not None
         assert child.stdout.readline() == "held\n"
-        with vector_store.exclusive(data / "v.db") as held:
+        with vector_cache.exclusive(data / "v.db") as held:
             assert not held
         child.kill()
         child.wait(PATIENCE_S)
-    with vector_store.exclusive(data / "v.db") as held:
+    with vector_cache.exclusive(data / "v.db") as held:
         assert held
 
 
@@ -229,16 +229,16 @@ def made_before_023(path: Path) -> None:
     """Make an empty store as ``opened`` made one before plan 023: WAL, then the table."""
     with closing(sqlite3.connect(path)) as connection:
         connection.execute("PRAGMA journal_mode = WAL")
-        connection.execute(vector_store.CREATE)
+        connection.execute(vector_cache.CREATE)
         connection.commit()
 
 
 def test_a_new_store_gives_space_back_and_an_older_one_keeps_its_mode(tmp_path: Path) -> None:
     """Incremental for a store made now, WAL either way; one made before 023 stays as it was."""
-    with vector_store.opened(tmp_path / "new.db"):
+    with vector_cache.opened(tmp_path / "new.db"):
         pass
     made_before_023(tmp_path / "old.db")
-    with vector_store.opened(tmp_path / "old.db"):
+    with vector_cache.opened(tmp_path / "old.db"):
         pass
     assert modes(tmp_path / "new.db") == (INCREMENTAL, "wal")
     assert modes(tmp_path / "old.db") == (0, "wal")
@@ -250,8 +250,8 @@ def seeded(path: Path, count: int) -> list[str]:
     The fakes' 16 dimensions fit inside B-tree pages, so that deleting some of them frees
     no whole page. Return the keys, in the order put.
     """
-    keys = [vector_store.vector_key("fingerprint", f"text {number}") for number in range(count)]
-    with vector_store.opened(path) as store:
+    keys = [vector_cache.vector_key("fingerprint", f"text {number}") for number in range(count)]
+    with vector_cache.opened(path) as store:
         store.put({key: os.urandom(4 * 1024) for key in keys})
     return keys
 
@@ -265,7 +265,7 @@ def freelist(path: Path) -> int:
 def test_a_prune_deletes_what_is_not_kept_and_gives_its_pages_back(tmp_path: Path) -> None:
     """Half the vectors deleted give back about half the store; none of the kept is lost."""
     keys = seeded(tmp_path / "v.db", 2000)
-    with vector_store.opened(tmp_path / "v.db") as store:
+    with vector_cache.opened(tmp_path / "v.db") as store:
         swept = store.prune(keys[::2])
         assert store.get(keys) == store.get(keys[::2])
         assert len(store.get(keys)) == len(keys[::2])
@@ -281,7 +281,7 @@ def test_a_store_made_before_023_is_converted_at_its_first_prune(tmp_path: Path)
     """Its rows deleted, it is rewritten once to give space back; the next prune does not."""
     made_before_023(tmp_path / "v.db")
     keys = seeded(tmp_path / "v.db", 2000)
-    with vector_store.opened(tmp_path / "v.db") as store:
+    with vector_cache.opened(tmp_path / "v.db") as store:
         swept = store.prune(keys[::2])
         again = store.prune(keys[::2])
     assert (swept.deleted, swept.converted, swept.shrinks) == (len(keys[1::2]), True, True)
@@ -309,10 +309,10 @@ def test_a_conversion_that_fails_keeps_the_deletions_and_is_tried_again(
     made_before_023(tmp_path / "v.db")
     keys = seeded(tmp_path / "v.db", 2000)
     with closing(sqlite3.connect(tmp_path / "v.db", factory=FailingAtConversion)) as connection:
-        swept = vector_store.VectorStore(connection).prune(keys[::2])
+        swept = vector_cache.VectorCache(connection).prune(keys[::2])
     assert (swept.deleted, swept.converted, swept.shrinks) == (len(keys[1::2]), False, False)
     assert swept.unreclaimed == "database or disk is full"
-    with vector_store.opened(tmp_path / "v.db") as store:
+    with vector_cache.opened(tmp_path / "v.db") as store:
         assert len(store.get(keys)) == len(keys[::2])
         again = store.prune(keys[::2])
     assert (again.deleted, again.converted, again.shrinks) == (0, True, True)
@@ -354,8 +354,8 @@ def test_a_prune_interrupted_before_its_commit_deletes_nothing(tmp_path: Path) -
         closing(sqlite3.connect(tmp_path / "v.db", factory=InterruptedAtCommit)) as connection,
         pytest.raises(KeyboardInterrupt),
     ):
-        vector_store.VectorStore(connection).prune(keys[:10])
-    with vector_store.opened(tmp_path / "v.db") as store:
+        vector_cache.VectorCache(connection).prune(keys[:10])
+    with vector_cache.opened(tmp_path / "v.db") as store:
         assert len(store.get(keys)) == len(keys)
 
 
@@ -366,9 +366,9 @@ def test_a_prune_interrupted_before_its_vacuum_is_finished_by_the_next(tmp_path:
         closing(sqlite3.connect(tmp_path / "v.db", factory=InterruptedAtVacuum)) as connection,
         pytest.raises(KeyboardInterrupt),
     ):
-        vector_store.VectorStore(connection).prune(keys[::2])
+        vector_cache.VectorCache(connection).prune(keys[::2])
     assert freelist(tmp_path / "v.db") > 0
-    with vector_store.opened(tmp_path / "v.db") as store:
+    with vector_cache.opened(tmp_path / "v.db") as store:
         assert len(store.get(keys)) == len(keys[::2])
         swept = store.prune(keys[::2])
     assert swept.deleted == 0
@@ -379,11 +379,11 @@ def test_a_vacuum_that_fails_leaves_the_deletions_and_says_why(tmp_path: Path) -
     """The space stays in the file; the vectors not kept are gone all the same."""
     keys = seeded(tmp_path / "v.db", 2000)
     with closing(sqlite3.connect(tmp_path / "v.db", factory=FailingAtVacuum)) as connection:
-        swept = vector_store.VectorStore(connection).prune(keys[::2])
+        swept = vector_cache.VectorCache(connection).prune(keys[::2])
     assert swept.deleted == len(keys[1::2])
     assert swept.unreclaimed == "database or disk is full"
     assert freelist(tmp_path / "v.db") > 0
-    with vector_store.opened(tmp_path / "v.db") as store:
+    with vector_cache.opened(tmp_path / "v.db") as store:
         assert len(store.get(keys)) == len(keys[::2])
 
 
@@ -407,7 +407,7 @@ def test_a_reader_keeps_its_snapshot_while_a_prune_runs(tmp_path: Path) -> None:
                 return super().execute(sql, parameters)
 
         with closing(sqlite3.connect(tmp_path / "v.db", factory=Watched)) as connection:
-            vector_store.VectorStore(connection).prune(keys[::2])
+            vector_cache.VectorCache(connection).prune(keys[::2])
         seen.append(reader.execute(count).fetchone()[0])
     assert seen == [before, len(keys[::2]), before]
     assert before == len(keys)
@@ -491,8 +491,8 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     for each in (store, fresh):
         evaluated(data, each, "windows")
         evaluated(data, each, "section-paths")
-    other = vector_store.vector_key("another model", "a text")
-    with vector_store.opened(store) as opened:
+    other = vector_cache.vector_key("another model", "a text")
+    with vector_cache.opened(store) as opened:
         opened.put({other: bytes(64)})
     gone.unlink()
     write(data / "docs", page("200", "Edited", breadcrumb=HOME), f"{EDITED}The text after.\n")
@@ -531,10 +531,10 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     [size] = measured["kb_mcp.vectors.bytes"].data.data_points
     assert size.value == done.bytes_after
     assert json.loads(to_json(indexed))["pruned"] == done.model_dump()
-    assert f"vectors pruned: {deleted}\nvector store: " in embed_command.text(indexed, "short")
+    assert f"vectors pruned: {deleted}\nvector cache: " in embed_command.text(indexed, "short")
     detailed = embed_command.text(indexed, "detailed")
     assert f"kept {len(stored(fresh))} vectors ({len(alone)} for the evaluation alone)" in detailed
-    assert f", pruned {deleted}; the vector store from " in detailed
+    assert f", pruned {deleted}; the vector cache from " in detailed
 
 
 def test_a_second_index_with_nothing_changed_embeds_and_deletes_nothing(data: Path) -> None:
@@ -570,10 +570,10 @@ def held_back(data: Path, capsys: CaptureFixture[str]) -> tuple[int, dict[str, A
 
     A vector of another model is put in the store first, which no index reads.
     """
-    with vector_store.opened(data / "vectors.sqlite") as opened:
-        opened.put({vector_store.vector_key("another model", "a text"): bytes(64)})
+    with vector_cache.opened(data / "vectors.sqlite") as opened:
+        opened.put({vector_cache.vector_key("another model", "a text"): bytes(64)})
     status, result, err = command(data, capsys)
-    assert vector_store.vector_key("another model", "a text") in stored(data / "vectors.sqlite")
+    assert vector_cache.vector_key("another model", "a text") in stored(data / "vectors.sqlite")
     return status, result["pruned"], err
 
 
@@ -658,7 +658,7 @@ def test_words_alone_leave_the_store_untouched(data: Path, capsys: CaptureFixtur
     status, result, err = command(data, capsys, "lexical")
     assert (status, result["pruned"]) == (0, None)
     assert (store.read_bytes(), store.stat().st_mtime_ns) == before
-    assert "the vector store keeps only" not in err
+    assert "the vector cache keeps only" not in err
 
 
 def test_the_summary_says_the_prune_before_the_question_by_meaning(
@@ -666,7 +666,7 @@ def test_the_summary_says_the_prune_before_the_question_by_meaning(
 ) -> None:
     """By meaning, a line of the summary says that the store is then pruned."""
     _, result, err = command(data, capsys)
-    assert "then: the vector store keeps only the vectors that the index and eval's read" in err
+    assert "then: the vector cache keeps only the vectors that the index and eval's read" in err
     assert result["pruned"]["outcome"] == "pruned"
 
 
@@ -687,8 +687,8 @@ class Paused(Counting):
 def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> None:
     """While an evaluation's build embeds, nothing is deleted; once it is in, its vectors stay."""
     pruned(refreshed(indexing(data)))
-    other = vector_store.vector_key("another model", "a text")
-    with vector_store.opened(data / "vectors.sqlite") as opened:
+    other = vector_cache.vector_key("another model", "a text")
+    with vector_cache.opened(data / "vectors.sqlite") as opened:
         opened.put({other: bytes(64)})
     paused, windows = Paused(tiny()), data / "eval" / "indexes" / "windows" / "tiny.sqlite"
     windows.parent.mkdir(parents=True)
@@ -704,7 +704,7 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     assert indexed is not None
     assert embed_command.text(indexed, "short").endswith("vectors pruned: none, deferred\n")
     said_fully = embed_command.text(indexed, "detailed")
-    assert said_fully.endswith(f"vector store not pruned, deferred: {DEFERRED}\n")
+    assert said_fully.endswith(f"vector cache not pruned, deferred: {DEFERRED}\n")
     assert other in stored(data / "vectors.sqlite")
     done = pruned(refreshed(indexing(data)))
     assert (done.outcome, done.deleted) == ("pruned", 1)
@@ -716,11 +716,11 @@ def test_a_store_that_cannot_delete_fails_the_prune_not_the_index(
 ) -> None:
     """Its error is the reason, nothing is deleted, and the index is in place."""
 
-    def locked(*_: object) -> vector_store.Swept:
+    def locked(*_: object) -> vector_cache.Swept:
         message = "database is locked"
         raise sqlite3.OperationalError(message)
 
-    monkeypatch.setattr(vector_store.VectorStore, "prune", locked)
+    monkeypatch.setattr(vector_cache.VectorCache, "prune", locked)
     indexed = refreshed(indexing(data))
     assert indexed is not None
     assert indexed.whole
@@ -739,10 +739,10 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
     with reading(data / "index.sqlite") as reader:
         (updated, awaiting) = (reader.build(), reader.index_status().awaiting)
 
-    def interrupted(*_: object) -> vector_store.Swept:
+    def interrupted(*_: object) -> vector_cache.Swept:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(vector_store.VectorStore, "prune", interrupted)
+    monkeypatch.setattr(vector_cache.VectorCache, "prune", interrupted)
     with pytest.raises(KeyboardInterrupt):
         fill_and_prune(indexing(data))
     assert awaiting == 1
@@ -752,8 +752,8 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
 
 def kept_whole(data: Path) -> str:
     """Put in the store a vector that no index reads; give its key, which a prune deletes."""
-    other = vector_store.vector_key("another model", "a text")
-    with vector_store.opened(data / "vectors.sqlite") as opened:
+    other = vector_cache.vector_key("another model", "a text")
+    with vector_cache.opened(data / "vectors.sqlite") as opened:
         opened.put({other: bytes(64)})
     return other
 
@@ -863,7 +863,7 @@ def test_each_outcome_is_said_short_and_in_detail() -> None:
     }
     for done, why in cases.items():
         assert embed_command.prune_text(done, "short") == f"vectors pruned: none, {done.outcome}\n"
-        assert embed_command.prune_text(done, "detailed") == f"vector store not pruned, {why}\n"
+        assert embed_command.prune_text(done, "detailed") == f"vector cache not pruned, {why}\n"
     assert embed_command.prune_text(None, "short") == ""
 
 
@@ -914,7 +914,7 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
 ) -> None:
     """Its conversion failed for want of space: the summary says why, and that it is retried."""
     pruned(refreshed(indexing(data)))
-    swept = vector_store.Swept(
+    swept = vector_cache.Swept(
         deleted=1,
         kept=10,
         bytes_before=8192,
@@ -922,7 +922,7 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
         shrinks=False,
         unreclaimed="disk is full",
     )
-    monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
+    monkeypatch.setattr(vector_cache.VectorCache, "prune", lambda *_: swept)
     indexed = refreshed(indexing(data))
     assert indexed is not None
     said_fully = embed_command.text(indexed, "detailed")
@@ -932,7 +932,7 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
 def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Pruned, the space not reclaimed: the outcome holds why, and so does the summary."""
     pruned(refreshed(indexing(data)))
-    swept = vector_store.Swept(
+    swept = vector_cache.Swept(
         deleted=1,
         kept=10,
         bytes_before=8192,
@@ -940,7 +940,7 @@ def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: Mo
         shrinks=True,
         unreclaimed="disk is full",
     )
-    monkeypatch.setattr(vector_store.VectorStore, "prune", lambda *_: swept)
+    monkeypatch.setattr(vector_cache.VectorCache, "prune", lambda *_: swept)
     indexed = refreshed(indexing(data))
     done = pruned(indexed)
     assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
@@ -986,9 +986,9 @@ def test_an_evaluation_that_waits_too_long_for_a_prune_is_not_evaluated(
     evaluable(data)
     golden_file = tmp_path / "golden.yaml"
     golden_file.write_text(GOLDEN, encoding="utf-8")
-    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
     config = tmp_path / "config.toml"
-    with serving(Scripted()) as url, vector_store.exclusive(data / "vectors.sqlite") as held:
+    with serving(Scripted()) as url, vector_cache.exclusive(data / "vectors.sqlite") as held:
         assert held
         config.write_text(f'model = "tiny"\nembedding_url = {json.dumps(url)}\n', encoding="utf-8")
         arguments = ["eval", str(golden_file), "--yes", "--chunking", "sections"]

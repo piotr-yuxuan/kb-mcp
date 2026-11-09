@@ -25,10 +25,10 @@ no location and is not for commands.
 | `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006); `embed`, for the files' digests alone (035) |
 | `<data>/conversions.sqlite` | `conversions` | `prepare` (039) | `prepare` (039) |
 | `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006), `embed`'s prune (023), `index` and `embed`, which update it (035) |
-| `<data>/index.sqlite.lock` | `index`, by `vector_store.lock_of` | `index`, `embed` (035) | `index`, `embed` (035), [below](#updates) |
+| `<data>/index.sqlite.lock` | `index`, by `vector_cache.lock_of` | `index`, `embed` (035) | `index`, `embed` (035), [below](#updates) |
 | `<data>/aliases.toml` | `aliases` | the user (043) | `index` (043), [below](#the-alias-file) |
 | `<data>/vectors.sqlite` | `vectors` | `embed`, `eval`, `eval-rerank` (011) | `embed`, `eval`, `eval-rerank` (011) |
-| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_store.lock_of` | `embed`, `eval`, `eval-rerank` (023) | `embed`, `eval`, `eval-rerank` (023) |
+| `<data>/vectors.sqlite.lock` | `vectors`, by `vector_cache.lock_of` | `embed`, `eval`, `eval-rerank` (023) | `embed`, `eval`, `eval-rerank` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011) | `eval`, `eval-rerank` (011); its indexes, `embed` (023) |
 | `<data>/session/` | `session` | `login`, a `fetch` whose site renews its cookies (004) | a run signed in by the saved session (004, 015) |
 | `<data>/runs/` | `runs` | `fetch` (004) | the user |
@@ -190,7 +190,7 @@ from it. Check that `raw/` and the work log's folder are in place before a `prep
 `kb-mcp fetch`, with a `--since` that reaches back far enough, fills the raw store
 again.
 
-**Some broken files end in a traceback, not a refusal.** A damaged vector store ends
+**Some broken files end in a traceback, not a refusal.** A damaged vector cache ends
 `embed` and `eval`; an attached file missing from the raw store ends `prepare`; one
 source's exception ends a `fetch` or `prepare` of several sources, the other sources'
 rows unreported; and a golden file that is not UTF-8 ends `eval`. Each traceback names
@@ -705,7 +705,7 @@ last three empty for an index built without a model. Plan 019 adds the meta row
 model; an index without the row, 011's or 018's, was cut by `sections`. A chunk keeps
 the section that holds its middle and a span relative to that section's body, so that
 a window across sections needs no other schema. Plan 023 adds the column `key` to
-`chunks`, the key of the chunk's vector in the vector store, which only pruning reads;
+`chunks`, the key of the chunk's vector in the vector cache, which only pruning reads;
 an index built before it reads as any other, but cannot say what it reads of the store,
 and `SCHEMA` stays 3. Schema 4 (041) replaces the columns `author` and `assignee` of
 `documents` with `people`, the front matter's people as JSON, from which a row gives
@@ -729,7 +729,7 @@ cut the sections, and `aliases`, the digest of what the alias file meant
 built before them is served, rebuilt whole by the next `index`, and refused by `embed`
 until then. Schema 7 (054) gives the tables their names now: `chunks` was `pieces`, its
 column `end` was `stop`, and `section_words` was `chunks`; an index of 6 is rebuilt whole
-by the next `index`, and `embed` then finds every vector in the vector store, no text
+by the next `index`, and `embed` then finds every vector in the vector cache, no text
 embedded having changed. An index of another schema is refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the index, as a new
 schema can come with a new format of the files; one cut by a chunking that this version
@@ -767,7 +767,7 @@ whole rebuild copies nothing and reads every file: with no index that this versi
 reads, one without `words` or of another `words`, one damaged (a table of it that SQLite
 finds corrupt, in the update's read or its copy), or on `index --rebuild`, `index.whole`
 naming which. Its index has no chunks and no model's rows: the next `embed` takes their
-vectors back from the vector store.
+vectors back from the vector cache.
 
 `embed` (`search.app.indexing.fill_and_prune`) reads the index in one use: what it holds of the
 mirror, the model it names, each document's front matter and body, and its chunks by
@@ -780,7 +780,7 @@ with one without `words` or of another `words`, "run kb-mcp index first", as its
 would land on other sections; with one damaged, naming `kb-mcp index --rebuild`. It cuts
 each document's body again by this code's sections and the run's chunking, keys each
 chunk by the model's fingerprint, adds the chunks wanted that the index does not hold,
-their vectors from the vector store, else from the model, and removes those it holds
+their vectors from the vector cache, else from the model, and removes those it holds
 that none wants: a chunking or a model changed needs no rule of its own, a chunk of
 another span or key being replaced and an identical one kept. Nothing to add or remove,
 and the same model: nothing is written, `embed.unchanged`. Else a copy of the index, by
@@ -792,11 +792,11 @@ not by its meaning, and `index` counts the documents awaiting vectors, those tha
 index's chunking cuts some text from; a page of white space alone, or of a title alone
 cut by sections, awaits none.
 
-`<data>/index.sqlite.lock`, beside the index (`vector_store.lock_of`), is the writers'
+`<data>/index.sqlite.lock`, beside the index (`vector_cache.lock_of`), is the writers'
 lock: `index` and `embed` take it exclusive by `flock` from their check that the index
 is still the build they read until the rename, never while they read files or ask the
 model. A run that finds it held says so, `index.lock_wait`, and gives up after a minute
-(`conversions.WAIT_S`, which `vector_store` imports), naming the lock; one that finds
+(`conversions.WAIT_S`, which `vector_cache` imports), naming the lock; one that finds
 the index written by another meanwhile starts again once, `index.restarted`, then stops. The file is never removed,
 and `flock` releases it at a process's end, a kill included. The index stays in SQLite's
 rollback journal, never in WAL mode, whose `-wal` file a rename would pair with the new

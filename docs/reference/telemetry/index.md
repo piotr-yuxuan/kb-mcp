@@ -3,7 +3,7 @@
 What `index` records, besides what every command does ([README](README.md)). A run is
 one trace: its root `index`, a span to read the mirror's files that changed and one to
 join their people into persons. It asks no endpoint, whatever `search_mode` says, and
-leaves the vector store as it is. It reads the alias file, `aliases.toml` in the data
+leaves the vector cache as it is. It reads the alias file, `aliases.toml` in the data
 directory, if there is one, then digests every file of the mirror and compares them with
 what the index holds: with nothing changed, nothing is written. Else it builds the new
 index beside the old one, copying the documents whose file did not change with their

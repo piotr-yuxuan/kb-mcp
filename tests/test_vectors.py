@@ -24,7 +24,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
@@ -123,7 +123,7 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 
 
 def build(data: Path, embedder: Counting) -> None:
-    """Build the data directory's index with an embedder and its vector store."""
+    """Build the data directory's index with an embedder and its vector cache."""
     build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(embedder, data / "v.db"))
 
 
@@ -179,7 +179,7 @@ def test_chunks_are_read_by_path_section_and_start_whatever_their_rowids(data: P
                 start,
                 start + 1,
                 f"k{at}",
-                vector_store.as_bytes(np.array([at], dtype=np.float32)),
+                vector_cache.as_bytes(np.array([at], dtype=np.float32)),
             )
             for at, (front, number, start) in enumerate(written)
         )
@@ -252,12 +252,12 @@ def test_an_interrupted_build_keeps_the_batches_it_finished(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """A model failing after its first batch: the old index stays, that batch is kept."""
-    monkeypatch.setattr(vector_store, "BATCH", 2)
+    monkeypatch.setattr(vector_cache, "BATCH", 2)
     failing = Counting(tiny(), fail_after=2)
     with pytest.raises(ModelError):
         build(data, failing)
     assert not (data / "index.sqlite").exists()
-    assert len(failing.texts) == vector_store.BATCH
+    assert len(failing.texts) == vector_cache.BATCH
     resumed = counting()
     build(data, resumed)
     (data / "v.db").unlink()
@@ -334,7 +334,7 @@ def test_the_command_embeds_with_the_settings_model(
         assert chained(data, capsys, url, *detailed) == 0
         out = capsys.readouterr().out
         assert f"chunks by meaning in {(data / 'index.sqlite').resolve()}, {model}:" in out
-        assert " texts embedded now, 0 found in the vector store; 0 documents with a" in out
+        assert " texts embedded now, 0 found in the vector cache; 0 documents with a" in out
         assert main(["embed", "--yes", *config(data, "tiny", url), *detailed]) == 0
     assert f"nothing changed: {(data / 'index.sqlite').resolve()} holds " in (
         capsys.readouterr().out
@@ -450,14 +450,34 @@ def test_a_chunk_the_model_refuses_is_named_and_asked_again(
 def test_two_runs_share_the_store_at_once(tmp_path: Path) -> None:
     """A read leaves no lock behind: another run writes while the first is open."""
     with (
-        vector_store.opened(tmp_path / "v.db") as first,
-        vector_store.opened(tmp_path / "v.db") as second,
+        vector_cache.opened(tmp_path / "v.db") as first,
+        vector_cache.opened(tmp_path / "v.db") as second,
     ):
         assert second.get(["a"]) == {}
         first.put({"a": b"1234"})
         assert second.get(["a"]) == {"a": b"1234"}
         second.put({"b": b"5678"})
         assert first.get(["a", "b"]) == {"a": b"1234", "b": b"5678"}
+
+
+def test_a_cache_written_before_its_rename_is_read_and_reused(tmp_path: Path) -> None:
+    """Plan 054: ``vectors.sqlite`` as the former ``VectorStore`` wrote it, rows unchanged.
+
+    Its table made by the former code's statement, in the default journal mode: a text
+    whose key it holds is not embedded again.
+    """
+    key = vector_cache.vector_key("fingerprint", "Undo the payout.")
+    with closing(sqlite3.connect(tmp_path / "vectors.sqlite")) as connection:
+        connection.execute("CREATE TABLE vectors (key TEXT PRIMARY KEY, vector BLOB NOT NULL)")
+        connection.execute("INSERT INTO vectors VALUES (?, ?)", (key, b"1234"))
+        connection.commit()
+
+    def refused(texts: Sequence[str]) -> list[NDArray[np.float32] | None]:
+        raise AssertionError(texts)
+
+    with vector_cache.opened(tmp_path / "vectors.sqlite") as cache:
+        found, embedded = cache.vectors({key: "Undo the payout."}, refused)
+    assert (found, embedded) == ({key: b"1234"}, 0)
 
 
 def chunked(data: Path, embedder: Counting, chunking: Chunking) -> None:
@@ -504,7 +524,7 @@ def test_an_index_names_the_store_s_key_of_each_chunk_s_vector(
     chunked(data, embedder, chunking)
     with reading(data / "index.sqlite") as reader:
         keys = reader.keys()
-    assert keys == {vector_store.vector_key(tiny().fingerprint, text) for text in embedder.texts}
+    assert keys == {vector_cache.vector_key(tiny().fingerprint, text) for text in embedder.texts}
 
 
 def test_an_index_built_before_keys_reads_as_before_but_cannot_say_them(data: Path) -> None:
@@ -732,7 +752,7 @@ def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
         before = stored_keys(data / "v.db")
         answers = Scripted()
         filled = filled_by(data, answers, cut)
-        asked = {vector_store.vector_key(tiny().fingerprint, text) for text in texts_asked(answers)}
+        asked = {vector_cache.vector_key(tiny().fingerprint, text) for text in texts_asked(answers)}
         assert asked.isdisjoint(before)
         assert filled.embedded == len(asked)
         assert chunks_of(data / "index.sqlite") == whole_chunks(data, cut)
@@ -936,7 +956,7 @@ def test_index_and_embed_started_together_take_turns(data: Path) -> None:
 
 def test_a_lock_held_too_long_stops_embed_naming_it(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Criterion 8: a wait past WAIT_S, shortened here: ``index.not_built`` naming the lock."""
-    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
     assert update_index(indexing(data), MOMENT) is not None
     before = (data / "index.sqlite").read_bytes()
     lock = data / "index.sqlite.lock"
@@ -1042,7 +1062,7 @@ def test_the_prune_keeps_what_embed_wrote_when_an_index_ran_since(
         stored = {row[0] for row in connection.execute("SELECT key FROM vectors")}
     assert filled.kept <= stored
     assert (
-        vector_store.vector_key(
+        vector_cache.vector_key(
             tiny().fingerprint, "Rollback\nRelease\nThe deploy of the buyer service."
         )
         in stored

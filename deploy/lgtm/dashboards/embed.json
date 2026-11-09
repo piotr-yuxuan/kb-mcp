@@ -1,7 +1,7 @@
 {
   "uid": "kb-mcp-embed",
   "title": "embed",
-  "description": "The embed runs in the time range: the chunks they added, removed and refused, the embeddings, and the prunes of the vector store.",
+  "description": "The embed runs in the time range: the chunks they added, removed and refused, the embeddings, and the prunes of the vector cache.",
   "tags": [
     "kb-mcp"
   ],
@@ -303,7 +303,7 @@
         "h": 4
       },
       "type": "timeseries",
-      "title": "Vector store's size at each prune",
+      "title": "Vector cache's size at each prune",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

@@ -1,4 +1,4 @@
-"""Pruning the vector store to what the indexes on disk read, after an index by meaning.
+"""Pruning the vector cache to what the indexes on disk read, after an index by meaning.
 
 The vectors kept are those that the index in place and the evaluation's indexes read,
 and those of the index that the run wrote: the files are the truth, so that deleting an
@@ -19,7 +19,7 @@ import structlog
 from opentelemetry import metrics, trace
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.domain.indexes import UnavailableIndexError
 
 if TYPE_CHECKING:
@@ -33,11 +33,11 @@ VECTORS = METER.create_counter(
     "kb_mcp.vectors", unit="{vector}", description="A prune's vectors, kept or pruned"
 )
 STORE_SIZE = METER.create_gauge(
-    "kb_mcp.vectors.bytes", unit="By", description="The vector store's size after a prune"
+    "kb_mcp.vectors.bytes", unit="By", description="The vector cache's size after a prune"
 )
 
 type PruneOutcome = Literal["pruned", "deferred", "held back", "failed"]
-DEFERRED = "a build, or another prune, is using the vector store; the next embed prunes it"
+DEFERRED = "a build, or another prune, is using the vector cache; the next embed prunes it"
 SKIPPED = "the index skipped a file, so it lacks documents of the mirror"
 NO_DOCUMENT = "the index holds no document"
 UNREADABLE = (
@@ -143,7 +143,7 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, written: Written) 
         if written.skipped or not written.documents:
             reason = SKIPPED if written.skipped else NO_DOCUMENT
             return said(Pruned(outcome="held back", reason=reason), span, started)
-        with vector_store.exclusive(store) as held:
+        with vector_cache.exclusive(store) as held:
             if not held:
                 return said(Pruned(outcome="deferred", reason=DEFERRED), span, started)
             keys: dict[Path, set[str]] = {}
@@ -164,7 +164,7 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, written: Written) 
             evaluation = set().union(*keys.values()) - read
             kept = read | evaluation
             try:
-                with vector_store.opened(store) as opened:
+                with vector_cache.opened(store) as opened:
                     alone = opened.count(evaluation)
                     swept = opened.prune(kept)
             except sqlite3.Error as error:

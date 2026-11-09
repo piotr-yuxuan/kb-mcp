@@ -77,7 +77,7 @@ every command that writes does.
    lacks: every chunk of the mirror the first time, then only the chunks whose text changed,
    as [building the index](embeddings.md#3-build-the-index) says. An endpoint off this
    machine needs `--allow-remote-embeddings`, and is refused without it. `embed` then prunes
-   the vector store of what no index reads.
+   the vector cache of what no index reads.
 
 `embed` reads the index, not the mirror: `prepare && embed`, leaving out `index`, is a
 wrong use. `embed` then fills the index as the last `index` left it, so that a page that

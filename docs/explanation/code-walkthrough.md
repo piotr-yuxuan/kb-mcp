@@ -426,21 +426,21 @@ cut it, and into chunks by the chunking that
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py) names: by default
 [`windows`](../../src/kb_mcp/search/domain/chunking.py) of about 300 tokens,
 starting 240 apart, so that two in a row overlap, each embedded with the title. Each
-chunk's text gets a [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py),
+chunk's text gets a [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py),
 the SHA-256 of the fingerprint and the text. The chunks wanted that the index does not
 hold are to add, every one at this first run, and those it holds that none wants, to
 remove.
 
-[`VectorStore.vectors`](../../src/kb_mcp/search/adapters/vector_store.py)
+[`VectorCache.vectors`](../../src/kb_mcp/search/adapters/vector_cache.py)
 then gives each key to add its vector: from `<data>/vectors.sqlite` when it holds it,
 else embedded by
 [`ApiEmbedder.documents`](../../src/kb_mcp/search/adapters/embedding.py),
 with the model's document prefix, [`BATCH`](../../src/kb_mcp/search/adapters/embedding.py)
-texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_store.py)
+texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_cache.py)
 texts a commit, so that an interrupted build loses little. The digest is read again
 before and after ([`ApiEmbedder.check`](../../src/kb_mcp/search/adapters/embedding.py)),
 so that no vector of other weights is kept under this fingerprint. Only the texts that
-the vector store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
+the vector cache lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
 say which an edit changes.
 [`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py)
 copies the vectors into the index, each chunk naming its section by path and number.
@@ -450,7 +450,7 @@ copies the vectors into the index, each chunk naming its section by path and num
 Each command writes into a new file beside the old index, which readers and the prune
 skip ([`aside`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and renames it over
 `<data>/index.sqlite` once complete, under the index's lock
-([`locked`](../../src/kb_mcp/search/adapters/vector_store.py)). `index`'s is made by
+([`locked`](../../src/kb_mcp/search/adapters/vector_cache.py)). `index`'s is made by
 [`building`](../../src/kb_mcp/search/adapters/sqlite_index.py), which yields its
 [`Writer`](../../src/kb_mcp/search/adapters/sqlite_index.py) and writes in the same
 transaction the meta rows (a random `build` id, `words`, the alias file's digest, the
