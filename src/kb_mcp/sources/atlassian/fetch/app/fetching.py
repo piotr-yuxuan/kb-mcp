@@ -181,7 +181,7 @@ class FetchCounts(Record):
 
 
 def label(document_class: type[FetchedDocument]) -> str:
-    """Name a resource type in the report, as ``confluence pages``."""
+    """Name a resource type in the counts, as ``confluence pages``."""
     return f"{document_class.source} {document_class.resource_type}"
 
 
@@ -202,7 +202,7 @@ class Fetching:
     store: RawStore
     max_file_bytes: int
     now: Callable[[], datetime]
-    report: FetchCounts = field(default_factory=FetchCounts)
+    counts: FetchCounts = field(default_factory=FetchCounts)
     problems: list[Problem] = field(default_factory=list)
     authors: set[str] = field(default_factory=set)
     windows: Mapping[Target, FetchWindow | None] = field(default_factory=dict)
@@ -258,7 +258,7 @@ class Fetching:
         try:
             user = Fields(self.site.json(request), "user")
         except (RepresentationError, SiteError) as error:
-            self.report.failed(source, error)
+            self.counts.failed(source, error)
             return False
         if not signed_in(user):
             raise SignInNeededError
@@ -291,8 +291,8 @@ class Fetching:
             try:
                 found.append(LISTED[document_class](Fields(entry, document_class.resource_type)))
             except RepresentationError as error:
-                self.report.failed(f"{label(document_class)} listed", error)
-        self.report.add(f"{label(document_class)}: listed", len(found))
+                self.counts.failed(f"{label(document_class)} listed", error)
+        self.counts.add(f"{label(document_class)}: listed", len(found))
         return found
 
     def space(self, target: Target, window: FetchWindow) -> bool:
@@ -309,7 +309,7 @@ class Fetching:
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
                 if space is None:
                     self.problems.append(Problem(where=f"space {key}", reason="not found"))
-                    self.report.add("confluence spaces failed: not found")
+                    self.counts.add("confluence spaces failed: not found")
                     span.set_status(StatusCode.ERROR, "not found")
                     return False
                 page_listing = confluence_v2.listing_request(space.id, Page)
@@ -319,7 +319,7 @@ class Fetching:
                     posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
             except (RepresentationError, SiteError) as error:
                 self.problems.append(Problem(where=f"space {key}", reason=str(error)))
-                self.report.failed("confluence spaces", error)
+                self.counts.failed("confluence spaces", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
@@ -395,9 +395,9 @@ class Fetching:
                 self.tombstones = {**others, **now}
                 self.store.put_tombstones(self.tombstones.values())
                 probed = "confluence documents: probed, absent from their listing"
-                self.report.add(probed, len(answers))
+                self.counts.add(probed, len(answers))
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
-                self.report.add("confluence documents: absent, waiting for a probe", waiting)
+                self.counts.add("confluence documents: absent, waiting for a probe", waiting)
 
     def probe(self, key: tuple[str, str], kept: set[str]) -> ProbeAnswer | None:
         """GET a document absent from its listing, and say what became of it."""
@@ -407,10 +407,10 @@ class Fetching:
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
                 return ProbeAnswer.GONE
-            self.report.failed("confluence probes", error)
+            self.counts.failed("confluence probes", error)
             return None
         except RepresentationError as error:
-            self.report.failed("confluence probes", error)
+            self.counts.failed("confluence probes", error)
             return None
         document_class = Page if key[0] == Page.resource_type else BlogPost
         named = found_space in kept and key[1] in self.store.listed_ids(found_space, document_class)
@@ -427,7 +427,7 @@ class Fetching:
             try:
                 page = confluence_v2.document(Fields(entry, PAGES), Page)
             except RepresentationError as error:
-                self.report.failed("confluence pages in the tree", error)
+                self.counts.failed("confluence pages in the tree", error)
                 continue
             if isinstance(page, Page) and page.parent_type == "folder":
                 wanted.append(page.parent_id)
@@ -437,13 +437,13 @@ class Fetching:
             if folder_id is None or folder_id in found or not IDENTIFIER.fullmatch(folder_id):
                 continue
             if len(found) >= MAX_FOLDERS:
-                self.report.add("confluence folders: over the cap, left out", len(wanted) + 1)
+                self.counts.add("confluence folders: over the cap, left out", len(wanted) + 1)
                 break
             try:
                 response = self.site.json(confluence_v2.folder_request(folder_id))
                 folder = confluence_v2.folder(Fields(response, "folder"))
             except (RepresentationError, SiteError) as error:
-                self.report.failed("confluence folders", error)
+                self.counts.failed("confluence folders", error)
                 found[folder_id] = None
                 continue
             found[folder_id] = response
@@ -471,7 +471,7 @@ class Fetching:
                     entries = self.collect(search, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
                 self.problems.append(Problem(where=f"project {key}", reason=str(error)))
-                self.report.failed("jira projects", error)
+                self.counts.failed("jira projects", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             if self.plan:
@@ -490,7 +490,7 @@ class Fetching:
 
         ``fetch.listed`` says at INFO how many documents the target lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.
-        The report counts, by type, those in the window and those stored when --since gave
+        The counts hold, by type, those in the window and those stored when --since gave
         the window; else those new or changed since the last fetch. Those stored get the
         files they lack, without a task; the task ``documents`` reports those to fetch,
         each by its id. ``first_failed`` keeps, for the target, the update time of the
@@ -519,7 +519,7 @@ class Fetching:
             if window.reason == "given"
             else {"new or changed since the last fetch": to_fetch}
         )
-        self.report.counts.update(
+        self.counts.counts.update(
             f"{label(document.document_class)}: {what}"
             for what, each in counted.items()
             for document in each
@@ -550,8 +550,8 @@ class Fetching:
                 continue
             counted.add(listed)
             kept = [each for each in files if skip_reason(each, self.max_file_bytes) is None]
-            self.report.add("files: to download", len(kept))
-            self.report.add("files: bytes to download", sum(each.size for each in kept))
+            self.counts.add("files: to download", len(kept))
+            self.counts.add("files: bytes to download", sum(each.size for each in kept))
 
     def fetch_document(self, document: Listed) -> bool:
         """Fetch a listed document whose revision is not stored; say if it is stored whole.
@@ -564,7 +564,7 @@ class Fetching:
         """
         what = label(document.document_class)
         if self.plan:
-            self.report.add(f"{what}: to fetch")
+            self.counts.add(f"{what}: to fetch")
             return True
         with TRACER.start_as_current_span(
             "fetch.document",
@@ -581,14 +581,14 @@ class Fetching:
                 }
                 whole = self.keep(document.document_class, responses)
             except (RepresentationError, SiteError) as error:
-                self.report.failed(what, error)
+                self.counts.failed(what, error)
                 DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
                 span.set_status(StatusCode.ERROR, str(error))
                 structlog.get_logger().warning(
                     "fetch.document_failed", id=document.id, kind=what, reason=str(error)
                 )
                 return False
-            self.report.add(f"{what}: fetched")
+            self.counts.add(f"{what}: fetched")
             DOCUMENTS.add(1, {"kb_mcp.outcome": "fetched"})
             return whole
 
@@ -609,7 +609,7 @@ class Fetching:
                 "fetch.document", id=document.id, kind=label(document_class), title=document.title
             )
         except RepresentationError as error:
-            self.report.failed(f"{label(document_class)} read", error)
+            self.counts.failed(f"{label(document_class)} read", error)
             structlog.get_logger().warning(
                 "fetch.document_unread", kind=label(document_class), reason=str(error)
             )
@@ -628,7 +628,7 @@ class Fetching:
         try:
             stored = self.store.read(document)
         except (RepresentationError, ValueError, OSError) as error:
-            self.report.failed(f"{label(document.document_class)} read", error)
+            self.counts.failed(f"{label(document.document_class)} read", error)
             return False
         missing = [
             attachment
@@ -655,26 +655,26 @@ class Fetching:
             named = {"id": attachment.id, "file_name": attachment.filename}
             reason = skip_reason(attachment, self.max_file_bytes)
             if reason is not None:
-                self.report.add(f"files: skipped, {reason}")
+                self.counts.add(f"files: skipped, {reason}")
                 FILES.add(1, {"kb_mcp.outcome": "skipped"})
                 log.info("fetch.file_skipped", **named, reason=reason)
                 continue
             try:
                 data = self.site.file(attachment.download, self.max_file_bytes)
             except SiteError as error:
-                self.report.failed("files", error)
+                self.counts.failed("files", error)
                 FILES.add(1, {"kb_mcp.outcome": "failed"})
                 log.warning("fetch.file_failed", **named, reason=str(error))
                 whole = False
                 continue
             if len(data) != attachment.size:  # a proxy's page, say, in the file's place
-                self.report.add("files failed: not the size listed")
+                self.counts.add("files failed: not the size listed")
                 FILES.add(1, {"kb_mcp.outcome": "failed"})
                 log.warning("fetch.file_failed", **named, reason="not the size listed")
                 whole = False
                 continue
             blobs[attachment.id] = self.store.put_blob(data)
-            self.report.add("files: downloaded")
+            self.counts.add("files: downloaded")
             FILES.add(1, {"kb_mcp.outcome": "downloaded"})
             BYTES.add(len(data))
         return blobs, whole
@@ -692,14 +692,14 @@ class Fetching:
                 try:
                     users += self.collect(request, confluence_v2.users_page)
                 except (RepresentationError, SiteError) as error:
-                    self.report.failed("confluence users", error)
+                    self.counts.failed("confluence users", error)
             try:
                 if users:
                     self.store.put_users(users)
             except RepresentationError as error:
-                self.report.failed("confluence users", error)
+                self.counts.failed("confluence users", error)
                 return
-            self.report.add("confluence users: named", len(users))
+            self.counts.add("confluence users: named", len(users))
 
 
 class Targets(Record):
@@ -737,7 +737,7 @@ class Targets(Record):
 
     @property
     def source(self) -> str:
-        """Name the one source of these targets, which names its fetch's report and events.
+        """Name the one source of these targets, which names its fetch's record and events.
 
         Raises ValueError for targets of no source, or of both: a fetch is of one source.
         """
@@ -823,31 +823,31 @@ def plan_fetch(
     """
     store = RawStore(settings.raw)
     windows = targets.windows(store.coverage(), now())
-    report = FetchCounts(windows=windows_of(windows, {}), dry_run=True)
+    counts = FetchCounts(windows=windows_of(windows, {}), dry_run=True)
     try:
         client = choose_sign_in(settings).client()
     except SignInNeededError:
-        return Outcome(ending="sign in again", counts=report)
+        return Outcome(ending="sign in again", counts=counts)
     with client:
         run = Fetching(
             SiteClient(client, sleep=sleep),
             store,
             targets.max_file_bytes,
             now,
-            report,
+            counts,
             windows=windows,
             plan=True,
         )
         try:
             run.run(targets.spaces, targets.projects)
         except SignInNeededError:
-            return Outcome(ending="sign in again", counts=report, problems=tuple(run.problems))
+            return Outcome(ending="sign in again", counts=counts, problems=tuple(run.problems))
         except TooManyFailuresError:
-            report.add("runs: stopped, too many failures in a row")
-            return Outcome(ending="failed", counts=report, problems=tuple(run.problems))
-    failed = report.failures or run.problems
+            counts.add("runs: stopped, too many failures in a row")
+            return Outcome(ending="failed", counts=counts, problems=tuple(run.problems))
+    failed = counts.failures or run.problems
     ending = "failed" if failed else "not run"
-    return Outcome(ending=ending, counts=report, problems=tuple(run.problems))
+    return Outcome(ending=ending, counts=counts, problems=tuple(run.problems))
 
 
 def run_fetch(
@@ -858,7 +858,7 @@ def run_fetch(
 ) -> Outcome[FetchCounts]:
     """Run a fetch of one source signed in as the settings say, and save its counts.
 
-    The targets are one source's, whose name ends the report's,
+    The targets are one source's, whose name ends the record's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
     another fetch. Each target is fetched over its window. The coverage of every
     target listed whole grows as ``Coverage.extended`` rules. The tombstones are
@@ -871,7 +871,7 @@ def run_fetch(
     does not come before the windows' end, StoreBusyError when another run writes, and
     ValueError for targets of no source or of both, all before anything is written.
     """
-    report, problems = FetchCounts(), []
+    counts, problems = FetchCounts(), []
     ending: Ending | None = None
     extensions: dict[Target, CoverageChange] = {}
     store, started, source = RawStore(settings.raw), now(), targets.source
@@ -886,19 +886,19 @@ def run_fetch(
                     store,
                     targets.max_file_bytes,
                     now,
-                    report,
+                    counts,
                     windows=windows,
                     tombstones=store.tombstones() if targets.spaces else {},
                 )
                 problems = run.problems
                 try:
                     run.run(targets.spaces, targets.projects)
-                    ending = "failed" if report.failures or problems else "done"
+                    ending = "failed" if counts.failures or problems else "done"
                 except SignInNeededError:
                     ending = "sign in again"
                 except TooManyFailuresError:
                     ending = "failed"
-                    report.add("runs: stopped, too many failures in a row")
+                    counts.add("runs: stopped, too many failures in a row")
                 finally:
                     signing.keep(client)
                     log = structlog.get_logger()
@@ -918,16 +918,16 @@ def run_fetch(
             ending = "sign in again"
         finally:
             if ending is None:
-                report.add("runs: interrupted")
+                counts.add("runs: interrupted")
             elif ending == "sign in again":
-                report.add("runs: stopped, sign-in needed")
+                counts.add("runs: stopped, sign-in needed")
             settings.runs.mkdir(parents=True, exist_ok=True)
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {
                 "ending": ending or "interrupted",
-                "counts": dict(sorted(report.counts.items())),
+                "counts": dict(sorted(counts.counts.items())),
             }
             path = settings.runs / f"{stamp}-{source}.json"
             path.write_text(json.dumps(saved, indent=1), "utf-8")
-    report.windows = windows_of(windows, extensions)
-    return Outcome(ending=ending, counts=report, problems=tuple(problems))
+    counts.windows = windows_of(windows, extensions)
+    return Outcome(ending=ending, counts=counts, problems=tuple(problems))
