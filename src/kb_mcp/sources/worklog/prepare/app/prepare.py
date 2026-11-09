@@ -30,14 +30,14 @@ from opentelemetry import trace
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
-from kb_mcp.mirror.adapters.mirror_files import Changes, sync
+from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, PersonRole
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG, worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG_OWNED, worklog_path
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     DAY_TYPE,
     ENTRY,
@@ -223,7 +223,7 @@ def existing(
     """
     kept: dict[str, tuple[FrontMatter, str]] = {}
     placed: dict[str, set[PurePosixPath]] = {}
-    for file in documents(docs, WORKLOG):
+    for file in documents(docs, WORKLOG_OWNED):
         try:
             matter, body = load(file.read_text(encoding="utf-8"), str(file))
         except OSError, ValueError:
@@ -240,7 +240,7 @@ def moved(
 
     Once its document is written again, under another title's path when its title
     changed, an old file of its id is a copy of none, retired even by a run that removes
-    nothing else; ``sync`` leaves the one wanted.
+    nothing else; ``write_changed`` leaves the one wanted.
     """
     return {path for each in identifiers for path in placed.get(each, ())}
 
@@ -346,7 +346,7 @@ def mirror_worklog(folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool =
     }
     retired = moved((matter.id for matter, _ in ready.values()), placed)
     with TRACER.start_as_current_span("worklog.write"):
-        changes = sync(docs, wanted, worklog_owned, remove=not problems, retired=retired)
+        changes = write_changed(docs, wanted, worklog_owned, remove=not problems, retired=retired)
     log.info(
         "worklog.end",
         documents=len(wanted),

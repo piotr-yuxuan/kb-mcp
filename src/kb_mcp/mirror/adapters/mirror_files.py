@@ -35,7 +35,7 @@ def regular_files(docs: Path, found: Iterable[Path]) -> set[PurePosixPath]:
     return {PurePosixPath(path.relative_to(docs).as_posix()) for path in found if path.is_file()}
 
 
-def sync(
+def write_changed(
     docs: Path,
     wanted: Mapping[PurePosixPath, bytes | Path],
     owner: Callable[[Path], set[PurePosixPath]],

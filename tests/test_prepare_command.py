@@ -26,7 +26,8 @@ from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
-from tests.test_mirror import (
+from tests.test_observed import said
+from tests.test_prepare_atlassian import (
     FETCHED,
     LISTED,
     POST_LISTED,
@@ -36,7 +37,6 @@ from tests.test_mirror import (
     page_responses,
     post_responses,
 )
-from tests.test_observed import said
 
 if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture

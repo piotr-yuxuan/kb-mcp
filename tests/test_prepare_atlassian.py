@@ -22,17 +22,17 @@ from structlog.testing import capture_logs
 
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
-from kb_mcp.mirror.adapters.mirror_files import sync
+from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
-from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_kinds
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_classes
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
-from tests.mirrors import mirrored_source
+from tests.mirrors import prepared_source
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
+    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianPrepareOutcome
     from kb_mcp.sources.atlassian.prepare.app.preparer import AtlassianPrepared
 
 SITE = "https://site.example.invalid"
@@ -140,14 +140,14 @@ class Sandbox:
         site: str | None = SITE,
         markdown: Callable[[str], str] | None = None,
         sources: Sequence[str] = ("confluence", "jira"),
-    ) -> dict[str, Outcome]:
+    ) -> dict[str, AtlassianPrepareOutcome]:
         """Mirror each source of the store, in order, through the cache; give its outcome.
 
         Pandoc writes the Markdown, unless another writer is given.
         """
         writer = markdown or Pandoc.find().markdown
         return {
-            source: mirrored_source(self.store, self.docs, site, writer, source)
+            source: prepared_source(self.store, self.docs, site, writer, source)
             for source in sources
         }
 
@@ -238,7 +238,9 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def each(outcomes: dict[str, Outcome], count: Callable[[Outcome], object]) -> dict[str, object]:
+def each(
+    outcomes: dict[str, AtlassianPrepareOutcome], count: Callable[[AtlassianPrepareOutcome], object]
+) -> dict[str, object]:
     """Give a count of each source's outcome, by the source's name."""
     return {source: count(outcome) for source, outcome in outcomes.items()}
 
@@ -720,7 +722,7 @@ def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
         "confluence": 0,
         "jira": 0,
     }
-    assert sync(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
+    assert write_changed(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
     assert set(sandbox.files()) == mirrored
 
 
@@ -812,7 +814,7 @@ def test_kinds_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
         conversions.opened(path, lambda: "a writer", str, source="confluence") as cache,
         pytest.raises(KeyError),
     ):
-        mirror(sandbox.store, sandbox.docs, None, cache, kinds)
+        prepare_atlassian(sandbox.store, sandbox.docs, None, cache, kinds)
     assert sandbox.files() == before
 
 
@@ -997,7 +999,7 @@ def prepared(sandbox: Sandbox, source: str) -> tuple[AtlassianPrepared, list[dic
     """Prepare one source as its role does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
-        done = prepare_kinds(settings, SITE, Pandoc.find(), source, PREPARED[source])
+        done = prepare_classes(settings, SITE, Pandoc.find(), source, PREPARED[source])
     return done, [each for each in events if each["log_level"] == "warning"]
 
 

@@ -184,7 +184,7 @@ def test_a_prune_keeps_exactly_the_conversions_that_its_run_used(path: Path) -> 
     with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
         for text in TEXTS[1:]:
             cache.markdown(text)
-        assert cache.prune(remove=True) == 1
+        assert cache.drop_unused(remove=True) == 1
     assert stored(path) == {key(NAME, text) for text in TEXTS[1:]}
 
 
@@ -194,7 +194,7 @@ def test_a_prune_told_not_to_remove_deletes_nothing(path: Path) -> None:
     run(path, scripted, TEXTS[:3])
     with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
         cache.markdown(TEXTS[3])
-        assert cache.prune(remove=False) == 0
+        assert cache.drop_unused(remove=False) == 0
     assert stored(path) == {key(NAME, text) for text in TEXTS}
 
 
@@ -214,7 +214,7 @@ def test_a_text_that_two_sources_convert_is_a_row_of_each_that_neither_prune_tak
         path, scripted.converter, scripted.convert, source="confluence"
     ) as cache:
         cache.markdown(TEXTS[0])
-        assert cache.prune(remove=True) == 1
+        assert cache.drop_unused(remove=True) == 1
     assert rows(path) == {
         ("confluence", key(NAME, TEXTS[0])),
         ("jira", key(NAME, TEXTS[1])),
@@ -417,7 +417,7 @@ def test_damage_found_during_a_run_raises_and_deletes_the_file(
         with conversions.opened(path, damaging.converter, damaging.convert, source=SOURCE) as cache:
             for text in TEXTS[1:3]:
                 cache.markdown(text)
-            cache.prune(remove=True)
+            cache.drop_unused(remove=True)
 
     with pytest.raises(sqlite3.DatabaseError) as raised:
         mirrored()

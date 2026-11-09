@@ -122,7 +122,7 @@ counts and how they read as text. Mind what the writer and the front matter ask:
 
 - **Write every document, each time.** The writer leaves a file whose bytes have not
   changed, and removes what `owned` finds and no document wants
-  ([`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py)). So a document's bytes depend
+  ([`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py)). So a document's bytes depend
   on its source alone, never on the time of the run: a second run then writes nothing.
 - **Own your folder alone.** `owned` finds your files under `docs/notes/`, and nothing else;
   a source is trusted code, and no writer is bound to its folder.
@@ -131,7 +131,7 @@ counts and how they read as text. Mind what the writer and the front matter ask:
   ([`FrontMatter`](../../src/kb_mcp/mirror/domain/mirror.py),
   [the table](../reference/data-layout.md#the-markdown-mirror)). `id` is one safe path part,
   and so a digest of a name makes one of any name; a text is one line
-  ([`one_line`](../../src/kb_mcp/mirror/domain/mirror_layout.py)).
+  ([`one_line`](../../src/kb_mcp/mirror/domain/mirror_text.py)).
 - **Keep out of `docs/assets/`.** It is Confluence's and Jira's. A source that attaches
   files keeps them under `docs/notes/_assets/`, which the rule of documents leaves out
   ([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)).
@@ -160,9 +160,9 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, override
 
 from kb_mcp.mirror.adapters.markdown import documents, dump
-from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, sync
+from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
@@ -233,7 +233,7 @@ def prepare(run: SourceRun) -> NotesPrepared:
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
     return NotesPrepared(
-        outcome="done", changes=sync(run.settings.docs, wanted, owned, remove=True)
+        outcome="done", changes=write_changed(run.settings.docs, wanted, owned, remove=True)
     )
 ```
 

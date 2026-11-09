@@ -186,11 +186,11 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   in their order.
 - A model copies a list, a dict or a `Counter` that it is given: a field whose object
   the caller keeps using is typed `InstanceOf[...]`, which checks its class and keeps it,
-  as `Context.unsupported` is.
+  as `RenderContext.unsupported` is.
 - A record has no order: a sort of records takes a `key=`. A frozen record hashes by its
   fields; one that accumulates has no hash, as a dataclass that was not frozen.
 - A protocol is never a record's base, as its metaclass and Pydantic's conflict: a
-  record that implements one, such as `site_html.Part` a `Construct` or
+  record that implements one, such as `site_html.HtmlPart` a `Construct` or
   `display.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
   methods.
 - Pydantic reads a record's annotations, so the types they name are imported at run

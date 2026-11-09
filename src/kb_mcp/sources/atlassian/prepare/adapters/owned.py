@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path, PurePosixPath
 
 # The documents of each Atlassian source, by its name, relative to <data>/docs.
-ATLASSIAN = {
+ATLASSIAN_OWNED = {
     CONFLUENCE: (f"{CONFLUENCE}/*/*.md", f"{CONFLUENCE}/*/blog/*.md"),
     JIRA: (f"{JIRA}/*/*.md",),
 }
@@ -31,7 +31,7 @@ def owned(docs: Path, source: str) -> set[PurePosixPath]:
     They are its documents, and for Confluence each space's tree. Hidden files, such as
     one left by an interrupted write, and any other file are not its.
     """
-    found = list(documents(docs, ATLASSIAN[source]))
+    found = list(documents(docs, ATLASSIAN_OWNED[source]))
     if source == ConfluenceDocument.source:
         found += docs.glob(f"{source}/*/{TREE}")
     return regular_files(docs, found)
@@ -55,7 +55,7 @@ def unlinked(docs: Path, candidates: set[PurePosixPath]) -> set[PurePosixPath]:
     candidate.
     """
     left = set(candidates)
-    for source in ATLASSIAN if left else ():
+    for source in ATLASSIAN_OWNED if left else ():
         for relative in owned(docs, source):
             text = (docs / relative).read_bytes()
             left = {each for each in left if each.name.encode() not in text}

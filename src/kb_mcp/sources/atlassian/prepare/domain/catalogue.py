@@ -20,7 +20,7 @@ from pydantic import model_validator
 from kb_mcp.kernel.names import RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, PersonRole
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
     BlogPost,

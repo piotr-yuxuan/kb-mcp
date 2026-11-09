@@ -16,9 +16,9 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, override
 
 from kb_mcp.mirror.adapters.markdown import documents, dump
-from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, sync
+from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
@@ -88,4 +88,6 @@ def prepare(run: SourceRun) -> MemoPrepared:
             fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
-    return MemoPrepared(outcome="done", changes=sync(run.settings.docs, wanted, owned, remove=True))
+    return MemoPrepared(
+        outcome="done", changes=write_changed(run.settings.docs, wanted, owned, remove=True)
+    )

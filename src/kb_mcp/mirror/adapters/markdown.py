@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
-KEYS = list(FrontMatter.model_fields)
+FRONT_MATTER_KEYS = list(FrontMatter.model_fields)
 PERSON = list(PersonRole.model_fields)
 LINK = list(Link.model_fields)
 TIME = "%Y-%m-%dT%H:%M:%SZ"
@@ -27,7 +27,7 @@ CLOSING = "\n---\n"
 # The documents of the mirror, relative to <data>/docs: every Markdown file, whichever
 # source wrote it, but those under assets/, where an attached x.md is an asset, and
 # those with a name beginning with _ or . on their path.
-DOCUMENTS = ("**/*.md",)
+DOCUMENT_GLOBS = ("**/*.md",)
 ASSETS = "assets"
 
 
@@ -67,7 +67,7 @@ def dump(front_matter: FrontMatter, body: str) -> str:
     is one line.
     """
     values: dict[str, object] = {}
-    for key in KEYS:
+    for key in FRONT_MATTER_KEYS:
         value = getattr(front_matter, key)
         if isinstance(value, datetime):
             value = value.astimezone(UTC).strftime(TIME)
@@ -101,9 +101,9 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         values = yaml.safe_load(text[len(OPENING) : end + 1])
     except yaml.YAMLError:
         values = None
-    if type(values) is not dict or list(values) != KEYS:
+    if type(values) is not dict or list(values) != FRONT_MATTER_KEYS:
         # The mirror's keys that it lacks, never the file's own: those could be content.
-        lacking = [key for key in KEYS if type(values) is dict and key not in values]
+        lacking = [key for key in FRONT_MATTER_KEYS if type(values) is dict and key not in values]
         message = f"{path}: front matter without exactly the mirror's keys, in order" + (
             f", without {', '.join(lacking)}" if lacking else ""
         )
@@ -160,7 +160,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     return front_matter, text[end + len(CLOSING) :].removeprefix("\n")
 
 
-def documents(docs: Path, patterns: Iterable[str] = DOCUMENTS) -> Iterator[Path]:
+def documents(docs: Path, patterns: Iterable[str] = DOCUMENT_GLOBS) -> Iterator[Path]:
     """Yield every document file under ``docs`` that the patterns find, sorted by path.
 
     None is under ``assets/``, and no name on the way to one begins with ``_`` or ``.``.

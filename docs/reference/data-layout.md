@@ -256,7 +256,7 @@ without, `<kind>: new or changed since the last fetch`; `listed` and `fetched` e
 ## The Markdown mirror
 
 Each source writes under a folder of its own name, through the mirror's writer,
-`mirror.adapters.mirror_files.sync`, and removes only the files that its `owned` module
+`mirror.adapters.mirror_files.write_changed`, and removes only the files that its `owned` module
 finds there (030):
 
 | Folder | Owned by | Removed by |

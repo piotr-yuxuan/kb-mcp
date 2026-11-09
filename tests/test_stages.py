@@ -46,7 +46,13 @@ from tests.composed import MODEL
 from tests.samples import v2_space
 from tests.test_fetching import SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, WEEK
-from tests.test_mirror import FETCHED, SPACE_ID, issue_responses, listing_page, page_responses
+from tests.test_prepare_atlassian import (
+    FETCHED,
+    SPACE_ID,
+    issue_responses,
+    listing_page,
+    page_responses,
+)
 from tests.test_sources import WORKLOG_DOCUMENTS
 from tests.test_worklog_mirror import FIXTURE, settle
 

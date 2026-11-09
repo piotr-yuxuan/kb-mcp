@@ -30,7 +30,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import dump, load
-from kb_mcp.mirror.adapters.mirror_files import sync
+from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -717,7 +717,7 @@ def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
     worklog = {each.path for each in run.files()}
     run()
     assert page.exists()
-    sync(run.docs, {}, lambda docs: owned(docs, "confluence"), remove=True)
+    write_changed(run.docs, {}, lambda docs: owned(docs, "confluence"), remove=True)
     assert {each.path for each in run.files()} == worklog
     assert not page.exists()
 

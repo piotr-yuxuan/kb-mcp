@@ -2,7 +2,7 @@
 
 Values are made up. Filler documents speak lorem ipsum, so that no word under test is in
 half the sections of the index, where FTS5 would count it as worthless. ``mirrored``
-runs the mirror of each Atlassian source, and ``mirrored_source`` of one, with a function
+runs the mirror of each Atlassian source, and ``prepared_source`` of one, with a function
 of a test's own in pandoc's place.
 """
 
@@ -18,14 +18,14 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
 from kb_mcp.sources.atlassian.fetch.domain.content import time_revision
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, mirror
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, prepare_atlassian
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-    from kb_mcp.sources.atlassian.prepare.app.prepare import Outcome
+    from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianPrepareOutcome
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (
@@ -144,9 +144,9 @@ def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
     return path
 
 
-def mirrored_source(
+def prepared_source(
     store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str], source: str
-) -> Outcome:
+) -> AtlassianPrepareOutcome:
     """Mirror one source of ``store`` into ``docs``; give its outcome.
 
     It converts by ``convert`` through its rows of the cache beside ``docs``, the file
@@ -156,14 +156,14 @@ def mirrored_source(
     """
     path = docs.parent / "conversions.sqlite"
     with conversions.opened(path, lambda: convert.__qualname__, convert, source=source) as cache:
-        return mirror(store, docs, site, cache, PREPARED[source])
+        return prepare_atlassian(store, docs, site, cache, PREPARED[source])
 
 
-def mirrored(
+def prepared_sources(
     store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
-) -> dict[str, Outcome]:
+) -> dict[str, AtlassianPrepareOutcome]:
     """Mirror ``store`` into ``docs``, each source as a run does; give its outcome by its name."""
-    return {source: mirrored_source(store, docs, site, convert, source) for source in PREPARED}
+    return {source: prepared_source(store, docs, site, convert, source) for source in PREPARED}
 
 
 def fillers(docs: Path, count: int = FILLERS) -> None:

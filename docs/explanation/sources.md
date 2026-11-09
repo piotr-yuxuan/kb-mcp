@@ -66,7 +66,7 @@ does not apply, and what its summary says.
   reads the kinds of the source that it runs for from `run.source`
   ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as their one
   preparer reads the kinds that it converts, and the source whose rows of the cache of
-  conversions it reads ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  conversions it reads ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
   one row's name, `git`, told apart by their order alone: that plan names them.
@@ -274,7 +274,7 @@ index since the rule.
 ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py),
 [`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)), and the
 writer removes those alone
-([`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py)). A source is code that the user
+([`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py)). A source is code that the user
 installs and trusts, run in process: no writer is bound to its folder, and ownership is
 tested for each source.
 
@@ -297,10 +297,10 @@ package, but each is a source: a row, a report and a set of files of its own.
   it, so that one damaged stops no run without Confluence.
 - **Each placing both.** A page links an issue, and an issue a page, through one map of
   mirrored documents
-  ([`Mirrored.documents`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)),
+  ([`LinkTargets.documents`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)),
   and both attach files in `docs/assets/`. So each prepare reads the whole raw store and
   places every document, and converts only its own kinds
-  ([`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)): pages and blog
+  ([`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)): pages and blog
   posts, with the spaces' trees, for Confluence; issues for Jira. Prepared in name order,
   Confluence then Jira, after any download, every link is what one prepare of both would
   make. `prepare confluence` prepares Confluence alone, so Jira's files whose links
@@ -317,7 +317,7 @@ package, but each is a source: a row, a report and a set of files of its own.
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
   it says so, by that source, under a row that stays done
-  ([`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
   key, so that a text that both convert is a row of each, which neither prune takes from the

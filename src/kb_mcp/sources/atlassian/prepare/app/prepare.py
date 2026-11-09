@@ -31,7 +31,7 @@ from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
-from kb_mcp.mirror.adapters.mirror_files import Changes, sync
+from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
@@ -51,9 +51,9 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
 from kb_mcp.sources.atlassian.prepare.adapters.owned import attached, owned, unlinked
 from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
-    Context,
+    LinkTargets,
     MarkupError,
-    Mirrored,
+    RenderContext,
     normalise,
 )
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
@@ -78,12 +78,14 @@ if TYPE_CHECKING:
 # each kind names its source: Confluence's pages and blog posts, with each space's tree,
 # then Jira's issues.
 PREPARED: dict[str, tuple[type[Page | BlogPost | Issue], ...]] = {
-    source: tuple(kind for kind in DOCUMENT_CLASSES if kind.source == source)
-    for source in dict.fromkeys(kind.source for kind in DOCUMENT_CLASSES)
+    source: tuple(
+        document_class for document_class in DOCUMENT_CLASSES if document_class.source == source
+    )
+    for source in dict.fromkeys(document_class.source for document_class in DOCUMENT_CLASSES)
 }
 # Each source by all of its kinds, which a prepare takes whole: it removes the files of them
 # all (``owned``), so a prepare of some of them would remove the files of the others.
-SOURCE_OF = {kinds: source for source, kinds in PREPARED.items()}
+SOURCE_OF = {document_classes: source for source, document_classes in PREPARED.items()}
 # A comment's headings sit under its own third-level heading.
 COMMENT_SHIFT = 3
 UNKNOWN_AUTHOR = "unknown author"
@@ -102,7 +104,7 @@ class Problem(Record):
     reason: str
 
 
-class Outcome(Record):
+class AtlassianPrepareOutcome(Record):
     """What a run did: documents mirrored, conversions, files changed, placeholders, problems.
 
     ``converted`` counts the conversions pandoc ran, ``reused`` those the cache gave: a
@@ -159,7 +161,7 @@ class Placed(Record):
         return document
 
     @property
-    def handle(self) -> str:
+    def ref(self) -> str:
         """Name the document as links and images do: its key for Jira, else its id."""
         document = self.document
         return document.key if isinstance(document, Issue) else document.id
@@ -208,8 +210,8 @@ def read_catalogue(
     # The freshest listing last, so that it wins for a document that two listings name.
     for space_id in sorted(spaces, key=times.__getitem__):
         before = len(problems)
-        for kind in (Page, BlogPost):
-            entries = readable(store.listed(space_id, kind), problems)
+        for document_class in (Page, BlogPost):
+            entries = readable(store.listed(space_id, document_class), problems)
             listed.update((each.id, each) for each in entries)
         folders[space_id] = tuple(readable(store.folders(space_id), problems))
         if len(problems) > before:
@@ -246,8 +248,8 @@ def place(
         gone = {}
     for found in (
         item
-        for kind in DOCUMENT_CLASSES
-        for item in readable(store.latest(kind), problems[kind.source])
+        for document_class in DOCUMENT_CLASSES
+        for item in readable(store.latest(document_class), problems[document_class.source])
     ):
         stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
@@ -283,9 +285,9 @@ def place(
     return placed, retired
 
 
-def index(
+def link_targets(
     placed: Iterable[Placed], store: RawStore, site: str | None
-) -> tuple[Mirrored, dict[PurePosixPath, Path]]:
+) -> tuple[LinkTargets, dict[PurePosixPath, Path]]:
     """Return what the mirror holds for links and images, and the file of each asset."""
     files: dict[tuple[str, str], PurePosixPath | None] = {}
     names: dict[tuple[str, str], PurePosixPath | None] = {}
@@ -294,26 +296,26 @@ def index(
         for attachment in each.stored.snapshot.attachments:
             digest = each.stored.blobs.get(attachment.id)
             asset = None if digest is None else asset_path(digest, attachment.filename)
-            files[each.handle, attachment.id] = asset
-            names.setdefault((each.handle, attachment.filename), asset)
+            files[each.ref, attachment.id] = asset
+            names.setdefault((each.ref, attachment.filename), asset)
             if digest is not None and asset is not None:
                 assets[asset] = store.blob(digest)
-    documents = {each.handle: each.path for each in placed}
-    return Mirrored(site=site, documents=documents, files=files, names=names), assets
+    documents = {each.ref: each.path for each in placed}
+    return LinkTargets(site=site, documents=documents, files=files, names=names), assets
 
 
 def document_file(
-    placed: Placed, catalogue: Catalogue, context: Context, conversions: Conversions
+    placed: Placed, catalogue: Catalogue, context: RenderContext, conversions: Conversions
 ) -> bytes:
     """Return the bytes of one document's file: its front matter, then its Markdown."""
     snapshot, document = placed.stored.snapshot, placed.document
     matter = front_matter(
-        document, snapshot.comments, placed.stored.fetched_at, catalogue, context.mirrored.site
+        document, snapshot.comments, placed.stored.fetched_at, catalogue, context.link_targets.site
     )
     attachments = [
         (each.filename, None if asset is None else context.relative(asset))
         for each in snapshot.attachments
-        for asset in [context.mirrored.files.get((placed.handle, each.id))]
+        for asset in [context.link_targets.files.get((placed.ref, each.id))]
     ]
     comments = None
     if isinstance(document, Issue):
@@ -332,21 +334,21 @@ def document_file(
     return dump(matter, conversions.markdown(body)).encode()
 
 
-def mirror(
+def prepare_atlassian(
     store: RawStore,
     docs: Path,
     site: str | None,
     conversions: Conversions,
-    kinds: tuple[type[Page | BlogPost | Issue], ...],
-) -> Outcome:
-    """Mirror one source's documents, those of ``kinds``, from the raw store into ``docs``.
+    document_classes: tuple[type[Page | BlogPost | Issue], ...],
+) -> AtlassianPrepareOutcome:
+    """Write the documents of ``document_classes``, one source's, from the raw store to ``docs``.
 
-    ``kinds`` are all of one source's, as ``PREPARED`` gives them; any other raises KeyError,
-    a caller's error, before anything is read. ``conversions`` writes HTML as Markdown,
-    through the source's rows of the cache.
+    ``document_classes`` are all of one source's, as ``PREPARED`` gives them; any other
+    raises KeyError, a caller's error, before anything is read. ``conversions`` writes HTML
+    as Markdown, through the source's rows of the cache.
     Every document of the store is placed, so that links and images reach the other
-    source's files, but only those of ``kinds`` are built and written, with the files
-    they attach, and each space's tree when pages are among them. The source then
+    source's files, but only those of ``document_classes`` are built and written, with
+    the files they attach, and each space's tree when pages are among them. The source then
     removes its files that are no longer wanted, and prunes its conversions that this
     run did not use, unless it reports a problem, those that it found reading the other
     source's coming back apart from its own. An attached file that no placed
@@ -362,16 +364,18 @@ def mirror(
     at DEBUG each document built, by its path, id and title.
     """
     log = structlog.get_logger()
-    source = SOURCE_OF[kinds]
+    source = SOURCE_OF[document_classes]
     # The problems found, by the source they belong to: the catalogue's are Confluence's.
-    found: dict[str, list[Problem]] = {kind.source: [] for kind in DOCUMENT_CLASSES}
+    found: dict[str, list[Problem]] = {
+        document_class.source: [] for document_class in DOCUMENT_CLASSES
+    }
     problems = found[source]
     with TRACER.start_as_current_span("prepare.read"):
         catalogue, damaged, times = read_catalogue(store, found[ConfluenceDocument.source])
         placed, retired = place(store, catalogue, times, found)
-        mirrored, assets = index(placed, store, site)
-    own = [each for each in placed if isinstance(each.document, kinds)]
-    _, files = index(own, store, site)
+        linked, assets = link_targets(placed, store, site)
+    own = [each for each in placed if isinstance(each.document, document_classes)]
+    _, files = link_targets(own, store, site)
     log.info(
         "prepare.placed",
         source=source,
@@ -384,8 +388,8 @@ def mirror(
     with TRACER.start_as_current_span("prepare.build"):
         with task(f"{source} documents", len(own)) as built:
             for each in built.each(own, lambda one: str(one.path)):
-                context = Context(
-                    owner=each.handle, here=each.path, mirrored=mirrored, unsupported=unsupported
+                context = RenderContext(
+                    owner=each.ref, here=each.path, link_targets=linked, unsupported=unsupported
                 )
                 began = time.perf_counter()
                 try:
@@ -400,12 +404,12 @@ def mirror(
                 log.debug(
                     "prepare.document",
                     path=str(each.path),
-                    id=each.handle,
+                    id=each.ref,
                     title=each.document.title,
                     seconds=round(seconds, 3),
                 )
         # Each space's tree is Confluence's, built with its pages; Jira has none.
-        spaces = catalogue.spaces.values() if Page in kinds else ()
+        spaces = catalogue.spaces.values() if Page in document_classes else ()
         for space in spaces:
             tree = tree_path(space.key)
             # Only the files built: a page whose file failed is not yet mirrored.
@@ -425,19 +429,19 @@ def mirror(
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
     with TRACER.start_as_current_span("prepare.write"):
-        changes = sync(
+        changes = write_changed(
             docs, wanted, lambda folder: owned(folder, source), remove=not problems, retired=gone
         )
         # Once the source's files are as they stay, what no placed document wants and no
         # file links, while no problem was found.
-        swept = sync(
+        swept = write_changed(
             docs,
             {},
             lambda folder: unlinked(folder, attached(folder) - set(assets)),
             remove=not any(found.values()),
         )
         changes = replace(changes, removed=changes.removed + swept.removed)
-        pruned = conversions.prune(remove=not problems)
+        pruned = conversions.drop_unused(remove=not problems)
     log.info(
         "prepare.written",
         source=source,
@@ -448,7 +452,7 @@ def mirror(
         reused=conversions.reused,
         pruned=pruned,
     )
-    return Outcome(
+    return AtlassianPrepareOutcome(
         documents=written,
         converted=conversions.converted,
         reused=conversions.reused,

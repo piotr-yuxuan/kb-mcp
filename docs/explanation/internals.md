@@ -51,7 +51,7 @@ flowchart LR
 A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
 download of the spaces or projects that its table names
 ([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)); `prepare`, each
-source's preparer, [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
+source's preparer, [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,
 [`mirror_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
 `index`, the words of the mirror's files that changed, whichever sources were prepared
@@ -120,7 +120,7 @@ days. A catch-up that would start after `--until` skips its target.
 
 ## Prepare: from the raw store to Markdown
 
-[`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
+[`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
 snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `accounts.atlassian.site`:
@@ -151,7 +151,7 @@ store and building the HTML are what remain ([the
 trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost).
 
 - **Writes**, into `<data>/docs/` alone, through
-  [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
+  [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, through a hidden file renamed into place, so that no reader sees
   half of one. A file whose bytes are the same keeps them and its time. No lock: the
   snapshots read are each complete, and each file is replaced whole. Each source writes
@@ -162,7 +162,7 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
   `<data>/conversions.sqlite`, each conversion as soon as it is made, so that an
   interrupted run keeps those it made; once the files are written, the conversions of
   its source that the run did not use are deleted, unless it reported anything
-  ([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
+  ([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 - **One document's failure**, a field refused or pandoc failing, is reported by its place
   in the store, never its content; the run goes on. A source that reported anything
   removes no file of its own but those of documents gone or moved, and no conversion, so
@@ -194,7 +194,7 @@ or a dated transcript, dated afresh by its day; another is converted again
 ([`Pandoc.org_markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)).
 
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
-  [`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
+  [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
   whose bytes differ, renamed into place, and the files of documents gone removed
   ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)).
 - **One document's failure**, a file that links out of the folder
@@ -396,7 +396,7 @@ the store's users, in the headings of that user's comments. A child's breadcrumb
 its front matter, written after pandoc, and costs no conversion. The edited page's old
 conversion is deleted once the files are written, with those of documents gone, unless
 the run reported a problem
-([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
+([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 
 The work log's row does the same from the folder itself. Closing an entry turns its
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its

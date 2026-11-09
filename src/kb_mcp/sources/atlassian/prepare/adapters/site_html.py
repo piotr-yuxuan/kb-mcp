@@ -26,7 +26,7 @@ from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tos
 from pydantic import Field, InstanceOf
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror_layout import one_line, visible
+from kb_mcp.mirror.domain.mirror_text import one_line, visible
 
 # The attribute of the wrapper that the site renders around a macro's output.
 MACRO = "data-macro-name"
@@ -114,12 +114,12 @@ HAS_CLASS = "contains(concat(' ', normalize-space(@class), ' '), $name)"
 DEEPEST = 6
 
 
-class Mirrored(Record):
+class LinkTargets(Record):
     """What a body can point to in the mirror, as paths relative to ``docs/``.
 
-    A document's handle is its content id (Confluence) or its key (Jira). ``documents``
-    maps handles to mirror files; ``files`` maps (handle, attachment id) and ``names``
-    (handle, file name) to an attachment's asset, or to None when its file was not
+    A document's ref is its content id (Confluence) or its key (Jira). ``documents``
+    maps refs to mirror files; ``files`` maps (ref, attachment id) and ``names``
+    (ref, file name) to an attachment's asset, or to None when its file was not
     downloaded.
     """
 
@@ -129,8 +129,8 @@ class Mirrored(Record):
     names: Mapping[tuple[str, str], PurePosixPath | None]
 
 
-class Context(Record):
-    """The document whose HTML is normalised: its handle, its file, and the mirror.
+class RenderContext(Record):
+    """The document whose HTML is normalised: its ref, its file, and the mirror.
 
     ``shift`` moves every heading down by that many levels, for a comment under its own
     heading. ``unsupported`` counts the constructs shown as placeholders, by name.
@@ -138,7 +138,7 @@ class Context(Record):
 
     owner: str
     here: PurePosixPath
-    mirrored: Mirrored
+    link_targets: LinkTargets
     shift: int = 0
     unsupported: InstanceOf[Counter[str]] = Field(default_factory=Counter[str])
 
@@ -149,7 +149,7 @@ class Context(Record):
     def on_site(self, address: str) -> str | None:
         """Return the path and query of an address on the site, or None elsewhere."""
         try:
-            parts, site = urlsplit(address), urlsplit(self.mirrored.site or "")
+            parts, site = urlsplit(address), urlsplit(self.link_targets.site or "")
         except ValueError:
             return None
         own = site.hostname is not None and (parts.scheme, parts.hostname) == (
@@ -168,7 +168,7 @@ class Context(Record):
         """
         path = self.on_site(address)
         if path is not None:
-            return path if self.mirrored.site is None else self.mirrored.site + path
+            return path if self.link_targets.site is None else self.link_targets.site + path
         try:
             scheme = urlsplit(address).scheme
         except ValueError:
@@ -179,7 +179,7 @@ class Context(Record):
 class Construct(Protocol):
     """One kind of markup, and how it is rewritten in place."""
 
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Rewrite this element, which the construct's pass found."""
 
 
@@ -212,7 +212,7 @@ def new(tag: str, text: str | None = None, *children: HtmlElement | None) -> Htm
     return created
 
 
-def placeholder(context: Context, name: str, note: str = "unsupported") -> HtmlElement:
+def placeholder(context: RenderContext, name: str, note: str = "unsupported") -> HtmlElement:
     """Return a visible, bracketed mark standing for a construct not shown, and count it."""
     context.unsupported[name] += 1
     return new("em", f"[{note} {name}]")
@@ -225,7 +225,7 @@ class Visible(Construct):
     """
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Remove the characters that show nothing, or reorder what is shown."""
         if element.tail:
             element.tail = visible(element.tail)
@@ -241,7 +241,7 @@ class Removed(Construct):
     """Interface, code and comments: removed with what they hold."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Remove the element, keeping the text that followed it."""
         element.drop_tree()
 
@@ -250,7 +250,7 @@ class Unsupported(Construct):
     """A macro that no construct knows: its name shown, its rendered content kept."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Put a placeholder naming the macro before its content."""
         mark = placeholder(context, f"macro: {element.get(MACRO, '')}")
         mark.tail, element.text = element.text, None
@@ -265,7 +265,7 @@ class AsRendered(Construct):
     """A macro whose output reads well as the site renders it: its wrapper goes."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Keep what the macro rendered."""
         element.drop_tag()
 
@@ -273,12 +273,12 @@ class AsRendered(Construct):
 AS_RENDERED = AsRendered()
 
 
-class Part(Record):
+class HtmlPart(Record):
     """A macro shown by one part of its output, such as an excerpt include's content."""
 
     name: str  # the class of the part kept
 
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Keep the part alone, or show the macro as unsupported when it has none."""
         kept = part(element, self.name)
         if kept is None:
@@ -299,7 +299,7 @@ class Panel(Record):
     body: str  # the class of the part that holds its content
     header: str  # the class of the part that holds its title, when it has one
 
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Make the panel a labelled blockquote."""
         body = part(element, self.body)
         if body is None:
@@ -317,7 +317,7 @@ class Code(Construct):
     """A code macro: its title in bold if it has one, then its code, in its language."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Make the macro a ``pre`` holding its code, its language as a class."""
         source = next(element.iter("pre"), None)
         if source is None:
@@ -337,7 +337,7 @@ class Status(Construct):
     """A status lozenge: its text in brackets."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Make the lozenge ``[TEXT]``."""
         text = element.text_content().strip()
         element.clear(keep_tail=True)
@@ -349,7 +349,7 @@ class Expand(Construct):
     """An expand: a heading with its title, then its content, always shown."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Make the expand a heading one level below the heading before it."""
         content = part(element, EXPAND_CONTENT)
         if content is None:
@@ -371,7 +371,7 @@ class Computed(Record):
     name: str
     query: str  # the attribute that holds the query
 
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Replace the report with a placeholder naming it, and its query."""
         query = next((node.get(self.query) for node in element.iter() if node.get(self.query)), "")
         mark = placeholder(context, self.name, "not mirrored:")
@@ -391,7 +391,7 @@ MACROS: dict[str, Construct] = {
     "expand": Expand(),
     "include": AS_RENDERED,
     "excerpt": AS_RENDERED,
-    "excerpt-include": Part(name=PANEL_CONTENT),
+    "excerpt-include": HtmlPart(name=PANEL_CONTENT),
     "children": AS_RENDERED,
     "details": AS_RENDERED,
     "jira": AS_RENDERED,
@@ -404,16 +404,16 @@ class Macro(Construct):
     """Any macro's wrapper: rewritten as the table of macros says."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Rewrite the macro by its name."""
         MACROS.get(element.get(MACRO, ""), UNSUPPORTED).rewrite(element, context)
 
 
-class Task(Construct):
+class HtmlTask(Construct):
     """A task of an inline task list: ``[x]`` when done, ``[ ]`` otherwise."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Mark the task's state before its text."""
         done = TASK_DONE in element.get("class", "").split()
         element.text = ("[x] " if done else "[ ] ") + (element.text or "")
@@ -423,7 +423,7 @@ class Image(Construct):
     """An image: its local asset, or a link to where it is, never fetched."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Show the image's asset, or link it with its alt text.
 
         An attachment is named by its data attributes (its page and id, else its page
@@ -448,7 +448,7 @@ class Image(Construct):
             by_name = (confluence["owner"], unquote(confluence["name"]))
         elif jira:
             by_id = (context.owner, jira["id"])
-        files, names = context.mirrored.files, context.mirrored.names
+        files, names = context.link_targets.files, context.link_targets.names
         asset = (files.get(by_id) if by_id else None) or (
             names.get(by_name) if by_name and by_name[1] else None
         )
@@ -468,11 +468,11 @@ class Image(Construct):
         replace(element, new("span", None, link))
 
 
-class Link(Construct):
+class HtmlLink(Construct):
     """A link: relative when it leads to a mirrored document, else as readers follow it."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Point the link at the mirror, at the site, or nowhere, keeping its text.
 
         A document is named by its data attributes, or by its address on the site.
@@ -488,7 +488,7 @@ class Link(Construct):
         issue = ISSUE_ADDRESS.fullmatch(path)
         linked = element.get(LINKED_ID) if element.get(LINKED_TYPE) in LINKED_DOCUMENTS else None
         handle = linked or (found[0] if found else issue["key"] if issue else "")
-        target = context.mirrored.documents.get(handle)
+        target = context.link_targets.documents.get(handle)
         address = context.absolute(href)
         if target is not None:
             element.set("href", context.relative(target))
@@ -498,11 +498,11 @@ class Link(Construct):
             element.drop_tag()
 
 
-class Embedded(Construct):
+class HtmlEmbed(Construct):
     """Embedded content, such as a video or a frame: a placeholder names it."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Replace the element with a placeholder naming its tag."""
         replace(element, placeholder(context, f"element: {element.tag}"))
 
@@ -511,7 +511,7 @@ class TableHead(Construct):
     """A table whose first row is all header cells: that row becomes its head."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Move a first row of header cells into a ``thead``."""
         rows = element.xpath("./tr|./tbody/tr")
         if (
@@ -529,7 +529,7 @@ class Plain(Construct):
     """Any other element: kept if pandoc writes it as Markdown, else its content alone."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Make a container of blocks a division, and unwrap any other unknown tag."""
         if element.tag in BLOCKS:
             element.tag = "div"
@@ -541,7 +541,7 @@ class Attributes(Construct):
     """Every element: only its allowed attributes, and its heading level shifted."""
 
     @override
-    def rewrite(self, element: HtmlElement, context: Context) -> None:
+    def rewrite(self, element: HtmlElement, context: RenderContext) -> None:
         """Keep the allowed attributes, and shift a heading by the context's shift."""
         allowed = ATTRIBUTES.get(element.tag, frozenset())
         kept = {name: value for name, value in element.attrib.items() if name in allowed}
@@ -561,10 +561,10 @@ PASSES: tuple[tuple[str, Construct], ...] = (
     ("descendant-or-self::*|//comment()|//processing-instruction()", Visible()),
     (REMOVED, Removed()),
     (f"//*[@{MACRO}]", Macro()),
-    (f"//ul[contains(concat(' ', normalize-space(@class), ' '), ' {TASK_LIST} ')]/li", Task()),
+    (f"//ul[contains(concat(' ', normalize-space(@class), ' '), ' {TASK_LIST} ')]/li", HtmlTask()),
     ("//img", Image()),
-    ("//a", Link()),
-    (EMBEDDED, Embedded()),
+    ("//a", HtmlLink()),
+    (EMBEDDED, HtmlEmbed()),
     ("//table", TableHead()),
     ("descendant::*", Plain()),
     ("descendant-or-self::*", Attributes()),
@@ -575,7 +575,7 @@ class MarkupError(ValueError):
     """A body that the parser could not read whole; the message holds no content."""
 
 
-def normalise(html: str, context: Context) -> str:
+def normalise(html: str, context: RenderContext) -> str:
     """Return the site's HTML of one body as plain HTML for pandoc.
 
     Characters that no file could hold, such as lone surrogates, go before parsing; the

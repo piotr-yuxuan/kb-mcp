@@ -45,7 +45,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchOutcome, RunReport
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
-from kb_mcp.sources.atlassian.prepare.app import prepare as mirror_app
+from kb_mcp.sources.atlassian.prepare.app import prepare as atlassian_prepare
 from kb_mcp.sources.atlassian.prepare.app import preparer
 from kb_mcp.sources.declaration import Option, ResourceType
 from kb_mcp.sources.registry import SOURCES
@@ -562,16 +562,16 @@ def test_ctrl_c_in_a_fetch_exits_130_and_no_later_source_runs(
     assert not settings.docs.exists()
 
 
-def problem_mirrored() -> mirror_app.Outcome:
+def problem_prepared() -> atlassian_prepare.AtlassianPrepareOutcome:
     """Give a mirror that could not convert a page."""
-    return mirror_app.Outcome(
+    return atlassian_prepare.AtlassianPrepareOutcome(
         documents=0,
         converted=0,
         reused=0,
         changes=Changes(written=0, unchanged=0, removed=0),
         unsupported=Counter(),
         problems=(
-            mirror_app.Problem(
+            atlassian_prepare.Problem(
                 where="confluence/pages/1001/000001", reason="pandoc: exit status 9"
             ),
         ),
@@ -582,7 +582,7 @@ def test_a_prepare_problem_exits_1_with_the_work_log_mirrored(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Confluence's prepare fails, said by place; the work log's still runs."""
-    monkeypatch.setattr(preparer, "mirror", lambda *_: problem_mirrored())
+    monkeypatch.setattr(preparer, "prepare_atlassian", lambda *_: problem_prepared())
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
@@ -911,7 +911,7 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG)
     first = run_each("prepare", taken).sources[0].result
     assert isinstance(first, preparer.AtlassianPrepared)
-    assert isinstance(first.mirrored, mirror_app.Outcome)
+    assert isinstance(first.mirrored, atlassian_prepare.AtlassianPrepareOutcome)
     settings.conversions.write_bytes(hashlib.shake_256(b"cache").digest(8192))
     with capture_logs() as logged:
         ran = run_each("prepare", taken)
@@ -923,7 +923,7 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
     result = ran.sources[0].result
     assert isinstance(result, preparer.AtlassianPrepared)
     mirrored, first = result.mirrored, first.mirrored
-    assert isinstance(mirrored, mirror_app.Outcome)
+    assert isinstance(mirrored, atlassian_prepare.AtlassianPrepareOutcome)
     assert (mirrored.converted, mirrored.reused) == (first.converted, 0)
     replaced = logged_as(logged, "prepare.cache_replaced")
     assert [each["reason"] for each in replaced] == ["SQLITE_NOTADB"]
@@ -943,13 +943,13 @@ def test_other_arguments_for_pandoc_convert_the_mirror_again(
     first = run_each("prepare", taken).sources[0].result
     assert isinstance(first, preparer.AtlassianPrepared)
     first = first.mirrored
-    assert isinstance(first, mirror_app.Outcome)
+    assert isinstance(first, atlassian_prepare.AtlassianPrepareOutcome)
     more = (*pandoc_adapter.ARGUMENTS, "--columns=72")
     monkeypatch.setattr(pandoc_adapter, "ARGUMENTS", more)
     again = run_each("prepare", taken).sources[0].result
     assert isinstance(again, preparer.AtlassianPrepared)
     again = again.mirrored
-    assert isinstance(again, mirror_app.Outcome)
+    assert isinstance(again, atlassian_prepare.AtlassianPrepareOutcome)
     assert (again.converted, again.reused) == (first.converted, 0)
     assert first.converted > 0
 
@@ -1000,7 +1000,7 @@ def test_ctrl_c_in_a_prepare_marks_it_interrupted_and_the_work_log_not_run(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Confluence's prepare interrupted, the work log's not run: exit 130."""
-    monkeypatch.setattr(preparer, "mirror", interrupting)
+    monkeypatch.setattr(preparer, "prepare_atlassian", interrupting)
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))

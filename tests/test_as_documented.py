@@ -47,7 +47,7 @@ from tests.reference import README, Emitted, documented, operations, undocumente
 from tests.samples import v2_space
 from tests.test_evaluate import GOLDEN
 from tests.test_fetching import SITE, FakeSite
-from tests.test_mirror import FETCHED, SPACE_ID, listing_page, page_responses
+from tests.test_prepare_atlassian import FETCHED, SPACE_ID, listing_page, page_responses
 from tests.test_prepare_command import fake_pandoc
 from tests.test_serve import talk
 from tests.test_settings import user_log_folder

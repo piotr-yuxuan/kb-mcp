@@ -190,6 +190,7 @@ function for `prepare`'s work.
 - In the code: the context [`kb_mcp.mirror`](../../src/kb_mcp/mirror/),
   [`Settings.docs`](../../src/kb_mcp/config/domain/settings.py).
 - User-facing: `docs/`, `mirrored`.
+- Retires: `mirror_layout.py`.
 
 ### document
 
@@ -199,7 +200,7 @@ YAML header whose keys are fixed in name, type and order.
 - In the code: [`FrontMatter`](../../src/kb_mcp/mirror/domain/mirror.py),
   [`AtlassianFrontMatter`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
   [`WorklogFrontMatter`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
-  [`KEYS`](../../src/kb_mcp/mirror/adapters/markdown.py).
+  [`FRONT_MATTER_KEYS`](../../src/kb_mcp/mirror/adapters/markdown.py).
 - User-facing: `source`, `id`, `title`.
 
 ### ref
@@ -207,7 +208,7 @@ YAML header whose keys are fixed in name, type and order.
 A document's key, else its id: what `read` takes besides an address or a path. Not
 "handle", which a file keeps.
 
-- In the code: [`Placed.handle`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py).
+- In the code: [`Placed.ref`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py).
 - User-facing: `ref`.
 
 ### link
@@ -224,7 +225,7 @@ of the site's HTML.
 `<data>/conversions.sqlite`: pandoc's output, by its input.
 
 - In the code: [`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py),
-  [`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py).
+  [`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py).
 - User-facing: `conversions.sqlite`, `key`.
 
 ### problem

@@ -18,7 +18,7 @@ WORKLOG_FOLDERS = {
     "transcript": PurePosixPath("worklog/transcripts"),
 }
 # The work log's documents, relative to <data>/docs: those of its folders.
-WORKLOG = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
+WORKLOG_OWNED = tuple(f"{folder}/*.md" for folder in WORKLOG_FOLDERS.values())
 # The work log's types whose id names the file alone: a day's id is its date, and a
 # meeting's holds its title's slug already.
 NAMED_BY_ID = frozenset({"day", "meeting"})

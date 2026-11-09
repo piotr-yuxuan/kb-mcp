@@ -107,7 +107,7 @@ class Conversions:
         self.converted += 1
         return markdown
 
-    def prune(self, *, remove: bool) -> int:
+    def drop_unused(self, *, remove: bool) -> int:
         """Delete every row of the source that this run did not use, unless ``remove`` is false.
 
         Return how many rows were deleted. Another source's rows stay.

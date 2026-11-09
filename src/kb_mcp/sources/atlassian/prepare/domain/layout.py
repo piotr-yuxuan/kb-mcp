@@ -13,7 +13,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror_layout import one_line
+from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
 from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 

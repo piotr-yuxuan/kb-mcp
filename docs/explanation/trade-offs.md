@@ -211,7 +211,7 @@ the SHA-256 of pandoc's version line, its arguments and the HTML it was given
 ([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)),
 so that a run converts only the HTML that it has not converted before. Once its files
 are written, each source's prepare deletes those of its rows that it did not use
-([`Conversions.prune`](../../src/kb_mcp/mirror/adapters/conversions.py)).
+([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 Every run still reads the store and builds every document's HTML.
 
 - **Why.** Pandoc was most of a mirror's time, one process a document whether it had
@@ -224,7 +224,7 @@ Every run still reads the store and builds every document's HTML.
   what else a file depends on, a link made relative, a user's name, the site, is inside
   the HTML that each run builds afresh, or in the front matter, which pandoc never
   reads. On that store, a mirror with nothing changed took 2.3 seconds, against 31.2
-  from no cache, and wrote no file; [the tests](../../tests/test_mirror.py) find the
+  from no cache, and wrote no file; [the tests](../../tests/test_prepare_atlassian.py) find the
   bytes of a mirror from no cache after each kind of change.
 - **Cost.** A file of about the Markdown's size, 3 MB on that store. Reading the store
   and building every document's HTML remain at each run, the 2.3 seconds there. A

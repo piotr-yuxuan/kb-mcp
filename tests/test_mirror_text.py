@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 import pytest
 
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror_layout import one_line, visible
+from kb_mcp.mirror.domain.mirror_text import one_line, visible
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,

@@ -291,7 +291,7 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 ### 7. HTML, pandoc and front matter
 
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
-through [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
+through [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
 whatever the download did. It runs for Confluence here, and reads from `run.source` the
 kinds that it converts: Jira's issues are placed too, so that a link to one reaches its
 file, and only pages and blog posts are built.
@@ -318,14 +318,14 @@ document's file:
   module that knows the site's markup, makes the view's HTML plain. Each kind of markup
   is a small [`Construct`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py),
   such as a [`Macro`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py) or a
-  [`Link`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), whose links to
+  [`HtmlLink`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py), whose links to
   mirrored documents become relative; markup that no construct knows stays, as a
   placeholder that names it.
 - [`document_html`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py) lays
   out the title, the body and the attachments (and an issue's comments).
 - [`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)
   gives that HTML's Markdown from the rows of its source in the cache of conversions, which
-  [`prepare_kinds`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
+  [`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
   ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), or has
   [`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py) write it
   as GitHub's Markdown, one process a document, and keeps it. `--sandbox` is among
@@ -340,7 +340,7 @@ document's file:
 A document whose conversion fails is reported by its place in the store, and the others
 go on. The space's tree, `_tree.md`, is written from the listings
 ([`Catalogue.tree`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)). Last,
-[`sync`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
+[`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
 whose bytes differ, through a hidden file renamed into place. Then, when nothing was
 reported, it removes every file that its source owns
 ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py): documents and
@@ -604,7 +604,7 @@ from each document fetched, and a call of a tool is one trace:
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `GET` and `POST`, one a request | [`Recorded`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
-| `prepare.read`, `prepare.build`, `prepare.write` | [`mirror`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
+| `prepare.read`, `prepare.build`, `prepare.write` | [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
 | `index.join` | [`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py) |
 | `index.embed` | [`filling`](../../src/kb_mcp/search/app/indexing.py) |
@@ -631,7 +631,7 @@ Each step has its tests, which say what the code must do in the requirement's wo
 [`test_raw_store.py`](../../tests/test_raw_store.py) for 4 to 6;
 [`test_adapters.py`](../../tests/test_adapters.py) and
 [`test_fields.py`](../../tests/test_fields.py) for 5;
-[`test_mirror.py`](../../tests/test_mirror.py) and
+[`test_mirror.py`](../../tests/test_prepare_atlassian.py) and
 [`test_site_html.py`](../../tests/test_site_html.py) for 7;
 [`test_index.py`](../../tests/test_index.py),
 [`test_index_contract.py`](../../tests/test_index_contract.py),
