@@ -61,7 +61,7 @@ J](code-layout.md#the-contracts)). A declaration's light checks are functions th
 holds, which `fetch` asks before anything is asked of the user: what it refuses, such as
 an API token without its email
 ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), what its run
-does not apply, and what its summary says.
+does not apply, and what its preview says.
 
 - **One fetcher may serve several sources.** Confluence and Jira name one fetcher, which
   reads the kinds of the source that it runs for from `run.source`
@@ -117,7 +117,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 ## Resource types
 
 A source declares what it can read, each a [resource type](../reference/glossary.md#resource-type), a
-[`ResourceType`](../../src/kb_mcp/sources/declaration.py): its name, a summary, how it is
+[`ResourceType`](../../src/kb_mcp/sources/declaration.py): its name, a help line, how it is
 read ([`Reading`](../../src/kb_mcp/sources/declaration.py)), and its options, each an
 [`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds. They are the
 folders that the raw store keeps
@@ -211,7 +211,7 @@ setting's path. So `config` imports no source: each table lives in its package
 it uses ([`site_address`](../../src/kb_mcp/sources/atlassian/settings.py)). The file, the
 environment (`KB_MCP_SOURCES__CONFLUENCE__SPACES`), the flags, layers, secrets and messages
 work as for the core's settings, and a table with a setting of a type of no known kind is
-refused, naming its source, as is a list of other than text, which no summary can show and
+refused, naming its source, as is a list of other than text, which no preview can show and
 no rule of a path reads, and a table inside a table. Raw tables validated when their source runs were rejected:
 they would let a misspelt key pass until then. `fetch` and `prepare` take their names from
 the registry alone, and the names given choose among them. What a run does not apply, such
@@ -341,7 +341,7 @@ result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed
 What a run says of a source comes from the declarations: the names that each command takes
 are the registry's ([`register`](../../src/kb_mcp/cli/options/fetch.py),
 [`register`](../../src/kb_mcp/cli/options/prepare.py)); a source is configured when its first
-setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)); and so do the summary's
+setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)); and so do the preview's
 lines ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py)), the settings not applied
 of the sources left out ([`left_unapplied`](../../src/kb_mcp/cli/options/_sources.py)), the
 light refusals ([`refused`](../../src/kb_mcp/cli/options/fetch.py)) and the options, each flag once. A

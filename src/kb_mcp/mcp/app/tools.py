@@ -912,5 +912,5 @@ class Library:
     def status(self) -> str:
         """Say what the offline mirror holds, and when its index was built."""
         with self._reading() as reader:
-            summary = reader.index_status()
-        return responses.status(summary, self._docs)
+            state = reader.index_status()
+        return responses.status(state, self._docs)

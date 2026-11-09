@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.output import Detail
     from kb_mcp.search.app.indexing import Indexed
 
-# Why an update kept nothing of the index in place, as the detailed summary says it.
+# Why an update kept nothing of the index in place, as the detailed result says it.
 WHOLE = {
     "unavailable": "there being none that this version reads",
     "another version": "written by another version",

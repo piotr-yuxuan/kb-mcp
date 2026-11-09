@@ -17,7 +17,7 @@ AGREED = {"y", "yes"}
 
 
 def ask(then: Then, stdin: TextIO, stderr: TextIO) -> ExitStatus | None:
-    """Do what follows the summary: give None for the run to go on, else its exit status.
+    """Do what follows the preview: give None for the run to go on, else its exit status.
 
     A refusal tells to pass --yes and exits 2. The question reads one line: y or yes
     lets the run go on; any other answer, or the end of input, does nothing and exits 1;

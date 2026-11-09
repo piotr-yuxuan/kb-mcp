@@ -44,7 +44,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     its reason, on stderr alone, as a run that never started has no log file. Before
     ``run.refused`` go the values that the settings loaded ignored, one of which may be
     why, such as a variable that names no setting, unless at the level error, as for a
-    run. Else the values ignored go to stderr, after the summary of a command that writes
+    run. Else the values ignored go to stderr, after the preview of a command that writes
     and before the command to copy. Such a command then asks, unless told not to, and is
     refused where no one can answer: declined, it exits 1, refused, 2, both before the
     run is imported. The run gets the settings loaded, with each one's layer, a flag's

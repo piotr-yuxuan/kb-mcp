@@ -91,7 +91,7 @@ HTTP_NOT_FOUND = 404
 # Jira reads JQL dates in the user's time zone, up to 14 hours off UTC, and a date
 # stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
-# The counts that a short summary shows: the documents fetched, or to fetch, of each kind,
+# The counts that a short result shows: the documents fetched, or to fetch, of each kind,
 # and the files downloaded, or to download; then how a run stopped, if it did.
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 STOPPED = "runs: "

@@ -182,7 +182,7 @@ class NotesPrepared(Result):
 
     @override
     def text(self, summary: Detail) -> str:
-        """Write the files that it changed, whichever the summary; nothing in a dry run."""
+        """Write the files that it changed, whichever the detail; nothing in a dry run."""
         done = self.changes
         return (
             ""

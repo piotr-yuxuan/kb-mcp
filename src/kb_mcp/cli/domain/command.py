@@ -15,7 +15,7 @@ OBSERVING = ("logs.dir", "telemetry.endpoint")
 # What a run does not apply of the values given, by setting, and why: a pure function of
 # the arguments and of every setting's value, by its path joined by dots.
 type CommandUnapplied = Callable[[argparse.Namespace, Mapping[str, object]], Mapping[str, str]]
-# What a run will do, in lines of the summary written before it acts: a pure function of
+# What a run will do, in lines of the preview written before it acts: a pure function of
 # the same.
 type CommandDescribed = Callable[[argparse.Namespace, Mapping[str, object]], tuple[str, ...]]
 # Why a run cannot go on, said before anything is asked, or None when it can: a pure
@@ -38,7 +38,7 @@ class Command:
     ``actions`` are the options and positionals as ``add_argument`` returned them, those
     of the output aside: each flag among them is named by its option, and the command to
     copy carries them. A command that ``writes`` under the data directory shows its
-    summary and that command, then asks before it acts, unless given --yes, which it
+    preview and that command, then asks before it acts, unless given --yes, which it
     then takes, or --dry-run, if it takes one (``dry_run``). A command whose run is not
     ``traced``, such as ``serve``, each of whose requests is a trace, is none of its own.
     One that is not ``observed``, such as ``completion``, which shells run at each start,
@@ -49,8 +49,8 @@ class Command:
     ``unapplied``, if any, names what the run does not apply of the settings given, and
     why, such as the model of an index built by words alone, or the API token that
     ``login`` never reads, so that it is said once; ``described``, if any, gives the
-    lines that the summary ends with; ``refused``, if any, says why the run cannot go
-    on, such as a fetch without a site, which exits 2 before the summary. Each lives
+    lines that the preview ends with; ``refused``, if any, says why the run cannot go
+    on, such as a fetch without a site, which exits 2 before the preview. Each lives
     in the command's own declaration and names no type of ``config``, so that declaring
     the command stays light. ``programs`` names those that the run needs on PATH, such
     as pandoc, without which it is refused alike; ``files`` names, by their ``dest``,

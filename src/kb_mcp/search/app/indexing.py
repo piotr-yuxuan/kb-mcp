@@ -388,11 +388,11 @@ def updated(
     """
     restarted = False
     while True:
-        held = summary = None
+        held = state = None
         if whole is None:
             try:
                 with index.reading() as reader:
-                    held, summary = reader.held(), reader.index_status()
+                    held, state = reader.held(), reader.index_status()
             except DamagedIndexError:
                 whole = "damaged"
             except UnavailableIndexError:
@@ -400,13 +400,13 @@ def updated(
         if held is not None and held.words != WORDS:
             held, whole = None, "another version"
         change = change_of(files, held, aliases, built_at)
-        if change is None and held is not None and summary is not None:  # nothing changed
+        if change is None and held is not None and state is not None:  # nothing changed
             return IndexReport(
-                types=Counter(summary.types),
-                sections=summary.sections,
+                types=Counter(state.types),
+                sections=state.sections,
                 skipped=[(path, held.skipped[path].reason) for path in sorted(held.skipped)],
-                persons=JoinOutcome(count=summary.people.count),
-                awaiting=summary.awaiting if summary.model else None,
+                persons=JoinOutcome(count=state.people.count),
+                awaiting=state.awaiting if state.model else None,
                 unchanged=True,
             )
         try:

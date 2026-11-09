@@ -23,7 +23,7 @@ type Reading = Literal["listed", "searched", "in place"]
 type Refused = Callable[[Mapping[str, object], Mapping[str, object]], str | None]
 # what its run does not apply of the settings given, by setting, and why;
 type Unapplied = Callable[[Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
-# and the lines that a run's summary says of it.
+# and the lines that a run's preview says of it.
 type Described = Callable[[Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
 
 

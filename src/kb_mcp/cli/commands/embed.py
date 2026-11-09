@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned
 
-# Bytes in a megabyte, as the summary says the vector store's size.
+# Bytes in a megabyte, as the result says the vector store's size.
 MB = 1_000_000
 # A vector store made by an earlier version, converted to give freed space back.
 CONVERTED = "; converted, as made by an earlier version, so that it gives freed space back"
