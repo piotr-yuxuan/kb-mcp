@@ -11,7 +11,7 @@ import structlog
 from kb_mcp.cli.app.sources import SourcesRefusedError, run_each
 from kb_mcp.cli.domain.preview import values_of
 from kb_mcp.cli.domain.sources import FETCH, PREPARE, chosen, given
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.exit_status import ENDED, ExitStatus
 from kb_mcp.sources.stages import SourceRun
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
         ran = run_each(stage, runs)
     except SourcesRefusedError as error:
         structlog.get_logger().error(REFUSED[stage], reason=str(error))
-        return ExitStatus.REFUSED, None
+        return ENDED["refused"], None
     return ran.exit_status, ran
 
 

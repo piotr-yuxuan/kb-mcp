@@ -12,6 +12,9 @@ if TYPE_CHECKING:
 # unit that a dry run leaves alone or that an interruption reached before it started; or
 # interrupted.
 type Ending = Literal["done", "failed", "sign in again", "not run", "interrupted"]
+# How a run ended of its own: before any unit acted, declined, refused or interrupted;
+# after, failed by an error that no unit caught.
+type RunEnding = Literal["declined", "refused", "interrupted", "failed"]
 
 
 class ExitStatus(IntEnum):
@@ -36,17 +39,20 @@ MEANINGS = {
     ExitStatus.INTERRUPTED: "stopped by Ctrl-C",
 }
 
-# The exit status of each ending. Their numbers rank them, most severe highest:
-# interrupted, then sign in again, then failed; done and not run are 0.
-ENDED: dict[Ending, ExitStatus] = {
+# The exit status of each ending, a unit's or the run's own. Their numbers rank them, most
+# severe highest: interrupted, then sign in again, then failed; done and not run are 0.
+# Declined and refused end a run before any unit acts, so that nothing else folds with them.
+ENDED: dict[Ending | RunEnding, ExitStatus] = {
     "done": ExitStatus.OK,
     "not run": ExitStatus.OK,
     "failed": ExitStatus.FAILED,
+    "declined": ExitStatus.FAILED,
+    "refused": ExitStatus.REFUSED,
     "sign in again": ExitStatus.SIGN_IN_AGAIN,
     "interrupted": ExitStatus.INTERRUPTED,
 }
 
 
-def folded(endings: Iterable[Ending]) -> ExitStatus:
+def folded(endings: Iterable[Ending | RunEnding]) -> ExitStatus:
     """Give the exit status of the most severe of these endings; OK for none."""
     return max((ENDED[ending] for ending in endings), default=ExitStatus.OK)
