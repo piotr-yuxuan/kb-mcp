@@ -67,7 +67,7 @@ class Account:
     ``table_path`` names the model by module path; ``settings`` are its settings, by name, in
     their order, the first where it signs in. ``login`` names by module path, as ``table_path``
     does, the run of ``kb-mcp login <name>``: a function of the settings, the browser's
-    path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.stages``, or
+    path and, by name, ``extensions``, which gives a record of what it signed in to, or
     None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
     it: a function of the settings, which gives its checks, each a ``Check``. ``refused`` and
     ``unapplied``, if any, are its light checks, which ``doctor`` asks with no options:

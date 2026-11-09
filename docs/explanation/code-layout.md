@@ -101,7 +101,7 @@ A source is a declaration and the code that it names; [sources](sources.md) says
 |---|---|---|
 | `sources/declaration.py` | What a source declares: `Source`, `ResourceType`, `Option`, `Account`, as dataclasses, since `--help` imports them | every declaration |
 | `sources/registry.py` | `SOURCES`, one line per source, and `refuse`, the rules of any registry | `cli`, whose entry takes a registry as a parameter |
-| `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun`, and what a sign-in and its checks give, `SignedIn` and `Check` | each fetcher and preparer, each account's sign-in and checks, and `cli`'s `run_each`, `login` and `doctor` |
+| `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun`, and what an account's checks give, `Check` | each fetcher and preparer, each account's checks, and `cli`'s `run_each` and `doctor` |
 
 The first two stay light for `--help`, and all three are pure, by contracts G and C, which
 name them. Each source's package holds:

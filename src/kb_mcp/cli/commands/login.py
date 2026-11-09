@@ -14,10 +14,10 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Detail
-    from kb_mcp.sources.stages import SignedIn
+    from kb_mcp.kernel.record import Record
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, SignedIn | None]:
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Record | None]:
     """Sign in by the account named, which the declaration requires; exit 3 when none completes.
 
     The run is the one that its account's declaration names, loaded by that path, so that
@@ -34,6 +34,6 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Sign
     return (ExitStatus.SIGN_IN_AGAIN, None) if signed is None else (ExitStatus.OK, signed)
 
 
-def text(_signed_in: SignedIn, _detail: Detail) -> str:
+def text(_signed_in: Record, _detail: Detail) -> str:
     """Say that the session is saved."""
     return "Signed in; the session is saved.\n"

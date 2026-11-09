@@ -14,9 +14,10 @@ from kb_mcp.config.domain.settings import TABLE
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
+from kb_mcp.sources.atlassian.fetch.app.login import SignedIn
 from kb_mcp.sources.declaration import Account
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.stages import Check, SignedIn
+from kb_mcp.sources.stages import Check
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 from tests.test_cli import logged_as

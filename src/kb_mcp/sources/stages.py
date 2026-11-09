@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -36,13 +35,6 @@ class Check(Record):
     name: str
     found: str
     state: CheckState = "well"
-
-
-class SignedIn(Record):
-    """The site signed in to, and the folder that keeps its session."""
-
-    site: str
-    session: Path
 
 
 class SourceRun(Record):
