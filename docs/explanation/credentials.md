@@ -136,8 +136,8 @@ line says `--allow-remote-embeddings`, and one elsewhere is reached over https a
 [`test_a_remote_endpoint_needs_the_flag_and_https`](../../tests/test_embedding.py)). No
 run hands its word to a later one: `eval-agents prepare` writes it into none of the
 runs' files, and each `eval-agents call` is given it or refused
-([`test_a_call_of_runs_off_this_machine_needs_its_own_consent`](../../tests/test_agents_eval.py)). On
-this machine the environment's proxies are ignored, since one would carry both away
+([`test_a_call_of_runs_off_this_machine_needs_its_own_consent`](../../tests/test_agents_eval.py)).
+On this machine the environment's proxies are ignored, since one would carry both away
 ([`test_proxies_are_ignored_on_this_machine`](../../tests/test_embedding.py)), and a
 redirect is never followed
 ([`test_a_redirect_is_not_followed`](../../tests/test_embedding.py)).

@@ -704,9 +704,10 @@ embedding's fingerprint. `serve` sends each query to the embedding endpoint unle
 ranks by words alone and, when reranking is on, sends the query with each first
 candidate's text to the reranking server. `eval` and `eval-rerank` do likewise for the
 indexes that they evaluate and their golden questions, and `model` and `reranker` send
-fixed probes. Every run sends the telemetry endpoint what it records, when one is set. A
-ranking notes when it went without a service; a failing service is skipped for a while
-rather than called on every query.
+fixed probes. `eval-agents prepare` and each `eval-agents call` start a `serve` that
+does likewise, each under its own invocation's consent. Every run sends the telemetry
+endpoint what it records, when one is set. A ranking notes when it went without a
+service; a failing service is skipped for a while rather than called on every query.
 
 **In the code.** [`Service`](../../src/kb_mcp/kernel/endpoint.py),
 [`EMBEDDINGS`](../../src/kb_mcp/kernel/endpoint.py),
