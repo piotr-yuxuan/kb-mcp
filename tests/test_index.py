@@ -774,7 +774,10 @@ def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data:
 
 
 def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
-    """A page whose id is the review's is not the review: its Robin Third makes no Robin."""
+    """A page whose id is the review's is not the review: its Robin Third makes no Robin.
+
+    A summary link names a document of its own source.
+    """
     for front in PERSONS:
         write(data / "docs", front)
     namesake = page(
@@ -790,8 +793,8 @@ def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
 def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> None:
     """Two transcripts whose summaries link each other, as a hand-edited mirror may.
 
-    Neither link names a meeting: the build completes, and their speakers are persons by
-    name alone, as in a transcript that links nothing.
+    Neither is a summary, as each links by summary itself: the build completes, and their
+    speakers are persons by name alone, as in a transcript that links nothing.
     """
     for front in PERSONS:
         write(data / "docs", front)
@@ -809,6 +812,30 @@ def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> No
         ("t-20261022-1", "Alex"): ALEX,
         ("t-20261022-2", "Alex"): ALEX,
     }
+
+
+def test_attendance_joins_by_summary_links_in_any_source(data: Path) -> None:
+    """Plan 058, criterion 4: rule 4 over two pages, neither a meeting nor a transcript.
+
+    A page names Robin Example as a participant; another, which links to it by
+    ``summary``, names Robin: Robin joins Robin Example's person, by attendance.
+    """
+    summary = page(
+        "400001", "Retro notes", people=(Mention(role="participant", name="Robin Example"),)
+    )
+    summarised = page(
+        "400002",
+        "Retro recording",
+        people=(Mention(role="participant", name="Robin"),),
+        links=(Link(relation="summary", ref="400001"),),
+    )
+    for front in (summary, summarised):
+        write(data / "docs", front)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with reading(data / "index.sqlite") as reader:
+        activity = reader.person(anchored("name\nrobin example"))
+    assert activity is not None
+    assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
 
 
 def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(

@@ -304,6 +304,27 @@ def test_by_attendance_joins_a_speaker_to_the_one_person_whose_first_word_it_is(
     assert by_attendance(named(LINKED, "Alex Example"), joining) is None  # not one word
 
 
+def test_attendance_joins_participants_to_participants_alone() -> None:
+    """Rule 4 reads the role participant, never a document's type or another role.
+
+    A one-word author of a document whose summary names Robin Example as a participant
+    joins no one by attendance, nor does a one-word participant whose summary names
+    Robin Example as its author alone.
+    """
+    summary, summarised, authored, by_author = 31, 32, 33, 34
+    rows = (
+        named(summary, "Robin Example"),
+        replace(named(summarised, "Robin"), role="author"),
+        replace(named(authored, "Robin Example"), role="author"),
+        named(by_author, "Robin"),
+    )
+    joining = Joining(rows, {summarised: {summary}, by_author: {authored}}, {})
+    robin_example = anchored("name\nrobin example")
+    joining.persons |= {rows[0]: robin_example, rows[2]: robin_example}
+    assert by_attendance(rows[1], joining) is None
+    assert by_attendance(rows[3], joining) is None
+
+
 def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> None:
     """Rob, in the review's transcript, is not its Robin Example: words compare whole.
 
@@ -853,20 +874,20 @@ def test_a_transcript_before_its_meeting_joins_by_it() -> None:
 
 
 @pytest.mark.parametrize(
-    ("meetings", "refused"),
+    ("summaries", "refused"),
     [({LINKED: {REVIEW}, REVIEW: {LINKED}}, [REVIEW, LINKED]), ({LINKED: {LINKED}}, [LINKED])],
-    ids=["two linking each other", "one linking itself"],
+    ids=["two summarising each other", "one summarising itself"],
 )
-def test_a_meeting_that_links_to_meetings_itself_is_refused_naming_it(
-    meetings: dict[int, set[int]], refused: list[int]
+def test_a_summary_with_summaries_itself_is_refused_naming_it(
+    summaries: dict[int, set[int]], refused: list[int]
 ) -> None:
-    """Each meeting must be joined before the transcripts that link it, so links no meeting.
+    """Each summary must be joined before the documents that it summarises, so has none.
 
-    The index reads the links of transcripts to meetings alone; a caller that gives
-    others is refused, naming the documents, rather than failing within rule 4.
+    The index reads no summary that has summaries; a caller that gives one is refused,
+    naming the documents, rather than failing within rule 4.
     """
-    with pytest.raises(ValueError, match=re.escape(f"documents {refused} link to meetings")):
-        joined(ROWS, meetings, {})
+    with pytest.raises(ValueError, match=re.escape(f"documents {refused} have summaries")):
+        joined(ROWS, summaries, {})
 
 
 def test_a_name_is_reported_once_with_every_person_it_could_be() -> None:

@@ -37,6 +37,7 @@ from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER
 from kb_mcp.kernel.record import Record
+from kb_mcp.mirror.domain.mirror import PARTICIPANT
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable
@@ -212,7 +213,7 @@ class JoinOutcome(Record):
 class Joining:
     """What the rules read, and the person of each row joined so far.
 
-    The names of the accounts, the aliases, each transcript's meetings and each
+    The names of the accounts, the aliases, each document's summaries and each
     document's rows. Names compare by ``compared_key``: by their key, but for the names of a key
     written with two annotations or more, by a source or the user, such as "Alex (Ops)"
     and "Alex (Sales)", which were written apart, and which then keep them.
@@ -224,17 +225,17 @@ class Joining:
         summaries: Mapping[int, Collection[int]],
         aliases: Mapping[str, str],
     ) -> None:
-        """Read the rows, the meetings of each transcript, by number, and the aliases.
+        """Read the rows, the summaries of each document, by number, and the aliases.
 
         An alias's value is a person's id; or a name, which means the one account of
         its key, as rule 3 finds it, else the person by name alone of a key that a name
         without an account holds. ``joined`` keeps either when an account or a name
         makes that person: aliases are not chained. Raise ValueError, naming them, for
-        documents that are a transcript's meetings and link to meetings themselves, as a
-        transcript, or itself, would: rule 4 needs each meeting joined before.
+        documents that are summaries and have summaries themselves, as one that is its
+        own would: rule 4 needs each summary joined before.
         """
         if chained := sorted(set(summaries).intersection(chain.from_iterable(summaries.values()))):
-            message = f"documents {chained} link to meetings and are linked to as meetings"
+            message = f"documents {chained} have summaries and are summaries"
             raise ValueError(message)
         self.summaries = summaries
         self.persons: dict[PersonRow, str] = {}
@@ -304,8 +305,8 @@ def by_alias(row: PersonRow, joining: Joining) -> Meant:
     """Give a name without an account to the person its alias means (rule 2).
 
     An alias whose value names nobody, or several, changes nothing; nor does it take a
-    transcript's speaker whom its meetings give one other person, by rule 4: the user
-    wrote those participants for that meeting, and the alias for the name anywhere.
+    participant whom rule 4 gives one other person: the user wrote the summaries'
+    participants for that document, and the alias for the name anywhere.
     """
     alias = joining.aliases.get(name_key(row.name))
     if alias is None or alias.reason is not None:
@@ -317,10 +318,10 @@ def by_alias(row: PersonRow, joining: Joining) -> Meant:
 def by_name(row: PersonRow, joining: Joining) -> Meant:
     """Join a name without an account to the one account of its key (rule 3).
 
-    A name of several accounts' key is ambiguous; so is a transcript's speaker whose
-    meetings give it, by rule 4, persons that do not hold that account: the site's name
-    and the participants that the user wrote for the meeting then disagree. A speaker of
-    several accounts' key could be any of them or its meetings' persons.
+    A name of several accounts' key is ambiguous; so is a participant whom rule 4 gives
+    persons that do not hold that account: the site's name and the summaries'
+    participants then disagree. A participant of several accounts' key could be any of
+    them or rule 4's persons.
     """
     found = joining.identified(row.name)
     attended = by_attendance(row, joining)
@@ -333,20 +334,20 @@ def by_name(row: PersonRow, joining: Joining) -> Meant:
 
 
 def by_attendance(row: PersonRow, joining: Joining) -> Meant:
-    """Join a transcript's speaker by the meetings that the transcript links to (rule 4).
+    """Join a participant by the summaries of its document (rule 4).
 
-    A speaker whose key is the first word of the keys of some of those meetings'
+    A participant whose key is the first word of the keys of some of the summaries'
     participants, and so one word, joins their person when they are one, and is
-    ambiguous when they are several. Their rows must be joined already. Every row of a
-    document that links to meetings is a transcript's speaker, and every row of a
-    meeting a participant: the work log's documents hold no other role.
+    ambiguous when they are several. Their rows must be joined already.
     """
+    if row.role != PARTICIPANT:
+        return None
     key = name_key(row.name)
     persons = {
         joining.persons[other]
         for summary in joining.summaries.get(row.document, ())
         for other in joining.rows.get(summary, ())
-        if first_word(other.name) == key
+        if other.role == PARTICIPANT and first_word(other.name) == key
     }
     if len(persons) > 1:
         return Ambiguity(name=row.name, persons=frozenset(persons))
@@ -355,8 +356,8 @@ def by_attendance(row: PersonRow, joining: Joining) -> Meant:
 
 # Rules 2 to 4, each with how a name joins by it, in the order that ``joined`` tries them,
 # the first answer winning. The order is not all of it: rules 2 and 3 read rule 4's
-# answer, so that neither takes a speaker whom its meeting gives another person; a rule
-# added here says how it stands to rule 4.
+# answer, so that neither takes a participant whom the summaries give another person; a
+# rule added here says how it stands to rule 4.
 RULES: tuple[tuple[str, Callable[[PersonRow, Joining], Meant]], ...] = (
     (BY_ALIAS, by_alias),
     (BY_NAME, by_name),
@@ -369,16 +370,16 @@ def joined(
 ) -> Joined:
     """Join every row into its person: by its account, by RULES in order, or by its name.
 
-    ``summaries`` gives each transcript's meetings, by number, as its ``summary`` links
-    name them, none of them a transcript (``Joining`` refuses one that links to
-    meetings); ``aliases`` each alias's name and value, of distinct keys, as the alias
-    file's reader checks. Rows go in order of document, role, name and account, linked
-    transcripts' last, so that their meetings' persons are known; the same rows in any
-    order give the same result. A person is served by the name on its account's most
+    ``summaries`` gives each document's summaries, by number, as its ``summary`` links
+    name them, none of which has summaries (``Joining`` refuses one); ``aliases`` each
+    alias's name and value, of distinct keys, as the alias file's reader checks. Rows go
+    in order of document, role, name and account, those of documents with summaries
+    last, so that their summaries' persons are known; the same rows in any order give
+    the same result. A person is served by the name on its account's most
     recently updated document; else by the value of the alias that made it, when that
     is a name; else by its most frequent spelling: ties go to the first row in order.
     An alias whose value, a person's id or a name, means a person that no account or
-    name makes, but aliases or meetings alone, names nobody: the join is made again
+    name makes, but aliases or attendance alone, names nobody: the join is made again
     without it, each pass with fewer aliases.
     """
     ordered = sorted(
@@ -418,7 +419,7 @@ def joined(
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
     # The persons that an account or a name makes, whatever rule joined that name to its
-    # own person, but not an alias or a meeting alone, which join a name to another's.
+    # own person, but not an alias or attendance alone, which join a name to another's.
     made = {
         person
         for person, joins in members.items()

@@ -295,11 +295,13 @@ COPY = (
     JOIN main.sections s ON s.rowid = p.section
     """,
 )
-# What the join reads: each row of people, with when its document was updated; and each
-# transcript's meetings, as its summary links name them, by rowid. A link to anything
-# but a meeting names none, as a file edited by hand may hold. CROSS JOIN keeps SQLite's
-# order, each transcript, its links, then the meeting by its source and id, so that the
-# work grows with the links, not with the square of one source's documents.
+# What the join reads: each row of people, with when its document was updated; and the
+# documents that each document's summary links name in its source, by rowid. A document
+# that links by summary itself is named by none, as a file edited by hand may hold: rule
+# 4 needs the participants of each summary joined before those that it summarises.
+# CROSS JOIN keeps SQLite's order, each document, its links, then the one linked by its
+# source and id, so that the work grows with the links, not with the square of one
+# source's documents.
 PEOPLE_ROWS = """
 SELECT p.rowid, p.document, p.role, p.name, p.identity, d.updated
 FROM people p JOIN documents d ON d.rowid = p.document
@@ -310,8 +312,11 @@ BY_PATH = "SELECT rowid, row_number() OVER (ORDER BY path) FROM documents"
 SUMMARY_LINKS = """
 SELECT t.rowid, m.rowid
 FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
-WHERE t.type = 'transcript' AND json_extract(l.value, '$.relation') = 'summary'
-  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref') AND m.type = 'meeting'
+WHERE json_extract(l.value, '$.relation') = 'summary'
+  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref')
+  AND NOT EXISTS (
+    SELECT 1 FROM json_each(m.links) n WHERE json_extract(n.value, '$.relation') = 'summary'
+  )
 """
 # A person's documents per role, then per source with the newest update, the most first.
 PERSON_ROLES = """
@@ -530,8 +535,8 @@ class Writer:
 
         Once the last document is added: every row of ``people`` is given its person, and
         ``persons`` and ``person_names`` hold each person and each of its spellings, with
-        how it joined. A transcript's meetings are the meetings that its ``summary`` links
-        name: no other document, so that each is joined before the transcript.
+        how it joined. A document's summaries are the documents of its source that its
+        ``summary`` links name, none of which links so itself.
         ``aliases`` gives each alias's name and value, as the alias file's reader checks
         them, and the build records their digest. Documents go to the join by the order
         of their paths, so that its ties go as in a whole build, whichever file was edited
@@ -554,8 +559,8 @@ class Writer:
             )
         }
         summaries: dict[int, set[int]] = {}
-        for transcript, meeting in self._connection.execute(SUMMARY_LINKS):
-            summaries.setdefault(places[transcript], set()).add(places[meeting])
+        for document, summary in self._connection.execute(SUMMARY_LINKS):
+            summaries.setdefault(places[document], set()).add(places[summary])
         found = people.joined(rows.values(), summaries, aliases)
         self._connection.executemany(
             "UPDATE people SET person = ? WHERE rowid = ?",
