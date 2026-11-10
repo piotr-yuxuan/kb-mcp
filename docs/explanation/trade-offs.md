@@ -491,7 +491,7 @@ account with a name of its key
 ([`by_name`](../../src/kb_mcp/search/domain/people.py)); for a
 transcript's speaker, to the one participant of the meetings that the transcript links
 to whose name's first word is the speaker's, whole
-([`by_meeting`](../../src/kb_mcp/search/domain/people.py)); else it is
+([`by_attendance`](../../src/kb_mcp/search/domain/people.py)); else it is
 a person by name alone, shared by every name of its key. Names compare by a key, without
 case, accents, runs of spaces or a trailing part in brackets
 ([`name_key`](../../src/kb_mcp/search/domain/people.py)), but for the

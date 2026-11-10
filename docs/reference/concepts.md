@@ -356,7 +356,7 @@ written `<issuer>:<value>`, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.
 [`RULES`](../../src/kb_mcp/search/domain/people.py),
 [`by_alias`](../../src/kb_mcp/search/domain/people.py),
 [`by_name`](../../src/kb_mcp/search/domain/people.py) and
-[`by_meeting`](../../src/kb_mcp/search/domain/people.py);
+[`by_attendance`](../../src/kb_mcp/search/domain/people.py);
 [`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py);
 [`about`](../../src/kb_mcp/mcp/app/tools.py), which finds those perhaps the same; the
 column `person_names.joined` and [`JOINED`](../../src/kb_mcp/mcp/app/responses.py),

@@ -552,10 +552,10 @@ class Writer:
                 PEOPLE_ROWS
             )
         }
-        meetings: dict[int, set[int]] = {}
+        summaries: dict[int, set[int]] = {}
         for transcript, meeting in self._connection.execute(SUMMARY_LINKS):
-            meetings.setdefault(places[transcript], set()).add(places[meeting])
-        found = people.joined(rows.values(), meetings, aliases)
+            summaries.setdefault(places[transcript], set()).add(places[meeting])
+        found = people.joined(rows.values(), summaries, aliases)
         self._connection.executemany(
             "UPDATE people SET person = ? WHERE rowid = ?",
             [(found.of[row], rowid) for rowid, row in rows.items()],
@@ -885,7 +885,7 @@ class Reader:
     def persons(self, key: str, joined: str | None = None) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_IDENTITY``.
         """
         rows = self._connection.execute(
             "SELECT DISTINCT person FROM person_names"

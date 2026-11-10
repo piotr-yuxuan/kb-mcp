@@ -536,7 +536,7 @@ site says they are two. A name without an account goes, by the first rule that a
 that the user's alias names; to the one account with a name of its key; for a
 transcript's speaker, to the one participant of the meetings that the transcript links
 to whose name's first word is the speaker's, whole
-([`by_meeting`](../../src/kb_mcp/search/domain/people.py)), "Sam" to the
+([`by_attendance`](../../src/kb_mcp/search/domain/people.py)), "Sam" to the
 stand-up's "Sam Sample", but "Rob" to no "Robin Example"; else it is a person by name
 alone, one for every name of its key. A key leaves out case, accents, runs of spaces
 and a trailing part in brackets

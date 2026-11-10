@@ -33,7 +33,7 @@ from kb_mcp.search.domain.people import (
     PersonRow,
     Spelling,
     by_alias,
-    by_meeting,
+    by_attendance,
     by_name,
     joined,
     name_key,
@@ -274,7 +274,7 @@ def test_by_name_joins_a_name_to_the_one_account_of_its_key() -> None:
     assert by_name(named(STAND_UP, "Alex Example"), joining) is None
 
 
-def test_by_meeting_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -> None:
+def test_by_attendance_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -> None:
     """Rule 4 alone: a one-word speaker, the whole first word of its meetings' participants.
 
     The participants' persons are given, as the other rules would have joined them: two
@@ -293,15 +293,15 @@ def test_by_meeting_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -
     joining = Joining(meetings, links, {})
     persons = (ROBIN, ALEX_EXAMPLE, ROBIN, ROBIN_OTHER, ROBIN, ROBIN)
     joining.persons |= dict(zip(meetings, persons, strict=True))
-    assert by_meeting(named(LINKED, "robin"), joining) == ROBIN
-    assert by_meeting(named(linked_to_offsite, "Robin"), joining) == ROBIN
-    assert by_meeting(named(PLANNED, "Robin"), joining) == Ambiguity(
+    assert by_attendance(named(LINKED, "robin"), joining) == ROBIN
+    assert by_attendance(named(linked_to_offsite, "Robin"), joining) == ROBIN
+    assert by_attendance(named(PLANNED, "Robin"), joining) == Ambiguity(
         name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})
     )
-    assert by_meeting(named(UNLINKED, "Robin"), joining) is None
-    assert by_meeting(named(LINKED, "Example"), joining) is None  # not a first word
-    assert by_meeting(named(LINKED, "Rob"), joining) is None  # a first word's start alone
-    assert by_meeting(named(LINKED, "Alex Example"), joining) is None  # not one word
+    assert by_attendance(named(UNLINKED, "Robin"), joining) is None
+    assert by_attendance(named(LINKED, "Example"), joining) is None  # not a first word
+    assert by_attendance(named(LINKED, "Rob"), joining) is None  # a first word's start alone
+    assert by_attendance(named(LINKED, "Alex Example"), joining) is None  # not one word
 
 
 def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> None:

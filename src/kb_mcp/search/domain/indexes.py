@@ -200,7 +200,7 @@ class WordsReader(Protocol):
     def persons(self, key: str, joined: str | None = None) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_IDENTITY``.
         """
 
     def person(self, person: str) -> Activity | None:

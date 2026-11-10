@@ -39,10 +39,10 @@ RESERVE = 100
 SPACES = re.compile(r"\s+")
 # How each name of a person joined them, as a person's answer says it.
 JOINED = {
-    people.BY_ACCOUNT: "by its account",
+    people.BY_IDENTITY: "by its account",
     people.BY_ALIAS: "by an alias",
     people.BY_NAME: "by name",
-    people.BY_MEETING: "as a speaker, by the meeting of each transcript",
+    people.BY_ATTENDANCE: "as a speaker, by the meeting of each transcript",
 }
 
 

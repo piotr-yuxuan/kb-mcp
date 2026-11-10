@@ -455,7 +455,7 @@ def about(
     moved = [
         (word, reader.persons(word, people.BY_NAME))
         for word in words
-        if not reader.persons(word, people.BY_ACCOUNT)
+        if not reader.persons(word, people.BY_IDENTITY)
     ]
     alike = [
         (word, reader.person(ids[0]))
