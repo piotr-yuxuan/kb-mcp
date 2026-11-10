@@ -121,8 +121,7 @@ settings loaded.
 
 [`run`](../../src/kb_mcp/cli/commands/sources.py) turns the settings into
 a [`SourceRun`](../../src/kb_mcp/sources/stages.py) for each source taken, a small frozen
-record: its declaration, the settings, its table and its account's, its options'
-values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
+record: its declaration, the settings, its table, its options' values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
 configured, so no run is of it.
 
 [`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each fetcher or preparer that a source's

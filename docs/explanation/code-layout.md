@@ -108,14 +108,14 @@ name them. Each source's package holds:
 
 | Module | What it holds | Loaded |
 |---|---|---|
-| `declared.py` | The declaration of each connector: its name, scope types, table, account, fetcher and preparers by module path | at every parse: contract G keeps it light |
-| `settings.py` | The Pydantic models of its table and its account | with the settings, by the path that its declaration names |
+| `declared.py` | The declaration of each connector: its name, scope types, table, location, fetcher, preparers, login and checks by module path | at every parse: contract G keeps it light |
+| `settings.py` | The Pydantic model of its table, its sign-in's settings included | with the settings, by the path that its declaration names |
 | `fetch/` | Its fetcher, if any, and all that it uses | by the run that uses it |
 | `prepare/` | Its preparers, and all that they use | by the run that uses it |
 
 Each source imports the interfaces, `mirror`, `config`'s rules of a table, `observability`
-and the kernel. `cli` reaches its fetcher and preparers by the paths of its declaration, and its sign-in
-and checks by those of its account, never by name.
+and the kernel. `cli` reaches its fetcher, preparers, login and checks by the paths of its
+declaration, never by name.
 
 ## The stages within a source
 

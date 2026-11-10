@@ -31,6 +31,14 @@ value replaces a weaker one's whole, a list included, as
 
 A path that starts with `~` starts in the home directory.
 
+**Sources.** Each source is a table, `[sources.<name>]`, its name a lower-case word that
+starts with a letter, none of `assets`, `http` and `https`. The table's `connector` names
+its connector, by default its own name: `confluence`, `jira` and `worklog` are always
+there and need none, and a second site of Jira is a source of its own, such as
+`[sources.clientjira]` with `connector = "jira"`, whose settings are Jira's, below, under
+its name, and whose variables follow, such as `KB_MCP_SOURCES__CLIENTJIRA__SITE`.
+A table or a variable of a source of no known connector is refused, naming it.
+
 ## Settings
 
 | Key | Variable | Type | Default | Description |

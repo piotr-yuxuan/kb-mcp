@@ -433,8 +433,8 @@ the ranks.
 Every step runs from a checkout of this repository, with `uv`, on any machine: this
 laptop, or another such as one with a GPU, which should change the times. The
 sandbox's commands name `--config <missing-file>`, a path where no file is, so that the
-machine's settings file changes nothing: otherwise `prepare` would write its account's
-site into the mirror's addresses, and `embed`, `model check` and `eval` would take its model and
+machine's settings file changes nothing: otherwise `prepare` would write its sources'
+sites into the mirror's addresses, and `embed`, `model check` and `eval` would take its model and
 endpoint, `embed` its chunking too. The variables `KB_MCP_…`
 still apply: leave them unset, but where a command sets them. On your own corpus, your
 settings are the point: leave the flag out. Two things come first:
