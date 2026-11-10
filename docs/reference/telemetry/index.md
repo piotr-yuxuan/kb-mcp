@@ -10,7 +10,8 @@ index beside the old one, copying the documents whose file did not change with t
 chunks, reading those added or changed, leaving out those gone, and joining every
 document's people into persons through the alias file; or it rebuilds the index whole.
 It holds the index's lock, beside it, from its check that the index is still the one it
-read until the new one is in place. A build with vectors is [`embed`](embed.md)'s.
+read until the new one is in place. A build with vectors is [`embed`](embed.md)'s. Its
+task `files` reports each file that it reads, by its path, as the README says of tasks.
 
 ## Events
 

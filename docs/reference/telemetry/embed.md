@@ -12,7 +12,8 @@ the chunks added and removed into a copy of the index, under the index's lock, f
 check that the index is still the one it read until the copy is in place. Then the prune
 of the vector cache is a span of its own, `index.prune`: the vectors that neither the
 index, as `embed` wrote it, nor an evaluation's index reads are deleted, and their pages
-given back.
+given back. Its task `texts to embed` reports the texts that the vector cache lacks, as
+the README says of tasks.
 
 ## Events
 

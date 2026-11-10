@@ -5,7 +5,9 @@ is one trace: its root `eval-rerank`, the reranking server's list of models, the
 connection to the embedding model, the whole build of its index, as the events below
 list it, then the searches and answers of every question in each arm, as `serve` records
 them, the reranked ones through the reranking server. A question is timed, never a span
-of its own.
+of its own. The build's tasks are `files`, each file read by its path, and `texts to
+embed`, those that the vector cache lacks; then the task `questions` reports every
+question in each arm, each by its id, as the README says of tasks.
 
 ## Events
 

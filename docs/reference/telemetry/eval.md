@@ -6,7 +6,10 @@ model and a chunking, which holds the whole build of its index, as the events be
 and the searches and answers of every question in every mode, as `serve` records them. A
 question is timed and logged, never a span of its own. A build that waits for a prune of
 the vector cache records `vectors.lock_wait`, as [embed.md](embed.md) lists it, and one
-that waits past 60 s is `eval.not_evaluated`.
+that waits past 60 s is `eval.not_evaluated`. Each build's tasks are `files`, each file
+read by its path, and `texts to embed`, those that the vector cache lacks; then the task
+`questions` reports every question in every mode, each by its id, as the README says of
+tasks.
 
 ## Events
 
