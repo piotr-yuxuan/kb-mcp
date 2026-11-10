@@ -36,11 +36,6 @@ class Service:
             message = f"{self.name}: a form, or a flag, not both"
             raise ValueError(message)
 
-    @property
-    def otherwise(self) -> str:
-        """Offer the flag as a refusal ends; nothing for a service this machine alone serves."""
-        return f", or pass {self.flag}" if self.flag else ""
-
 
 EMBEDDINGS = Service(
     name="the embedding endpoint",
@@ -114,9 +109,10 @@ def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str
     if loopback(url):
         return None
     if not (remote_allowed and service.flag):
+        otherwise = f", or pass {service.flag}" if service.flag else ""
         return (
             f"not an address of this machine, where {service.sends} would go;"
-            f" write 127.0.0.1 for this one{service.otherwise}"
+            f" write 127.0.0.1 for this one{otherwise}"
         )
     if not url.startswith("https://"):
         return "an endpoint off this machine is reached over https only"
