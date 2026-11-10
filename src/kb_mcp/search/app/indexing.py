@@ -240,20 +240,15 @@ def build_index(
     A file that cannot be read, that ``markdown.load`` refuses, or whose document is
     there already is skipped, and named in the report with a reason that holds no
     content; the index records it, with its digest, as it does each document's. Once the
-    files are read, the documents' people are joined into persons,
-    through ``aliases``, the alias file's, else none, as for an evaluation's index: the
-    report counts the persons and gives what the join left apart. The index replaces
-    the old one only once complete. Raises ModelError when the embedding fails; the old
-    index then stays. A chunk whose text the model refuses is left without a vector,
-    and its document named in the report. With an embedding,
-    the build holds the vector cache's lock shared, from before it reads the mirror until
-    its index is in place, so that no prune deletes what it embeds; it waits for a prune
-    in progress, and raises TimeoutError past ``WAIT_S``, the conversions'. The task ``files``
-    reports the files read, each by its path, then the vector cache its own. The spans
-    ``index.files``, ``Writer.join``'s ``index.join`` and ``index.embed`` hold reading the
-    files, joining persons and embedding the chunks;
-    ``index.document`` says each file indexed at DEBUG, ``index.built`` the counts at
-    INFO once the index is complete.
+    files are read, the documents' people are joined into persons through ``aliases``,
+    the alias file's, else none, as for an evaluation's index: the report counts the
+    persons and gives what the join left apart. The index replaces the old one only once
+    complete. Raises ModelError when the embedding fails; the old index then stays. A
+    chunk whose text the model refuses is left without a vector, and its document named
+    in the report. With an embedding, the build holds the vector cache's lock shared,
+    from before it reads the mirror until its index is in place, so that no prune
+    deletes what it embeds; it waits for a prune in progress, and raises TimeoutError
+    past ``WAIT_S``, the conversions'.
     """
     files = document_files(docs)
     report = IndexReport()
