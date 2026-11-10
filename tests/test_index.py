@@ -21,6 +21,7 @@ import pytest
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import WORKLOG_TYPES
+from kb_mcp.kernel.outcome import OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index, vector_cache
@@ -359,6 +360,30 @@ def test_a_bug_in_the_database_s_use_is_not_taken_for_a_failure_to_write(
     )
     with pytest.raises(sqlite3.ProgrammingError):
         update_index(indexing, MOMENT)
+
+
+@pytest.mark.parametrize("failing", ["aliases", "docs"])
+def test_an_index_not_built_fails_by_the_input_that_stopped_it(data: Path, failing: str) -> None:
+    """The alias file refused, or no mirror: nothing built, one problem by that input."""
+    indexing = Indexing(
+        docs=data / "docs",
+        index=data / "index.sqlite",
+        vectors=data / "vectors.sqlite",
+        evaluation_indexes=data / "eval" / "indexes",
+        aliases=data / "aliases.toml",
+        model="tiny",
+        chunking="sections",
+        endpoint=None,
+    )
+    if failing == "aliases":
+        indexing.aliases.write_text("not = [toml\n", encoding="utf-8")
+    else:
+        shutil.rmtree(indexing.docs)
+    outcome = update_index(indexing, MOMENT)
+    (problem,) = outcome.problems
+    assert (outcome.ending, outcome.counts) == ("failed", None)
+    assert problem.where == str(getattr(indexing, failing))
+    assert not indexing.index.exists()
 
 
 @pytest.mark.parametrize("mode", ["lexical", "hybrid"])
@@ -779,6 +804,10 @@ def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data:
     assert [ambiguity.name for ambiguity in report.counts.persons.ambiguous] == ["Sam Sample"]
     unused = [(alias.name, alias.reason) for alias in report.counts.persons.unused]
     assert unused == [("Jo Placeholder", UNHELD)]
+    assert report.warnings == (
+        OutcomeWarning(where="Sam Sample", reason="could be 2 persons"),
+        OutcomeWarning(where="Jo Placeholder", reason=f"alias that changed nothing: {UNHELD}"),
+    )
     held, names, person_of = joined_rows(data / "index.sqlite")
     assert ROBIN_ALONE not in {person for person, _ in held}
     assert (ROBIN, "Robin", "robin", "alias") in names

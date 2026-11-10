@@ -489,7 +489,7 @@ def update_index(
     cannot be read, was written by another ``WORDS``, is damaged, or ``rebuild`` asks.
     When the alias file is refused or cannot be read, there is no mirror, the index
     cannot be written, its lock is held too long, or another run writes it at each
-    attempt, the index in place stays, the outcome fails by a problem of the index, and
+    attempt, the index in place stays, the outcome fails by a problem of that input, and
     ``index.not_built`` is an error. Each file skipped is a problem and a warning event,
     as is their count, even when nothing is written; each name that could be several
     persons and each alias that changed nothing, once a build, a warning of both.
@@ -509,8 +509,10 @@ def update_index(
         sqlite3.OperationalError,
     ) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
-        not_built = Problem(where=str(indexing.index), reason=str(error))
-        return Outcome.of(problems=(not_built,))
+        # By the input that stopped it: the alias file, the mirror, else the index.
+        failing = {AliasFileError: indexing.aliases, MirrorMissingError: indexing.docs}
+        where = failing.get(type(error), indexing.index)
+        return Outcome.of(problems=(Problem(where=str(where), reason=str(error)),))
     report = outcome.counts
     counts = {name: getattr(report, name) for name in OUTCOMES}
     if report.rebuilt:
