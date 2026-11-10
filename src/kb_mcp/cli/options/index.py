@@ -31,8 +31,9 @@ def register(
         help="update the search index of the mirror's words to what changed",
         epilog=(
             "With --format json: `ending` (done, failed); `counts`, null when nothing was"
-            " built: `types`, the documents held by type, `sections`, `persons`, how many"
-            " the join made, the documents `copied`, `added`, `replaced` and `removed`,"
+            " built: `types`, the documents held by type, `sections`, `persons`, the join's"
+            " `count`, the names `ambiguous` and the aliases `unused`, the documents"
+            " `copied`, `added`, `replaced` and `removed`,"
             " `awaiting`, those awaiting vectors, null when the index names no model,"
             " `unchanged`, whether nothing was written, `rebuilt`, why the index was rebuilt"
             " whole, if it was, and `index`, its path; `problems`, each file skipped, or why"

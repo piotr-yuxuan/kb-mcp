@@ -1251,6 +1251,12 @@ def test_index_s_json_warns_of_an_unused_alias_and_fails_by_a_file_without_front
     assert document["ending"] == "failed"
     (unused,) = [each for each in document["warnings"] if each["where"] == "Jo Placeholder"]
     assert unused["reason"].startswith("alias that changed nothing: ")
+    (alias,) = document["counts"]["persons"]["unused"]  # written whole, keys kept
+    assert (sorted(alias), alias["key"], alias["target"]) == (
+        ["held", "key", "means", "name", "target"],
+        "jo placeholder",
+        "Robin Example",
+    )
     assert [each["where"] for each in document["problems"]] == ["stray.md"]
 
 

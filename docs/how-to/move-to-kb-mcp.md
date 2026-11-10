@@ -266,9 +266,9 @@ What reads a run's output follows:
   `problems`, `warnings` and `elsewhere`, now the row's `problems` and `warnings`; the
   work log's `held_back`, once each problem's, is `counts.held_back`, by each problem's
   place. `index` and `embed` write one outcome each, its `ending`, `counts`, `problems`
-  and `warnings`. `index`'s `report` is its `counts`, with `index`, its path, and
-  `persons`, how many the join made; its `skipped` files are its `problems`, and what
-  `persons` left apart, each ambiguous name and each unused alias, its `warnings`; its
+  and `warnings`. `index`'s `report` is its `counts`, with `index`, its path; its
+  `skipped` files are its `problems`, and what `persons` left apart, each ambiguous name
+  and each unused alias, its `warnings` too; its
   `model` and `pruned` are gone; its `chunks` was `pieces` before schema 7. `embed`'s
   result is its `counts`, `chunks` formerly `pieces`; its `refused` documents, and each
   file that the index lacks, `skipped` counting them, are its `problems`, and a mirror

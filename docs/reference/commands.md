@@ -436,13 +436,13 @@ options:
   --rebuild             build the index whole, keeping nothing of it
 
 With --format json: `ending` (done, failed); `counts`, null when nothing was built:
-`types`, the documents held by type, `sections`, `persons`, how many the join made,
-the documents `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting
-vectors, null when the index names no model, `unchanged`, whether nothing was written,
-`rebuilt`, why the index was rebuilt whole, if it was, and `index`, its path;
-`problems`, each file skipped, or why nothing was built, and `warnings`, each name
-that could be several persons and each alias that changed nothing, each with its
-`where` and `reason`.
+`types`, the documents held by type, `sections`, `persons`, the join's `count`, the
+names `ambiguous` and the aliases `unused`, the documents `copied`, `added`,
+`replaced` and `removed`, `awaiting`, those awaiting vectors, null when the index
+names no model, `unchanged`, whether nothing was written, `rebuilt`, why the index was
+rebuilt whole, if it was, and `index`, its path; `problems`, each file skipped, or why
+nothing was built, and `warnings`, each name that could be several persons and each
+alias that changed nothing, each with its `where` and `reason`.
 ```
 
 ## `login`

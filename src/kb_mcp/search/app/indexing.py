@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import structlog
 from opentelemetry import metrics, trace
-from pydantic import ConfigDict, Field, field_serializer
+from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.chunking import Chunking
 from kb_mcp.kernel.fields import RepresentationError
@@ -97,9 +97,8 @@ class ChangedMeanwhileError(Exception):
 class IndexCounts(Record):
     """What a build indexed, whom it joined, and, for an update, what it changed.
 
-    ``persons`` is the join's whole outcome, written as its count alone: what it left
-    apart is the build's warnings. ``index`` is the index written, once ``update_index``
-    names it.
+    ``persons`` is the join's whole outcome, what it left apart the build's warnings too;
+    ``index`` is the index written, once ``update_index`` names it.
     """
 
     model_config = ConfigDict(frozen=False)
@@ -120,11 +119,6 @@ class IndexCounts(Record):
     unchanged: bool = False  # nothing written, the index holding the mirror as it is
     rebuilt: Whole | None = None  # why an update kept nothing of the index in place
     index: Path | None = None
-
-    @field_serializer("persons")
-    def persons_counted(self, persons: JoinOutcome) -> int:
-        """Write the persons joined by their count; the warnings say what was left apart."""
-        return persons.count
 
     def text(self, detail: Detail) -> str:
         """Write what the index holds and what changed of it: a line each, or one in detail."""
