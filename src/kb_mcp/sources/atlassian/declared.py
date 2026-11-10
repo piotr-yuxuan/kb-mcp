@@ -1,17 +1,15 @@
-"""Confluence's and Jira's declarations: what each reads of the site, its table and stages.
+"""Confluence's and Jira's connectors: what each reads of the site, its table and stages.
 
-The raw store keeps each resource type, fetched over a period that its options give.
+The raw store keeps each document type, fetched over a period that the options give.
 Both sign in with one Atlassian account, its site's, name one fetcher and one preparer,
-which read the resource types of the source that they run for from its declaration, and
-share their light checks: the sign-in's, and the period's.
+which read the scope types and document types of the connector of the source that they
+run for, and share their light checks: the sign-in's, and the period's.
 """
 
 from __future__ import annotations
 
-import argparse
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
@@ -23,11 +21,10 @@ from kb_mcp.sources.atlassian.fetch.domain.period import (
     moment,
     period_rule,
 )
-from kb_mcp.sources.declaration import Account, Option, ResourceType, Source
+from kb_mcp.sources.declaration import Account, Connector, Option
 
 if TYPE_CHECKING:
-    import re
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
 
 
 def site_not_set(_given: object, settings: Mapping[str, object]) -> str | None:
@@ -67,7 +64,7 @@ SITE, EMAIL, API_TOKEN = ATLASSIAN.paths
 SINCE, UNTIL, MAX_FILE_MB = PERIOD = (
     Option(
         flag=SINCE_FLAG,
-        help="12h, 7d, 6mo, an ISO date or time, or all; by default, each target's last fetch",
+        help="12h, 7d, 6mo, an ISO date or time, or all; by default, each scope's last fetch",
     ),
     Option(flag=UNTIL_FLAG, help="12h, 7d, or an ISO date or time, excluded; by default, now"),
     Option(
@@ -78,31 +75,6 @@ SINCE, UNTIL, MAX_FILE_MB = PERIOD = (
 )
 
 
-def key_of(name: str, rule: re.Pattern[str]) -> Callable[[str], str]:
-    """Return an argparse type that takes a key by its rule, a space's or a project's."""
-
-    def check(text: str) -> str:
-        if not rule.fullmatch(text):
-            message = f"not a {name} key: {text!r}"
-            raise argparse.ArgumentTypeError(message)
-        return text
-
-    return check
-
-
-# The options that replace a source's list for one run.
-SPACE = Option(
-    flag="--space",
-    help="a space key, in place of the setting's; repeat for more",
-    parse=key_of("space", SPACE_KEY),
-    setting="sources.confluence.spaces",
-)
-PROJECT = Option(
-    flag="--project",
-    help="a project key, in place of the setting's; repeat for more",
-    parse=key_of("project", PROJECT_KEY),
-    setting="sources.jira.projects",
-)
 FETCHER = "kb_mcp.sources.atlassian.fetch.app.fetcher"
 PREPARER = "kb_mcp.sources.atlassian.prepare.app.preparer"
 
@@ -141,7 +113,7 @@ def refused(options: Mapping[str, object], settings: Mapping[str, object]) -> st
 
 
 def described(options: Mapping[str, object], settings: Mapping[str, object]) -> tuple[str, ...]:
-    """Say how the run signs in, and where each target's window starts, by the rule.
+    """Say how the run signs in, and where each scope's window starts, by the rule.
 
     By the API token when one is set, else by the saved session; --since given or not.
     """
@@ -149,47 +121,34 @@ def described(options: Mapping[str, object], settings: Mapping[str, object]) -> 
     return (f"sign-in: {by}", period_rule(since=options[SINCE.flag] is not None))
 
 
-CONFLUENCE = Source(
+CONFLUENCE = Connector(
     name=names.CONFLUENCE,
     help="Confluence, on the Atlassian site: the pages and blog posts of its spaces,"
     " with their files",
-    resource_types=(
-        ResourceType(
-            name=names.PAGES, help="a space's pages", read="listed", options=(SPACE, *PERIOD)
-        ),
-        ResourceType(
-            name=names.BLOGPOSTS,
-            help="a space's blog posts",
-            read="listed",
-            options=(SPACE, *PERIOD),
-        ),
-    ),
+    scope_types=(names.SPACE,),
     settings=("spaces",),
     table_path="kb_mcp.sources.atlassian.settings:ConfluenceTable",
     preparers=(PREPARER,),
     fetcher=FETCHER,
     account=ATLASSIAN,
+    options=PERIOD,
     refused=refused,
     unapplied=email_without_token,
     described=described,
 )
-JIRA = Source(
+JIRA = Connector(
     name=names.JIRA,
     help="Jira, on the Atlassian site: the issues of its projects, with their comments and files",
-    resource_types=(
-        ResourceType(
-            name=names.ISSUES,
-            help="a project's issues",
-            read="searched",
-            options=(PROJECT, *PERIOD),
-        ),
-    ),
+    scope_types=(names.PROJECT,),
     settings=("projects",),
     table_path="kb_mcp.sources.atlassian.settings:JiraTable",
     preparers=(PREPARER,),
     fetcher=FETCHER,
     account=ATLASSIAN,
+    options=PERIOD,
     refused=refused,
     unapplied=email_without_token,
     described=described,
 )
+# The package's connectors, which the registry declares.
+CONNECTORS = (CONFLUENCE, JIRA)

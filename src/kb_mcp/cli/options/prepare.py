@@ -72,7 +72,12 @@ def register(
             reads=(
                 *(account.paths[0] for account in accounts_of(sources).values()),
                 "data_dir",
-                *(path for each in sources if each.fetcher is None for path in each.paths),
+                *(
+                    path
+                    for each in sources
+                    if each.connector.fetcher is None
+                    for path in each.paths
+                ),
             ),
             flags=flags,
             actions=(*actions, source),

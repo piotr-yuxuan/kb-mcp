@@ -39,6 +39,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
+from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -65,14 +66,14 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Source
+    from kb_mcp.sources.declaration import Connector
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
-# Each module that a declaration of the registry names, its stages' and its tables'.
+# Each module that a connector of the registry names, its stages' and its tables'.
 NAMED = frozenset(
     path.partition(":")[0]
-    for each in SOURCES
+    for each in (source.connector for source in SOURCES)
     for path in (
         each.table_path,
         *each.preparers,
@@ -146,40 +147,40 @@ def stored(settings: Settings) -> Settings:
 
 
 def run_of(
-    declared: Source,
+    declared: Connector,
     settings: Settings,
     options: Mapping[str, object] | None = None,
     *,
     dry_run: bool = False,
 ) -> SourceRun:
-    """Give a run of a declaration's stages, its tables from the settings, at FIRST.
+    """Give a run of a connector's stages for its one source, its tables from the settings.
 
-    Each option that it declares is held, as ``fetch``'s command gives them: None when not
-    among ``options``.
+    At FIRST. Each option that it declares is held, as ``fetch``'s command gives them: None
+    when not among ``options``.
     """
     account = declared.account
     return SourceRun(
-        source=declared,
+        source=Source(name=declared.name, connector=declared),
         settings=settings,
         source_table=getattr(settings.sources, declared.name),
         account_table=None if account is None else getattr(settings.accounts, account.name),
-        options={**dict.fromkeys(declared.options), **(options or {})},
+        options={**dict.fromkeys(declared.flags), **(options or {})},
         now=lambda: FIRST,
         sleep=lambda _: None,
         dry_run=dry_run,
     )
 
 
-def fetcher_of(declared: Source) -> Fetcher:
-    """Load the fetcher that a declaration names, checked against its interface."""
+def fetcher_of(declared: Connector) -> Fetcher:
+    """Load the fetcher that a connector names, checked against its interface."""
     assert declared.fetcher is not None
     fetcher = pkgutil.resolve_name(declared.fetcher)
     assert isinstance(fetcher, Fetcher)
     return fetcher
 
 
-def preparer_of(declared: Source) -> Preparer:
-    """Load the one preparer that a declaration names, checked against its interface."""
+def preparer_of(declared: Connector) -> Preparer:
+    """Load the one preparer that a connector names, checked against its interface."""
     (path,) = declared.preparers
     preparer = pkgutil.resolve_name(path)
     assert isinstance(preparer, Preparer)
@@ -213,14 +214,16 @@ def row_text(name: str, outcome: str, text: str) -> str:
 
 @pytest.mark.parametrize(
     "path",
-    sorted({each.fetcher for each in SOURCES if each.fetcher is not None}),
+    sorted({each.connector.fetcher for each in SOURCES if each.connector.fetcher is not None}),
 )
 def test_each_fetcher_that_the_registry_names_loads_as_a_fetcher(path: str) -> None:
     """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Fetcher)
 
 
-@pytest.mark.parametrize("path", sorted({path for each in SOURCES for path in each.preparers}))
+@pytest.mark.parametrize(
+    "path", sorted({path for each in SOURCES for path in each.connector.preparers})
+)
 def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) -> None:
     """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Preparer)
@@ -228,7 +231,9 @@ def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) ->
 
 def test_confluence_and_jira_share_their_roles_and_the_work_log_has_no_fetcher() -> None:
     """One fetcher and one preparer serve both sources of the site; one preparer each."""
-    assert {each.name: (each.fetcher, len(each.preparers)) for each in SOURCES} == {
+    assert {
+        each.name: (each.connector.fetcher, len(each.connector.preparers)) for each in SOURCES
+    } == {
         "confluence": (CONFLUENCE.fetcher, 1),
         "jira": (CONFLUENCE.fetcher, 1),
         "worklog": (None, 1),

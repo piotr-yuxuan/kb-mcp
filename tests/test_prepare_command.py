@@ -510,12 +510,12 @@ def test_what_a_fetch_reads_is_not_read_by_a_prepare(
 def test_the_help_shows_a_group_per_source_with_what_it_reads(
     capsys: CaptureFixture[str],
 ) -> None:
-    """Every registered source, its resource types said; no option of a fetch."""
+    """Every registered source, its scope types said; no option of a fetch."""
     with pytest.raises(SystemExit):
         main(["prepare", "--help"])
     said_of = " ".join(capsys.readouterr().out.split())
-    assert "pages, listed whole; blogposts, listed whole." in said_of
-    assert "issues, searched by update time." in said_of
-    assert "entries, read whole, in place; days, read whole, in place;" in said_of
+    assert "each space listed whole." in said_of
+    assert "each project searched by update time." in said_of
+    assert "its folder, read whole, in place." in said_of
     assert "--since" not in said_of
     assert "--space" not in said_of

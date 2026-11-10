@@ -12,7 +12,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.declared import ATLASSIAN
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.worklog.declared import WORKLOG
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -156,7 +156,7 @@ def test_a_registry_without_an_account_reads_none_of_it(
     """Any registry is checked: no setting of a package that it does not name is read."""
     monkeypatch.setenv("HOME", str(tmp_path))
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
-    assert main(options, (WORKLOG,)) == 0
+    assert main(options, sourced(WORKLOG)) == 0
     names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
     assert names == ["python", "pandoc", "data directory"]
 

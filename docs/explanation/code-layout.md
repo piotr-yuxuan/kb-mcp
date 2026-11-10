@@ -93,14 +93,14 @@ of `cli.main` and `cli.options`.
 
 ## A source and the registry
 
-A source is a declaration and the code that it names; [sources](sources.md) says why, and
-[add a source](../how-to/add-a-source.md) how. Beside the packages, directly under
-`sources/`:
+A connector is a declaration and the code that it names, and a source one instance of
+it; [sources](sources.md) says why, and [add a source](../how-to/add-a-source.md) how.
+Beside the packages, directly under `sources/`:
 
 | Module | What it holds | Imported by |
 |---|---|---|
-| `sources/declaration.py` | What a source declares: `Source`, `ResourceType`, `Option`, `Account`, as dataclasses, since `--help` imports them | every declaration |
-| `sources/registry.py` | `SOURCES`, one line per source, and `refuse`, the rules of any registry | `cli`, whose entry takes a registry as a parameter |
+| `sources/declaration.py` | What a connector declares: `Connector`, `ScopeType`, `DocumentType`, `Option`, `Account`; and `Source`, one instance of a connector; as dataclasses, since `--help` imports them | every declaration |
+| `sources/registry.py` | `CONNECTORS`, one line per connector, `SOURCES`, a source of each, and `refuse`, the rules of any registry | `cli`, whose entry takes the sources as a parameter |
 | `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun`, and what an account's checks give, `Check` | each fetcher and preparer, each account's checks, and `cli`'s `run_each` and `doctor` |
 
 The first two stay light for `--help`, and all three are pure, by contracts G and C, which
@@ -108,7 +108,7 @@ name them. Each source's package holds:
 
 | Module | What it holds | Loaded |
 |---|---|---|
-| `declared.py` | The declaration: its name, resource types, table, account, fetcher and preparers by module path | at every parse: contract G keeps it light |
+| `declared.py` | The declaration of each connector: its name, scope types, table, account, fetcher and preparers by module path | at every parse: contract G keeps it light |
 | `settings.py` | The Pydantic models of its table and its account | with the settings, by the path that its declaration names |
 | `fetch/` | Its fetcher, if any, and all that it uses | by the run that uses it |
 | `prepare/` | Its preparers, and all that they use | by the run that uses it |
@@ -199,7 +199,7 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   does not report an alias. A record base defined in one module and subclassed in
   another joins that list.
 
-Fifteen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
+Seventeen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
 that every dataclass under `src/kb_mcp/` is in this table, and that every class of the
 table is one:
 
@@ -210,9 +210,11 @@ table is one:
 | `kernel.output.Output` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `sources.declaration.Account` | G: `--help` imports it |
-| `sources.declaration.Source` | G: `--help` imports it |
+| `sources.declaration.Connector` | G: `--help` imports it |
+| `sources.declaration.DocumentType` | G: `--help` imports it |
 | `sources.declaration.Option` | G: `--help` imports it |
-| `sources.declaration.ResourceType` | G: `--help` imports it |
+| `sources.declaration.ScopeType` | G: `--help` imports it |
+| `sources.declaration.Source` | G: `--help` imports it |
 | `evaluation.app.reranked.Arms` | It holds a live client, the reranker's |
 | `search.adapters.embedding.ApiEmbedder` | It holds a live client, its `Endpoint` |
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |

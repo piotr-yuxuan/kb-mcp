@@ -63,16 +63,17 @@ connector.
 **In the code.** The package [`sources/atlassian/`](../../src/kb_mcp/sources/atlassian/)
 holds two connectors, Confluence and Jira, which share one sign-in, one raw store and
 one coverage file; [`sources/worklog/`](../../src/kb_mcp/sources/worklog/) holds the
-work log's. A connector's declaration is carried by
-[`Source`](../../src/kb_mcp/sources/declaration.py), with
-[`Source.fetcher`](../../src/kb_mcp/sources/declaration.py),
-[`Source.preparers`](../../src/kb_mcp/sources/declaration.py),
-[`Source.resource_types`](../../src/kb_mcp/sources/declaration.py) and
-[`Source.account`](../../src/kb_mcp/sources/declaration.py); by
+work log's. A connector is a [`Connector`](../../src/kb_mcp/sources/declaration.py), with
+[`Connector.scope_types`](../../src/kb_mcp/sources/declaration.py),
+[`Connector.fetcher`](../../src/kb_mcp/sources/declaration.py),
+[`Connector.preparers`](../../src/kb_mcp/sources/declaration.py) and
+[`Connector.account`](../../src/kb_mcp/sources/declaration.py); its scope types are each a
+[`ScopeType`](../../src/kb_mcp/sources/declaration.py), with its
+[`Enumeration`](../../src/kb_mcp/sources/declaration.py), and its document types each a
+[`DocumentType`](../../src/kb_mcp/sources/declaration.py); its sign-in is an
 [`Account`](../../src/kb_mcp/sources/declaration.py), with
 [`Account.login`](../../src/kb_mcp/sources/declaration.py) and
-[`Account.checks`](../../src/kb_mcp/sources/declaration.py); and by
-[`Reading`](../../src/kb_mcp/sources/declaration.py), the enumeration of a scope type.
+[`Account.checks`](../../src/kb_mcp/sources/declaration.py).
 
 ### source
 
@@ -86,8 +87,9 @@ clients are two sources of one connector.
 prepare work per source. Sources whose sign-ins reach the same place may share that
 sign-in's state, as their connector defines.
 
-**In the code.** [`Source`](../../src/kb_mcp/sources/declaration.py), a declaration
-whose name is also its one instance; [`SourceRun`](../../src/kb_mcp/sources/stages.py),
+**In the code.** [`Source`](../../src/kb_mcp/sources/declaration.py), its name and its
+connector, one of each connector, of its name, in
+[`SOURCES`](../../src/kb_mcp/sources/registry.py); [`SourceRun`](../../src/kb_mcp/sources/stages.py),
 which binds it to its settings;
 [`FrontMatter.source`](../../src/kb_mcp/mirror/domain/mirror.py) and the index's column
 `documents.source`, which hold its name; the names
@@ -218,8 +220,8 @@ the same document at other stages,
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py) and
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
-[`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py); the type lists
-[`TYPES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) and
+[`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each
+connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py), with
 [`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py);
 [`Link`](../../src/kb_mcp/mirror/domain/mirror.py),
 [`Link.ref`](../../src/kb_mcp/mirror/domain/mirror.py) and

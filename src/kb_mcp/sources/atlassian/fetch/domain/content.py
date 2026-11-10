@@ -17,7 +17,8 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOSTS, CONFLUENCE, ISSUES, JIRA, PAGES
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, ISSUE, JIRA, PAGE
+from kb_mcp.sources.declaration import DocumentType
 
 # A path on the site, never another host's: one slash, no second one, no backslash, no
 # control character.
@@ -102,12 +103,12 @@ class Comment(Record):
 class FetchedDocument(Record):
     """A page, a blog post or an issue: what becomes one file of the mirror.
 
-    ``source`` and ``resource_type`` name where it is stored; ``revision`` names this state of it,
+    ``source`` and ``document_type`` name where it is stored; ``revision`` names this state of it,
     and orders states as text.
     """
 
     source: ClassVar[str]
-    resource_type: ClassVar[str]
+    document_type: ClassVar[DocumentType]
 
     id: str
     title: str
@@ -154,7 +155,7 @@ class ConfluenceDocument(FetchedDocument):
 class BlogPost(ConfluenceDocument):
     """A Confluence blog post."""
 
-    resource_type: ClassVar[str] = BLOGPOSTS
+    document_type: ClassVar[DocumentType] = BLOGPOST
 
 
 class Page(ConfluenceDocument):
@@ -164,7 +165,7 @@ class Page(ConfluenceDocument):
     space.
     """
 
-    resource_type: ClassVar[str] = PAGES
+    document_type: ClassVar[DocumentType] = PAGE
 
     parent_id: str | None = None
     parent_type: str | None = None
@@ -174,7 +175,7 @@ class Issue(FetchedDocument):
     """A Jira issue; its id stays when it moves, its key does not."""
 
     source: ClassVar[str] = JIRA
-    resource_type: ClassVar[str] = ISSUES
+    document_type: ClassVar[DocumentType] = ISSUE
 
     key: str
     project: str  # the project's key
@@ -224,9 +225,9 @@ class Listed(Record):
         return self.document_class.source
 
     @property
-    def resource_type(self) -> str:
-        """Name the resource type, as the document's class does."""
-        return self.document_class.resource_type
+    def document_type(self) -> DocumentType:
+        """Give the document type, as the document's class does."""
+        return self.document_class.document_type
 
 
 class Snapshot(Record):

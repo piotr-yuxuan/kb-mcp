@@ -37,7 +37,6 @@ from mcp.client.stdio import StdioServerParameters
 from kb_mcp.cli.main import parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.registry import SOURCES
 from tests.test_serve import talk
 
 if TYPE_CHECKING:
@@ -62,6 +61,7 @@ PAGES = (
 # The how-to for adding a source, whose package is the tests' memo source under another
 # name, each of its files by the page's words: what the page gives is then what they run.
 ADD_A_SOURCE = ROOT / "docs" / "how-to" / "add-a-source.md"
+REGISTRY = ROOT / "src" / "kb_mcp" / "sources" / "registry.py"
 NOTES_PACKAGE = "kb_mcp.sources.notes"
 MEMO_PACKAGE = ROOT / "tests" / "fixtures" / "memo_source" / "kb_memo"
 MEMO_NAMES = {"kb_memo": NOTES_PACKAGE, "memo": "notes", "Memo": "Notes", "MEMO": "NOTES"}
@@ -748,21 +748,20 @@ def test_the_how_to_for_a_source_gives_the_code_of_the_memo_that_the_tests_run()
 
 
 def test_the_how_to_for_a_source_gives_the_checkout_s_registry_and_contracts_and_its_own() -> None:
-    """Its lines of steps 6 and 7 are those of the checkout, with the new source among them.
+    """Its lines of steps 6 and 7 are those of the checkout, with the new connector among them.
 
-    Each in the order that the registry's rule and the contract's list keep; so a source
+    Each in the order that the registry's rule and the contract's list keep; so a connector
     added, or a contract's list changed, is said on the page too. The page's own source
     aside on both sides, as a reader who follows it registers that source.
     """
     page = ADD_A_SOURCE.read_text("utf-8")
-    line = re.search(r"^SOURCES = \((.*)\)$", page, re.MULTILINE)
+    line = re.search(r"^CONNECTORS = \((.*)\)$", page, re.MULTILINE)
+    registry = re.search(r"^CONNECTORS = \((.*)\)$", REGISTRY.read_text("utf-8"), re.MULTILINE)
     assert line is not None
+    assert registry is not None
     names = line[1].lower().split(", ")
     assert names == sorted(names)
-    registered = [each.name for each in SOURCES]
-    assert [name for name in names if name != "notes"] == [
-        name for name in registered if name != "notes"
-    ]
+    assert [name for name in names if name != "notes"] == registry[1].lower().split(", ")
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
     contracts = {each.get("id"): each for each in pyproject["tool"]["importlinter"]["contracts"]}
     listed = re.search(r"^modules = (\[.*\])$", page, re.MULTILINE)

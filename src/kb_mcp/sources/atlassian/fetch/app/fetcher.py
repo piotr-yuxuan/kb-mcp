@@ -1,7 +1,7 @@
 """Confluence's and Jira's fetcher: one source's targets fetched into the raw store.
 
-Both declarations name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
-source that a run is for from its declaration, by its resource types, and fetch that source's
+Both connectors name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
+scope types of the connector of the source that a run is for, and fetch that source's
 targets alone, its table's spaces or projects, over the period that its options give.
 ``fetch_targets`` fetches them, or plans their fetch, and says what went wrong.
 """
@@ -17,7 +17,7 @@ from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
 from kb_mcp.sources.atlassian.fetch.app.fetching import plan_fetch, read_targets, run_fetch
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 
 if TYPE_CHECKING:
@@ -33,17 +33,14 @@ BUSY = "another run is writing it; try again once that run ends"
 
 
 def targets_of(run: SourceRun) -> Targets:
-    """Read the targets of ``run``'s source, by its resource types: spaces or projects.
+    """Read the targets of ``run``'s source, by its connector's scope types: spaces or projects.
 
-    Confluence's pages and blog posts are listed per space, Jira's issues searched per
-    project; the period is its options', as ``read_targets`` reads them.
+    The period is its options', as ``read_targets`` reads them.
     """
-    resource_types = {each.name for each in run.source.resource_types}
+    scope_types = run.source.connector.scope_types
     return read_targets(
-        run.source_table.spaces
-        if resource_types & {Page.resource_type, BlogPost.resource_type}
-        else (),
-        run.source_table.projects if Issue.resource_type in resource_types else (),
+        run.source_table.spaces if SPACE in scope_types else (),
+        run.source_table.projects if PROJECT in scope_types else (),
         run.options,
         run.now(),
     )

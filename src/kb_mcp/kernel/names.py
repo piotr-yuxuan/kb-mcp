@@ -38,9 +38,9 @@ MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 
 
 class WorklogType(NamedTuple):
-    """A type of the work log's documents: its resource type, its id's rule, its file's name.
+    """A type of the work log's documents: its plural, its id's rule, its file's name.
 
-    ``plural`` names its resource type and its folder of the mirror; a type
+    ``plural`` names its folder of the mirror; a type
     ``named_by_id`` names its file by its id alone, which holds what a title would add.
     """
 

@@ -24,7 +24,7 @@ from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Targets, run_fetch
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 from tests.samples import v2_page
 from tests.test_cli import logged_as
 from tests.test_fetching import CAP, SITE, FakeSite, stamp
@@ -577,7 +577,7 @@ def test_a_source_without_a_fetcher_is_no_choice(
     """Argparse refuses the work log, and a source of the tests read in place alike: exit 2."""
     memo = replace(WORKLOG, name="memo")
     with pytest.raises(SystemExit) as stopped:
-        main(command(home, name), (*SOURCES, memo))
+        main(command(home, name), (*SOURCES, *sourced(memo)))
     assert stopped.value.code == REFUSED
     assert f"invalid choice: {name!r} (choose from 'confluence', 'jira')" in capsys.readouterr().err
 
@@ -585,7 +585,7 @@ def test_a_source_without_a_fetcher_is_no_choice(
 def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     capsys: CaptureFixture[str],
 ) -> None:
-    """Each with its resource types, how each is read, and the options that it alone declares.
+    """Each with its scope types, how each is enumerated, and the options that it alone declares.
 
     Those that both declare, in a group of their own; none of the work log.
     """
@@ -595,10 +595,10 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     _, confluence = said_of.split(" confluence: Confluence, on the Atlassian site", 1)
     confluence, jira = confluence.split(" jira: Jira, on the Atlassian site", 1)
     jira, both = jira.split(" several sources: The options of confluence, jira.", 1)
-    assert "pages, listed whole; blogposts, listed whole." in confluence
+    assert "each space listed whole." in confluence
     assert "--space SPACE" in confluence
     assert "--project" not in confluence
-    assert "issues, searched by update time." in jira
+    assert "each project searched by update time." in jira
     assert "--project PROJECT" in jira
     assert "--since" not in jira
     assert all(flag in both for flag in ("--since SINCE", "--until UNTIL", "--max-file-mb"))
@@ -608,7 +608,7 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
 def test_a_source_alone_keeps_its_options_in_its_own_group(capsys: CaptureFixture[str]) -> None:
     """No other source shares them, so no group of several sources, under this registry."""
     with pytest.raises(SystemExit):
-        main(["fetch", "--help"], (JIRA, WORKLOG))
+        main(["fetch", "--help"], sourced(JIRA, WORKLOG))
     said_of = " ".join(capsys.readouterr().out.split())
     assert "several sources" not in said_of
     _, jira = said_of.split(" jira: Jira, on the Atlassian site", 1)
@@ -618,6 +618,6 @@ def test_a_source_alone_keeps_its_options_in_its_own_group(capsys: CaptureFixtur
 def test_each_flag_of_the_registry_is_declared_alike_by_each_source_that_declares_it() -> None:
     """Options that several sources share are added once, so each must mean one thing."""
     refuse(SOURCES)
-    by_flag = [option for declared in SOURCES for option in declared.options.values()]
+    by_flag = [option for declared in SOURCES for option in declared.connector.flags.values()]
     for option in by_flag:
         assert {each for each in by_flag if each.flag == option.flag} == {option}

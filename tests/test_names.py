@@ -39,13 +39,13 @@ PACKAGE = Path(__file__).parents[1] / "src" / "kb_mcp"
 KEYS = {CONFLUENCE.name: "MFS", JIRA.name: "PRB"}
 
 
-def test_a_target_is_searched_by_time_where_its_source_reads_its_resource_types_so() -> None:
-    """A project, whose issues Jira's declaration reads ``searched``; never a space."""
+def test_a_target_is_searched_by_time_where_its_connector_searches_its_scope_types_so() -> None:
+    """A project, which Jira's connector searches; never a space."""
     assert {
         source.name: Target(source=source.name, key=KEYS[source.name]).searched_by_time
         for source in (CONFLUENCE, JIRA)
     } == {
-        source.name: all(each.read == "searched" for each in source.resource_types)
+        source.name: all(each.enumeration == "searched" for each in source.scope_types)
         for source in (CONFLUENCE, JIRA)
     }
 

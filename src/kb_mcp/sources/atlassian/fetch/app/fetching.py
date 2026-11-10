@@ -57,7 +57,7 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     too_many_gone,
 )
 from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
-from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, ISSUES, JIRA, PAGES
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, ISSUE, JIRA, PAGE
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     MAX_FILE_MB_FLAG,
@@ -95,7 +95,7 @@ JQL_MARGIN = timedelta(days=2)
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 STOPPED = "runs: "
 
-# How each resource type is read from its listing, and which GETs make its snapshot.
+# How each document type is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[FetchedDocument], Callable[[Fields], Listed]] = {
     Page: partial(confluence_v2.listed, document_class=Page),
     BlogPost: partial(confluence_v2.listed, document_class=BlogPost),
@@ -181,8 +181,8 @@ class FetchCounts(Record):
 
 
 def label(document_class: type[FetchedDocument]) -> str:
-    """Name a resource type in the counts, as ``confluence pages``."""
-    return f"{document_class.source} {document_class.resource_type}"
+    """Name a document type in the counts, by its plural, as ``confluence pages``."""
+    return f"{document_class.source} {document_class.document_type.plural}"
 
 
 @dataclass
@@ -313,7 +313,9 @@ class Fetching:
         found: list[Listed] = []
         for entry in entries:
             try:
-                found.append(LISTED[document_class](Fields(entry, document_class.resource_type)))
+                found.append(
+                    LISTED[document_class](Fields(entry, document_class.document_type.plural))
+                )
             except RepresentationError as error:
                 what = f"{label(document_class)} listed"
                 self.failed(what, f"{label(document_class)} listing", error)
@@ -375,9 +377,9 @@ class Fetching:
                 document_class
             )
             stored += len(before)
-            again = {key[1] for key in known if key[0] == document_class.resource_type}
+            again = {key[1] for key in known if key[0] == document_class.document_type.plural}
             absent |= {
-                (document_class.resource_type, each): space_id
+                (document_class.document_type.plural, each): space_id
                 for each in (before | again) - listed[document_class]
             }
         self.absent[space_id] = (absent, stored, known)
@@ -427,7 +429,7 @@ class Fetching:
 
         A probe that fails is a problem by its document, as ``fetch_document`` names one.
         """
-        document_class = Page if key[0] == Page.resource_type else BlogPost
+        document_class = Page if key[0] == Page.document_type.plural else BlogPost
         where = f"{label(document_class)} {key[1]}"
         try:
             response = Fields(self.site.json(confluence_v2.probe_request(*key)), "probe")
@@ -452,7 +454,7 @@ class Fetching:
         wanted: list[str | None] = []
         for entry in pages:
             try:
-                page = confluence_v2.document(Fields(entry, PAGES), Page)
+                page = confluence_v2.document(Fields(entry, PAGE.plural), Page)
             except RepresentationError as error:
                 self.failed("confluence pages in the tree", "confluence pages listing", error)
                 continue
@@ -568,8 +570,8 @@ class Fetching:
         counted: set[Listed] = set()
         for entry in entries:
             try:
-                listed = jira_v3.listed(Fields(entry, ISSUES))
-                files = jira_v3.listed_attachments(Fields(entry, ISSUES))
+                listed = jira_v3.listed(Fields(entry, ISSUE.plural))
+                files = jira_v3.listed_attachments(Fields(entry, ISSUE.plural))
             except RepresentationError:
                 continue  # counted by documents() already
             if listed.updated not in period or self.store.has(listed) or listed in counted:
@@ -585,7 +587,7 @@ class Fetching:
         It is not when its fetch failed, its snapshot was refused, or a file it keeps
         failed; a plan counts it to fetch, and fails none. The fetch is a trace of its
         own, ``fetch.document``, linked to the span of the run's trace current when it
-        begins, saying the document's id and resource type; an error when the fetch fails, which
+        begins, saying the document's id and type; an error when the fetch fails, which
         is a warning, by the document's id.
         """
         what = label(document.document_class)

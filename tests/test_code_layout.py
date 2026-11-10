@@ -143,17 +143,17 @@ def test_each_contract_s_id_is_its_letter_on_the_layout_page_in_its_order() -> N
 
 
 def test_contract_i_lists_the_package_of_each_registered_source_once() -> None:
-    """I's packages are those whose ``declared`` holds a declaration of ``SOURCES``.
+    """I's packages are those whose ``declared`` holds a connector of ``SOURCES``.
 
-    Under ``kb_mcp.sources``, each once and no other: a source registered without its
-    place in I fails it. Each declaration of ``SOURCES`` is one of a package's.
+    Under ``kb_mcp.sources``, each once and no other: a connector registered without its
+    package's place in I fails it. Each connector of ``SOURCES`` is one of a package's.
     """
     held: dict[str, str] = {}
     for package in pkgutil.iter_modules(sources.__path__, f"{sources.__name__}."):
         declared = f"{package.name}.declared"
         if package.ispkg and importlib.util.find_spec(declared) is not None:
             values = vars(importlib.import_module(declared)).values()
-            held |= {each.name: package.name for each in SOURCES if each in values}
+            held |= {each.name: package.name for each in SOURCES if each.connector in values}
     assert set(held) == {each.name for each in SOURCES}
     (independent,) = [contract for contract in CONTRACTS if contract.get("id") == "I"]
     assert sorted(independent["modules"]) == sorted(set(held.values()))

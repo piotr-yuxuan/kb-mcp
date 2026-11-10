@@ -34,7 +34,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
 )
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOSTS, CONFLUENCE, PAGES
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, PAGE
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ UNREADABLE = (ValueError, OSError)
 
 
 class Representation(Record):
-    """How the snapshots of one resource type are read.
+    """How the snapshots of one document type are read.
 
     ``files`` names the responses that a snapshot of the type must have. ``identity``
     reads only what names the folder (id and revision), so that a response whose other
@@ -172,7 +172,7 @@ def _identifier(value: str, name: str) -> str:
 class RawStore:
     """Responses kept as received, by document and revision, and files by SHA-256.
 
-    A snapshot is the folder ``<root>/<source>/<resource type>/<id>/<revision>/``, one JSON file
+    A snapshot is the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file
     per response plus the store's record. It is written whole into a hidden folder and
     renamed into place, so it is either complete or absent, and its responses never
     change. A space's listings are ``<root>/confluence/spaces/<id>/*.json``, each
@@ -210,7 +210,11 @@ class RawStore:
     def folder(self, document: FetchedDocument | Listed) -> Path:
         """Return where the snapshot of this document at this revision is, or would be."""
         return (
-            self.root / document.source / document.resource_type / document.id / document.revision
+            self.root
+            / document.source
+            / document.document_type.plural
+            / document.id
+            / document.revision
         )
 
     def has(self, document: FetchedDocument | Listed) -> bool:
@@ -247,7 +251,11 @@ class RawStore:
             raise ValueError(message)
         self._check_blobs(blobs)
         folder = (
-            self.root / document_class.source / document_class.resource_type / identifier / revision
+            self.root
+            / document_class.source
+            / document_class.document_type.plural
+            / identifier
+            / revision
         )
         if not folder.is_dir():
             folder.parent.mkdir(parents=True, exist_ok=True)
@@ -318,7 +326,7 @@ class RawStore:
         others still follow.
         """
         for item in _named(
-            self.root / document_class.source / document_class.resource_type, IDENTIFIER
+            self.root / document_class.source / document_class.document_type.plural, IDENTIFIER
         ):
             revisions = _named(item, REVISION)
             if not revisions:
@@ -357,7 +365,11 @@ class RawStore:
         """
         self._check_writing()
         space_folder = self._space(Fields(space, "space").text("id"))
-        for name, value in ((PAGES, pages), (BLOGPOSTS, blog_posts), ("folders", folders)):
+        for name, value in (
+            (PAGE.plural, pages),
+            (BLOGPOST.plural, blog_posts),
+            ("folders", folders),
+        ):
             if type(value) is not list:
                 message = f"{name}: expected a list"
                 raise ValueError(message)
@@ -389,7 +401,7 @@ class RawStore:
         self, space_id: str, document_class: type[Page | BlogPost]
     ) -> list[Page | BlogPost | Problem]:
         """Read the pages, or the blog posts, last listed in a space."""
-        path = self._space(space_id) / f"{document_class.resource_type}.json"
+        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
         return self._entries(path, partial(confluence_v2.document, document_class=document_class))
 
     def listed_ids(self, space_id: str, document_class: type[Page | BlogPost]) -> set[str]:
@@ -399,7 +411,7 @@ class RawStore:
         so that deletions follow every document that a fetch fetched. A listing that
         cannot be read at all names none.
         """
-        path = self._space(space_id) / f"{document_class.resource_type}.json"
+        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
         try:
             return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
         except UNREADABLE:
@@ -446,7 +458,7 @@ class RawStore:
     def stored_ids(self, document_class: type[FetchedDocument]) -> set[str]:
         """Return the ids of the documents of a type that have a stored snapshot."""
         folders = _named(
-            self.root / document_class.source / document_class.resource_type, IDENTIFIER
+            self.root / document_class.source / document_class.document_type.plural, IDENTIFIER
         )
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
@@ -502,7 +514,7 @@ class RawStore:
         for item in Fields.each(_record_json(path), TOMBSTONES):
             with item.refusals():
                 resource_type, identifier = item.text("kind"), _identifier(item.text("id"), "id")
-                if resource_type not in {Page.resource_type, BlogPost.resource_type}:
+                if resource_type not in {Page.document_type.plural, BlogPost.document_type.plural}:
                     message = f"{item.path}.kind: not a resource type of Confluence"
                     raise RepresentationError(message)
                 first_gone = item.time("first_gone") if item.optional_text("first_gone") else None

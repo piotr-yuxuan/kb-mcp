@@ -22,6 +22,7 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Mention
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    DOCUMENT_CLASSES,
     REVISION,
     BlogPost,
     ConfluenceDocument,
@@ -30,7 +31,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Page,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, ISSUE, JIRA, PAGE
+from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
@@ -39,14 +40,11 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.atlassian.fetch.domain.content import Comment, SiteUser
 
-# The front matter's type of each document class.
-TYPES: dict[type[ConfluenceDocument | Issue], str] = {
-    Page: PAGE,
-    BlogPost: BLOGPOST,
-    Issue: ISSUE,
-}
 # Each type with its source, as the front matter names them.
-SOURCE_TYPES = frozenset((document_class.source, name) for document_class, name in TYPES.items())
+SOURCE_TYPES = frozenset(
+    (document_class.source, document_class.document_type.name)
+    for document_class in DOCUMENT_CLASSES
+)
 # Keys that one source alone has, always.
 ONLY = {
     "space": CONFLUENCE,
@@ -219,7 +217,7 @@ def front_matter(
     ]
     return AtlassianFrontMatter(
         source=document.source,
-        type=TYPES[type(document)],
+        type=document.document_type.name,
         id=document.id,
         key=None if issue is None else issue.key,
         title=one_line(document.title),

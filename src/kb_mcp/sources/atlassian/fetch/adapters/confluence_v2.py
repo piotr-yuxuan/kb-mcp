@@ -165,7 +165,7 @@ def space_request(key: str) -> Request:
 def listing_request(space_id: str, document_class: type[Page | BlogPost]) -> Request:
     """GET the first page of a space's pages, or blog posts, without bodies."""
     return Request(
-        path=f"{WIKI}/api/v2/spaces/{space_id}/{document_class.resource_type}",
+        path=f"{WIKI}/api/v2/spaces/{space_id}/{document_class.document_type.plural}",
         params={"limit": LISTING_LIMIT, "status": LISTED_STATUSES[document_class]},
     )
 
@@ -211,9 +211,9 @@ def entry_ids(entries: object) -> set[str]:
     return ids
 
 
-def probe_request(resource_type: str, document_id: str) -> Request:
+def probe_request(plural: str, document_id: str) -> Request:
     """GET a page or a blog post without its body, to learn where it is, if anywhere."""
-    return Request(path=f"{WIKI}/api/v2/{resource_type}/{document_id}")
+    return Request(path=f"{WIKI}/api/v2/{plural}/{document_id}")
 
 
 def whereabouts(fields: Fields) -> tuple[str, str]:
@@ -226,13 +226,15 @@ def document_request(document: Listed, body: str) -> Request:
     params = {"body-format": body, "version": str(document.version)}
     if body == "storage":
         params["include-labels"] = "true"
-    return Request(path=f"{WIKI}/api/v2/{document.resource_type}/{document.id}", params=params)
+    return Request(
+        path=f"{WIKI}/api/v2/{document.document_type.plural}/{document.id}", params=params
+    )
 
 
 def attachments_request(document: Listed) -> Request:
     """GET the first page of a page's, or a blog post's, attachments."""
     return Request(
-        path=f"{WIKI}/api/v2/{document.resource_type}/{document.id}/attachments",
+        path=f"{WIKI}/api/v2/{document.document_type.plural}/{document.id}/attachments",
         params={"limit": LISTING_LIMIT},
     )
 

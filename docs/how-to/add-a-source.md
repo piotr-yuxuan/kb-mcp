@@ -1,8 +1,9 @@
 # Add a source
 
 For contributors: how to add a source of documents, so that the settings, `check`, `prepare`
-and search know it. A [source](../reference/concepts.md#connector) is added as a package and one line of the registry; [sources](../explanation/sources.md)
-says why. The example here is a folder of text files, read in place, under the name `notes`.
+and search know it. A [connector](../reference/concepts.md#connector) is added as a package
+and one line of the registry, which gives it a source of its name;
+[sources](../explanation/sources.md) says why. The example here is a folder of text files, read in place, under the name `notes`.
 [`kb_memo`](../../tests/fixtures/memo_source/kb_memo/declared.py), in the tests, is the same
 source, outside `src/`, which [its test](../../tests/test_memo_source.py) registers and runs.
 
@@ -80,32 +81,41 @@ class NotesTable(BaseModel):
     )
 ```
 
-## 4. Write its declaration
+## 4. Write its connector
 
-The declaration is data ([`Source`](../../src/kb_mcp/sources/declaration.py)), in the
-standard library alone, since `--help` imports it: it names the table, the fetcher and the preparers by
-module path. Each resource type says what the source reads and how
-([`ResourceType`](../../src/kb_mcp/sources/declaration.py)). A source that signs in also
-names its `account`, and one with a fetcher its `fetcher`; a light check that `fetch` asks
-before anything else goes in `refused`, as Confluence's does
+The connector is data ([`Connector`](../../src/kb_mcp/sources/declaration.py)), in the
+standard library alone, since `--help` imports it: it names the table, the fetcher and the
+preparers by module path. Each scope type says how a fetch enumerates its documents and
+which document types it holds ([`ScopeType`](../../src/kb_mcp/sources/declaration.py),
+[`DocumentType`](../../src/kb_mcp/sources/declaration.py)); one read in place has one
+scope, the whole source, and no key. A connector that signs in also names its `account`,
+and one with a fetcher its `fetcher`; a light check that `fetch` asks before anything else
+goes in `refused`, as Confluence's does
 ([`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py)). Create
 `src/kb_mcp/sources/notes/declared.py`:
 
 ```python
-"""The notes' declaration: what they read in place, their table, and their preparer.
+"""The notes connector: what it reads in place, its table, and its preparer.
 
-Read in place, they have no fetcher and no account. Standard library alone, as every
+Read in place, it has no fetcher and no account. Standard library alone, as every
 declaration is: ``--help`` imports it.
 """
 
 from __future__ import annotations
 
-from kb_mcp.sources.declaration import ResourceType, Source
+from kb_mcp.sources.declaration import Connector, DocumentType, ScopeType
 
-NOTES = Source(
+NOTES = Connector(
     name="notes",
     help="Notes: a folder's text files, read in place, never written",
-    resource_types=(ResourceType(name="notes", help="the folder's *.txt files", read="in place"),),
+    scope_types=(
+        ScopeType(
+            name="folder",
+            key=None,
+            enumeration="in place",
+            document_types=(DocumentType(name="note", plural="notes"),),
+        ),
+    ),
     settings=("folder",),
     table_path="kb_mcp.sources.notes.settings:NotesTable",
     preparers=("kb_mcp.sources.notes.prepare.app.preparer",),
@@ -230,7 +240,7 @@ def prepare(run: SourceRun) -> Outcome[NotesCounts]:
 
 ## 6. Register it
 
-In `src/kb_mcp/sources/registry.py`, import the declaration, beside the others:
+In `src/kb_mcp/sources/registry.py`, import the connector, beside the others:
 
 ```python
 from kb_mcp.sources.notes.declared import NOTES
@@ -239,11 +249,11 @@ from kb_mcp.sources.notes.declared import NOTES
 and add it to the registry, in name order:
 
 ```python
-SOURCES = (CONFLUENCE, JIRA, NOTES, WORKLOG)
+CONNECTORS = (*atlassian.CONNECTORS, NOTES, WORKLOG)
 ```
 
-That one line makes `[sources.notes]` a setting, `notes` a choice of `prepare`, and
-its `preparers` part of each run that takes it
+That one line gives it a source of its name, which makes `[sources.notes]` a setting,
+`notes` a choice of `prepare`, and its `preparers` part of each run that takes it
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py),
 [`run_each`](../../src/kb_mcp/cli/app/sources.py)).
 

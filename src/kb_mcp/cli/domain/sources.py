@@ -6,9 +6,9 @@ it covers, is set. ``fetch`` takes every source that has a fetcher and is config
 those named. ``prepare`` takes every source that keeps a store, which its fetcher says,
 whatever the store holds, and each read in place when it is configured, or those named.
 Each is taken once, in the registry's order, whatever the order typed. A source's options
-and light checks are its fetch's: each source taken says what the echo says of it, by
-its declaration; an option that no setting holds, given, is said ignored by each source
-taken that does not declare it. Beside them, ``accounts_to_check``: which sign-ins
+and light checks are its connector's fetch's: each source taken says what the echo says
+of it, by its connector; an option that no setting holds, given, is said ignored by each
+source taken whose connector does not declare it. Beside them, ``accounts_to_check``: which sign-ins
 ``doctor`` checks, by the same settings.
 """
 
@@ -42,7 +42,7 @@ def chosen_to_fetch(
     taken: list[Source] = []
     left: dict[str, str] = {}
     for declared in arguments.sources:
-        if declared.fetcher is None:
+        if declared.connector.fetcher is None:
             left[declared.name] = "read in place, it has nothing to fetch"
         elif named and declared.name not in named:
             left[declared.name] = "not named"
@@ -63,7 +63,7 @@ def chosen_to_prepare(
     for declared in arguments.sources:
         if named and declared.name not in named:
             left[declared.name] = "not named"
-        elif declared.fetcher is None and not settings[declared.paths[0]]:
+        elif declared.connector.fetcher is None and not settings[declared.paths[0]]:
             left[declared.name] = "not configured"
         else:
             taken.append(declared)
@@ -87,10 +87,10 @@ def accounts_to_check(
     signs in, is set: a machine with neither needs none.
     """
     return {
-        declared.account.name: declared.account
+        account.name: account
         for declared in sources
-        if declared.account is not None
-        and (settings[declared.paths[0]] or settings[declared.account.paths[0]])
+        if (account := declared.connector.account) is not None
+        and (settings[declared.paths[0]] or settings[account.paths[0]])
     }
 
 
@@ -109,27 +109,27 @@ def fetch_described(
 ) -> tuple[str, ...]:
     """Say each source taken, with its settings, each left out and why, and the options ignored.
 
-    The lines that a source taken says follow, each once, as its declaration's
+    The lines that a source taken says follow, each once, as its connector's
     ``described`` gives them. An option that no setting holds, given, is ignored by each
-    source taken that does not declare it; one that replaces a setting is said by
-    ``unapplied``, as for any setting.
+    source taken whose connector does not declare it; one that replaces a setting is said
+    by ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
     lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
-    for declared in taken:
-        options = given(arguments, declared.options)
-        said += declared.described(options, settings) if declared.described else ()
+    for connector in (declared.connector for declared in taken):
+        options = given(arguments, connector.flags)
+        said += connector.described(options, settings) if connector.described else ()
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
     flags = {
         flag
-        for declared in arguments.sources
-        for flag, option in declared.options.items()
-        if declared.fetcher is not None and option.setting is None
+        for connector in (declared.connector for declared in arguments.sources)
+        for flag, option in connector.flags.items()
+        if connector.fetcher is not None and option.setting is None
     }
     for flag, value in sorted(given(arguments, flags).items()):
-        ignoring = [declared.name for declared in taken if flag not in declared.options]
+        ignoring = [each.name for each in taken if flag not in each.connector.flags]
         if value is not None and ignoring:
             lines.append(f"{flag}: ignored by {', '.join(ignoring)}")
     return tuple(dict.fromkeys(lines))
@@ -145,16 +145,23 @@ def prepare_described(
     site, a prepare still runs, its documents without an address there.
     """
     taken, left = chosen_to_prepare(arguments, settings)
-    accounts = {each.account.name: each.account for each in taken if each.account is not None}
+    accounts = {
+        account.name: account
+        for account in (declared.connector.account for declared in taken)
+        if account is not None
+    }
     unset = [
-        (account.paths[0], ", ".join(each.name for each in taken if each.account == account))
+        (
+            account.paths[0],
+            ", ".join(each.name for each in taken if each.connector.account == account),
+        )
         for account in accounts.values()
         if settings[account.paths[0]] is None
     ]
     return (
         *(
             source_line(declared, settings)
-            if declared.fetcher is None
+            if declared.connector.fetcher is None
             else f"source {declared.name}: all that its store holds"
             for declared in taken
         ),

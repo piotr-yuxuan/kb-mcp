@@ -1,7 +1,7 @@
 """Confluence's and Jira's preparer: one source's documents written into the mirror.
 
-Both declarations name this module, a ``Preparer``: ``prepare`` reads from the
-declaration of the source that a run is for the resource types that it converts, and the source
+Both connectors name this module, a ``Preparer``: ``prepare`` reads from the connector
+of the source that a run is for the document types that it converts, and the source
 whose rows of the cache of conversions it reads, finds pandoc, then writes the documents
 of those classes alone; a dry run leaves the mirror as it is, and says that it counts
 nothing. ``prepare_classes`` writes them and says what it could not.
@@ -31,29 +31,29 @@ NOT_COUNTED = "not counted: a dry run of this source converts nothing, and canno
 
 
 def classes_of(run: SourceRun) -> tuple[type[Page | BlogPost | Issue], ...]:
-    """Give the classes of the resource types that the declaration of the run's source names."""
-    names = {each.name for each in run.source.resource_types}
+    """Give the classes of the document types of the connector of the run's source."""
+    document_types = run.source.connector.document_types
     return tuple(
         document_class
         for document_class in DOCUMENT_CLASSES
-        if document_class.resource_type in names
+        if document_class.document_type in document_types
     )
 
 
 def preflight(run: SourceRun) -> str | None:
-    """Refuse a declaration whose types are not all the resource types of one source, by name.
+    """Refuse a connector whose types are not all the document types of one source, by name.
 
     A prepare removes the files of all of them, those of a type that it did not build too.
     The raw store is read as it is, whatever it holds.
     """
     if classes_of(run) in SOURCE_OF:
         return None
-    named = ", ".join(each.name for each in run.source.resource_types)
-    return f"types {named}: not all the resource types of one source"
+    named = ", ".join(each.name for each in run.source.connector.document_types)
+    return f"types {named}: not all the document types of one source"
 
 
 def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
-    """Prepare the resource types of the run's source, unless a dry run, with the pandoc found now.
+    """Prepare the document types of the run's source, unless a dry run, with the pandoc found now.
 
     A dry run ends not run, with no counts, and a warning that says why.
 

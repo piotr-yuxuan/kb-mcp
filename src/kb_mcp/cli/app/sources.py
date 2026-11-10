@@ -1,4 +1,4 @@
-"""``fetch``'s and ``prepare``'s run: each source's fetcher or preparers, as declared, a row each.
+"""``fetch``'s and ``prepare``'s run: each source's fetcher or preparers, a row each.
 
 Each row is a span of the stage's, ``fetch.source`` or ``prepare.source``, naming its
 source, within which its fetcher's or preparer's own spans and events are recorded, as
@@ -39,7 +39,7 @@ class SourcesRefusedError(ValueError):
 
 
 def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[R]) -> R:
-    """Load a fetcher or a preparer by the module path that its source's declaration names.
+    """Load a fetcher or a preparer by the module path that its source's connector names.
 
     Raises ``SourcesRefusedError``, naming the source and the path, for a path that does
     not load, whatever its import raises, such as a syntax error in a module of the
@@ -61,12 +61,14 @@ def planned(stage: str, runs: Sequence[SourceRun]) -> list[tuple[SourceRun, Fetc
     """Load what each run takes part in this stage with: its fetcher, or each of its preparers."""
     if stage == FETCH:
         return [
-            (run, loaded(run.source, run.source.fetcher, Fetcher))
+            (run, loaded(run.source, fetcher, Fetcher))
             for run in runs
-            if run.source.fetcher is not None
+            if (fetcher := run.source.connector.fetcher) is not None
         ]
     return [
-        (run, loaded(run.source, path, Preparer)) for run in runs for path in run.source.preparers
+        (run, loaded(run.source, path, Preparer))
+        for run in runs
+        for path in run.source.connector.preparers
     ]
 
 

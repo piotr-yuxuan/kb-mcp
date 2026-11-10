@@ -1,6 +1,6 @@
 """The newest snapshot of every document of one Atlassian source, as Markdown.
 
-Confluence and Jira are prepared apart, each by its resource types. Each reads the
+Confluence and Jira are prepared apart, each by its document types. Each reads the
 whole store and places every document, so that a link or an image of either reaches its
 file, then builds the source's own files of ``docs/reference/data-layout.md``'s Markdown
 mirror and their bytes, and hands them to ``mirror_files``, which writes those that
@@ -241,7 +241,7 @@ def place(
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        stone = gone.get((document.resource_type, document.id))
+        stone = gone.get((document.document_type.plural, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
         named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)
