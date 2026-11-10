@@ -184,9 +184,9 @@ class FakeSite:
             routes[f"/wiki/api/v2/folders/{folder_id}"] = lambda _, f=folder: httpx.Response(
                 200, json=f
             )
-        for resource_type, documents in (("pages", PAGES | self.many()), ("blogposts", self.posts)):
+        for plural, documents in (("pages", PAGES | self.many()), ("blogposts", self.posts)):
             for document_id, document in documents.items():
-                address = f"/wiki/api/v2/{resource_type}/{document_id}"
+                address = f"/wiki/api/v2/{plural}/{document_id}"
                 routes[address] = lambda request, d=document: self.document(request, d)
                 files = ATTACHMENTS.get(document_id, [])
                 if document_id == "1001" and self.failing_files:

@@ -3,7 +3,7 @@
 The expectations come from the plan's "A source's declaration, and the roles'
 interfaces": a declaration names its fetcher, if any, and its preparers by module path,
 which ``--help`` never imports; one fetcher and one preparer serve Confluence and Jira,
-each reading from ``run.source`` the source that it runs for, so its resource types and its
+each reading from ``run.source`` the source that it runs for, so its document types and its
 rows of the cache of conversions; the work log, read in place, has no fetcher;
 ``preflight`` says what a fetcher or a preparer cannot go on with before any source starts; each
 preparer that converts finds pandoc itself, so that pandoc gone fails its result alone;

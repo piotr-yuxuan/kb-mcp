@@ -876,8 +876,8 @@ def test_a_file_that_both_sources_attach_stays_while_either_wants_it(crossed: Sa
     document wants any more.
     """
     crossed.run()
-    for resource_type, document in (("pages", "300"), ("blogposts", "600")):
-        shutil.rmtree(crossed.store.root / "confluence" / resource_type / document)
+    for plural, document in (("pages", "300"), ("blogposts", "600")):
+        shutil.rmtree(crossed.store.root / "confluence" / plural / document)
     assert crossed.run(sources=("confluence",))["confluence"].counts.changes.removed == len(
         ["300-leaf.md", "blog/600-news.md"]
     )

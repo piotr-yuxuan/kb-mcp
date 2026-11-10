@@ -127,7 +127,7 @@ snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `accounts.atlassian.site`:
 nothing else shapes its files. Confluence and Jira are prepared apart, Confluence first,
-each its own resource types, and each places every document, since a page links an issue, and an
+each its own document types, and each places every document, since a page links an issue, and an
 issue a page. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
 ([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); for its own, it turns the site's HTML

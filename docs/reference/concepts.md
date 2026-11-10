@@ -92,11 +92,10 @@ connector, one of each connector, of its name, in
 [`SOURCES`](../../src/kb_mcp/sources/registry.py); [`SourceRun`](../../src/kb_mcp/sources/stages.py),
 which binds it to its settings;
 [`FrontMatter.source`](../../src/kb_mcp/mirror/domain/mirror.py) and the index's column
-`documents.source`, which hold its name; the names
-[`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py),
-[`JIRA`](../../src/kb_mcp/sources/atlassian/declared.py) and
-[`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py); and the filter `source` of
-[`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py).
+`documents.source`, which hold its name; and the filter `source` of
+[`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py), which
+[`search_filters`](../../src/kb_mcp/mcp/app/tools.py) gives the sources that the settings
+name.
 
 ### scope
 
@@ -134,9 +133,12 @@ tree.
 **In the code.** On the fetching side:
 [`Scope`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 [`Coverage`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), with
-[`Coverage.periods`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py) and
-[`Coverage.exact`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
+[`Coverage.periods`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Coverage.exact`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Coverage.as_of`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py) and
+[`Coverage.whole_read_at`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
 [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py);
+[`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), a run's scopes, and
 [`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
 [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), the stored
 listings and `listed_at.json`, which are what a scope listed at its last whole read. On
@@ -779,7 +781,8 @@ Confluence's and Jira's sources share: the origin's responses as received, with 
 store's own records.
 
 - **In the code.**
-  [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
+  [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py), one
+  source's view of it, which holds the source's name,
   [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and,
   for what its adapter refuses, a [`Problem`](../../src/kb_mcp/kernel/outcome.py).
 

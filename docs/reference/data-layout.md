@@ -63,8 +63,9 @@ The site's responses and its HTML change without notice. So that a change stays 
   document (its type, id, revision, update time and Confluence version), read apart from
   the rest of the entry, so that an entry whose other fields have changed still lets the
   document be fetched. `mirror.domain.mirror.FrontMatter` holds what the mirror says of
-  each [document](concepts.md#document). A fetched document knows where it is stored
-  (`source`, `resource_type`) and names its state (`revision`). Every layer above the adapters
+  each [document](concepts.md#document). A fetched document knows its document type,
+  whose plural names where its source's view of the raw store keeps it
+  (`document_type`), and names its state (`revision`). Every layer above the adapters
   works with these types alone.
 - **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
   and `sources.atlassian.fetch.adapters.jira_v3` hold all that the code knows of those
@@ -284,8 +285,8 @@ Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 `interrupted` by Ctrl-C), and `counts`, each count by its name; reports written before
 held `status`, the exit status, in place of `ending`. A run report holds counts and
 refused fields' paths, never content, and names no scope. No code reads one back. Its counts of documents depend on whether
-`--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
-stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
+`--since` was given (034): with it, `<source> <plural>: in the period` and `<source> <plural>: already
+stored`; without, `<source> <plural>: new or changed since the last fetch`; `listed` and `fetched` either way.
 
 ## The Markdown mirror
 
