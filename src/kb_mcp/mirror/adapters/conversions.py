@@ -6,7 +6,9 @@ SHA-256 of the UTF-8 bytes of its converter's name, a NUL, then the HTML convert
 pandoc's version line and arguments: so a key holds the whole of pandoc's input, and its
 row cannot go stale. A name stands for one function: two functions under one name would
 share rows. Each source's prepare reads and prunes its own rows alone, so that a text
-that two sources convert is a row of each, which neither prune takes from the other.
+that two sources convert is a row of each, which neither prune takes from the other. A
+file of plan 039's, which the tag pre-kb-mcp wrote, holds rows that name no source: they
+are adopted, a row of each source that may have asked for them.
 Each conversion is committed at once, so that an interrupted run keeps all it made; in
 WAL mode with ``synchronous = NORMAL``, a power cut may lose the last few, never the
 file. Deleting the file costs one conversion of everything, and downloads nothing.
@@ -23,7 +25,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Collection, Iterator
     from pathlib import Path
 
 # How long a write to a store of SQLite waits for another run's, in seconds: about one
@@ -34,9 +36,15 @@ CREATE = (
     " markdown TEXT NOT NULL, PRIMARY KEY (source, key))"
 )
 # The columns that a run reads: a schema whose text names others, which CREATE TABLE IF NOT
-# EXISTS leaves as it is, fails here, at opening, and not at the run's first lookup. So
-# does a file of plan 039's, whose rows name no source: it is replaced once.
+# EXISTS leaves as it is, fails here, at opening, and not at the run's first lookup.
 COLUMNS = "SELECT source, key, markdown FROM conversions LIMIT 0"
+# The columns of a file of plan 039's, whose rows name no source, and how its rows become
+# a row of each source given, as a JSON list.
+FORMER = ["key", "markdown"]
+ADOPT = (
+    "INSERT INTO conversions (source, key, markdown)"
+    " SELECT sources.value, former.key, former.markdown FROM former, json_each(?) AS sources"
+)
 # Every run may write: the write lock, taken first, finds a file that SQLite can read but
 # may not write, such as one whose header names a later format; once in WAL mode, a
 # connection finds it only at its first write.
@@ -140,15 +148,23 @@ def delete(path: Path) -> None:
 
 @contextmanager
 def opened(
-    path: Path, converter: Callable[[], str], convert: Callable[[str], str], *, source: str
+    path: Path,
+    converter: Callable[[], str],
+    convert: Callable[[str], str],
+    *,
+    source: str,
+    adopted: Collection[str] = (),
 ) -> Iterator[Conversions]:
     """Open the file at ``path`` for the rows of ``source``; close it after use.
 
-    The file is created, or replaced when damaged: opening it takes the write lock once,
+    A file of plan 039's, whose rows name no source, is first made a file of this
+    layout, each of its rows a row of each source of ``adopted``, at once and whole, and
+    ``prepare.cache_adopted`` says how many rows each source took. The file is created,
+    or replaced when damaged: opening it takes the write lock once,
     then ``PRAGMA integrity_check`` judges the file, each index against its table
     included. When the check reports damage, or SQLite finds the file damaged, no
     database, in a format that it cannot read or may not write, or with a schema that
-    names other columns, as one of plan 039's does, or text that is not UTF-8, the file
+    names other columns, or text that is not UTF-8, the file
     and its ``-wal`` and ``-shm`` are deleted, ``prepare.cache_replaced`` says why,
     by SQLite's error name, ``integrity_check`` or ``UnicodeDecodeError``, and an empty
     file takes its place. A file locked past the wait is not damaged, nor one in a folder
@@ -160,6 +176,19 @@ def opened(
     connection = sqlite3.connect(path, timeout=WAIT_S)
     try:
         try:
+            # The write lock first, as SETUP takes it, then the former layout adopted under it.
+            connection.execute("BEGIN IMMEDIATE")
+            held = [row[1] for row in connection.execute("PRAGMA table_info(conversions)")]
+            if held == FORMER:
+                connection.execute("ALTER TABLE conversions RENAME TO former")
+                connection.execute(CREATE)
+                connection.execute(ADOPT, (json.dumps(list(adopted)),))
+                taken = connection.execute("SELECT count(*) FROM former").fetchone()[0]
+                connection.execute("DROP TABLE former")
+                structlog.get_logger().info(
+                    "prepare.cache_adopted", sources=list(adopted), rows=taken
+                )
+            connection.commit()
             connection.executescript(SETUP)
             checked = connection.execute("PRAGMA integrity_check").fetchall()
         except sqlite3.DatabaseError as error:

@@ -188,9 +188,10 @@ keeps has changed since the former name:
   `account: <id>` becomes `identity: 'atlassian:<id>'`; until then `index` reads the
   former entries as those identities, and no person's id changes.
 
-- **The first prepare converts everything once.** The cache of conversions holds its rows
-  by source now, so a file of the former columns is replaced, `prepare.cache_replaced`
-  saying so; each run after it converts what changed, as before. Nothing is downloaded
+- **The cache of conversions is kept.** It holds its rows by source now, so the first
+  prepare makes each row of the former file a row of Confluence and of Jira,
+  `prepare.cache_adopted` saying how many, and converts only what changed, as before;
+  each prune then drops the rows that its source did not use. Nothing is downloaded
   again.
 - **A report per source.** A download's report is
   `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it

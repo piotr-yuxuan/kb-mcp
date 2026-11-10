@@ -535,13 +535,16 @@ cannot tell apart. The work log does not use the file: its `revision`
 ([below](#the-work-log)) already skips what has not changed.
 
 As the file is opened, the run takes its write lock, then `PRAGMA integrity_check`
-judges it, each index against its table: one that the check finds damaged, or that
+judges it, each index against its table. A file whose one table holds `key` and
+`markdown` alone, as one written before plan 030 does, is first adopted, under the lock:
+each of its rows becomes a row of each Atlassian source, and `prepare.cache_adopted` says
+how many rows each took. One that the check finds damaged, or that
 SQLite finds damaged, no database, or of a format that it cannot read or may not write
 (`SQLITE_CORRUPT` and `SQLITE_NOTADB` by their primary codes, `SQLITE_ERROR` and
 `SQLITE_READONLY` exactly, since their extended codes, such as
 `SQLITE_READONLY_DIRECTORY` for a folder that the run may not write, say nothing of the
-file), or whose schema names columns other than `source`, `key` and `markdown`, as one
-written before plan 030 does, or a name that is no longer UTF-8 text, is deleted with its
+file), or whose schema names columns other than `source`, `key` and `markdown`, or a
+name that is no longer UTF-8 text, is deleted with its
 `-wal` and `-shm`, `prepare.cache_replaced` says why ([prepare's
 telemetry](telemetry/prepare.md)), and an empty file takes its
 place, so that the run goes on and converts everything. Damage that SQLite finds during

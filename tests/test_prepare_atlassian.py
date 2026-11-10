@@ -1099,13 +1099,14 @@ def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:
     assert (jira.counts.converted, jira.counts.reused, pandoc.runs) == (0, CONVERSIONS["jira"], [])
 
 
-def test_a_cache_of_plan_039_s_columns_is_replaced_once_and_everything_converted(
+def test_a_cache_of_plan_039_s_columns_is_adopted_and_nothing_converted(
     sandbox: Sandbox,
 ) -> None:
-    """Plan 030, criterion 11: its rows name no source, though each holds a conversion used.
+    """Plan 056: its rows name no source, though each holds a conversion used.
 
-    The first prepare replaces it, saying so once, by SQLite's error; both convert every
-    text again, and write the same files.
+    The tag pre-kb-mcp's file, on the user's other machine. The first prepare makes each
+    row one of each Atlassian source, saying so once; neither converts any text again,
+    and both write the same files.
     """
     sandbox.run()
     files = sandbox.files()
@@ -1122,10 +1123,11 @@ def test_a_cache_of_plan_039_s_columns_is_replaced_once_and_everything_converted
         connection.commit()
     with capture_logs() as events:
         outcomes = sandbox.run()
-    assert events_named(events, "prepare.cache_replaced") == [
-        {"reason": "SQLITE_ERROR", "log_level": "warning"}
+    assert events_named(events, "prepare.cache_adopted") == [
+        {"sources": ["confluence", "jira"], "rows": len(kept), "log_level": "info"}
     ]
+    assert events_named(events, "prepare.cache_replaced") == []
     assert each(outcomes, lambda outcome: (outcome.counts.converted, outcome.counts.reused)) == {
-        source: (count, 0) for source, count in CONVERSIONS.items()
+        source: (0, count) for source, count in CONVERSIONS.items()
     }
     assert sandbox.files() == files

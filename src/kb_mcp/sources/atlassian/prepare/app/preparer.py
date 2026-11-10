@@ -18,7 +18,7 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES
-from kb_mcp.sources.atlassian.prepare.app.prepare import SOURCE_OF, prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, SOURCE_OF, prepare_atlassian
 
 if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Settings
@@ -85,15 +85,20 @@ def prepare_classes(
     """Prepare a source's documents of ``document_classes`` from the raw store; say its problems.
 
     The data folder's cache of pandoc's conversions is open for this mirror alone, on the
-    rows of ``source``. What it could not mirror is a warning, ``prepare.not_mirrored``,
-    by the source whose prepare found it, its place and the reason, never its content, as is
+    rows of ``source``; a cache of the former layout is adopted for each Atlassian source.
+    What it could not mirror is a warning, ``prepare.not_mirrored``, by the source whose
+    prepare found it, its place and the reason, never its content, as is
     that the source then removed none of its files, ``prepare.nothing_removed``. What it
     could not read of another source is a warning of its outcome, said alike, since its
     own files may then link around that source's document, and fails nothing of its own.
     """
     log = structlog.get_logger()
     with conversions.opened(
-        settings.conversions, pandoc.html_converter, pandoc.markdown, source=source
+        settings.conversions,
+        pandoc.html_converter,
+        pandoc.markdown,
+        source=source,
+        adopted=tuple(PREPARED),
     ) as cache:
         outcome = prepare_atlassian(
             RawStore(settings.raw), settings.docs, site, cache, document_classes

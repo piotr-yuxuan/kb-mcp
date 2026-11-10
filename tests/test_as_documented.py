@@ -16,9 +16,11 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import sys
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -210,11 +212,11 @@ def a_store_with_a_page_of_each_ending(data: Path) -> None:
 def test_prepare_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
+    """Built, failed, unplaced, with a damaged cache, then a former one; then pandoc gone.
 
-    The pandoc on PATH passes its input through, unless it holds BREAK. Then the work log,
-    by the real pandoc: whole; a dry run; a problem and two transcripts of one id; a pandoc
-    that gives no version; Ctrl-C; a folder that is none.
+    Gone once the run began. The pandoc on PATH passes its input through, unless it holds
+    BREAK. Then the work log, by the real pandoc: whole; a dry run; a problem and two
+    transcripts of one id; a pandoc that gives no version; Ctrl-C; a folder that is none.
     """
     data = tmp_path / "data"
     a_store_with_a_page_of_each_ending(data)
@@ -231,6 +233,13 @@ def test_prepare_records_as_documented(
     emitted = Emitted()
     with monkeypatch.context() as patch:
         patch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(arguments) == ExitStatus.FAILED
+        with closing(sqlite3.connect(data / "conversions.sqlite")) as connection:
+            connection.executescript(
+                "DROP TABLE conversions;"
+                " CREATE TABLE conversions (key TEXT PRIMARY KEY, markdown TEXT NOT NULL);"
+            )
         with emitted.gathering(telemetry, "prepare"):
             assert main(arguments) == ExitStatus.FAILED
 

@@ -151,12 +151,14 @@ def prepared_source(
     """Mirror one source of ``store`` into ``docs``; give its outcome.
 
     It converts by ``convert`` through its rows of the cache beside ``docs``, the file
-    of the data layout, ``conversions.sqlite``. It names ``convert`` by its qualified
-    name, as pandoc's version and arguments name pandoc's conversion, so that two
-    functions never answer for each other.
+    of the data layout, ``conversions.sqlite``, which each Atlassian source adopts, as the
+    preparer has it. It names ``convert`` by its qualified name, as pandoc's version and
+    arguments name pandoc's conversion, so that two functions never answer for each other.
     """
     path = docs.parent / "conversions.sqlite"
-    with conversions.opened(path, lambda: convert.__qualname__, convert, source=source) as cache:
+    with conversions.opened(
+        path, lambda: convert.__qualname__, convert, source=source, adopted=tuple(PREPARED)
+    ) as cache:
         return prepare_atlassian(store, docs, site, cache, PREPARED[source])
 
 

@@ -223,11 +223,11 @@ def test_a_text_that_two_sources_convert_is_a_row_of_each_that_neither_prune_tak
     assert run(path, Scripted(), TEXTS[1:3], "jira")[1:] == (0, 2)
 
 
-def test_a_file_of_plan_039_s_two_columns_is_replaced_once(path: Path) -> None:
-    """Plan 030: its rows name no source, though each holds the conversion asked for.
+def test_a_file_of_plan_039_s_two_columns_is_adopted_by_each_source_given(path: Path) -> None:
+    """Plan 056: the tag pre-kb-mcp's file; its rows name no source, each a conversion asked for.
 
-    The run converts every text again, and says once, by SQLite's error, that it replaced
-    the file; the next reuses each.
+    Each becomes a row of each source given, once and whole, said once with their count:
+    a run of either then reuses every one, and a run of a source not given converts.
     """
     path.parent.mkdir(parents=True)
     with closing(sqlite3.connect(path)) as connection:
@@ -239,12 +239,19 @@ def test_a_file_of_plan_039_s_two_columns_is_replaced_once(path: Path) -> None:
             [(key(NAME, text), f"Markdown of {text}") for text in TEXTS],
         )
         connection.commit()
+    scripted = Scripted()
     with capture_logs() as events:
-        assert run(path, Scripted(), TEXTS)[1:] == (4, 0)
-        assert run(path, Scripted(), TEXTS)[1:] == (0, 4)
-    assert events_named(events, "prepare.cache_replaced") == [
-        {"reason": "SQLITE_ERROR", "log_level": "warning"}
+        with conversions.opened(
+            path, scripted.converter, scripted.convert, source=SOURCE, adopted=(SOURCE, "jira")
+        ) as cache:
+            assert [cache.markdown(text) for text in TEXTS] == [f"Markdown of {t}" for t in TEXTS]
+            assert (cache.converted, cache.reused) == (0, 4)
+        assert run(path, scripted, TEXTS, "jira")[1:] == (0, 4)
+        assert run(path, scripted, TEXTS[:1], "worklog")[1:] == (1, 0)
+    assert events_named(events, "prepare.cache_adopted") == [
+        {"sources": [SOURCE, "jira"], "rows": len(TEXTS), "log_level": "info"}
     ]
+    assert events_named(events, "prepare.cache_replaced") == []
 
 
 def test_an_interrupted_run_keeps_the_conversions_it_made_for_the_next(path: Path) -> None:
