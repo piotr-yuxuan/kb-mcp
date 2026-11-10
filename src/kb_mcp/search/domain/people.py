@@ -340,12 +340,13 @@ class Joining:
 def by_alias(row: PersonRow, joining: Joining) -> Meant:
     """Give a name without an identity to the person its alias means (rule 2).
 
-    An alias whose value names nobody, or several, changes nothing; nor does it take a
+    An alias of an identity is none, even of a name written as the identity is. An
+    alias whose value names nobody, or several, changes nothing; nor does it take a
     participant whom rule 4 gives one other person: the user wrote the summaries'
     participants for that document, and the alias for the name anywhere.
     """
     alias = joining.aliases.get(name_key(row.name))
-    if alias is None or alias.reason is not None:
+    if alias is None or alias.name in joining.owned or alias.reason is not None:
         return None
     attended = by_attendance(row, joining)
     return None if isinstance(attended, str) and attended != alias.means else alias.means

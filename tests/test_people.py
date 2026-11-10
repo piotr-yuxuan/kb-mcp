@@ -823,6 +823,18 @@ def test_an_alias_of_a_name_to_an_identity_s_person_id_follows_where_an_alias_mo
     assert result.unused == ()
 
 
+def test_an_alias_of_an_identity_moves_no_name_written_as_it() -> None:
+    """A name without an identity that writes acct-0003's identity is a name by rule 5.
+
+    The alias of that identity moves its mentions alone (rule 1), not a name (rule 2).
+    """
+    written = named(UNLINKED, "atlassian:acct-0003")
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002"}
+    result = joined((SAM_2_ROW, SAM_3_ROW, written), {}, aliases)
+    assert result.of[SAM_3_ROW] == SAM_2
+    assert result.of[written] == anchored("name\natlassian:acct-0003")
+
+
 def test_aliases_of_identities_are_not_chained() -> None:
     """acct-0003 names acct-0002, which an alias of its own moves to acct-0001.
 
