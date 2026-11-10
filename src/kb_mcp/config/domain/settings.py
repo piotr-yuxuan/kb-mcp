@@ -477,8 +477,9 @@ def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[S
     ``sources`` gives each source's connector and its connector's table by the source's
     name, which names its table, ``[sources.<name>]``, whose ``connector`` names that
     connector and no other; the tables follow one another in name order, each described
-    by its docstring. Raises TypeError, naming the table, for a name that a model already
-    holds, such as ``json``, which its field would shadow, one that holds a setting of a
+    by its docstring. Raises SettingsError, naming the source, for a name that the model
+    already holds, such as ``json``, which its field would shadow, as the settings may name
+    the source; and TypeError, naming the table, for one that holds a setting of a
     type that has no kind, one without a default, since a source left unset still has
     its table, or one that holds a table, as a connector's settings are values, each said
     by its path, all before any value is read.
@@ -499,8 +500,8 @@ def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[S
     }
     for name, table in tables.items():
         if hasattr(Sources, name):
-            message = f"sources.{name}: a name that a model already holds"
-            raise TypeError(message)
+            message = f"sources.{name}: a name that the settings' model holds; name it otherwise"
+            raise SettingsError(message)
         try:
             kinds = setting_paths(table)
             table()

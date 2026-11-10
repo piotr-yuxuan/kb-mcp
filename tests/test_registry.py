@@ -307,11 +307,16 @@ def test_a_list_left_at_none_reads_as_no_value(tmp_path: Path, capsys: CaptureFi
 
 
 @pytest.mark.parametrize("name", ["json", "copy", "schema"])
-def test_a_name_that_a_model_holds_is_refused_naming_it(tmp_path: Path, name: str) -> None:
-    """Its field would shadow the attribute, as Pydantic warns: no warning on every run."""
+def test_a_name_that_a_model_holds_is_refused_naming_it(
+    tmp_path: Path, capsys: CaptureFixture[str], name: str
+) -> None:
+    """Its field would shadow the attribute, as Pydantic warns: no warning on every run.
+
+    Refused as a setting, exit 2, since plan 059's settings may name the source.
+    """
     registry = (*sourced(CONFLUENCE, JIRA), Source(name=name, connector=WORKLOG))
-    with pytest.raises(TypeError, match=rf"^sources\.{name}: a name that a model already holds$"):
-        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+    assert main(["check", "--config", str(tmp_path / "none.toml")], registry) == ExitStatus.REFUSED
+    assert f"sources.{name}: a name that the settings' model holds" in capsys.readouterr().err
 
 
 def test_a_source_that_names_neither_fetcher_nor_preparer_is_refused(tmp_path: Path) -> None:

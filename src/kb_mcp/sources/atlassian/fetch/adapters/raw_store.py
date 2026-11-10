@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
+from kb_mcp.kernel.names import BLOBS, IDENTIFIER, RefusedError, require
 from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
@@ -648,7 +648,7 @@ class RawStore:
         if not DIGEST.fullmatch(digest):
             message = "not a SHA-256 digest"
             raise ValueError(message)
-        return self.root / "blobs" / digest[:2] / digest
+        return self.root / BLOBS / digest[:2] / digest
 
     def put_blob(self, data: bytes) -> str:
         """Store a file under its SHA-256, once, and return the digest."""

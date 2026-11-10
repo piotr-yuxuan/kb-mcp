@@ -165,7 +165,7 @@ source of its own without touching `src/`
 Its rules hold for any registry that the entry is given
 ([`refuse`](../../src/kb_mcp/sources/registry.py)), and refuse, naming the source: a
 name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), or one of
-[`RESERVED`](../../src/kb_mcp/kernel/names.py), `assets`, `http` and `https`; two of one
+[`RESERVED`](../../src/kb_mcp/kernel/names.py), `assets`, `blobs`, `http` and `https`; two of one
 name; a connector naming no setting, or neither a fetcher nor a preparer, or a login
 without a location among its settings; an option that another connector declares otherwise, or that
 takes a flag of `fetch`'s own

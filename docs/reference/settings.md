@@ -32,7 +32,8 @@ value replaces a weaker one's whole, a list included, as
 A path that starts with `~` starts in the home directory.
 
 **Sources.** Each source is a table, `[sources.<name>]`, its name a lower-case word that
-starts with a letter, none of `assets`, `http` and `https`. The table's `connector` names
+starts with a letter, none of `assets`, `blobs`, `http` and `https`, nor a name that the
+settings' model holds, such as `json`. The table's `connector` names
 its connector, by default its own name: `confluence`, `jira` and `worklog` are always
 there and need none, and a second site of Jira is a source of its own, such as
 `[sources.clientjira]` with `connector = "jira"`, whose settings are Jira's, below, under

@@ -356,3 +356,30 @@ def test_project_given_with_sources_none_of_which_has_projects_is_ignored_by_the
     [(_, loaded)] = runs
     assert loaded.settings.sources.jira.projects == ()
     assert loaded.settings.sources.clientjira.projects == ("ABC",)
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        ('[sources.json]\nconnector = "jira"\n', "sources.json: a name that the settings' model"),
+        ('[sources.blobs]\nconnector = "jira"\n', "sources.blobs (config.toml): not a source"),
+    ],
+    ids=["a model's attribute", "the raw store's folder"],
+)
+def test_a_source_named_as_the_model_or_the_raw_store_names_its_own_is_refused(
+    tmp_path: Path, capsys: CaptureFixture[str], text: str, said: str
+) -> None:
+    """Review round 2: exit 2, naming it, never a traceback nor a folder of the raw store's."""
+    config = tmp_path / "config.toml"
+    config.write_text(text, "utf-8")
+    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
+    assert said in capsys.readouterr().err
+
+
+def test_a_variable_of_a_source_named_as_the_model_s_attribute_is_refused(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Review round 2: as in the file."""
+    monkeypatch.setenv("KB_MCP_SOURCES__COPY__CONNECTOR", "jira")
+    assert main(["check", "--config", str(tmp_path / "none.toml")]) == ExitStatus.REFUSED
+    assert "sources.copy: a name that the settings' model holds" in capsys.readouterr().err

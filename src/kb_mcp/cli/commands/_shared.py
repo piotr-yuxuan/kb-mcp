@@ -63,8 +63,8 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         option: (setting, getattr(arguments, dest))
         for dest, (option, setting) in command.setting_flags(arguments).items()
     }
-    model = settings_model(tables(sources))
     try:
+        model = settings_model(tables(sources))
         loaded = load_settings(arguments.config, flags, Path.home().resolve(), model)
     except SettingsError as error:
         structlog.get_logger().error("settings.refused", reason=str(error))

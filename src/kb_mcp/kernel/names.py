@@ -18,11 +18,13 @@ NESTING = "__"
 # The mirror's folder of the files that Confluence's and Jira's documents attach,
 # docs/assets/: no document is under it, and no source's folder may be it.
 ASSETS = "assets"
+# The raw store's folder of the files that documents attach, beside each source's.
+BLOBS = "blobs"
 # A source's name, and a type of its documents, as the front matter names them; no
-# source takes ``assets``, nor the schemes of a web address, which a link to a source's
-# document would read as.
+# source takes ``assets`` nor ``blobs``, folders beside the sources', nor the schemes of
+# a web address, which a link to a source's document would read as.
 SOURCE_NAME = re.compile(r"[a-z][a-z0-9]*")
-RESERVED = (ASSETS, "http", "https")
+RESERVED = (ASSETS, BLOBS, "http", "https")
 # The setting of each source's table that names its connector.
 CONNECTOR = "connector"
 TYPE_NAME = re.compile(r"[a-z]+")
