@@ -165,7 +165,7 @@ kb-mcp fetch --dry-run --since 7d
 kb-mcp prepare --dry-run
 ```
 
-`fetch --dry-run` reads the site and fetches nothing: each target's fetch window first,
+`fetch --dry-run` reads the site and fetches nothing: each scope's fetch window first,
 where it starts and why, then what it would fetch. `prepare --dry-run` counts the work log: its
 documents, those it would convert, and the files it would remove. Confluence and Jira cannot
 count without converting, so their rows say `not run` and that they are not counted. Neither
@@ -175,7 +175,7 @@ writes anything, nor asks. `index` and `embed` take none.
 
 A row per source says how it ended: `done`, `failed`, `sign in again`, `interrupted` or
 `not run`, then what matters of its counts, and each problem and warning by its place and
-reason; `--detail detailed` gives every count, a fetch's beginning with each target's fetch
+reason; `--detail detailed` gives every count, a fetch's beginning with each scope's fetch
 window and what became of its coverage. A fetch counts what it fetches: with
 `--since`, the documents in the period and those already stored; without, those new or
 changed since the last fetch. `--format json` writes one document: `exit_status`, and

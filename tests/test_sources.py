@@ -45,8 +45,8 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBus
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
-from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT
+from kb_mcp.sources.atlassian.fetch.domain import names
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.atlassian.prepare.app import prepare as atlassian_prepare
 from kb_mcp.sources.atlassian.prepare.app import preparer
 from kb_mcp.sources.declaration import Option
@@ -210,7 +210,9 @@ def test_a_source_that_does_not_exist_is_refused_by_the_options(
 
 def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declares_none() -> None:
     """Of the sources taken: --since by Jira, under a registry whose Jira has no option."""
-    plain = replace(JIRA, scope_types=(replace(PROJECT, option=None),), options=(), described=None)
+    plain = replace(
+        JIRA, scope_types=(replace(names.PROJECT, option=None),), options=(), described=None
+    )
     registry = sourced(CONFLUENCE, plain, WORKLOG)
     given = parser(sources=registry).parse_args(["fetch", "--since", "7d"])
     assert "--since: ignored by jira" in fetch_described(given, CONFIGURED)
@@ -471,13 +473,13 @@ def test_a_first_fetch_without_since_fetches_the_last_week_of_each_target(
     """
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "fetch", "--yes")) != ExitStatus.REFUSED
-    rule = "period: since each target's last fetch; the last 7 days for one never fetched\n"
+    rule = "period: since each scope's last fetch; the last 7 days for one never fetched\n"
     assert capsys.readouterr().err.count(rule) == 1
     assert signed_in.asked
     periods = RawStore((home / "data" / "raw").resolve()).coverage().periods
     assert set(periods) == {
-        Target(source="confluence", key="MFS"),
-        Target(source="jira", key="PRB"),
+        Scope(source="confluence", type=names.SPACE, key="MFS"),
+        Scope(source="jira", type=names.PROJECT, key="PRB"),
     }
     assert {each.end - each.start for each in periods.values()} == {WEEK}
 
@@ -801,7 +803,7 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     assert "confluence pages: to fetch" in fetched[0]
     assert "jira issues: to fetch" in fetched[1]
     windows = [each for each_fetched in fetched for each in each_fetched["windows"]]
-    assert [(each["target"]["key"], each["reason"], each["coverage"]) for each in windows] == [
+    assert [(each["scope"]["key"], each["reason"], each["coverage"]) for each in windows] == [
         ("MFS", "given", None),
         ("PRB", "given", None),
     ]

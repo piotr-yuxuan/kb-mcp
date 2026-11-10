@@ -17,6 +17,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     StoreBusyError,
     StoredSnapshot,
 )
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     BlogPost,
     Folder,
@@ -25,7 +26,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     SiteUser,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
 from kb_mcp.sources.atlassian.fetch.domain.period import Period
 from tests.samples import (
@@ -357,11 +358,13 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     start = datetime(2026, 10, 15, 11, tzinfo=timezone(timedelta(hours=2)))
     coverage = Coverage(
         periods={
-            Target(source="confluence", key="MFS"): Period(start, FETCHED),
-            Target(source="jira", key="PRB"): Period(start - timedelta(days=1), FETCHED),
-            Target(source="jira", key="OPS"): Period(start, FETCHED),
+            Scope(source="confluence", type=names.SPACE, key="MFS"): Period(start, FETCHED),
+            Scope(source="jira", type=names.PROJECT, key="PRB"): Period(
+                start - timedelta(days=1), FETCHED
+            ),
+            Scope(source="jira", type=names.PROJECT, key="OPS"): Period(start, FETCHED),
         },
-        exact=frozenset({Target(source="jira", key="PRB")}),
+        exact=frozenset({Scope(source="jira", type=names.PROJECT, key="PRB")}),
     )
     store.put_coverage(coverage)
     assert store.coverage() == coverage
@@ -379,7 +382,10 @@ def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: Ra
     """
     start = datetime(2026, 10, 15, 9, tzinfo=UTC)
     period = Period(start, start + timedelta(days=7))
-    space, project = Target(source="confluence", key="MFS"), Target(source="jira", key="PRB")
+    space, project = (
+        Scope(source="confluence", type=names.SPACE, key="MFS"),
+        Scope(source="jira", type=names.PROJECT, key="PRB"),
+    )
     store.put_coverage(
         Coverage(periods={space: period, project: period}, exact=frozenset({project}))
     )

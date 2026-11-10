@@ -18,9 +18,10 @@ from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
-from kb_mcp.sources.atlassian.fetch.app.fetching import Targets, plan_fetch, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, FetchWindow, Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, FetchWindow, Scope
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
 from tests.composed import MODEL
 from tests.mirrors import prepared_sources
@@ -32,6 +33,7 @@ from tests.test_fetching import (
     SITE,
     SPACE,
     FakeSite,
+    scopes,
     stamp,
 )
 
@@ -49,6 +51,9 @@ FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)
 SECOND = datetime(2026, 10, 23, 9, tzinfo=UTC)
 WEEK = timedelta(days=7)
 YEAR = timedelta(days=365)
+# The space and the project that the scripted site serves, as scopes.
+MFS = Scope(source="confluence", type=names.SPACE, key="MFS")
+PRB = Scope(source="jira", type=names.PROJECT, key="PRB")
 MANY = 30
 OTHER_SPACE = "300000"
 REFUSED = 2
@@ -127,22 +132,22 @@ def run(
     chosen: Settings,
     monkeypatch: MonkeyPatch,
     fake: FakeSite,
-    targets: Targets,
+    purview: Purview,
     now: datetime,
 ) -> Ending:
     """Run one download at ``now`` over the fake site, and return how it ended."""
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    return run_fetch(chosen, targets, lambda: now, lambda _: None).ending
+    return run_fetch(chosen, purview, lambda: now, lambda _: None).ending
 
 
-def first_week(spaces: list[str], projects: list[str]) -> Targets:
-    """Return the targets of a first run over the week before ``FIRST``."""
-    return Targets(spaces=spaces, projects=projects, max_file_bytes=CAP, since=FIRST - WEEK)
+def first_week(spaces: list[str], projects: list[str]) -> Purview:
+    """Return the purview of a first run over the week before ``FIRST``."""
+    return Purview(scopes=scopes(spaces, projects), max_file_bytes=CAP, since=FIRST - WEEK)
 
 
-def catch_up(spaces: list[str], projects: list[str]) -> Targets:
-    """Return the targets of a later run, from what is covered."""
-    return Targets(spaces=spaces, projects=projects, max_file_bytes=CAP)
+def catch_up(spaces: list[str], projects: list[str]) -> Purview:
+    """Return the purview of a later run, from what is covered."""
+    return Purview(scopes=scopes(spaces, projects), max_file_bytes=CAP)
 
 
 def stored_pages(chosen: Settings) -> dict[str, str]:
@@ -162,8 +167,8 @@ def test_a_first_run_starts_the_coverage_of_each_target(
     assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST) == "done"
     assert run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST) == "done"
     assert RawStore(chosen.raw).coverage().periods == {
-        Target(source="confluence", key="MFS"): Period(FIRST - WEEK, FIRST),
-        Target(source="jira", key="PRB"): Period(FIRST - WEEK, FIRST),
+        MFS: Period(FIRST - WEEK, FIRST),
+        PRB: Period(FIRST - WEEK, FIRST),
     }
 
 
@@ -179,9 +184,7 @@ def test_a_later_run_catches_up_on_an_old_page_edited_since(
     later = RefreshSite(listing=listing)
     assert run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND) == "done"
     assert stored_pages(chosen)["1003"] == "000004"
-    assert RawStore(chosen.raw).coverage().periods[
-        Target(source="confluence", key="MFS")
-    ] == Period(FIRST - WEEK, SECOND)
+    assert RawStore(chosen.raw).coverage().periods[MFS] == Period(FIRST - WEEK, SECOND)
 
 
 def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
@@ -190,10 +193,10 @@ def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     """--since 1y, where --back went: the old page comes, and the coverage starts a year back."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SECOND - YEAR)
+    targets = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=SECOND - YEAR)
     assert run(chosen, monkeypatch, RefreshSite(), targets, SECOND) == "done"
     assert stored_pages(chosen)["1003"] == "000003"
-    covered = RawStore(chosen.raw).coverage().periods[Target(source="confluence", key="MFS")]
+    covered = RawStore(chosen.raw).coverage().periods[MFS]
     assert covered == Period(SECOND - YEAR, SECOND)
 
 
@@ -203,8 +206,8 @@ def test_an_until_before_since_is_refused_before_anything_runs(
     """Refused by name, before any request, and nothing is written."""
     chosen = settings(tmp_path)
     fake = RefreshSite()
-    backwards = Targets(
-        spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST, until=FIRST - WEEK
+    backwards = Purview(
+        scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=FIRST, until=FIRST - WEEK
     )
     with pytest.raises(PeriodError, match=r"^--until: must come after --since"):
         run(chosen, monkeypatch, fake, backwards, FIRST)
@@ -220,7 +223,7 @@ def test_a_target_whose_listing_failed_keeps_its_coverage(
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(search_status=400), first_week(["MFS"], []), FIRST)
     run(chosen, monkeypatch, RefreshSite(search_status=400), first_week([], ["PRB"]), FIRST)
-    assert set(RawStore(chosen.raw).coverage().periods) == {Target(source="confluence", key="MFS")}
+    assert set(RawStore(chosen.raw).coverage().periods) == {MFS}
 
 
 def test_a_plan_lists_and_decides_and_writes_nothing(
@@ -586,10 +589,10 @@ def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) ->
 
 def test_a_window_never_ends_past_the_run() -> None:
     """An --until in the future stops at now: coverage never claims time not yet seen."""
-    later = Targets(
-        spaces=["MFS"], projects=[], max_file_bytes=CAP, since=FIRST - WEEK, until=FIRST + WEEK
+    later = Purview(
+        scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=FIRST - WEEK, until=FIRST + WEEK
     )
-    window = later.windows(Coverage(), FIRST)[Target(source="confluence", key="MFS")]
+    window = later.windows(Coverage(), FIRST)[MFS]
     assert window is not None
     assert window.period.end == FIRST
 
@@ -632,16 +635,15 @@ def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(
 
 def test_a_since_before_the_epoch_starts_at_the_epoch() -> None:
     """Nothing on the site is older; the dates searched stay within the calendar."""
-    early = Targets(
-        spaces=["MFS"], projects=[], max_file_bytes=CAP, since=datetime(1, 1, 2, tzinfo=UTC)
+    early = Purview(
+        scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=datetime(1, 1, 2, tzinfo=UTC)
     )
-    window = early.windows(Coverage(), FIRST)[Target(source="confluence", key="MFS")]
+    window = early.windows(Coverage(), FIRST)[MFS]
     assert window is not None
     assert window.period.start == EPOCH
 
 
 # Plan 034: a project's coverage ends exactly, at its earliest document not stored whole.
-PRB = Target(source="jira", key="PRB")
 START = datetime(2026, 10, 21, 12, tzinfo=UTC)
 RUN = datetime(2026, 10, 28, 12, tzinfo=UTC)
 NEXT = RUN + timedelta(hours=6)
@@ -670,9 +672,9 @@ def exactly(start: datetime, end: datetime) -> Coverage:
 
 
 def said_coverage(events: list[dict[str, object]]) -> list[tuple[object, ...]]:
-    """Give what ``fetch.coverage`` said, target by target: the outcome, and why if held."""
+    """Give what ``fetch.coverage`` said, scope by scope: the outcome, and why if held."""
     return [
-        (event["target"], event["outcome"], *([event["reason"]] if "reason" in event else []))
+        (event["scope"], event["outcome"], *([event["reason"]] if "reason" in event else []))
         for event in events
         if event["event"] == "fetch.coverage"
     ]
@@ -697,7 +699,7 @@ def test_a_failure_ends_a_project_s_coverage_at_its_update_time(
             chosen,
             monkeypatch,
             failing,
-            Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+            Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
             RUN,
         )
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
@@ -720,11 +722,11 @@ def test_a_stored_snapshot_that_cannot_be_read_ends_the_coverage_at_it(
         chosen,
         monkeypatch,
         whole,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     stored_issue(chosen, "20001").write_text("{}", "utf-8")
-    again = Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START)
+    again = Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START)
     with capture_logs() as events:
         run(chosen, monkeypatch, RefreshSite(issues=two_issues()), again, NEXT)
     assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
@@ -751,7 +753,7 @@ def test_what_failed_is_asked_for_again_and_the_coverage_then_reaches_the_run(
         chosen,
         monkeypatch,
         failing,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     again = RefreshSite(issues=two_issues())
@@ -776,7 +778,7 @@ def test_a_snapshot_refused_holds_the_coverage_until_the_adapter_reads_it(
         chosen,
         monkeypatch,
         refused,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     run(chosen, monkeypatch, RefreshSite(issues=two_issues()), catch_up([], ["PRB"]), NEXT)
@@ -801,7 +803,7 @@ def test_among_several_failures_the_earliest_ends_the_coverage(
         chosen,
         monkeypatch,
         failing,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     assert RawStore(chosen.raw).coverage() == exactly(START, earlier)
@@ -843,7 +845,7 @@ def test_a_run_stopped_during_a_project_leaves_its_coverage_and_extends_those_be
     assert run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), RUN) == stopped
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
-    assert periods[Target(source="confluence", key="MFS")] == Period(FIRST - WEEK, RUN)
+    assert periods[MFS] == Period(FIRST - WEEK, RUN)
 
 
 def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
@@ -878,8 +880,8 @@ def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
     old = [{"source": "jira", "key": "PRB", "start": START.isoformat(), "end": RUN.isoformat()}]
     (chosen.raw / "coverage.json").write_text(json.dumps(old), "utf-8")
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
-    inside = Targets(
-        spaces=[], projects=["PRB"], max_file_bytes=CAP, since=FAILING - timedelta(hours=1)
+    inside = Purview(
+        scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=FAILING - timedelta(hours=1)
     )
     run(chosen, monkeypatch, failing, inside, NEXT)
     after = RawStore(chosen.raw).coverage()
@@ -916,7 +918,7 @@ def test_a_project_catches_up_from_a_day_before_its_last_fetch(
         chosen,
         monkeypatch,
         first,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         LAST_FETCH,
     )
     assert RawStore(chosen.raw).coverage() == exactly(START, LAST_FETCH)
@@ -945,7 +947,7 @@ def test_a_catch_up_until_a_moment_reaches_that_moment(
         chosen,
         monkeypatch,
         first,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         LAST_FETCH,
     )
     until = datetime(2026, 10, 28, 6, tzinfo=UTC)
@@ -955,7 +957,7 @@ def test_a_catch_up_until_a_moment_reaches_that_moment(
         chosen,
         monkeypatch,
         later,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, until=until),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, until=until),
         CATCH_UP,
     )
     assert jira_asked(later) == []
@@ -971,7 +973,7 @@ def test_a_failure_at_the_start_of_a_catch_up_ends_the_coverage_there(
         chosen,
         monkeypatch,
         RefreshSite(issues={}),
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     start_of_catch_up = RUN - timedelta(days=1)
@@ -1012,14 +1014,12 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
         chosen,
         monkeypatch,
         RefreshSite(issues={}),
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     targets = catch_up(["MFS"], ["PRB"])
     assert targets.windows(RawStore(chosen.raw).coverage(), NEXT) == {
-        Target(source="confluence", key="MFS"): FetchWindow(
-            period=Period(NEXT - WEEK, NEXT), reason="first fetch"
-        ),
+        MFS: FetchWindow(period=Period(NEXT - WEEK, NEXT), reason="first fetch"),
         PRB: FetchWindow(
             period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"
         ),
@@ -1027,7 +1027,7 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
     assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up(["MFS"], []), NEXT) == "done"
     assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), NEXT) == "done"
     assert RawStore(chosen.raw).coverage().periods == {
-        Target(source="confluence", key="MFS"): Period(NEXT - WEEK, NEXT),
+        MFS: Period(NEXT - WEEK, NEXT),
         PRB: Period(START, NEXT),
     }
 
@@ -1042,21 +1042,21 @@ def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing
         chosen,
         monkeypatch,
         RefreshSite(issues={}),
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     before = RawStore(chosen.raw).coverage().periods[PRB]
     until = RUN - timedelta(days=1)
     fake = RefreshSite(issues=two_issues())
     with capture_logs() as events:
-        space = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, until=until)
+        space = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, until=until)
         run(chosen, monkeypatch, fake, space, NEXT)
-        project = Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, until=until)
+        project = Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, until=until)
         run(chosen, monkeypatch, fake, project, NEXT)
     assert not [url for url in fake.asked if url.path.startswith("/rest/api/3/search")]
     periods = RawStore(chosen.raw).coverage().periods
     assert periods[PRB] == before
-    assert periods[Target(source="confluence", key="MFS")] == Period(FIRST - WEEK, until)
+    assert periods[MFS] == Period(FIRST - WEEK, until)
     assert said_coverage(events) == [
         ("space MFS", "extended"),
         ("project PRB", "held", "after --until"),
@@ -1073,7 +1073,7 @@ def test_a_kept_file_that_fails_again_keeps_the_coverage_at_its_issue(
         chosen,
         monkeypatch,
         failing,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
     again = RefreshSite(issues=two_issues(), media_fails=True)
@@ -1093,7 +1093,7 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     before = RawStore(chosen.raw).coverage()
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    early = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, until=FIRST - WEEK)
+    early = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, until=FIRST - WEEK)
     outcome = run_fetch(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
     assert RawStore(chosen.raw).coverage() == before
@@ -1117,10 +1117,10 @@ def test_a_run_apart_from_what_is_covered_leaves_it_and_says_why(
         chosen,
         monkeypatch,
         RefreshSite(issues={}),
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
-    apart = Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=RUN + timedelta(days=1))
+    apart = Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=RUN + timedelta(days=1))
     with capture_logs() as events:
         run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
     assert RawStore(chosen.raw).coverage() == exactly(START, RUN)
@@ -1141,7 +1141,7 @@ def test_an_issue_that_the_search_names_twice_is_fetched_once(
             chosen,
             monkeypatch,
             twice,
-            Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+            Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
             RUN,
         )
     assert jira_asked(twice).count("/rest/api/3/issue/20002") == 1
@@ -1161,7 +1161,7 @@ def test_a_dry_run_counts_once_an_issue_that_the_search_names_twice(
     monkeypatch.setattr(http, "client", lambda *_: twice.client())
     planned = plan_fetch(
         chosen,
-        Targets(spaces=[], projects=["PRB"], max_file_bytes=CAP, since=START),
+        Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         lambda: RUN,
         lambda _: None,
     )

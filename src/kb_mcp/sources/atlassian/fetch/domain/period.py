@@ -22,7 +22,7 @@ EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 # The longest length of time read: a hundred years, far past the epoch, never past the
 # calendar.
 LONGEST = timedelta(days=100 * 365)
-# How far back a target never covered starts without --since.
+# How far back a scope never covered starts without --since.
 FIRST_FETCH = timedelta(days=7)
 # The options of a fetch's period, by flag: from when, until when, the largest file kept.
 SINCE_FLAG, UNTIL_FLAG, MAX_FILE_MB_FLAG = "--since", "--until", "--max-file-mb"
@@ -85,11 +85,11 @@ def period(since: str, until: str | None, now: datetime) -> Period:
 def period_rule(*, since: bool) -> str:
     """Say in words where a run's windows start, with --since given or not.
 
-    Said before a run, which reads no store yet: the rule, not each target's window.
+    Said before a run, which reads no store yet: the rule, not each scope's window.
     """
     if since:
         return "period: from --since"
     return (
-        "period: since each target's last fetch;"
+        "period: since each scope's last fetch;"
         f" the last {FIRST_FETCH.days} days for one never fetched"
     )

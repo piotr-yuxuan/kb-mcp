@@ -1,9 +1,10 @@
-"""Confluence's and Jira's fetcher: one source's targets fetched into the raw store.
+"""Confluence's and Jira's fetcher: one source's scopes fetched into the raw store.
 
 Both connectors name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 scope types of the connector of the source that a run is for, and fetch that source's
-targets alone, its table's spaces or projects, over the period that its options give.
-``fetch_targets`` fetches them, or plans their fetch, and says what went wrong.
+scopes alone, each of its table's keys of each scope type, over the period that its
+options give. ``fetch_purview`` fetches them, or plans their fetch, and says what went
+wrong.
 """
 
 from __future__ import annotations
@@ -16,8 +17,9 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
-from kb_mcp.sources.atlassian.fetch.app.fetching import plan_fetch, read_targets, run_fetch
-from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
+from kb_mcp.sources.atlassian.fetch.app.fetching import plan_fetch, read_purview, run_fetch
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
+from kb_mcp.sources.atlassian.fetch.domain.names import SPACE
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
 
 if TYPE_CHECKING:
@@ -25,25 +27,26 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Targets
+    from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview
     from kb_mcp.sources.stages import SourceRun
 
 # What to do while another run writes the raw store.
 BUSY = "another run is writing it; try again once that run ends"
 
 
-def targets_of(run: SourceRun) -> Targets:
-    """Read the targets of ``run``'s source, by its connector's scope types: spaces or projects.
+def purview_of(run: SourceRun) -> Purview:
+    """Read the scopes of ``run``'s source: each key that its table lists of each scope type.
 
-    The period is its options', as ``read_targets`` reads them.
+    The list is the setting that the scope type's option replaces; the period is its
+    options', as ``read_purview`` reads them.
     """
-    scope_types = run.source.connector.scope_types
-    return read_targets(
-        run.source_table.spaces if SPACE in scope_types else (),
-        run.source_table.projects if PROJECT in scope_types else (),
-        run.options,
-        run.now(),
-    )
+    scopes = [
+        Scope(source=run.source.name, type=scope_type, key=key)
+        for scope_type in run.source.connector.scope_types
+        if scope_type.option is not None and scope_type.option.setting is not None
+        for key in getattr(run.source_table, scope_type.option.setting)
+    ]
+    return read_purview(scopes, run.options, run.now())
 
 
 def preflight(run: SourceRun) -> str | None:
@@ -55,9 +58,9 @@ def preflight(run: SourceRun) -> str | None:
     """
     store = RawStore(run.settings.raw)
     try:
-        targets = targets_of(run)
-        targets.windows(store.coverage(), run.now())
-        if targets.spaces:
+        purview = purview_of(run)
+        purview.windows(store.coverage(), run.now())
+        if SPACE in run.source.connector.scope_types:
             store.tombstones()
     except (PeriodError, RepresentationError) as error:
         return str(error)
@@ -65,7 +68,7 @@ def preflight(run: SourceRun) -> str | None:
 
 
 def fetch(run: SourceRun) -> Outcome[FetchCounts]:
-    """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
+    """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_purview``.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
     later fetch's start, or a record damaged since. It fails this fetch alone, a problem
@@ -73,32 +76,32 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
     rows go on.
     """
     try:
-        return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
+        return fetch_purview(run.settings, purview_of(run), run.now, run.sleep, dry_run=run.dry_run)
     except (PeriodError, RepresentationError) as error:
         structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
         return Outcome.of(problems=(Problem(where=run.source.name, reason=str(error)),))
 
 
-def fetch_targets(
+def fetch_purview(
     settings: Settings,
-    targets: Targets,
+    purview: Purview,
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
     *,
     dry_run: bool,
 ) -> Outcome[FetchCounts]:
-    """Fetch these targets, one source's, or plan their fetch; say what went wrong.
+    """Fetch these scopes, one source's, or plan their fetch; say what went wrong.
 
     Another run writing the raw store fails the fetch before it starts, a problem by the
-    raw store and an error, ``fetch.store_busy``; each target that failed is a warning,
-    ``fetch.target_failed``, and a sign-in that no longer holds an error,
+    raw store and an error, ``fetch.store_busy``; each scope that failed is a warning,
+    ``fetch.scope_failed``, and a sign-in that no longer holds an error,
     ``fetch.sign_in_needed``, saying how to sign in again; both errors name the source,
     since each source's fetch can give them.
     """
     act = plan_fetch if dry_run else run_fetch
-    source = targets.source
+    source = purview.source
     try:
-        outcome = act(settings, targets, now, sleep)
+        outcome = act(settings, purview, now, sleep)
     except StoreBusyError:
         structlog.get_logger().error(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY

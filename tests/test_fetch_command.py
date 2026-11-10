@@ -21,13 +21,13 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
-from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Targets, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview, run_fetch
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, sourced
 from tests.samples import v2_page
 from tests.test_cli import logged_as
-from tests.test_fetching import CAP, SITE, FakeSite, stamp
+from tests.test_fetching import CAP, SITE, FakeSite, scopes, stamp
 from tests.test_incremental_fetch import RefreshSite, run, settings
 from tests.test_observed import said
 
@@ -258,12 +258,22 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
         [],
     ]
     assert [
-        (each["target"], each["start"], each["reason"], each["coverage"])
+        (each["scope"], each["start"], each["reason"], each["coverage"])
         for result in (confluence, jira)
         for each in result["windows"]
     ] == [
-        ({"source": "confluence", "key": "MFS"}, "2026-10-02T00:00:00Z", "given", "extended"),
-        ({"source": "jira", "key": "PRB"}, "2026-10-02T00:00:00Z", "given", "extended"),
+        (
+            {"source": "confluence", "type": "space", "key": "MFS"},
+            "2026-10-02T00:00:00Z",
+            "given",
+            "extended",
+        ),
+        (
+            {"source": "jira", "type": "project", "key": "PRB"},
+            "2026-10-02T00:00:00Z",
+            "given",
+            "extended",
+        ),
     ]
     assert all(each["end"] for result in (confluence, jira) for each in result["windows"])
     assert [each["dry_run"] for each in (confluence, jira)] == [False, False]
@@ -325,7 +335,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 ) -> None:
     """The user's own key is shown to them, and never written to the run report.
 
-    It is the warning fetch.target_failed, which the run's log file holds too.
+    It is the warning fetch.scope_failed, which the run's log file holds too.
     """
     chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
@@ -334,10 +344,10 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--detail", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
-    assert ("warning", "fetch.target_failed") in said(captured.err)
+    assert ("warning", "fetch.scope_failed") in said(captured.err)
     assert "space NOPE: not found" in captured.err
-    (failed,) = logged_as(home, "fetch.target_failed")
-    assert (failed["level"], failed["target"]) == ("warning", "space NOPE: not found")
+    (failed,) = logged_as(home, "fetch.scope_failed")
+    assert (failed["level"], failed["scope"]) == ("warning", "space NOPE: not found")
     assert "  confluence spaces failed: not found: 1\n" in captured.out
     [report] = chosen.runs.iterdir()
     assert report.name.endswith("-confluence.json")
@@ -424,7 +434,7 @@ def counted(
             chosen,
             monkeypatch,
             first,
-            Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SINCE),
+            Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=SINCE),
             LISTED_AT,
         )
         == "done"
@@ -432,7 +442,7 @@ def counted(
     if first_fetch:
         (chosen.raw / "coverage.json").unlink()
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite(listing=pages, posts={}).client())
-    targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=since)
+    targets = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=since)
     with capture_logs() as events:
         outcome = run_fetch(chosen, targets, lambda: COUNTED_AT, lambda _: None)
     return outcome, events, chosen
@@ -465,8 +475,8 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     assert tasks[-1] == (3, 3)
     assert outcome.counts.text("short") == "confluence pages: fetched: 3\n"
     [window] = to_jsonable_python(outcome)["counts"]["windows"]
-    assert (window["target"], window["end"], window["reason"], window["coverage"]) == (
-        {"source": "confluence", "key": "MFS"},
+    assert (window["scope"], window["end"], window["reason"], window["coverage"]) == (
+        {"source": "confluence", "type": "space", "key": "MFS"},
         "2026-10-27T09:00:00Z",
         reason,
         "extended",

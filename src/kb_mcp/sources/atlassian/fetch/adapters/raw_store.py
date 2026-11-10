@@ -32,9 +32,16 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Snapshot,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, PAGE
+from kb_mcp.sources.atlassian.fetch.domain.names import (
+    BLOGPOST,
+    CONFLUENCE,
+    JIRA,
+    PAGE,
+    PROJECT,
+    SPACE,
+)
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
@@ -49,6 +56,8 @@ COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
 # The store's own record, beside a space's listings, of when they were listed.
 LISTED_AT = "listed_at.json"
+# The scope type of a coverage's entry, by its source, which is its connector's name.
+SCOPE_TYPES = {CONFLUENCE: SPACE, JIRA: PROJECT}
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -463,7 +472,7 @@ class RawStore:
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
-        """Read each target's covered period, none when never written, and which are exact.
+        """Read each scope's covered period, none when never written, and which are exact.
 
         An entry without ``exact``, as every entry was before plan 034, is not; nor is a
         space's, whatever it says, since a space is listed whole.
@@ -471,18 +480,23 @@ class RawStore:
         path = self.root / COVERAGE
         if not path.exists():
             return Coverage()
-        periods: dict[Target, Period] = {}
-        exact: set[Target] = set()
+        periods: dict[Scope, Period] = {}
+        exact: set[Scope] = set()
         for item in Fields.each(_record_json(path), COVERAGE):
             with item.refusals():
-                target = Target(source=item.text("source"), key=item.text("key"))
+                source = item.text("source")
+                if source not in SCOPE_TYPES:
+                    message = "source: neither confluence nor jira"
+                    raise RefusedError(message)
+                scope = Scope(source=source, type=SCOPE_TYPES[source], key=item.text("key"))
             try:
-                periods[target] = Period(item.time("start"), item.time("end"))
+                periods[scope] = Period(item.time("start"), item.time("end"))
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
-            if target.searched_by_time and "exact" in item.value and item.flag("exact"):
-                exact.add(target)
+            searched = scope.type.enumeration == "searched"
+            if searched and "exact" in item.value and item.flag("exact"):
+                exact.add(scope)
         return Coverage(periods=periods, exact=frozenset(exact))
 
     def put_coverage(self, coverage: Coverage) -> None:
@@ -493,13 +507,13 @@ class RawStore:
         self._check_writing()
         entries = [
             {
-                "source": target.source,
-                "key": target.key,
+                "source": scope.source,
+                "key": scope.key,
                 "start": covered.start.astimezone(UTC).isoformat(),
                 "end": covered.end.astimezone(UTC).isoformat(),
-                **({"exact": True} if target in coverage.exact else {}),
+                **({"exact": True} if scope in coverage.exact else {}),
             }
-            for target, covered in sorted(
+            for scope, covered in sorted(
                 coverage.periods.items(), key=lambda item: (item[0].source, item[0].key)
             )
         ]

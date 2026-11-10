@@ -132,12 +132,12 @@ scope type may make less often, starts a document's absence. `browse` walks a sc
 tree.
 
 **In the code.** On the fetching side:
-[`Target`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Scope`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 [`Coverage`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), with
 [`Coverage.periods`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py) and
 [`Coverage.exact`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
 [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py);
-[`TargetFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
+[`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
 [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), the stored
 listings and `listed_at.json`, which are what a scope listed at its last whole read. On
 the serving side: [`SCOPES`](../../src/kb_mcp/mcp/app/surface.py) and
@@ -800,7 +800,7 @@ excluded, and why the period starts there.
 - **In the code.**
   [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
   [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-  [`TargetFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
+  [`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
   [`Period`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py).
 
 ### work log

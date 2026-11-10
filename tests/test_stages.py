@@ -37,8 +37,9 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
@@ -290,7 +291,7 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     first = list(site.asked)
     assert isinstance(confluence.counts, FetchCounts)
     covered = RawStore(settings.raw).coverage().periods
-    assert set(covered) == {Target(source="confluence", key="MFS")}
+    assert set(covered) == {Scope(source="confluence", type=names.SPACE, key="MFS")}
     jira = fetcher_of(JIRA).fetch(run_of(JIRA, settings, SINCE))
     then = site.asked[len(first) :]
     assert isinstance(jira.counts, FetchCounts)
@@ -299,8 +300,8 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     assert then
     assert [url.path for url in then if url.path.startswith("/wiki/")] == []
     assert set(RawStore(settings.raw).coverage().periods) == {
-        Target(source="confluence", key="MFS"),
-        Target(source="jira", key="PRB"),
+        Scope(source="confluence", type=names.SPACE, key="MFS"),
+        Scope(source="jira", type=names.PROJECT, key="PRB"),
     }
 
 

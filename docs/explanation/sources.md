@@ -70,7 +70,7 @@ does not apply, and what its echo says.
 
 - **One fetcher may serve several connectors.** Confluence and Jira name one fetcher,
   which reads the scope types of the connector of the source that it runs for from
-  `run.source` ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as
+  `run.source` ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as
   their one preparer reads the document types that it converts, and the source whose rows
   of the cache of conversions it reads
   ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
@@ -98,7 +98,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   log that is not a folder
   ([its preparer's](../../src/kb_mcp/sources/worklog/prepare/app/preparer.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
+  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
   read in place has no fetcher: the work log's preparer reads its folder, and its
   `preflight` checks it.
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
@@ -297,8 +297,8 @@ keeps out of the index.
 They share the site, the sign-in and the raw store, so `sources/atlassian/` stays one
 package, but each is a source: a row, a report and a set of files of its own.
 
-- **Fetched apart.** Each fetch takes its own source's targets
-  ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
+- **Fetched apart.** Each fetch takes its own source's scopes
+  ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
   probes, projects and users keep their order across two runs, each with its own sign-in
   check, hold on the raw store and report, `<data>/runs/<time>-<source>.json`. The record of
   what answered as gone is Confluence's: a fetch of projects neither reads nor rewrites

@@ -232,11 +232,11 @@ Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
 Two more of the store's own records, each replaced whole:
 
 - `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
-  each target (a space key or a project key,
-  `sources.atlassian.fetch.domain.coverage.Target`), the one period over which every
+  each scope (a space key or a project key,
+  `sources.atlassian.fetch.domain.coverage.Scope`), the one period over which every
   document updated is stored (`sources.atlassian.fetch.domain.coverage.Coverage`), and
   `"exact": true` on a project's entry written since plan 034. A run that listed a
-  target whole joins its fetch window to that period when the two overlap or touch. A space's
+  scope whole joins its fetch window to that period when the two overlap or touch. A space's
   period ends at the fetch window's end whatever failed, since a run without `--since` starts
   at its covered start and asks again for whatever failed inside. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
@@ -269,7 +269,7 @@ Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 004's plan defines: `ending`, how the fetch ended (`done`, `failed`, `sign in again`, or
 `interrupted` by Ctrl-C), and `counts`, each count by its name; reports written before
 held `status`, the exit status, in place of `ending`. A run report holds counts and
-refused fields' paths, never content, and names no target. No code reads one back. Its counts of documents depend on whether
+refused fields' paths, never content, and names no scope. No code reads one back. Its counts of documents depend on whether
 `--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
 stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
 

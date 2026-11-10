@@ -33,9 +33,10 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     write_cookies,
 )
 from kb_mcp.sources.atlassian.fetch.app import fetching as fetching_module
-from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Fetching, Targets, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Fetching, Purview, run_fetch
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.fetch.domain.coverage import FetchWindow, Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import FetchWindow, Scope
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
 from tests.composed import MODEL
 from tests.samples import (
@@ -49,7 +50,7 @@ from tests.samples import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
@@ -295,15 +296,19 @@ class FakeSite:
         return httpx.Client(base_url=SITE, transport=httpx.MockTransport(self.handle))
 
 
-def given(span: Period, spaces: list[str], projects: list[str]) -> dict[Target, FetchWindow | None]:
-    """Give each space and project the window that --since gives: ``span``."""
-    named = [Target(source="confluence", key=key) for key in spaces] + [
-        Target(source="jira", key=k) for k in projects
+def scopes(spaces: Sequence[str], projects: Sequence[str]) -> list[Scope]:
+    """Give Confluence's spaces and Jira's projects of these keys, as scopes."""
+    return [Scope(source="confluence", type=names.SPACE, key=key) for key in spaces] + [
+        Scope(source="jira", type=names.PROJECT, key=key) for key in projects
     ]
-    return {target: FetchWindow(period=span, reason="given") for target in named}
 
 
-def week(spaces: list[str], projects: list[str]) -> dict[Target, FetchWindow | None]:
+def given(span: Period, spaces: list[str], projects: list[str]) -> dict[Scope, FetchWindow | None]:
+    """Give each space and project the window that --since gives: ``span``."""
+    return {scope: FetchWindow(period=span, reason="given") for scope in scopes(spaces, projects)}
+
+
+def week(spaces: list[str], projects: list[str]) -> dict[Scope, FetchWindow | None]:
     """Give each space and project the week before ``NOW``, as --since 7d does."""
     return given(period("7d", None, NOW), spaces, projects)
 
@@ -315,7 +320,7 @@ def run(store: RawStore, fake: FakeSite) -> Fetching:
         done = Fetching(
             SiteClient(client, sleep=lambda _: None), store, CAP, lambda: NOW, windows=windows
         )
-        done.run(["MFS"], ["PRB"])
+        done.run(scopes(["MFS"], ["PRB"]))
     return done
 
 
@@ -351,7 +356,7 @@ def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) ->
     assert [user.display_name for user in store.users()] == ["A Person"]  # type: ignore[union-attr]
 
 
-def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path: Path) -> None:
+def test_a_run_reports_its_scopes_their_listings_documents_and_probes(tmp_path: Path) -> None:
     """Each task's last event progress, as it ends: the space's, its probes, the project's.
 
     The space's pages are listed in two pages, its blog posts in one; it lists three
@@ -371,7 +376,7 @@ def test_a_run_reports_its_targets_their_listings_documents_and_probes(tmp_path:
         ("probes", 0, 0),
         ("listing", 1, None),
         ("documents", 1, 1),
-        ("targets", 2, 2),
+        ("scopes", 2, 2),
     ]
 
 
@@ -410,7 +415,7 @@ def test_the_search_covers_the_period_in_every_time_zone_of_jira(
     with fake.client() as client, store.writing():
         windows = given(span, [], ["PRB"])
         Fetching(SiteClient(client, sleep=no_sleep), store, CAP, lambda: NOW, windows=windows).run(
-            [], ["PRB"]
+            scopes([], ["PRB"])
         )
     [search] = [url for url in fake.asked if url.path == "/rest/api/3/search/jql"]
     jql = search.params["jql"]
@@ -459,7 +464,7 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
     ):
         site = SiteClient(client, sleep=lambda _: None)
         windows = week(["MFS"], ["PRB"])
-        Fetching(site, store, CAP, lambda: NOW, windows=windows).run(["MFS"], ["PRB"])
+        Fetching(site, store, CAP, lambda: NOW, windows=windows).run(scopes(["MFS"], ["PRB"]))
     assert set(methods) == {"GET"}
 
 
@@ -468,10 +473,10 @@ def settings(tmp_path: Path) -> Settings:
     return MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
 
 
-def targets(spaces: list[str], projects: list[str]) -> Targets:
-    """Return the targets of a run over the last week, with the test's cap."""
-    return Targets(
-        spaces=spaces, projects=projects, max_file_bytes=CAP, since=period("7d", None, NOW).start
+def purview(spaces: list[str], projects: list[str]) -> Purview:
+    """Return the purview of a run over the last week, with the test's cap."""
+    return Purview(
+        scopes=scopes(spaces, projects), max_file_bytes=CAP, since=period("7d", None, NOW).start
     )
 
 
@@ -492,7 +497,7 @@ def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None
 
     The report is named by the run's source, after its time.
     """
-    outcome = run_fetch(settings(tmp_path), targets(["MFS"], []), lambda: NOW, no_sleep)
+    outcome = run_fetch(settings(tmp_path), purview(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "sign in again"
     assert outcome.counts.counts["runs: stopped, sign-in needed"] == 1
     [report] = (tmp_path / "data" / "runs").iterdir()
@@ -507,9 +512,9 @@ def test_a_run_of_no_source_or_of_both_is_refused_before_anything_is_written(
     """Plan 030: a fetch is of one source, whose report is its own; asked nothing, no report."""
     fake = FakeSite()
     chosen = saved_session(tmp_path, monkeypatch, fake)
-    said = f"a fetch is of one source: spaces {spaces}, projects {projects}"
+    said = f"a fetch is of one source: scopes {[str(each) for each in scopes(spaces, projects)]}"
     with pytest.raises(ValueError, match=f"^{re.escape(said)}$"):
-        run_fetch(chosen, targets(spaces, projects), lambda: NOW, no_sleep)
+        run_fetch(chosen, purview(spaces, projects), lambda: NOW, no_sleep)
     assert fake.asked == []
     assert not chosen.runs.exists()
     assert not chosen.raw.exists()
@@ -524,7 +529,7 @@ def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     """
     fake = FakeSite()
     chosen = saved_session(tmp_path, monkeypatch, fake)
-    outcome = run_fetch(chosen, targets([], ["PRB"]), lambda: NOW, no_sleep)
+    outcome = run_fetch(chosen, purview([], ["PRB"]), lambda: NOW, no_sleep)
     assert outcome.ending == "done"
     assert outcome.counts.counts["jira issues: fetched"] == 1
     assert [what for what in outcome.counts.counts if "confluence" in what] == []
@@ -539,7 +544,7 @@ def test_an_expired_session_stops_the_run_before_anything_is_stored(
 ) -> None:
     """Confluence answering as to an anonymous user means the session has expired."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
-    outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    outcome = run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "sign in again"
     assert not (chosen.raw / "confluence" / "pages").exists()
 
@@ -549,7 +554,7 @@ def test_a_run_with_a_failure_says_so_in_its_status(
 ) -> None:
     """A document that failed makes the run's status 1, and its report says why."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
-    outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    outcome = run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "failed"
     assert [each.where for each in outcome.problems] == ["confluence pages"]  # read refused
     [report] = chosen.runs.iterdir()
@@ -570,7 +575,7 @@ def test_a_run_that_something_stops_records_how(
 
     monkeypatch.setattr(Fetching, "run", stopped)
     with pytest.raises(stop):
-        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+        run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     assert json.loads(report.read_text("utf-8"))["ending"] == ending
 
@@ -586,7 +591,7 @@ def test_a_run_whose_coverage_cannot_be_written_records_it_failed(
 
     monkeypatch.setattr(RawStore, "put_coverage", refused)
     with pytest.raises(OSError, match="No space left"):
-        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+        run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
@@ -610,7 +615,7 @@ def test_only_the_site_cookies_with_a_value_are_saved_back(
     """A cookie that the media host set, or one without a value, never joins the session."""
     fake = FakeSite(set_cookies=["rolled=2; Domain=.example.invalid; Path=/wiki", "empty"])
     chosen = saved_session(tmp_path, monkeypatch, fake)
-    run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     saved = read_cookies(chosen.session / COOKIES)
     assert {cookie["name"] for cookie in saved} == {"rolled"}
     assert (chosen.session / COOKIES).stat().st_mode & 0o777 == OWNER_ONLY
@@ -633,7 +638,7 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
     with fake.client() as client, store.writing():
         site = SiteClient(client, sleep=no_sleep)
         done = Fetching(site, store, CAP, lambda: NOW, windows=week(["ENG"], []))
-        done.run(["ENG"], [])
+        done.run(scopes(["ENG"], []))
     assert done.problems == [Problem(where="space ENG", reason="not found")]
     assert done.counts.counts["confluence spaces failed: not found"] == 1
 
@@ -658,7 +663,7 @@ def test_a_run_stops_when_the_site_stops_answering(tmp_path: Path) -> None:
             SiteClient(client, sleep=no_sleep), store, CAP, lambda: NOW, windows=windows
         )
         with pytest.raises(TooManyFailuresError):
-            done.run(["MFS"], [])
+            done.run(scopes(["MFS"], []))
     assert done.counts.counts["confluence pages failed: status 503"] == MAX_FAILED_IN_A_ROW
     assert {each.reason for each in done.problems} == {"status 503"}
     assert len({each.where for each in done.problems}) == MAX_FAILED_IN_A_ROW
@@ -731,7 +736,7 @@ def test_an_expired_session_still_leaves_a_run_report(
 ) -> None:
     """The report says why the run stopped."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
-    run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     saved = json.loads(report.read_text("utf-8"))
     assert saved["ending"] == "sign in again"
@@ -830,7 +835,7 @@ def test_a_busy_store_refuses_the_run_and_writes_no_report(
     """Another run writing: nothing is fetched, and no report is left."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite())
     with RawStore(chosen.raw).writing(), pytest.raises(StoreBusyError):
-        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+        run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     assert not chosen.runs.exists()
 
 

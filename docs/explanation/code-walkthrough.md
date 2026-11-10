@@ -131,11 +131,11 @@ configured, so no run is of it.
 declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
 it can before any row: here an `--until` before `--since`, which the fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
-[`Targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the
+[`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the
 period's options, one space here.
-[`Targets.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
+[`Purview.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-from the coverage that the raw store holds, for each target's fetch window and why it
+from the coverage that the raw store holds, for each scope's fetch window and why it
 starts there, here `given`; a `--since` that does not come before the fetch windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
 exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
@@ -220,7 +220,7 @@ Once the space is listed,
 [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks after the documents gone from their listing, and
 [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
-names the authors seen. Last, `run_fetch` extends the coverage of each target listed whole
+names the authors seen. Last, `run_fetch` extends the coverage of each scope listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
 no `--since` and asks again for what failed, as `fetch.coverage` says; writes it, each

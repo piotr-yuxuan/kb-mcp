@@ -1,10 +1,10 @@
-"""The period covered for each target, and the window that each run fetches.
+"""The period covered for each scope, and the window that each run fetches.
 
-A target (a space or a project) is covered over one period, over which every change was
+A scope (a space or a project) is covered over one period, over which every change was
 asked for; the period is exact when every change in it is known stored, and an inexact
-one may hide a failure. Without --since, a run fetches what changed since each target's
+one may hide a failure. Without --since, a run fetches what changed since each scope's
 last fetch: a project from its covered end, a space from its covered start, since its
-listing is read whole anyway; a target never covered, its last week.
+listing is read whole anyway; a scope never covered, its last week.
 """
 
 from __future__ import annotations
@@ -13,16 +13,14 @@ from collections.abc import Mapping
 from datetime import timedelta
 from typing import TYPE_CHECKING, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, InstanceOf, field_serializer, model_validator
 
-from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY, RefusedError, require
+from kb_mcp.kernel.names import SOURCE_NAME, RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, FIRST_FETCH, Period
+from kb_mcp.sources.declaration import ScopeType
 
-# The rule of a target's key, by source.
-KEYS = {CONFLUENCE: SPACE_KEY, JIRA: PROJECT_KEY}
-# What a run made of a target's coverage: grown to its window's end, ended at a failure,
+# What a run made of a scope's coverage: grown to its window's end, ended at a failure,
 # or left as it was.
 type CoverageChange = Literal["extended", "capped", "held"]
 # Why a window starts where it does: at --since, a day before an exact covered end, at the
@@ -38,36 +36,38 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 
-class Target(Record):
-    """A space of Confluence or a project of Jira, by its key."""
+class Scope(Record):
+    """A part of one source, read and tracked as a unit: its source, its scope type, its key.
 
-    source: str  # confluence or jira
+    Written by its scope type's name.
+    """
+
+    source: str
+    type: InstanceOf[ScopeType]
     key: str
 
     @model_validator(mode="after")
-    def check_target(self) -> Self:
-        """Refuse a source that is neither, and a key that does not look like its kind's."""
-        if self.source not in KEYS:
-            message = "source: neither confluence nor jira"
+    def check_scope(self) -> Self:
+        """Refuse a source off its rule, and a key off its scope type's, which must have one."""
+        require(SOURCE_NAME, self.source, "source")
+        if self.type.key is None:
+            message = "type: its one scope is the whole source, without a key"
             raise RefusedError(message)
-        require(KEYS[self.source], self.key, "key")
+        require(self.type.key, self.key, "key")
         return self
 
+    @field_serializer("type")
+    def type_name(self, scope_type: ScopeType) -> str:
+        """Write the scope type by its name."""
+        return scope_type.name
+
     def __str__(self) -> str:
-        """Name the target as the user does: ``space ENG``, ``project PLAT``."""
-        return f"{'space' if self.source == CONFLUENCE else 'project'} {self.key}"
-
-    @property
-    def searched_by_time(self) -> bool:
-        """Say whether its documents are found by their update time: a project's are.
-
-        A space is listed whole.
-        """
-        return self.source == JIRA
+        """Name the scope as the user does: ``space ENG``, ``project PLAT``."""
+        return f"{self.type.name} {self.key}"
 
 
 class Coverage(Record):
-    """Each target's covered period, over which every change was asked for.
+    """Each scope's covered period, over which every change was asked for.
 
     A space is listed whole on every run, so a failure within its period (a document
     whose fetch failed, an entry the adapter refuses) leaves no hole for long: a run
@@ -77,13 +77,13 @@ class Coverage(Record):
     before plan 034 is not, and its end may hide a failure.
     """
 
-    periods: Mapping[Target, Period] = Field(default_factory=dict)
-    exact: frozenset[Target] = frozenset()
+    periods: Mapping[Scope, Period] = Field(default_factory=dict)
+    exact: frozenset[Scope] = frozenset()
 
     def extended(
-        self, target: Target, fetched: Period, failed: datetime | None = None
+        self, scope: Scope, fetched: Period, failed: datetime | None = None
     ) -> tuple[Coverage, CoverageChange]:
-        """Return the coverage once a run listed or searched ``fetched`` whole for the target.
+        """Return the coverage once a run listed or searched ``fetched`` whole for the scope.
 
         ``failed`` is the update time of the earliest document found and not stored whole.
         The covered period stays one period: a run apart from it leaves it as it was,
@@ -96,58 +96,58 @@ class Coverage(Record):
         run searches it whole. Any other run over an inexact entry joins it, as a space's
         does, and leaves it inexact.
         """
-        covered = self.periods.get(target)
-        exact = target.searched_by_time and (
-            covered is None or target in self.exact or fetched.start <= covered.start
+        covered = self.periods.get(scope)
+        exact = scope.type.enumeration == "searched" and (
+            covered is None or scope in self.exact or fetched.start <= covered.start
         )
-        marked = self.exact | {target} if exact else self.exact
+        marked = self.exact | {scope} if exact else self.exact
         if covered is not None and (fetched.start > covered.end or fetched.end < covered.start):
             return self, "held"
-        if covered is None or (exact and target not in self.exact):
+        if covered is None or (exact and scope not in self.exact):
             start, end = fetched.start, fetched.end
         else:
             start, end = min(covered.start, fetched.start), max(covered.end, fetched.end)
         if not exact or failed is None:
             return Coverage(
-                periods={**self.periods, target: Period(start, end)}, exact=marked
+                periods={**self.periods, scope: Period(start, end)}, exact=marked
             ), "extended"
         if failed <= start:
             inside = covered is not None and covered.start <= failed
             return Coverage(
-                periods=self.periods, exact=self.exact - {target} if inside else self.exact
+                periods=self.periods, exact=self.exact - {scope} if inside else self.exact
             ), "capped"
         return Coverage(
-            periods={**self.periods, target: Period(start, failed)}, exact=marked
+            periods={**self.periods, scope: Period(start, failed)}, exact=marked
         ), "capped"
 
 
 class FetchWindow(Record):
-    """The period that a run fetches for a target, and why it starts where it does."""
+    """The period that a run fetches for a scope, and why it starts where it does."""
 
     period: Period
     reason: Reason
 
 
 def fetch_window(
-    coverage: Coverage, target: Target, since: datetime | None, end: datetime
+    coverage: Coverage, scope: Scope, since: datetime | None, end: datetime
 ) -> FetchWindow | None:
-    """Return the window a run fetches for a target, to ``end``; None to skip the target.
+    """Return the window a run fetches for a scope, to ``end``; None to skip the scope.
 
     It starts at ``since`` when given, and raises PeriodError when that is not before
     ``end``. Otherwise an exact project catches up from ``CATCH_UP_MARGIN`` before its
-    covered end, another target covered from its covered start, and one never covered
+    covered end, another scope covered from its covered start, and one never covered
     starts ``FIRST_FETCH`` before ``end``; a catch-up that would start at or after
-    ``end``, an ``--until`` before it, skips the target. Nothing starts before the epoch:
+    ``end``, an ``--until`` before it, skips the scope. Nothing starts before the epoch:
     nothing on the site is older, and dates stay in range.
     """
     if since is not None:
         return FetchWindow(period=Period(max(since, EPOCH), end), reason="given")
-    covered = coverage.periods.get(target)
+    covered = coverage.periods.get(scope)
     start: datetime
     reason: Reason
     if covered is None:
         start, reason = end - FIRST_FETCH, "first fetch"
-    elif target in coverage.exact:
+    elif scope in coverage.exact:
         start, reason = covered.end - CATCH_UP_MARGIN, "since the last fetch"
     else:
         start, reason = covered.start, "covered start"
@@ -157,4 +157,4 @@ def fetch_window(
     return FetchWindow(period=Period(start, end), reason=reason)
 
 
-__all__ = ["EPOCH", "Coverage", "CoverageChange", "FetchWindow", "Target", "fetch_window"]
+__all__ = ["EPOCH", "Coverage", "CoverageChange", "FetchWindow", "Scope", "fetch_window"]

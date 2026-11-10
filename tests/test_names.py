@@ -1,10 +1,9 @@
 """Names spelt once mean the same everywhere, and copies that a contract keeps apart agree.
 
-``sources.atlassian.fetch.domain.names`` names the sources and their resource types, which
-the declarations, the fetch and the prepare read. Where a contract forbids an import, the
-copy stays and is held here, as plan 052 settled: coverage, which cannot import a
-declaration, decides by a target's source whether its documents are found by update time;
-the server and the index, which read no source (contract E), spell sources as text; and
+``sources.atlassian.fetch.domain.names`` names the connectors and their document and scope
+types, which the declarations, the fetch and the prepare read. Where a contract forbids an
+import, the copy stays and is held here, as plan 052 settled: the server and the index,
+which read no source (contract E), spell sources as text; and
 search, which the site's HTML is above (contract A), reads a page's id in its address. No
 two classes or ``type`` aliases at the top of the package's modules share a name, so that
 each entity has one name in the code.
@@ -24,8 +23,6 @@ import pytest
 from kb_mcp.mcp.app import responses
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain.search import ID_IN_ADDRESS
-from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     DOCUMENT_ADDRESSES,
     VIEW_PAGE,
@@ -34,20 +31,6 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
 from kb_mcp.sources.registry import SOURCES
 
 PACKAGE = Path(__file__).parents[1] / "src" / "kb_mcp"
-
-# A key that each source's targets take.
-KEYS = {CONFLUENCE.name: "MFS", JIRA.name: "PRB"}
-
-
-def test_a_target_is_searched_by_time_where_its_connector_searches_its_scope_types_so() -> None:
-    """A project, which Jira's connector searches; never a space."""
-    assert {
-        source.name: Target(source=source.name, key=KEYS[source.name]).searched_by_time
-        for source in (CONFLUENCE, JIRA)
-    } == {
-        source.name: all(each.enumeration == "searched" for each in source.scope_types)
-        for source in (CONFLUENCE, JIRA)
-    }
 
 
 def test_the_server_and_the_index_spell_only_sources_that_the_registry_declares() -> None:

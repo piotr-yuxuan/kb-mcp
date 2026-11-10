@@ -164,7 +164,7 @@ def test_a_fetch_s_echo_says_how_it_signs_in(
 @pytest.mark.parametrize(
     ("given", "rule"),
     [
-        ([], "period: since each target's last fetch; the last 7 days for one never fetched"),
+        ([], "period: since each scope's last fetch; the last 7 days for one never fetched"),
         (["--since", "7d"], "period: from --since"),
     ],
 )

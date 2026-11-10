@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
     FetchWindow,
-    Target,
+    Scope,
     fetch_window,
 )
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
@@ -20,8 +21,8 @@ if TYPE_CHECKING:
 
 NOW = datetime(2026, 11, 1, 9, tzinfo=UTC)
 COVERED = datetime(2026, 10, 15, 9, tzinfo=UTC)
-SPACE = Target(source="confluence", key="ENG")
-PROJECT = Target(source="jira", key="PLAT")
+SPACE = Scope(source="confluence", type=names.SPACE, key="ENG")
+PROJECT = Scope(source="jira", type=names.PROJECT, key="PLAT")
 
 
 def covered() -> Coverage:

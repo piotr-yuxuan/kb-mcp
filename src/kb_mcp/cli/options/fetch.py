@@ -70,9 +70,10 @@ def register(
             " taken, in the registry's order, each with its `source`, its `ending` (done,"
             " failed, sign in again, interrupted, not run), its `counts`, null when it gave"
             " none, and its `problems` and `warnings`, each with its `where` and `reason`,"
-            " a target, a document or a file and why it failed. The counts: each count by"
+            " a scope, a document or a file and why it failed. The counts: each count by"
             " its name, of what the fetch did, or with --dry-run would do; `windows`, each"
-            " target's: its `target`, `start`, `end` and `reason`, and its `coverage`,"
+            " scope's: its `scope`, by its source, type and key, its `start`, `end` and"
+            " `reason`, and its `coverage`,"
             " extended, capped at a failure, held, or null when not written; `dry_run`,"
             " whether the fetch only planned."
         ),
