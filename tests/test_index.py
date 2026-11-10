@@ -41,7 +41,7 @@ from kb_mcp.search.domain.people import (
     Person,
     Spelling,
 )
-from kb_mcp.search.domain.search import WORDS, Filters, sections
+from kb_mcp.search.domain.search import WORDS, Filters, PersonCounts, sections
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
     CREATED,
@@ -865,6 +865,26 @@ def test_a_summary_whose_own_summary_is_not_mirrored_still_joins_by_attendance(
         activity = reader.person(anchored("name\nrobin example"))
     assert activity is not None
     assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
+
+
+def test_a_person_by_name_that_an_identity_joins_is_no_longer_by_name_alone(
+    data: Path,
+) -> None:
+    """The persons by name alone hold no identity: Robin's, joined to Alex, takes Alex out.
+
+    The alias moves Robin's identity, under its two names, to Alex's person by name; it
+    then holds an identity, and Robin's own person is gone.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+
+    def counted(aliases: dict[str, str]) -> PersonCounts:
+        build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
+        with reading(data / "index.sqlite") as reader:
+            return reader.index_status().persons
+
+    before, after = counted({}), counted({"atlassian:acct-0001": "Alex"})
+    assert (after.count, after.alone) == (before.count - 1, before.alone - 1)
 
 
 def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
