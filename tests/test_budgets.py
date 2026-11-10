@@ -219,7 +219,7 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     assert continuation(answer) is not None
 
 
-# Two more names of one account than a person's answer names, each beginning with a
+# Two more names of one identity than a person's answer names, each beginning with a
 # word of its own, longer than a name shown and not ASCII; each word alone a work-log
 # participant, a person by name alone perhaps the same.
 SPELLINGS = tuple(f"Wörd{number:02}{'é' * 60} " + "長" * 200 for number in range(NAMES + 2))
@@ -228,7 +228,7 @@ SPELLINGS = tuple(f"Wörd{number:02}{'é' * 60} " + "長" * 200 for number in ra
 def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path: Path) -> None:
     """The hits and passages make room for the person that opens the answer.
 
-    One account wrote each of the large mirror's pages under another name, so the
+    One identity wrote each of the large mirror's pages under another name, so the
     person names as many names, and as many people perhaps the same, as it shows.
     """
     pages = large_documents()[1 : len(SPELLINGS) + 1]
@@ -257,9 +257,9 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
 
 
 def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> None:
-    """Two hundred accounts of one name, as a site names those who left: NAMES are listed.
+    """Two hundred identities of one name, as a site names those who left: NAMES are listed.
 
-    Those of the most documents first, the account of two issues, then by id; then how
+    Those of the most documents first, the identity of two issues, then by id; then how
     many more, and the refusal stays within the budget.
     """
     accounts = 200

@@ -792,7 +792,7 @@ def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: P
     assert "\ntranscript:" not in read
 
 
-# Plan 043's persons, over the mirror of tests.mirrors.PERSONS: Robin Example's account,
+# Plan 043's persons, over the mirror of tests.mirrors.PERSONS: Robin Example's identity,
 # written Robin Sample on its newest document, wrote a page, created an issue and
 # commented twice on another, and attended three meetings, the review's transcript
 # naming Robin, who speaks there.
@@ -827,7 +827,7 @@ def test_a_person_is_found_in_any_role_by_any_of_their_names_or_their_id(
 
 
 def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Library) -> None:
-    """Without aliases, Sam Sample is two accounts and the stand-up's name alone.
+    """Without aliases, Sam Sample is two identities and the stand-up's name alone.
 
     Each by name, id, documents by role then source, and the last day one was updated,
     those of the most documents first, then by id; the id of one keeps that person's
@@ -886,7 +886,7 @@ def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
 ) -> None:
     """Only those with a document in the role: the stand-up's Sam Sample wrote nothing.
 
-    The review's Robin is Robin Example's account, the planning's a person apart; the
+    The review's Robin is Robin Example's identity, the planning's a person apart; the
     review's Alex is Alex Example, the unlinked transcripts' another. Those of
     the most documents first, then by id.
     """
@@ -900,7 +900,7 @@ def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
 def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
     tmp_path: Path,
 ) -> None:
-    """Accounts Robin (Ops) and Robin (Sales), whose names share a key, each created one.
+    """Identities Robin (Ops) and Robin (Sales), whose names share a key, each created one.
 
     The name as one of them is written, its annotation's spaces aside, keeps its issue,
     as in plan 042; Robin alone, which could be either, is refused naming both.
@@ -923,10 +923,10 @@ def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
 def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
     tmp_path: Path,
 ) -> None:
-    """Accounts Alex (Ops) and Alex (Sales), beside the unlinked transcripts' Alex.
+    """Identities Alex (Ops) and Alex (Sales), beside the unlinked transcripts' Alex.
 
     Alex could be any of the three, so it is refused listing each; Alex (Ops) is the
-    account that alone writes it so.
+    identity that alone writes it so.
     """
     ops = Mention(role="author", name="Alex (Ops)", identity="atlassian:acct-0010")
     sales = Mention(role="author", name="Alex (Sales)", identity="atlassian:acct-0011")
@@ -965,8 +965,8 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
 ) -> None:
     """Plan 043, criterion 6, the newest first: Robin's names and how each joined.
 
-    Robin's account is named as on PAY-1, its newest document; its names are written by
-    the account, by name in the meetings, and as the review's speaker. The documents by
+    Robin's identity is named as on PAY-1, its newest document; its names are written by
+    the identity, by name in the meetings, and as the review's speaker. The documents by
     role and by source, the most first; the unlinked Robin, perhaps the same, with the
     alias that would join them. Each hit's line of who and when ends with Robin's roles
     there, a commenter's with the comments' count and the last day.
@@ -1002,10 +1002,10 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
 def test_a_one_word_name_of_an_identity_is_never_shown_as_perhaps_the_same(
     tmp_path: Path,
 ) -> None:
-    """With an account named Robin, one word, the review's speaker Robin is ambiguous.
+    """With an identity named Robin, one word, the review's speaker Robin is ambiguous.
 
     It is then a person by name alone, as is the planning's; but an alias of Robin would
-    also take the name from that account, which the unlinked transcript's Robin joins:
+    also take the name from that identity, which the unlinked transcript's Robin joins:
     the answer narrowed to Robin Example suggests none.
     """
     robin = Mention(role="author", name="Robin", identity="atlassian:acct-0004")
@@ -1020,7 +1020,7 @@ def test_a_one_word_name_of_an_identity_is_never_shown_as_perhaps_the_same(
     assert sorted(refs(alone)) == ["t-20261020-1", "t-20261020-2"]
 
 
-# An account named Robin, one word, as the site may name a colleague.
+# An identity named Robin, one word, as the site may name a colleague.
 ROBIN_ACCOUNT = Mention(role="author", name="Robin", identity="atlassian:acct-0004")
 
 
@@ -1032,10 +1032,10 @@ ROBIN_ACCOUNT = Mention(role="author", name="Robin", identity="atlassian:acct-00
 def test_a_speaker_whom_an_identity_holds_is_never_shown_as_perhaps_the_same(
     tmp_path: Path, extra: tuple[FrontMatter, ...], perhaps: list[str]
 ) -> None:
-    """An unlinked transcript's Robin: a name alone, or the account named Robin's by name.
+    """An unlinked transcript's Robin: a name alone, or the identity named Robin's by name.
 
-    A person of an account is not one by name alone, and an alias of Robin would take
-    the speaker from that account: Robin Example's answer offers Robin only without it.
+    A person of an identity is not one by name alone, and an alias of Robin would take
+    the speaker from that identity: Robin Example's answer offers Robin only without it.
     """
     example = Mention(role="author", name="Robin Example", identity="atlassian:acct-0001")
     documents = (
@@ -1396,10 +1396,10 @@ def test_status_counts_the_persons_and_names_those_of_several_identities(
 ) -> None:
     """Plan 043, criterion 7, over the mirror of PERSONS alone.
 
-    Robin's account alone is in three sources; five persons are names alone. Sam Sample
-    is two accounts and, without aliases, the stand-up's name alone; the alias to the
-    account of PAY-2 gives it the stand-up and its Sam too, in two sources. Robin and
-    Sam, a name of no account, are never listed.
+    Robin's identity alone is in three sources; five persons are names alone. Sam Sample
+    is two identities and, without aliases, the stand-up's name alone; the alias to the
+    identity of PAY-2 gives it the stand-up and its Sam too, in two sources. Robin and
+    Sam, a name of no identity, are never listed.
     """
     for front in PERSONS:
         write(tmp_path / "docs", front)
@@ -1411,7 +1411,7 @@ def test_status_counts_the_persons_and_names_those_of_several_identities(
 def test_status_names_five_names_of_several_identities_then_how_many_more(
     tmp_path: Path,
 ) -> None:
-    """Six names of two accounts each, the most held first, ties by name; one of one account.
+    """Six names of two identities each, the most held first, ties by name; one of one identity.
 
     Beside the fillers' A Person, a name alone.
     """

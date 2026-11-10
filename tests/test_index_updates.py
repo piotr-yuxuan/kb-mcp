@@ -236,7 +236,7 @@ def authored(key: str, name: str, identity: str | None) -> tuple[FrontMatter, st
 
 
 def test_a_name_alone_follows_the_identities_of_its_name_as_a_whole_build(data: Path) -> None:
-    """Criterion 15: a meeting's name joins one account's issue, then neither of two; back.
+    """Criterion 15: a meeting's name joins one identity's issue, then neither of two; back.
 
     The meeting's file never changes; each step's persons are a whole build's.
     """
@@ -279,7 +279,7 @@ def test_tied_spellings_serve_a_whole_build_s_name_whichever_file_was_edited(
 ) -> None:
     """Criterion 15: two spellings of one person, of one update time; the first file edited.
 
-    One account's two names, or a name alone spelt twice: the name served is a whole
+    One identity's two names, or a name alone spelt twice: the name served is a whole
     build's, though the edited file now has the largest rowid.
     """
     docs = data / "docs"

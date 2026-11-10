@@ -708,7 +708,7 @@ SYNC_PATH = location(SYNC)
 
 
 def sam_of(account: str, key: str) -> FilledDocument:
-    """Give an issue authored by an account of Sam Sample's name."""
+    """Give an issue authored by an identity of Sam Sample's name."""
     front = issue(
         key,
         f"Issue {key}",
@@ -720,7 +720,7 @@ def sam_of(account: str, key: str) -> FilledDocument:
 def test_a_person_s_rows_follow_an_identity_put_or_removed_in_another_document(
     written: Written,
 ) -> None:
-    """A meeting's name alone joins the one account of its name; with two, neither, said.
+    """A meeting's name alone joins the one identity of its name; with two, neither, said.
 
     The meeting's file is never put again: each update joins every document whole.
     """

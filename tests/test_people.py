@@ -65,7 +65,7 @@ def day(number: int) -> datetime:
 
 
 def named(document: int, name: str) -> PersonRow:
-    """Give a row of the work log's: a participant or a speaker, without an account."""
+    """Give a row of the work log's: a participant or a speaker, without an identity."""
     return PersonRow(
         document=document, role="participant", name=name, identity=None, updated=day(20)
     )
@@ -136,14 +136,14 @@ PERSONS_OF_ROWS = (
     ROBIN,
     SAM_2,
     SAM_3,
-    ROBIN,  # the one account of its key
-    SAM_ALONE,  # the key of two accounts: ambiguous, a name alone
+    ROBIN,  # the one identity of its key
+    SAM_ALONE,  # the key of two identities: ambiguous, a name alone
     ALEX_EXAMPLE,
     ROBIN,
     ALEX_EXAMPLE,
     ROBIN,
     ROBIN_OTHER,
-    ROBIN,  # by its meeting, whose Robin Example is Robin's account
+    ROBIN,  # by its meeting, whose Robin Example is Robin's identity
     ALEX_EXAMPLE,  # by its meeting, a name alone
     ROBIN_ALONE,  # no meeting
     ALEX,
@@ -154,7 +154,7 @@ PERSONS_OF_ROWS = (
 
 
 def account(person: str, *names: str) -> Person:
-    """Give an account's person: its spellings are its account's names alone."""
+    """Give an identity's person: its spellings are its identity's names alone."""
     return Person(
         id=person,
         name=names[0],
@@ -279,7 +279,7 @@ def test_by_alias_gives_a_name_the_person_its_alias_means() -> None:
 
 
 def test_by_name_joins_a_name_to_the_one_identity_of_its_key() -> None:
-    """Rule 3 alone: any name of one account joins it; the name of two is ambiguous."""
+    """Rule 3 alone: any name of one identity joins it; the name of two is ambiguous."""
     joining = Joining(ACCOUNTS, {}, {})
     assert by_name(named(STAND_UP, "robin  EXAMPLE"), joining) == ROBIN
     assert by_name(named(STAND_UP, "Robin Sample"), joining) == ROBIN
@@ -355,10 +355,10 @@ def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> N
 
 
 def test_every_name_joins_its_person_as_the_rules_say() -> None:
-    """Accounts, exact names, meetings and names alone, without aliases.
+    """Identities, exact names, meetings and names alone, without aliases.
 
-    Robin's account is one person under both names, named as on its newest document;
-    the two Sam Sample accounts are two, and the meeting's Sam Sample neither, reported;
+    Robin's identity is one person under both names, named as on its newest document;
+    the two Sam Sample identities are two, and the meeting's Sam Sample neither, reported;
     a meeting's Robin and Sam join by their meetings, as their participants joined;
     Alex is one person by name alone across two transcripts, as is Alex Example with or
     without its annotation, whose spellings tie, so the first document names it.
@@ -490,10 +490,10 @@ def test_two_notes_of_one_name_part_it_and_are_reported() -> None:
 
 
 def test_two_notes_of_an_identity_s_name_part_it_from_the_identity_and_are_reported() -> None:
-    """Sam Sample's account, and two meetings writing Sam Sample with a note each.
+    """Sam Sample's identity, and two meetings writing Sam Sample with a note each.
 
     Each note is a person by name alone, reported; the alias of the name to the
-    account's joins both to it, and nothing is reported then.
+    identity's joins both to it, and nothing is reported then.
     """
     rows = (
         PersonRow(
@@ -541,7 +541,7 @@ def test_a_second_note_leaves_the_id_of_a_name_with_its_bare_spelling() -> None:
 
 
 def test_a_name_written_as_one_identity_s_annotated_name_joins_that_identity() -> None:
-    """Accounts Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
+    """Identities Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
 
     The site wrote the two names apart, as the user would have; a bare Robin could be
     either, is reported, and joins neither.
@@ -571,7 +571,7 @@ def test_a_name_written_as_one_identity_s_annotated_name_joins_that_identity() -
 
 
 def test_a_name_annotated_otherwise_than_its_one_identity_joins_no_identity() -> None:
-    """The meeting's Robin Example (Ops) is not the account Robin Example (Sales).
+    """The meeting's Robin Example (Ops) is not the identity Robin Example (Sales).
 
     Two annotations of one name tell its persons apart, whoever wrote each: a name that
     could be two people is not joined by a guess.
@@ -592,7 +592,7 @@ def test_a_name_annotated_otherwise_than_its_one_identity_joins_no_identity() ->
 
 
 def test_an_identity_named_on_two_documents_of_one_date_takes_the_first() -> None:
-    """Ties between an account's newest documents go to the first row in order."""
+    """Ties between an identity's newest documents go to the first row in order."""
     rows = (
         PersonRow(
             document=2,
@@ -621,9 +621,9 @@ def test_a_name_alone_is_named_by_its_most_frequent_spelling_ties_to_the_first()
 
 
 def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
-    """With "Robin" = "Robin Example", every Robin without an account is Robin's account.
+    """With "Robin" = "Robin Example", every Robin without an identity is Robin's identity.
 
-    The review's transcript's Robin, whom its meeting gives Robin's account too, joins by
+    The review's transcript's Robin, whom its meeting gives Robin's identity too, joins by
     the alias, and the planning's, of two Robins, is no longer ambiguous.
     """
     result = joined(ROWS, LINKS, {"Robin": "Robin Example"})
@@ -677,7 +677,7 @@ def test_an_alias_to_an_identity_s_id_settles_a_name_of_two_identities() -> None
 
 
 def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_identities_share_the_key() -> None:
-    """The stand-up's Sam Sample, of two accounts' name, is a person by name alone.
+    """The stand-up's Sam Sample, of two identities' name, is a person by name alone.
 
     Its id, which a refusal of Sam Sample lists, is a value as any person's: a meeting's
     S. Sample and an unlinked transcript's Sam join it, and no alias is unused.
@@ -690,9 +690,9 @@ def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_identities_share_the_
 
 
 def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
-    """Robin by name alone, the review's speaker, whom its meeting and an account dispute.
+    """Robin by name alone, the review's speaker, whom its meeting and an identity dispute.
 
-    One account is named Robin, yet the disputed speaker is a person by name alone: an
+    One identity is named Robin, yet the disputed speaker is a person by name alone: an
     alias of R. to its id joins it there.
     """
     rows = (
@@ -709,9 +709,9 @@ def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
 
 
 def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
-    """Robin Example by name alone: every one of its names joins Robin's account.
+    """Robin Example by name alone: every one of its names joins Robin's identity.
 
-    As after an account fetched late, the id that its names had alone names nobody now;
+    As after an identity fetched late, the id that its names had alone names nobody now;
     the alias to it is unused, and changes nothing, as one to an id of none.
     """
     gone = anchored("name\nrobin example")
@@ -888,7 +888,7 @@ def test_an_alias_of_an_identity_that_no_mention_holds_is_reported(
 def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
     """A value of nobody, by name or id, or of several; a key held by no name alone.
 
-    An account's name is the site's: an alias of it alone joins nothing.
+    An identity's name is the site's: an alias of it alone joins nothing.
     """
     aliases = {
         "Alex": "Nobody",
@@ -942,7 +942,7 @@ def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
 def test_aliases_are_not_chained() -> None:
     """An alias's value must be a person that names make, as without the aliases.
 
-    Robin Other's own alias, written first, takes every Robin Other to Robin's account:
+    Robin Other's own alias, written first, takes every Robin Other to Robin's identity:
     the name makes no person, so Alex's alias to it names nobody, and changes nothing.
     """
     first = {"Robin Other": "Robin Example"}
@@ -984,12 +984,12 @@ def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(value: str) 
 
 
 def test_a_speaker_whom_its_meeting_and_an_identity_tell_apart_is_ambiguous() -> None:
-    """An account named Robin, one word, beside the review's Robin Example.
+    """An identity named Robin, one word, beside the review's Robin Example.
 
     The site's name and the participants that the user wrote disagree: the review's
     transcript's Robin joins neither, nor the planning's, and both are reported; Robin
-    without a meeting joins the account by its name; and where a meeting's participants
-    hold the account, the retro's Robin and Robin Other, its speaker is the account's.
+    without a meeting joins the identity by its name; and where a meeting's participants
+    hold the identity, the retro's Robin and Robin Other, its speaker is the identity's.
     """
     one_word = anchored("account\nacct-0004")
     retro, linked_to_retro = 14, 26
@@ -1013,9 +1013,9 @@ def test_a_speaker_whom_its_meeting_and_an_identity_tell_apart_is_ambiguous() ->
 
 
 def test_a_speaker_of_two_identities_name_is_reported_with_its_meeting_s_person() -> None:
-    """Accounts Robin (Ops) and Robin (Sales), beside the review's Robin Example.
+    """Identities Robin (Ops) and Robin (Sales), beside the review's Robin Example.
 
-    The review's transcript's Robin could be either account, or Robin Example, whom the
+    The review's transcript's Robin could be either identity, or Robin Example, whom the
     user wrote for that meeting: it joins none, and is reported with all three.
     """
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
@@ -1258,7 +1258,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
 ) -> None:
     """Plan 043, criteria 3 and 5, by the command: a build with both warnings exits 0.
 
-    The alias of Robin settles the planning's Robin, so that Sam Sample, of two accounts,
+    The alias of Robin settles the planning's Robin, so that Sam Sample, of two identities,
     is the one name warned of, with how many persons it could be; the alias whose key no
     name holds is warned of by its name, its key and why. Robin by name alone is gone.
     """

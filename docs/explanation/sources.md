@@ -266,7 +266,7 @@ name beginning with `_` or `.` on their path. A mirror that the program wrote ho
 documents as under the patterns of three sources that it replaced; a stray `.md` file is
 now read, and the index reports it as a file without front matter. It yields them sorted by
 path, and search breaks its ties by path, so one thing served follows that order alone: where
-two spellings of one person tie, on one account's documents of one second or by their counts,
+two spellings of one person tie, on one identity's documents of one second or by their counts,
 the first in the order of the documents names the person
 ([`joined`](../../src/kb_mcp/search/domain/people.py)). So such a name can change at the first
 index since the rule.

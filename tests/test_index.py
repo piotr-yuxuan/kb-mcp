@@ -653,7 +653,7 @@ def persons(data: Path) -> Path:
 
 
 # The persons of PERSONS, by id, each named and spelt as plan 043's rules give them by
-# hand. Robin's account is named as on PAY-1, its newest document; a name alone, by its
+# hand. Robin's identity is named as on PAY-1, its newest document; a name alone, by its
 # spellings' first in the order of the files, all being as frequent: the review's Alex
 # Example, the stand-up's Sam Sample.
 ROBIN_SPELT = (
@@ -766,7 +766,7 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
 
 
 def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data: Path) -> None:
-    """With the alias of Robin to Robin Example, every Robin without an account is Robin's.
+    """With the alias of Robin to Robin Example, every Robin without an identity is Robin's.
 
     The planning's Robin is no longer ambiguous, and Robin by name alone is gone; an
     alias whose key no name holds changes nothing, and is given back.
@@ -1576,8 +1576,8 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     assert terms == PINNED_TERMS, WORDS_CHANGED
 
 
-# One account under two names; a name that joins it, an alias and a meeting's speaker that
-# join a name alone; a name of two accounts, which joins neither.
+# One identity under two names; a name that joins it, an alias and a meeting's speaker that
+# join a name alone; a name of two identities, which joins neither.
 JO_2, JO_3 = anchored("account\nacct-0002"), anchored("account\nacct-0003")
 JO_ALONE = anchored("name\njo two")
 PINNED_MIRROR = (

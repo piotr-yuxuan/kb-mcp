@@ -331,6 +331,7 @@ kb-mcp index
   index in place stays: a file that is not UTF-8 TOML, a value that is not a string in
   quotes, an empty name, a name or value of several lines or longer than 200
   characters, or two names that differ by case, accents or spaces alone.
-- An alias whose name no document writes without an identity, or whose value names
-  nobody or several people, changes nothing, and the build warns of it.
+- An alias whose name no document writes without an identity, an alias of an identity
+  that no document holds or whose value is that identity's own person, or one whose
+  value names nobody or several people, changes nothing, and the build warns of it.
 - To undo an alias, delete its line and run `index`. The program never writes the file.
