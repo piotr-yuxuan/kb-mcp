@@ -201,7 +201,6 @@ confluence: done
   files written: 24
   files unchanged: 0
   files removed: 0
-  problems: 0
 jira: done
   documents: 0
   converted by pandoc: 0
@@ -209,7 +208,6 @@ jira: done
   files written: 0
   files unchanged: 0
   files removed: 0
-  problems: 0
 ```
 
 `index` ends with what the index holds, then what it did: there was no index, so it

@@ -144,7 +144,7 @@ rules in `prepare/domain/`, as the work log's does
 ```python
 """The notes source's preparer: a folder's text files, as the mirror's documents.
 
-The notes's declaration names this module, a ``Preparer``: ``preflight`` refuses a
+The notes source's declaration names this module, a ``Preparer``: ``preflight`` refuses a
 folder that is not one before any source starts, and ``prepare`` writes each ``*.txt``
 file as ``docs/notes/<id>.md`` through the mirror's writer, which leaves a file that has
 not changed and removes those of notes gone, under ``docs/notes/`` alone. A note's times
