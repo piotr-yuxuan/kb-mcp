@@ -314,19 +314,33 @@ def week(spaces: list[str], projects: list[str]) -> dict[Scope, FetchWindow | No
 
 
 def run(store: RawStore, fake: FakeSite) -> Fetching:
-    """Run one download of the space and the project over the fake site, over the week."""
-    with fake.client() as client, store.writing():
-        windows = week(["MFS"], ["PRB"])
-        done = Fetching(
-            SiteClient(client, sleep=lambda _: None), store, CAP, lambda: NOW, windows=windows
-        )
-        done.run(scopes(["MFS"], ["PRB"]))
+    """Run a download of the space, then of the project, over the fake site, over the week.
+
+    ``store`` is Confluence's view; the project's is Jira's, of the same store. Give the
+    project's run, which holds the counts and problems of both.
+    """
+    counts, problems = FetchCounts(), []
+    for view, (spaces, projects) in (
+        (store, (["MFS"], [])),
+        (RawStore(store.root, "jira"), ([], ["PRB"])),
+    ):
+        with fake.client() as client, view.writing():
+            done = Fetching(
+                SiteClient(client, sleep=lambda _: None),
+                view,
+                CAP,
+                lambda: NOW,
+                counts,
+                problems,
+                windows=week(spaces, projects),
+            )
+            done.run(scopes(spaces, projects))
     return done
 
 
 def test_a_space_and_a_project_are_downloaded_with_their_files(tmp_path: Path) -> None:
     """What changed in the period is stored with its pictures; what did not, is not."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite())
     pages = [item for item in store.latest(Page) if isinstance(item, StoredSnapshot)]
     assert sorted(item.snapshot.document.id for item in pages) == ["1001", "1002"]
@@ -336,7 +350,7 @@ def test_a_space_and_a_project_are_downloaded_with_their_files(tmp_path: Path) -
     assert set(fresh.blobs) == {"att1"}  # the video and the file over the cap are listed only
     [post] = store.latest(BlogPost)
     assert isinstance(post, StoredSnapshot)
-    [issue] = store.latest(Issue)
+    [issue] = RawStore(store.root, "jira").latest(Issue)
     assert isinstance(issue, StoredSnapshot)
     assert [comment.id for comment in issue.snapshot.comments] == ["10100", "10101"]
     assert store.blob(issue.blobs["10000"]).read_bytes() == PICTURE
@@ -345,7 +359,7 @@ def test_a_space_and_a_project_are_downloaded_with_their_files(tmp_path: Path) -
 
 def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) -> None:
     """The tree comes whole, folders followed to the top; the authors are named."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     run(store, FakeSite())
     assert sorted(item.id for item in store.listed(SPACE, Page) if isinstance(item, Page)) == [
         "1001",
@@ -365,7 +379,7 @@ def test_a_run_reports_its_scopes_their_listings_documents_and_probes(tmp_path: 
     of two issues, one of them changed in the week.
     """
     with capture_logs() as events:
-        run(RawStore(tmp_path / "raw"), FakeSite())
+        run(RawStore(tmp_path / "raw", "confluence"), FakeSite())
     assert [
         (event["task"], event["done"], event["total"])
         for event in events
@@ -374,15 +388,16 @@ def test_a_run_reports_its_scopes_their_listings_documents_and_probes(tmp_path: 
         ("listing", 3, None),
         ("documents", 3, 3),
         ("probes", 0, 0),
+        ("scopes", 1, 1),
         ("listing", 1, None),
         ("documents", 1, 1),
-        ("scopes", 2, 2),
+        ("scopes", 1, 1),
     ]
 
 
 def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:
     """With nothing changed, only listings and searches are asked for."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     fake = FakeSite()
     run(store, fake)
     again = FakeSite()
@@ -410,7 +425,7 @@ def test_the_search_covers_the_period_in_every_time_zone_of_jira(
     must hold the whole period; the period itself then decides on each issue.
     """
     fake = FakeSite()
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     span = period(since, until, NOW)
     with fake.client() as client, store.writing():
         windows = given(span, [], ["PRB"])
@@ -429,7 +444,7 @@ def test_the_search_covers_the_period_in_every_time_zone_of_jira(
 
 def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path) -> None:
     """A page in a changed shape is stored as received, and the run names the field."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite(changed_labels=True))
     results = {
         item.where if isinstance(item, Problem) else item.snapshot.document.id: item
@@ -443,7 +458,7 @@ def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path)
 
 def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
     """Counts and paths only: no title, key, id or name."""
-    done = run(RawStore(tmp_path / "raw"), FakeSite(changed_labels=True))
+    done = run(RawStore(tmp_path / "raw", "confluence"), FakeSite(changed_labels=True))
     text = json.dumps(done.counts.counts)
     assert not [word for word in SERVED if word in text]
 
@@ -457,7 +472,7 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
         methods.append(request.method)
         return fake.handle(request)
 
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with (
         httpx.Client(base_url=SITE, transport=httpx.MockTransport(handle)) as client,
         store.writing(),
@@ -634,7 +649,7 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
 ) -> None:
     """The key goes to not_found, for the command to print; the report counts a failure."""
     fake = FakeSite(spaces=[])
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with fake.client() as client, store.writing():
         site = SiteClient(client, sleep=no_sleep)
         done = Fetching(site, store, CAP, lambda: NOW, windows=week(["ENG"], []))
@@ -645,17 +660,17 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
 
 def test_a_site_without_jira_still_downloads_its_spaces(tmp_path: Path) -> None:
     """Jira not answering is one failure; the spaces are downloaded all the same."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite(jira=False))
     assert done.counts.counts["jira failed: status 404"] == 1
     assert done.problems == [Problem(where="jira", reason="status 404")]
     assert [item for item in store.latest(Page) if isinstance(item, StoredSnapshot)]
-    assert list(store.latest(Issue)) == []
+    assert list(RawStore(store.root, "jira").latest(Issue)) == []
 
 
 def test_a_run_stops_when_the_site_stops_answering(tmp_path: Path) -> None:
     """When every document's GET goes unanswered, the run stops instead of trying all."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     fake = FakeSite(pages_fail=True, many_pages=MAX_FAILED_IN_A_ROW + 5)
     with fake.client() as client, store.writing():
         windows = week(["MFS"], [])
@@ -673,7 +688,7 @@ def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
     tmp_path: Path,
 ) -> None:
     """A proxy page instead of one document's JSON costs that document alone."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite(html_page="1002"))
     assert done.counts.counts["confluence pages failed: not JSON"] == 1
     assert done.problems == [Problem(where="confluence pages 1002", reason="not JSON")]
@@ -681,12 +696,16 @@ def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
     ]
     assert pages == ["1001"]
-    assert [item for item in store.latest(Issue) if isinstance(item, StoredSnapshot)]
+    assert [
+        item
+        for item in RawStore(store.root, "jira").latest(Issue)
+        if isinstance(item, StoredSnapshot)
+    ]
 
 
 def test_a_listing_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -> None:
     """Only id, version and time decide a fetch: a listing without titles still works."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite(listing_changed=True))
     pages = [
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
@@ -697,7 +716,7 @@ def test_a_listing_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -
 
 def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None:
     """The snapshot is kept without the file; the next run fetches the file alone."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     first = run(store, FakeSite(media_fails=True))
     assert first.counts.counts["files failed: status 500"] >= 1
     assert first.problems == [
@@ -719,7 +738,7 @@ def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None
 
 def test_a_second_run_downloads_no_file_again(tmp_path: Path) -> None:
     """Posts and issues already stored, with their files, cost no request but listings."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     run(store, FakeSite())
     again = FakeSite()
     done = run(store, again)
@@ -748,7 +767,7 @@ def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> N
 
     A refused file is an answer from the site; only unanswered GETs stop a run.
     """
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite(failing_files=MAX_FAILED_IN_A_ROW + 2))
     assert done.counts.counts["files failed: status 404"] == MAX_FAILED_IN_A_ROW + 2
     assert done.problems == [
@@ -759,7 +778,11 @@ def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> N
     }
     assert stored == {"1001", "1002"}
     assert [item for item in store.latest(BlogPost) if isinstance(item, StoredSnapshot)]
-    assert [item for item in store.latest(Issue) if isinstance(item, StoredSnapshot)]
+    assert [
+        item
+        for item in RawStore(store.root, "jira").latest(Issue)
+        if isinstance(item, StoredSnapshot)
+    ]
 
 
 @pytest.mark.parametrize(
@@ -780,7 +803,7 @@ def test_each_failure_counted_is_one_problem_by_its_place_never_by_its_content(
     switches: dict[str, object], tmp_path: Path
 ) -> None:
     """Every count of a failure is a problem; no problem's place holds what the site served."""
-    done = run(RawStore(tmp_path / "raw"), FakeSite(**switches))
+    done = run(RawStore(tmp_path / "raw", "confluence"), FakeSite(**switches))
     failed = sum(number for what, number in done.counts.counts.items() if " failed: " in what)
     assert failed == len(done.problems) > 0
     assert not [each for each in done.problems if any(title in each.where for title in TITLES)]
@@ -788,7 +811,7 @@ def test_each_failure_counted_is_one_problem_by_its_place_never_by_its_content(
 
 def test_a_project_that_jira_refuses_is_named_for_the_user(tmp_path: Path) -> None:
     """A JQL refused (an unknown project, say) names the key for stderr, not the report."""
-    done = run(RawStore(tmp_path / "raw"), FakeSite(search_status=400))
+    done = run(RawStore(tmp_path / "raw", "confluence"), FakeSite(search_status=400))
     assert done.problems == [Problem(where="project PRB", reason="status 400")]
     assert done.counts.counts["jira projects failed: status 400"] == 1
     assert "PRB" not in json.dumps(done.counts.counts)
@@ -796,14 +819,18 @@ def test_a_project_that_jira_refuses_is_named_for_the_user(tmp_path: Path) -> No
 
 def test_a_search_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -> None:
     """An issue is fetched on its id and update time alone, whatever else the entry lost."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     run(store, FakeSite(search_changed=True))
-    assert [item for item in store.latest(Issue) if isinstance(item, StoredSnapshot)]
+    assert [
+        item
+        for item in RawStore(store.root, "jira").latest(Issue)
+        if isinstance(item, StoredSnapshot)
+    ]
 
 
 def test_a_user_the_adapter_refuses_fails_alone(tmp_path: Path) -> None:
     """An author without an account id is counted; the run's documents are all kept."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite(bulk_changed=True))
     assert done.counts.counts["confluence users failed: users[0].accountId: missing"] == 1
     assert done.problems == [
@@ -814,7 +841,7 @@ def test_a_user_the_adapter_refuses_fails_alone(tmp_path: Path) -> None:
 
 def test_a_listing_entry_that_only_the_tree_needs_is_reported(tmp_path: Path) -> None:
     """A page entry without its title is fetched all the same, and its path is reported."""
-    done = run(RawStore(tmp_path / "raw"), FakeSite(listing_changed=True))
+    done = run(RawStore(tmp_path / "raw", "confluence"), FakeSite(listing_changed=True))
     reason = "pages.title: missing"
     assert done.counts.counts[f"confluence pages in the tree failed: {reason}"] == len(
         ["1001", "1002"]
@@ -825,7 +852,7 @@ def test_a_listing_entry_that_only_the_tree_needs_is_reported(tmp_path: Path) ->
 def test_folders_over_the_cap_are_counted(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The walk up the folders is bounded, and what it leaves out is said."""
     monkeypatch.setattr(fetching_module, "MAX_FOLDERS", 1)
-    done = run(RawStore(tmp_path / "raw"), FakeSite())
+    done = run(RawStore(tmp_path / "raw", "confluence"), FakeSite())
     assert done.counts.counts["confluence folders: over the cap, left out"] == 1
 
 
@@ -834,7 +861,7 @@ def test_a_busy_store_refuses_the_run_and_writes_no_report(
 ) -> None:
     """Another run writing: nothing is fetched, and no report is left."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite())
-    with RawStore(chosen.raw).writing(), pytest.raises(StoreBusyError):
+    with RawStore(chosen.raw, "confluence").writing(), pytest.raises(StoreBusyError):
         run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     assert not chosen.runs.exists()
 
@@ -849,7 +876,7 @@ def test_a_file_not_of_its_listed_size_is_not_kept(
         downloadLink="/rest/api/content/1001/child/attachment/att1/download",
     )
     monkeypatch.setitem(ATTACHMENTS, "1101", [wrong])
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     done = run(store, FakeSite())
     assert done.counts.counts["files failed: not the size listed"] == 1
     assert done.problems == [Problem(where="file att9", reason="not the size listed")]

@@ -31,6 +31,7 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.outcome import Problem
+from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -40,12 +41,13 @@ from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
+from kb_mcp.sources.atlassian.prepare.domain.layout import TREE
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from kb_mcp.sources.worklog.prepare.app.prepare import WorklogCounts, WorklogPlanned
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 from tests.samples import v2_space
 from tests.test_fetching import SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, WEEK
@@ -139,11 +141,13 @@ def signed_in(settings: Settings) -> Settings:
 @pytest.fixture
 def stored(settings: Settings) -> Settings:
     """Store a space with one page, and one issue; give the settings."""
-    store = RawStore(settings.raw)
+    store = RawStore(settings.raw, "confluence")
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
         store.put(Page, page_responses("100", "Home", 1, "<p>Home page.</p>", []), FETCHED, {})
-        store.put(Issue, issue_responses("What are archived ideas?"), FETCHED, {})
+    jira = RawStore(settings.raw, "jira")
+    with jira.writing():
+        jira.put(Issue, issue_responses("What are archived ideas?"), FETCHED, {})
     return settings
 
 
@@ -162,6 +166,7 @@ def run_of(
     account = declared.account
     return SourceRun(
         source=Source(name=declared.name, connector=declared),
+        sources=SOURCES,
         settings=settings,
         source_table=getattr(settings.sources, declared.name),
         account_table=None if account is None else getattr(settings.accounts, account.name),
@@ -290,7 +295,7 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     confluence = fetcher.fetch(run_of(CONFLUENCE, signed_in(settings), SINCE))
     first = list(site.asked)
     assert isinstance(confluence.counts, FetchCounts)
-    covered = RawStore(settings.raw).coverage().periods
+    covered = RawStore(settings.raw, "confluence").coverage().periods
     assert set(covered) == {Scope(source="confluence", type=names.SPACE, key="MFS")}
     jira = fetcher_of(JIRA).fetch(run_of(JIRA, settings, SINCE))
     then = site.asked[len(first) :]
@@ -299,10 +304,44 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     assert [url.path for url in first if url.path.startswith("/rest/api/3/")] == []
     assert then
     assert [url.path for url in then if url.path.startswith("/wiki/")] == []
-    assert set(RawStore(settings.raw).coverage().periods) == {
+    assert set(RawStore(settings.raw, "confluence").coverage().periods) == {
         Scope(source="confluence", type=names.SPACE, key="MFS"),
         Scope(source="jira", type=names.PROJECT, key="PRB"),
     }
+
+
+@pytest.mark.usefixtures("site")
+def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: Path) -> None:
+    """Plan 056, criterion 3: Confluence's connector, its one source named ``wiki``.
+
+    Fetched, then prepared, from the scripted site: its raw folder, its mirror's folder
+    and each of its documents' front matter carry its name; nothing carries the
+    connector's, but the site's users, which are the site's, beside its first source's.
+    """
+    registry = (Source(name="wiki", connector=CONFLUENCE), *sourced(JIRA, WORKLOG))
+    config = home / "config.toml"
+    config.write_text(f'[accounts.atlassian]\nsite = "{SITE}"\n[sources.wiki]\nspaces = ["MFS"]\n')
+    data = home / "data"
+    write_cookies(data / "session" / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    given = ["--yes", "--config", str(config), "--data-dir", str(data), "wiki"]
+    # A file of the scripted site fails, which fails the fetch.
+    assert main(["fetch", *given, "--since", SINCE["--since"]], registry) == ExitStatus.FAILED
+    assert main(["prepare", *given], registry) == ExitStatus.OK
+    assert sorted(each.name for each in (data / "raw").iterdir() if each.is_dir()) == [
+        "blobs",
+        "confluence",
+        "wiki",
+    ]
+    assert [each.name for each in (data / "raw" / "confluence").iterdir()] == ["users.json"]
+    assert (data / "raw" / "wiki" / "pages").is_dir()
+    assert (data / "raw" / "wiki" / "spaces").is_dir()
+    assert sorted(each.name for each in (data / "docs").iterdir()) == ["assets", "wiki"]
+    written = sorted((data / "docs" / "wiki").rglob("*.md"))
+    assert written
+    sources = {
+        load(path.read_text("utf-8"), path.name)[0].source for path in written if path.name != TREE
+    }
+    assert sources == {"wiki"}
 
 
 def test_a_fetch_with_no_session_saved_is_to_sign_in_before_any_request(
@@ -431,7 +470,9 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
     run = run_of(CONFLUENCE, signed_in(settings), SINCE)
     assert fetcher_of(CONFLUENCE).preflight(run) is None
     assert fetcher_of(CONFLUENCE).fetch(run).counts is not None
-    assert list(RawStore(settings.raw).tombstones()) == [("confluence", "page", "1001")]
+    assert list(RawStore(settings.raw, "confluence").tombstones()) == [
+        ("confluence", "page", "1001")
+    ]
     assert any(each.path.startswith("/wiki/") for each in site.asked)
 
 

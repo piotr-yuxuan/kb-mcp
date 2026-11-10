@@ -30,7 +30,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, PAGE, SPACE
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
+from kb_mcp.sources.atlassian.prepare.app.preparer import classes_of
 from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, Source
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -121,12 +121,13 @@ def test_a_registry_with_a_second_source_of_one_name_or_connector_is_refused_nam
 def test_each_source_prepares_the_types_that_its_connector_declares() -> None:
     """A type added to a connector reaches its preparer, and the tests' store of each type."""
     assert {
-        source: [each.document_type for each in classes] for source, classes in PREPARED.items()
+        connector.name: [each.document_type for each in classes_of(connector)]
+        for connector in (CONFLUENCE, JIRA)
     } == {connector.name: list(connector.document_types) for connector in (CONFLUENCE, JIRA)}
 
 
 @pytest.mark.parametrize(
-    ("types", "named"), [((PAGE,), "page"), ((BLOGPOST,), "blogpost")], ids=["pages", "blog posts"]
+    ("types", "named"), [((PAGE,), "space"), ((BLOGPOST,), "space")], ids=["pages", "blog posts"]
 )
 def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     tmp_path: Path, capsys: CaptureFixture[str], types: tuple[DocumentType, ...], named: str
@@ -152,7 +153,7 @@ def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "prepare.refused" in err
-    assert f"source 'confluence': prepare: types {named}: not all the document types of one" in err
+    assert f"source 'confluence': prepare: scope types {named}: not a space's or a project's" in err
     assert post.read_text("utf-8") == "kept"
 
 

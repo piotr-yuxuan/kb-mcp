@@ -105,11 +105,12 @@ it; every method that writes refuses to run outside it.
 A [snapshot](concepts.md#snapshot) lies at:
 
 ```
-<data>/raw/<source>/<resource type>/<id>/<revision>/<file>.json
+<data>/raw/<source>/<plural>/<id>/<revision>/<file>.json
 ```
 
-- `source` and `resource_type`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
-  `source` and `resource_type` of `Page`, `BlogPost` and `Issue`.
+- `source` and `plural`: the source's name, whose view of the store `RawStore` is, and the
+  plural of its document type: `confluence/pages`, `confluence/blogposts`, `jira/issues`
+  for the default sources, of `Page`, `BlogPost` and `Issue`.
 - `id`: the content id (Confluence) or the issue id (Jira, which stays when the key
   changes).
 - `revision`: the version number padded to six digits for Confluence (`000003`), the
@@ -202,12 +203,15 @@ Each run that fetches a space replaces that space's listings, each as received, 
 result of every page of each list:
 
 ```
-<data>/raw/confluence/spaces/<space id>/space.json      the space, from GET /wiki/api/v2/spaces?keys=KEY
-<data>/raw/confluence/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
-<data>/raw/confluence/spaces/<space id>/blogposts.json  every blog post, likewise
-<data>/raw/confluence/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
-<data>/raw/confluence/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
+<data>/raw/<source>/spaces/<space id>/space.json      the space, from GET /wiki/api/v2/spaces?keys=KEY
+<data>/raw/<source>/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
+<data>/raw/<source>/spaces/<space id>/blogposts.json  every blog post, likewise
+<data>/raw/<source>/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
+<data>/raw/confluence/users.json                      every author seen, from GET /wiki/rest/api/user/bulk
 ```
+
+`<source>` is the name of the source of spaces, `confluence` by default; the site's
+users are the site's, kept at one path whatever the sources' names.
 
 `put_space(space, pages, blog_posts, folders, listed_at=...)` replaces one space's
 listings, each file whole, one after another, and records in `listed_at.json` when they
@@ -291,11 +295,11 @@ finds there (030):
 
 | Folder | Owned by | Removed by |
 |---|---|---|
-| `confluence/` | Confluence's prepare (005) | `sources.atlassian.prepare.adapters.owned.owned` |
-| `jira/` | Jira's prepare (005) | the same |
+| `confluence/` | Confluence's prepare (005), of the source of that name, as of any source of Confluence's connector | `sources.atlassian.prepare.adapters.owned.owned` |
+| `jira/` | Jira's prepare (005), likewise | the same |
 | `assets/` | Confluence's and Jira's together: each writes the files of its own documents | `sources.atlassian.prepare.adapters.owned.attached`, a file that no placed document of either wants and no document file of either links (`unlinked`), unless a problem was found, of either source |
 | `worklog/` | the work log's prepare (017, [below](#the-work-log)) | `sources.worklog.prepare.adapters.owned.worklog_owned` |
-| `<name>/` | any other source: `<name>` is its declaration's, which the registry's rule keeps off `assets` | its own |
+| `<name>/` | any other source: `<name>` is its own, which the registry's rule keeps off `assets` | its connector's |
 
 A source that attaches files keeps them under `<name>/_assets/`, in its own folder, so that
 no other source removes them, and under a name beginning with `_`, which keeps them out of

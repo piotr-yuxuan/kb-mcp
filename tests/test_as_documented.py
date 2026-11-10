@@ -152,7 +152,7 @@ def test_fetch_records_as_documented(
     with emitted.gathering(telemetry, "fetch"):
         backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
         assert main(fetch_arguments(data, "--space", "MFS", *backwards)) == ExitStatus.REFUSED
-    with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw).writing():
+    with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw, "confluence").writing():
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.FAILED
 
     def interrupted(_: float) -> None:
@@ -198,7 +198,7 @@ def a_store_with_a_page_of_each_ending(data: Path) -> None:
 
     The cache of conversions is random bytes, which the first run replaces.
     """
-    store = RawStore(data / "raw")
+    store = RawStore(data / "raw", "confluence")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Broken", None, None)]
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), listed, [], [])

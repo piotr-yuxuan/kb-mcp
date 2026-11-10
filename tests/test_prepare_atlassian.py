@@ -28,11 +28,11 @@ from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, prepare_atlassian
-from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_classes
+from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_source
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from tests.composed import MODEL
-from tests.mirrors import prepared_source
+from tests.mirrors import ATLASSIAN, prepared_source
 from tests.samples import (
     v1_user,
     v2_attachment,
@@ -127,8 +127,13 @@ class Sandbox:
 
     @cached_property
     def store(self) -> RawStore:
-        """The raw store, one object, so that its lock is held where it writes."""
-        return RawStore(self.data / "raw")
+        """Confluence's view of the raw store, one object, its lock held where it writes."""
+        return RawStore(self.data / "raw", "confluence")
+
+    @cached_property
+    def jira(self) -> RawStore:
+        """Jira's view of the raw store, one object, so that its lock is held where it writes."""
+        return RawStore(self.data / "raw", "jira")
 
     @property
     def docs(self) -> Path:
@@ -186,7 +191,8 @@ def sandbox(tmp_path: Path) -> Sandbox:
             Page, page_responses("300", "Leaf", 2, leaf_html(), leaf), FETCHED, {"att400": image}
         )
         store.put(BlogPost, post_responses("<p>News.</p>"), FETCHED, {"att700": image})
-        store.put(
+    with sandbox.jira.writing():
+        sandbox.jira.put(
             Issue, issue_responses("What are archived ideas?"), FETCHED, {"10000": issue_image}
         )
     return sandbox
@@ -470,7 +476,8 @@ def linked(sandbox: Sandbox) -> Sandbox:
     with sandbox.store.writing():
         sandbox.store.put(Page, page_responses("100", "Home", 2, HOME_HTML, []), FETCHED, {})
         sandbox.store.put(BlogPost, post_responses(news, 2), FETCHED, {"att700": digest(IMAGE)})
-        sandbox.store.put(Issue, issue, FETCHED, {"10000": digest(OTHER_IMAGE)})
+    with sandbox.jira.writing():
+        sandbox.jira.put(Issue, issue, FETCHED, {"10000": digest(OTHER_IMAGE)})
     return sandbox
 
 
@@ -636,12 +643,13 @@ def test_a_run_with_problems_reports_them_and_removes_nothing(sandbox: Sandbox) 
         stray = page_responses("800", "Stray", 1, "<p>Elsewhere.</p>", [], spaceId="999")
         sandbox.store.put(Page, stray, FETCHED, {})
         sandbox.store.put(BlogPost, post_responses("<p>News, failing.</p>", 2), FETCHED, {})
-        updated = issue_responses("Archived ideas, renamed", "2026-10-21T09:00:00.000+0000")
-        sandbox.store.put(Issue, updated, FETCHED, {})
         untitled = listing_page("900", "Untitled", "100", "page")
         del untitled["title"]
         renamed = listing_page("100", "Home, renamed", None, None)
         sandbox.store.put_space(v2_space(id=SPACE_ID), [renamed, untitled], [POST_LISTED], [FOLDER])
+    with sandbox.jira.writing():
+        updated = issue_responses("Archived ideas, renamed", "2026-10-21T09:00:00.000+0000")
+        sandbox.jira.put(Issue, updated, FETCHED, {})
     shutil.rmtree(sandbox.store.root / "confluence" / "pages" / "300")
     outcomes = sandbox.run(markdown=failing_on("News, failing."))
     assert outcomes["jira"].problems == ()
@@ -777,8 +785,8 @@ def crossed(sandbox: Sandbox) -> Sandbox:
     document = issue[jira_v3.ISSUE]
     assert isinstance(document, dict)
     document["renderedFields"] = {"description": LEAF_LINK}
-    with sandbox.store.writing():
-        sandbox.store.put(Issue, issue, FETCHED, {"10000": digest(IMAGE)})
+    with sandbox.jira.writing():
+        sandbox.jira.put(Issue, issue, FETCHED, {"10000": digest(IMAGE)})
     return sandbox
 
 
@@ -814,17 +822,33 @@ def test_either_source_first_writes_the_same_files(crossed: Sandbox, tmp_path: P
 
 
 @pytest.mark.parametrize(
-    "document_classes",
-    [(Page,), (BlogPost,), (Page, Issue), ()],
-    ids=["pages", "blog posts", "two sources' types", "none"],
+    ("document_classes", "other"),
+    [((Page,), "/blog/"), ((BlogPost,), "/300-")],
+    ids=["pages", "blog posts"],
 )
-def test_types_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
-    sandbox: Sandbox, document_classes: tuple[type[Page | BlogPost | Issue], ...]
+def test_a_source_prepared_for_some_of_its_types_keeps_the_files_of_the_others(
+    sandbox: Sandbox, document_classes: tuple[type[Page | BlogPost], ...], other: str
 ) -> None:
-    """Plan 030: a source's files are removed whichever types it built, so it builds them all.
+    """Plan 056: a source owns the files of the classes that it is prepared for, alone.
 
-    A prepare of the pages alone would otherwise remove every blog post.
+    A prepare of the pages alone keeps every blog post's file, and the reverse.
     """
+    sandbox.run()
+    before = {path: data for path, data in sandbox.files().items() if other in path}
+    path = sandbox.docs.parent / "conversions.sqlite"
+    sources = {**ATLASSIAN, "confluence": document_classes}
+    with conversions.opened(path, lambda: "a writer", str, source="confluence") as cache:
+        prepare_atlassian(
+            RawStore(sandbox.store.root, "confluence"), sandbox.docs, None, cache, sources
+        )
+    assert before
+    assert {path: data for path, data in sandbox.files().items() if other in path} == before
+
+
+def test_a_source_that_the_sources_given_lack_is_refused_before_anything_is_read(
+    sandbox: Sandbox,
+) -> None:
+    """A caller's error: a KeyError, and no file changed."""
     sandbox.run()
     before = sandbox.files()
     path = sandbox.docs.parent / "conversions.sqlite"
@@ -832,7 +856,13 @@ def test_types_other_than_all_of_a_source_s_are_refused_and_no_file_removed(
         conversions.opened(path, lambda: "a writer", str, source="confluence") as cache,
         pytest.raises(KeyError),
     ):
-        prepare_atlassian(sandbox.store, sandbox.docs, None, cache, document_classes)
+        prepare_atlassian(
+            RawStore(sandbox.store.root, "confluence"),
+            sandbox.docs,
+            None,
+            cache,
+            {"jira": ATLASSIAN["jira"]},
+        )
     assert sandbox.files() == before
 
 
@@ -861,9 +891,9 @@ def test_a_jira_document_that_pandoc_fails_on_keeps_its_file_while_a_stale_page_
     """Plan 030, criterion 11: a source's conversion problems hold back its removals alone."""
     sandbox.run()
     before = sandbox.files()
-    with sandbox.store.writing():
+    with sandbox.jira.writing():
         failing = issue_responses("Failing ideas", "2026-10-21T09:00:00.000+0000")
-        sandbox.store.put(Issue, failing, FETCHED, {"10000": digest(OTHER_IMAGE)})
+        sandbox.jira.put(Issue, failing, FETCHED, {"10000": digest(OTHER_IMAGE)})
     shutil.rmtree(sandbox.store.root / "confluence" / "pages" / "300")
     outcomes = sandbox.run(markdown=failing_on("Failing ideas"))
     assert outcomes["confluence"].problems == ()
@@ -916,10 +946,10 @@ THIRD_IMAGE = b"\x89PNG the next image"
 
 def issue_with_the_next_image(sandbox: Sandbox, summary: str) -> str:
     """Store PRB-1's next revision, its file another; give the file that its last copy links."""
-    with sandbox.store.writing():
-        next_image = sandbox.store.put_blob(THIRD_IMAGE)
+    with sandbox.jira.writing():
+        next_image = sandbox.jira.put_blob(THIRD_IMAGE)
         updated = issue_responses(summary, "2026-10-21T09:00:00.000+0000")
-        sandbox.store.put(Issue, updated, FETCHED, {"10000": next_image})
+        sandbox.jira.put(Issue, updated, FETCHED, {"10000": next_image})
     return f"assets/{digest(OTHER_IMAGE)}.png"
 
 
@@ -1034,7 +1064,7 @@ def prepared(
     """Prepare one source as its preparer does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
-        done = prepare_classes(settings, SITE, Pandoc.find(), source, PREPARED[source])
+        done = prepare_source(settings, SITE, Pandoc.find(), source, ATLASSIAN)
     return done, [each for each in events if each["log_level"] == "warning"]
 
 

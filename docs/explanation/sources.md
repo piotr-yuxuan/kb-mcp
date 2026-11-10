@@ -73,7 +73,7 @@ does not apply, and what its echo says.
   `run.source` ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as
   their one preparer reads the document types that it converts, and the source whose rows
   of the cache of conversions it reads
-  ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
   one row's name, `git`, told apart by their order alone: that plan names them.
@@ -313,8 +313,10 @@ package, but each is a source: a row, a report and a set of files of its own.
   Confluence then Jira, after any fetch, every link is what one prepare of both would
   make. `prepare confluence` prepares Confluence alone, so Jira's files whose links
   depend on Confluence's pages are rewritten only when Jira is prepared.
-- **What each owns.** Confluence writes and removes under `docs/confluence/`, Jira under
-  `docs/jira/`. `docs/assets/` is theirs together: each writes the files of its own
+- **What each owns.** Each source writes and removes under the folder of its name,
+  Confluence's under `docs/confluence/` and Jira's under `docs/jira/` by default, the
+  files of its own document types
+  ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)). `docs/assets/` is theirs together: each writes the files of its own
   documents, and removes a file that no placed document of either wants and no document
   file left links, since the last good copy of a document not rebuilt still shows it
   ([`unlinked`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)).
@@ -325,13 +327,14 @@ package, but each is a source: a row, a report and a set of files of its own.
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
   it says so, by that source, under a row that stays done
-  ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
   key, so that a text that both convert is a row of each, which neither prune takes from the
   other. A column keeps one file, which the data guard already judges. A file of the former
-  columns fails [`COLUMNS`](../../src/kb_mcp/mirror/adapters/conversions.py) and is replaced
-  once, so that the first prepare since converts everything again.
+  columns is adopted once, each of its rows a row of each source of the site
+  ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), so that the first prepare
+  since converts nothing that it holds.
 - **Cost.** The raw store is read and placed twice per prepare of both, in place of once:
   0.41 s more on a store of 1,474 documents, against 2.3 s for a `prepare` that the cache
   spares pandoc, and 31 s for one that it does not.

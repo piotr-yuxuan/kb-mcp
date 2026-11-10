@@ -56,7 +56,7 @@ def preflight(run: SourceRun) -> str | None:
     covered, and for a fetch of spaces what answered as gone, which is Confluence's. So
     that one stops no fetch of projects.
     """
-    store = RawStore(run.settings.raw)
+    store = RawStore(run.settings.raw, run.source.name)
     try:
         purview = purview_of(run)
         purview.windows(store.coverage(), run.now())

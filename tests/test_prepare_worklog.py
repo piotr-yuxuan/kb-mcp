@@ -33,6 +33,7 @@ from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
@@ -728,7 +729,9 @@ def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
     worklog = {each.path for each in run.files()}
     run()
     assert page.exists()
-    write_changed(run.docs, {}, lambda docs: owned(docs, "confluence"), remove=True)
+    write_changed(
+        run.docs, {}, lambda docs: owned(docs, "confluence", (Page, BlogPost)), remove=True
+    )
     assert {each.path for each in run.files()} == worklog
     assert not page.exists()
 

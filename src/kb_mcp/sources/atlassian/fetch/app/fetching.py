@@ -181,16 +181,13 @@ class FetchCounts(Record):
         )
 
 
-def label(document_class: type[FetchedDocument]) -> str:
-    """Name a document type in the counts, by its plural, as ``confluence pages``."""
-    return f"{document_class.source} {document_class.document_type.plural}"
-
-
 @dataclass
 class Fetching:
-    """One run over a site, into a store: each scope's window, and a cap on attached files.
+    """One run of a source over its site, into its view of the store: each scope's window.
 
-    Each scope named has a window, or none when it is skipped, after --until. With
+    And a cap on attached files. Its counts name each thing by the source, as
+    ``confluence pages``. Each scope named has a window, or none when it is skipped, after
+    --until. With
     ``plan``, the run lists and decides, and fetches and writes nothing. ``covered``
     names the scopes whose listing was read whole, with the period fetched, so that
     their coverage can grow, and ``first_failed`` the update time of each one's earliest
@@ -215,6 +212,10 @@ class Fetching:
     absent: dict[Scope, tuple[dict[DocumentKey, Scope], int, dict[DocumentKey, Tombstone]]] = field(
         default_factory=dict
     )
+
+    def label(self, document_class: type[FetchedDocument]) -> str:
+        """Name a document type of the source in the counts, by its plural: ``confluence pages``."""
+        return f"{self.store.source} {document_class.document_type.plural}"
 
     def run(self, scopes: Sequence[Scope]) -> None:
         """Fetch every space and project named, after checking that the session holds.
@@ -318,9 +319,9 @@ class Fetching:
                     LISTED[document_class](Fields(entry, document_class.document_type.plural))
                 )
             except RepresentationError as error:
-                what = f"{label(document_class)} listed"
-                self.failed(what, f"{label(document_class)} listing", error)
-        self.counts.add(f"{label(document_class)}: listed", len(found))
+                what = f"{self.label(document_class)} listed"
+                self.failed(what, f"{self.label(document_class)} listing", error)
+        self.counts.add(f"{self.label(document_class)}: listed", len(found))
         return found
 
     def space(self, scope: Scope, window: FetchWindow) -> bool:
@@ -338,7 +339,7 @@ class Fetching:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
                 if space is None:
-                    self.scope_failed("confluence spaces", f"space {key}", "not found")
+                    self.scope_failed(f"{self.store.source} spaces", f"space {key}", "not found")
                     span.set_status(StatusCode.ERROR, "not found")
                     return False
                 page_listing = confluence_v2.listing_request(space.id, Page)
@@ -347,7 +348,7 @@ class Fetching:
                     pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
                     posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.scope_failed("confluence spaces", f"space {key}", error)
+                self.scope_failed(f"{self.store.source} spaces", f"space {key}", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
@@ -429,10 +430,10 @@ class Fetching:
                 others = {k: s for k, s in self.tombstones.items() if s.scope != scope}
                 self.tombstones = {**others, **now}
                 self.store.put_tombstones(self.tombstones.values())
-                probed = "confluence documents: probed, absent from their listing"
+                probed = f"{scope.source} documents: probed, absent from their listing"
                 self.counts.add(probed, len(answers))
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
-                self.counts.add("confluence documents: absent, waiting for a probe", waiting)
+                self.counts.add(f"{scope.source} documents: absent, waiting for a probe", waiting)
 
     def probe(self, key: DocumentKey, kept: set[str]) -> ProbeAnswer | None:
         """GET a document absent from its listing, and say what became of it.
@@ -441,17 +442,17 @@ class Fetching:
         """
         document_class = Page if key[1] == Page.document_type.name else BlogPost
         request = confluence_v2.probe_request(document_class.document_type.plural, key[2])
-        where = f"{label(document_class)} {key[2]}"
+        where = f"{self.label(document_class)} {key[2]}"
         try:
             response = Fields(self.site.json(request), "probe")
             found_space, status = confluence_v2.whereabouts(response)
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
                 return ProbeAnswer.GONE
-            self.failed("confluence probes", where, error)
+            self.failed(f"{key[0]} probes", where, error)
             return None
         except RepresentationError as error:
-            self.failed("confluence probes", where, error)
+            self.failed(f"{key[0]} probes", where, error)
             return None
         named = found_space in kept and key[2] in self.store.listed_ids(found_space, document_class)
         return answer_of(found_space, status, kept, named=named)
@@ -467,7 +468,11 @@ class Fetching:
             try:
                 page = confluence_v2.document(Fields(entry, PAGE.plural), Page)
             except RepresentationError as error:
-                self.failed("confluence pages in the tree", "confluence pages listing", error)
+                self.failed(
+                    f"{self.store.source} pages in the tree",
+                    f"{self.store.source} pages listing",
+                    error,
+                )
                 continue
             if isinstance(page, Page) and page.parent_type == "folder":
                 wanted.append(page.parent_id)
@@ -477,13 +482,14 @@ class Fetching:
             if folder_id is None or folder_id in found or not IDENTIFIER.fullmatch(folder_id):
                 continue
             if len(found) >= MAX_FOLDERS:
-                self.counts.add("confluence folders: over the cap, left out", len(wanted) + 1)
+                left = len(wanted) + 1
+                self.counts.add(f"{self.store.source} folders: over the cap, left out", left)
                 break
             try:
                 response = self.site.json(confluence_v2.folder_request(folder_id))
                 folder = confluence_v2.folder(Fields(response, "folder"))
             except (RepresentationError, SiteError) as error:
-                self.failed("confluence folders", f"folder {folder_id}", error)
+                self.failed(f"{self.store.source} folders", f"folder {folder_id}", error)
                 found[folder_id] = None
                 continue
             found[folder_id] = response
@@ -510,7 +516,7 @@ class Fetching:
                     search = jira_v3.search_request(key, start, end)
                     entries = self.collect(search, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.scope_failed("jira projects", f"project {key}", error)
+                self.scope_failed(f"{self.store.source} projects", f"project {key}", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             if self.plan:
@@ -568,7 +574,7 @@ class Fetching:
             else {"new or changed since the last fetch": to_fetch}
         )
         self.counts.counts.update(
-            f"{label(document.document_class)}: {what}"
+            f"{self.label(document.document_class)}: {what}"
             for what, each in counted.items()
             for document in each
         )
@@ -610,7 +616,7 @@ class Fetching:
         begins, saying the document's id and type; an error when the fetch fails, which
         is a warning, by the document's id.
         """
-        what = label(document.document_class)
+        what = self.label(document.document_class)
         if self.plan:
             self.counts.add(f"{what}: to fetch")
             return True
@@ -654,12 +660,17 @@ class Fetching:
             document = snapshot.document
             trace.get_current_span().set_attribute("kb_mcp.document.title", document.title)
             structlog.get_logger().debug(
-                "fetch.document", id=document.id, kind=label(document_class), title=document.title
+                "fetch.document",
+                id=document.id,
+                kind=self.label(document_class),
+                title=document.title,
             )
         except RepresentationError as error:
-            self.failed(f"{label(document_class)} read", label(document_class), error)
+            self.failed(f"{self.label(document_class)} read", self.label(document_class), error)
             structlog.get_logger().warning(
-                "fetch.document_unread", kind=label(document_class), reason=str(error)
+                "fetch.document_unread",
+                kind=self.label(document_class),
+                reason=str(error),
             )
             snapshot = None
         blobs, whole = self.files(snapshot.attachments) if snapshot else ({}, False)
@@ -676,7 +687,7 @@ class Fetching:
         try:
             stored = self.store.read(document)
         except (RepresentationError, ValueError, OSError) as error:
-            what = label(document.document_class)
+            what = self.label(document.document_class)
             self.failed(f"{what} read", f"{what} {document.id}", error)
             return False
         missing = [
@@ -741,14 +752,14 @@ class Fetching:
                 try:
                     users += self.collect(request, confluence_v2.users_page)
                 except (RepresentationError, SiteError) as error:
-                    self.failed("confluence users", "confluence users", error)
+                    self.failed(f"{self.store.source} users", f"{self.store.source} users", error)
             try:
                 if users:
                     self.store.put_users(users)
             except RepresentationError as error:
-                self.failed("confluence users", "confluence users", error)
+                self.failed(f"{self.store.source} users", f"{self.store.source} users", error)
                 return
-            self.counts.add("confluence users: named", len(users))
+            self.counts.add(f"{self.store.source} users: named", len(users))
 
 
 class Purview(Record):
@@ -852,7 +863,7 @@ def plan_fetch(
     It ends not run, a dry run's, unless it failed or the sign-in no longer holds.
     Raises PeriodError when --since does not come before the windows' end.
     """
-    store = RawStore(settings.raw)
+    store = RawStore(settings.raw, purview.source)
     windows = purview.windows(store.coverage(), now())
     counts = FetchCounts(windows=windows_of(windows, {}), dry_run=True)
     try:
@@ -905,7 +916,7 @@ def run_fetch(
     counts, problems = FetchCounts(), []
     ending: Ending | None = None
     extensions: dict[Scope, CoverageChange] = {}
-    store, started, source = RawStore(settings.raw), now(), purview.source
+    store, started = RawStore(settings.raw, purview.source), now()
     coverage = store.coverage()
     windows = purview.windows(coverage, started)
     signing = choose_sign_in(settings)
@@ -970,7 +981,7 @@ def run_fetch(
                 "counts": dict(sorted(counts.counts.items())),
             }
             stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-            (settings.runs / f"{stamp}-{source}.json").write_text(
+            (settings.runs / f"{stamp}-{store.source}.json").write_text(
                 json.dumps(saved, indent=1), "utf-8"
             )
     return Outcome(

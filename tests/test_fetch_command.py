@@ -399,7 +399,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
-    with RawStore(chosen.raw).writing():
+    with RawStore(chosen.raw, "confluence").writing():
         assert main(command(home, *options)) == SOME_FAILED
     err = capsys.readouterr().err
     assert ("error", "fetch.store_busy") in said(err)

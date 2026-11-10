@@ -1,16 +1,17 @@
 """The newest snapshot of every document of one Atlassian source, as Markdown.
 
-Confluence and Jira are prepared apart, each by its document types. Each reads the
-whole store and places every document, so that a link or an image of either reaches its
-file, then builds the source's own files of ``docs/reference/data-layout.md``'s Markdown
-mirror and their bytes, and hands them to ``mirror_files``, which writes those that
-changed. Pandoc's conversions come through the source's rows of the cache of
-``conversions``, which converts only what it has not converted before. What cannot be
-read or converted is reported by the source it belongs to, and a source that reports
-anything removes none of its files and none of its conversions, so that the last good
-copy of each stays; an attached file stays while any document's file links it. Reading,
-building and writing are each a span; each document built is counted and timed, never a
-span, as ``docs/reference/telemetry/prepare.md`` lists it.
+The Atlassian sources of one site, Confluence's and Jira's, are prepared apart, each by
+its document types. Each reads the whole store, every source's view of it, and places
+every document, so that a link or an image of any reaches its file, then builds the
+source's own files of ``docs/reference/data-layout.md``'s Markdown mirror and their
+bytes, and hands them to ``mirror_files``, which writes those that changed. Pandoc's
+conversions come through the source's rows of the cache of ``conversions``, which
+converts only what it has not converted before. What cannot be read or converted is
+reported by the source it belongs to, and a source that reports anything removes none of
+its files and none of its conversions, so that the last good copy of each stays; an
+attached file stays while any document's file links it. Reading, building and writing
+are each a span; each document built is counted and timed, never a span, as
+``docs/reference/telemetry/prepare.md`` lists it.
 """
 
 from __future__ import annotations
@@ -42,7 +43,6 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     reason,
 )
 from kb_mcp.sources.atlassian.fetch.domain.content import (
-    DOCUMENT_CLASSES,
     BlogPost,
     ConfluenceDocument,
     Issue,
@@ -74,19 +74,8 @@ if TYPE_CHECKING:
     from kb_mcp.mirror.adapters.conversions import Conversions
     from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
-# The document classes that each source prepares, by its name, in the order that it is
-# prepared, as each class names its source: Confluence's pages and blog posts, with each
-# space's tree, then Jira's issues.
-PREPARED: dict[str, tuple[type[Page | BlogPost | Issue], ...]] = {
-    source: tuple(
-        document_class for document_class in DOCUMENT_CLASSES if document_class.source == source
-    )
-    for source in dict.fromkeys(document_class.source for document_class in DOCUMENT_CLASSES)
-}
-# Each source by all of its document classes, which a prepare takes whole: it removes the
-# files of them all (``owned``), so a prepare of some of them would remove the files of the
-# others.
-SOURCE_OF = {document_classes: source for source, document_classes in PREPARED.items()}
+# The document classes of a source, which a prepare takes whole.
+type Classes = tuple[type[Page | BlogPost | Issue], ...]
 # A comment's headings sit under its own third-level heading.
 COMMENT_SHIFT = 3
 UNKNOWN_AUTHOR = "unknown author"
@@ -128,8 +117,9 @@ class AtlassianCounts(Record):
 
 
 class Placed(Record):
-    """A stored snapshot, and its document's file in the mirror."""
+    """A source's stored snapshot, and its document's file in the mirror."""
 
+    source: str
     stored: StoredSnapshot
     path: PurePosixPath
 
@@ -170,9 +160,8 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
     try:
         return store.listed_at(space_id) or EPOCH
     except UNREADABLE as error:
-        problems.append(
-            Problem(where=f"confluence/spaces/{space_id}/listed_at.json", reason=reason(error))
-        )
+        where = f"{store.source}/spaces/{space_id}/listed_at.json"
+        problems.append(Problem(where=where, reason=reason(error)))
         return EPOCH
 
 
@@ -204,49 +193,54 @@ def read_catalogue(
 
 def place(
     store: RawStore,
+    sources: Mapping[str, Classes],
     catalogue: Catalogue,
     times: Mapping[str, datetime],
     problems: Mapping[str, list[Problem]],
 ) -> tuple[list[Placed], dict[PurePosixPath, PurePosixPath | None]]:
-    """Read the newest snapshot of every document, and say where each goes in the mirror.
+    """Read the newest snapshot of every document of these sources, and say where each goes.
 
-    A page or a blog post goes to the space whose freshest listing names it, before the
-    one its snapshot names, everywhere the mirror uses its space; one whose space is not
-    listed has no folder, and is reported. A document confirmed gone is left out, unless
-    a listing taken after it answered gone names it again. Each problem goes to the list
-    of the source it belongs to, by its name, in ``problems``; the tombstones are
-    Confluence's. Also return the files that must go even when the source reports
-    problems: those of documents gone (to None), and the old file of a document that
-    moved (to its new file).
+    ``sources`` gives each source's document classes by its name, each read from its view
+    of the store that ``store`` views. A page or a blog post goes to the space whose
+    freshest listing names it, before the one its snapshot names, everywhere the mirror
+    uses its space; one whose space is not listed has no folder, and is reported. A
+    document confirmed gone is left out, unless a listing taken after it answered gone
+    names it again. Each problem goes to the list of the source it belongs to, by its
+    name, in ``problems``; the tombstones', to the source that lists spaces, if any, as
+    only a space's whole read makes them, else to ``store``'s. Also return the files that
+    must go even when the source reports problems: those of documents gone (to None), and
+    the old file of a document that moved (to its new file).
     """
     placed: list[Placed] = []
     retired: dict[PurePosixPath, PurePosixPath | None] = {}
     try:
         gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
     except UNREADABLE as error:
-        problems[ConfluenceDocument.source].append(
+        spaced = (name for name, classes in sources.items() if Page in classes)
+        problems[next(spaced, store.source)].append(
             Problem(where="tombstones.json", reason=reason(error))
         )
         gone = {}
-    for found in (
-        item
-        for document_class in DOCUMENT_CLASSES
-        for item in readable(store.latest(document_class), problems[document_class.source])
+    for source, found in (
+        (name, item)
+        for name, classes in sources.items()
+        for document_class in classes
+        for item in readable(RawStore(store.root, name).latest(document_class), problems[name])
     ):
         stored, document = found, found.snapshot.document
         if isinstance(document, Issue):
-            placed.append(Placed(stored=stored, path=issue_path(document)))
+            placed.append(Placed(source=source, stored=stored, path=issue_path(source, document)))
             continue
         if not isinstance(document, ConfluenceDocument):
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        stone = gone.get((document.source, document.document_type.name, document.id))
+        stone = gone.get((source, document.document_type.name, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
         named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)
         moves = listed is not None and listed.space_id != document.space_id
-        old = confluence_path(document, before.key) if before is not None else None
+        old = confluence_path(source, document, before.key) if before is not None else None
         if is_gone:
             if old is not None:
                 retired[old] = None
@@ -256,14 +250,12 @@ def place(
             stored = replace(stored, snapshot=replace(stored.snapshot, document=moved))
             document = moved
         if document.space_id in catalogue.spaces:
-            key = catalogue.spaces[document.space_id].key
-            placed.append(Placed(stored=stored, path=confluence_path(document, key)))
+            path = confluence_path(source, document, catalogue.spaces[document.space_id].key)
+            placed.append(Placed(source=source, stored=stored, path=path))
             if moves and old is not None:
-                retired[old] = confluence_path(document, key)
+                retired[old] = path
         else:
-            problems[document.source].append(
-                Problem(where=where(store, stored), reason="space not listed")
-            )
+            problems[source].append(Problem(where=where(store, stored), reason="space not listed"))
     return placed, retired
 
 
@@ -292,7 +284,7 @@ def document_file(
     """Return the bytes of one document's file: its front matter, then its Markdown."""
     snapshot, document = placed.stored.snapshot, placed.document
     matter = front_matter(
-        document, snapshot.comments, placed.stored.fetched_at, catalogue, context.link_targets.site
+        placed.source, snapshot, placed.stored.fetched_at, catalogue, context.link_targets.site
     )
     attachments = [
         (each.filename, None if asset is None else context.relative(asset))
@@ -321,15 +313,17 @@ def prepare_atlassian(
     docs: Path,
     site: str | None,
     conversions: Conversions,
-    document_classes: tuple[type[Page | BlogPost | Issue], ...],
+    sources: Mapping[str, Classes],
 ) -> Outcome[AtlassianCounts]:
-    """Write the documents of ``document_classes``, one source's, from the raw store to ``docs``.
+    """Write the documents of ``store``'s source from the raw store to ``docs``.
 
-    ``document_classes`` are all of one source's, as ``PREPARED`` gives them; any other
-    raises KeyError, a caller's error, before anything is read. ``conversions`` writes HTML
-    as Markdown, through the source's rows of the cache.
-    Every document of the raw store is placed, so that links and images reach the other
-    source's files, but only those of ``document_classes`` are built and written, with
+    ``sources`` gives the document classes of each Atlassian source of the site, by its
+    name, ``store``'s among them, which raises KeyError, a caller's error, before anything
+    is read when it is not; the one whose classes are pages lists the spaces, which the
+    others read too, as the registry gives the connector of spaces one source.
+    ``conversions`` writes HTML as Markdown, through the source's rows of the cache.
+    Every document of every source is placed, so that links and images reach the other
+    sources' files, but only those of ``store``'s source are built and written, with
     the files they attach, and each space's tree when pages are among them. The source then
     removes its files that are no longer wanted, and prunes its conversions that this
     run did not use, unless it reports a problem, those that it found reading the other
@@ -347,17 +341,16 @@ def prepare_atlassian(
     at DEBUG each document built, by its path, id and title.
     """
     log = structlog.get_logger()
-    source = SOURCE_OF[document_classes]
-    # The problems found, by the source they belong to: the catalogue's are Confluence's.
-    found: dict[str, list[Problem]] = {
-        document_class.source: [] for document_class in DOCUMENT_CLASSES
-    }
+    source, document_classes = store.source, sources[store.source]
+    # The problems found, by the source they belong to: the catalogue's are its lister's.
+    found: dict[str, list[Problem]] = {name: [] for name in sources}
     problems = found[source]
+    lister = next((name for name, classes in sources.items() if Page in classes), source)
     with TRACER.start_as_current_span("prepare.read"):
-        catalogue, damaged, times = read_catalogue(store, found[ConfluenceDocument.source])
-        placed, retired = place(store, catalogue, times, found)
+        catalogue, damaged, times = read_catalogue(RawStore(store.root, lister), found[lister])
+        placed, retired = place(store, sources, catalogue, times, found)
         linked, assets = link_targets(placed, store, site)
-    own = [each for each in placed if isinstance(each.document, document_classes)]
+    own = [each for each in placed if each.source == source]
     _, files = link_targets(own, store, site)
     log.info(
         "prepare.placed",
@@ -391,10 +384,10 @@ def prepare_atlassian(
                     title=each.document.title,
                     seconds=round(seconds, 3),
                 )
-        # Each space's tree is Confluence's, built with its pages; Jira has none.
+        # Each space's tree is its lister's, built with its pages; Jira has none.
         spaces = catalogue.spaces.values() if Page in document_classes else ()
         for space in spaces:
-            tree = tree_path(space.key)
+            tree = tree_path(source, space.key)
             # Only the files built: a page whose file failed has no file yet.
             links = {
                 each.document.id: posixpath.relpath(each.path, tree.parent)
@@ -407,20 +400,25 @@ def prepare_atlassian(
                 if space.id not in damaged:
                     wanted[tree] = conversions.markdown(catalogue.tree(space, links)).encode()
             except PandocFailedError as error:
-                problems.append(Problem(where=f"confluence/spaces/{space.id}", reason=str(error)))
+                at = f"{source}/spaces/{space.id}"
+                problems.append(Problem(where=at, reason=str(error)))
     written = sum(1 for each in own if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
     with TRACER.start_as_current_span("prepare.write"):
         changes = write_changed(
-            docs, wanted, lambda folder: owned(folder, source), remove=not problems, retired=gone
+            docs,
+            wanted,
+            lambda folder: owned(folder, source, document_classes),
+            remove=not problems,
+            retired=gone,
         )
         # Once the source's files are as they stay, what no placed document wants and no
         # file links, while no problem was found.
         swept = write_changed(
             docs,
             {},
-            lambda folder: unlinked(folder, attached(folder) - set(assets)),
+            lambda folder: unlinked(folder, attached(folder) - set(assets), sources),
             remove=not any(found.values()),
         )
         changes = replace(changes, removed=changes.removed + swept.removed)

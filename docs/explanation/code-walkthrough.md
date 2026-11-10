@@ -278,8 +278,8 @@ stores the responses exactly as received. It reads only the id and the revision,
 [`identity`](../../src/kb_mcp/sources/atlassian/fetch/adapters/confluence_v2.py),
 which also checks that the view is of the page's version, as two GETs may straddle an
 edit; writes each response and the store's record into a hidden folder; and renames it
-to `<data>/raw/confluence/pages/<id>/<revision>/`, so that a snapshot is complete or
-absent. Its responses are never written again: the next run's
+to `<data>/raw/confluence/pages/<id>/<revision>/`, under its source's name, so that a
+snapshot is complete or absent. Its responses are never written again: the next run's
 [`RawStore.has`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
 finds the revision and asks for none of them. Its files may still grow:
 [`Fetching.complete`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
@@ -293,8 +293,9 @@ The layout: [snapshots](../reference/data-layout.md#snapshots).
 Then the preparer's [`prepare`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py),
 through [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py), reads the raw store,
 whatever the fetch did. It runs for Confluence here, and reads from `run.source` the
-resource types that it converts: Jira's issues are placed too, so that a link to one reaches its
-file, and only pages and blog posts are built.
+document types that it converts, and from `run.sources` the other sources of the site:
+Jira's issues are placed too, each from Jira's view of the store, so that a link to one
+reaches its file, and only pages and blog posts are built.
 [`read_catalogue`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the spaces,
 users and listings into a
 [`Catalogue`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py);
@@ -304,7 +305,7 @@ of each document
 leaves out those confirmed gone, unless a listing taken since names them again, puts a
 page or a post in the space whose freshest listing names it, and names each one's file
 by [`confluence_path`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py): the
-space's key, then the id and the title's
+source's name, the space's key, then the id and the title's
 [`slug`](../../src/kb_mcp/kernel/slug.py).
 
 [`document_file`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) then builds each
@@ -325,7 +326,7 @@ document's file:
   out the title, the body and the attachments (and an issue's comments).
 - [`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)
   gives that HTML's Markdown from the rows of its source in the cache of conversions, which
-  [`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
+  [`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py) opened
   ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), or has
   [`Pandoc.markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py) write it
   as GitHub's Markdown, one process a document, and keeps it. `--sandbox` is among

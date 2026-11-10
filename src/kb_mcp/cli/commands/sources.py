@@ -41,6 +41,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     runs = [
         SourceRun(
             source=declared,
+            sources=arguments.sources,
             settings=settings,
             source_table=getattr(settings.sources, declared.name),
             account_table=(

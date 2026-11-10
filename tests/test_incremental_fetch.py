@@ -154,7 +154,7 @@ def stored_pages(chosen: Settings) -> dict[str, str]:
     """Map each stored page to its stored revision."""
     return {
         item.snapshot.document.id: item.snapshot.document.revision
-        for item in RawStore(chosen.raw).latest(Page)
+        for item in RawStore(chosen.raw, "confluence").latest(Page)
         if isinstance(item, StoredSnapshot)
     }
 
@@ -166,7 +166,7 @@ def test_a_first_run_starts_the_coverage_of_each_target(
     chosen = settings(tmp_path)
     assert run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST) == "done"
     assert run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST) == "done"
-    assert RawStore(chosen.raw).coverage().periods == {
+    assert RawStore(chosen.raw, "confluence").coverage().periods == {
         MFS: Period(FIRST - WEEK, FIRST),
         PRB: Period(FIRST - WEEK, FIRST),
     }
@@ -184,7 +184,9 @@ def test_a_later_run_catches_up_on_an_old_page_edited_since(
     later = RefreshSite(listing=listing)
     assert run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND) == "done"
     assert stored_pages(chosen)["1003"] == "000004"
-    assert RawStore(chosen.raw).coverage().periods[MFS] == Period(FIRST - WEEK, SECOND)
+    assert RawStore(chosen.raw, "confluence").coverage().periods[MFS] == Period(
+        FIRST - WEEK, SECOND
+    )
 
 
 def test_a_page_that_joined_a_space_since_its_listing_comes_whatever_its_update_time(
@@ -198,13 +200,13 @@ def test_a_page_that_joined_a_space_since_its_listing_comes_whatever_its_update_
     chosen = settings(tmp_path)
     first = RefreshSite(listing=without("1003"))
     assert run(chosen, monkeypatch, first, first_week(["MFS"], []), FIRST) == "done"
-    assert RawStore(chosen.raw).coverage().exact == {MFS}
+    assert RawStore(chosen.raw, "confluence").coverage().exact == {MFS}
     with capture_logs() as events:
         assert run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND) == "done"
     [listed] = [each for each in events if each["event"] == "fetch.listed"]
     assert listed["reason"] == "since the last fetch"
     assert stored_pages(chosen)["1003"] == "000003"
-    assert RawStore(chosen.raw).coverage().exact == {MFS}
+    assert RawStore(chosen.raw, "confluence").coverage().exact == {MFS}
 
 
 def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
@@ -216,7 +218,7 @@ def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     targets = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=SECOND - YEAR)
     assert run(chosen, monkeypatch, RefreshSite(), targets, SECOND) == "done"
     assert stored_pages(chosen)["1003"] == "000003"
-    covered = RawStore(chosen.raw).coverage().periods[MFS]
+    covered = RawStore(chosen.raw, "confluence").coverage().periods[MFS]
     assert covered == Period(SECOND - YEAR, SECOND)
 
 
@@ -243,7 +245,7 @@ def test_a_target_whose_listing_failed_keeps_its_coverage(
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(search_status=400), first_week(["MFS"], []), FIRST)
     run(chosen, monkeypatch, RefreshSite(search_status=400), first_week([], ["PRB"]), FIRST)
-    assert set(RawStore(chosen.raw).coverage().periods) == {MFS}
+    assert set(RawStore(chosen.raw, "confluence").coverage().periods) == {MFS}
 
 
 def test_a_plan_lists_and_decides_and_writes_nothing(
@@ -253,12 +255,15 @@ def test_a_plan_lists_and_decides_and_writes_nothing(
     chosen = settings(tmp_path)
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    outcome = plan_fetch(chosen, first_week(["MFS"], ["PRB"]), lambda: FIRST, lambda _: None)
-    assert outcome.ending == "not run"
-    assert outcome.counts.counts["confluence pages: to fetch"] == len(["1001", "1002"])
-    assert outcome.counts.counts["jira issues: to fetch"] == 1
-    assert outcome.counts.counts["files: to download"] == 1
-    assert outcome.counts.counts["files: bytes to download"] > 0
+    confluence, jira = (
+        plan_fetch(chosen, first_week(spaces, projects), lambda: FIRST, lambda _: None)
+        for spaces, projects in ((["MFS"], []), ([], ["PRB"]))
+    )
+    assert (confluence.ending, jira.ending) == ("not run", "not run")
+    assert confluence.counts.counts["confluence pages: to fetch"] == len(["1001", "1002"])
+    assert jira.counts.counts["jira issues: to fetch"] == 1
+    assert jira.counts.counts["files: to download"] == 1
+    assert jira.counts.counts["files: bytes to download"] > 0
     fetched = [url.path for url in fake.asked if "/pages/" in url.path or "/issue/" in url.path]
     assert fetched == []
     left = sorted(
@@ -280,14 +285,14 @@ def test_a_page_gone_on_two_runs_is_confirmed_and_one_back_loses_it(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     gone = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
-    [stone] = RawStore(chosen.raw).tombstones().values()
+    [stone] = RawStore(chosen.raw, "confluence").tombstones().values()
     assert (stone.key, stone.confirmed) == (("confluence", "page", "1002"), False)
     gone_again = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone_again, catch_up(["MFS"], []), SECOND + timedelta(days=1))
-    [stone] = RawStore(chosen.raw).tombstones().values()
+    [stone] = RawStore(chosen.raw, "confluence").tombstones().values()
     assert stone.confirmed
     run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND + timedelta(days=2))
-    assert RawStore(chosen.raw).tombstones() == {}
+    assert RawStore(chosen.raw, "confluence").tombstones() == {}
 
 
 def test_the_probes_of_a_space_are_reported_as_a_task(
@@ -314,7 +319,7 @@ def test_a_page_moved_to_another_space_listed_in_the_run_is_not_gone(
         listing=without("1001"), moved={"1001": OTHER_SPACE}, others={"OPS": [moved_page]}
     )
     run(chosen, monkeypatch, moved, first_week(["MFS", "OPS"], []), SECOND)
-    assert RawStore(chosen.raw).tombstones() == {}
+    assert RawStore(chosen.raw, "confluence").tombstones() == {}
 
 
 def test_a_page_found_in_a_stored_space_that_does_not_list_it_waits(
@@ -323,7 +328,7 @@ def test_a_page_found_in_a_stored_space_that_does_not_list_it_waits(
     """Found in a space this run does not list, whose stored listing lacks it: kept, pending."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    store = RawStore(chosen.raw)
+    store = RawStore(chosen.raw, "confluence")
     with store.writing():
         store.put_space(v2_space(id=OTHER_SPACE, key="OPS", name="Ops"), [], [], [])
     for day in (0, 1):
@@ -345,7 +350,7 @@ def test_a_page_found_in_a_stored_space_whose_listing_names_it_is_followed_there
     """Named by a space's stored listing, though this run does not list it: moved, not hidden."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    store = RawStore(chosen.raw)
+    store = RawStore(chosen.raw, "confluence")
     with store.writing():
         ops = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
         store.put_space(ops, [{**PAGES["1001"], "spaceId": OTHER_SPACE}], [], [], listed_at=FIRST)
@@ -368,7 +373,7 @@ def test_a_page_on_its_way_is_probed_before_one_newly_absent(
     monkeypatch.setattr("kb_mcp.sources.atlassian.fetch.app.fetching.MAX_PROBES", 1)
     both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
     run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
-    stones = RawStore(chosen.raw).tombstones()
+    stones = RawStore(chosen.raw, "confluence").tombstones()
     assert stones[("confluence", "page", "1002")].confirmed
     assert stones[("confluence", "page", "1001")].first_gone is None
 
@@ -382,7 +387,7 @@ def test_a_listed_entry_that_the_reader_refuses_is_not_absent(
     versionless = {key: value for key, value in PAGES["1002"].items() if key != "version"}
     refused = RefreshSite(listing={**PAGES, "1002": versionless}, gone={"1002"})
     run(chosen, monkeypatch, refused, catch_up(["MFS"], []), SECOND)
-    assert RawStore(chosen.raw).tombstones() == {}
+    assert RawStore(chosen.raw, "confluence").tombstones() == {}
 
 
 def test_a_page_moved_out_of_the_kept_spaces_is_gone(
@@ -393,7 +398,7 @@ def test_a_page_moved_out_of_the_kept_spaces_is_gone(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
     run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND)
-    assert list(RawStore(chosen.raw).tombstones()) == [("confluence", "page", "1001")]
+    assert list(RawStore(chosen.raw, "confluence").tombstones()) == [("confluence", "page", "1001")]
 
 
 def test_many_gone_with_a_lost_session_write_no_tombstone(
@@ -405,7 +410,7 @@ def test_many_gone_with_a_lost_session_write_no_tombstone(
     run(chosen, monkeypatch, RefreshSite(listing=many), first_week(["MFS"], []), FIRST)
     lost = RefreshSite(listing={}, gone=set(many), anonymous_after=1)
     assert run(chosen, monkeypatch, lost, catch_up(["MFS"], []), SECOND) == "sign in again"
-    stones = RawStore(chosen.raw).tombstones().values()
+    stones = RawStore(chosen.raw, "confluence").tombstones().values()
     assert len(stones) == MANY  # each absent page waits for a probe
     assert [stone for stone in stones if stone.first_gone is not None] == []
 
@@ -424,7 +429,7 @@ def test_the_mirror_leaves_out_a_confirmed_tombstone(
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
-    prepared_sources(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
     names = sorted(path.name for path in (chosen.docs / "confluence" / "MFS").glob("*.md"))
     assert [name for name in names if name.startswith("1002-")] == []
     assert [name for name in names if name.startswith("1001-")]
@@ -432,7 +437,7 @@ def test_the_mirror_leaves_out_a_confirmed_tombstone(
 
 def test_the_mirror_places_a_page_in_the_space_that_lists_it(tmp_path: Path) -> None:
     """A page listed in another space than its snapshot names is prepared there."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     responses = {
         "document.json": v2_page(),
         "view.json": v2_page(body={"view": {"value": "<p>v</p>", "representation": "view"}}),
@@ -458,7 +463,7 @@ def test_many_gone_with_the_session_holding_are_believed(
     run(chosen, monkeypatch, RefreshSite(listing=many), first_week(["MFS"], []), FIRST)
     deleted = RefreshSite(listing={}, gone=set(many))
     assert run(chosen, monkeypatch, deleted, catch_up(["MFS"], []), SECOND) == "done"
-    assert len(RawStore(chosen.raw).tombstones()) == MANY
+    assert len(RawStore(chosen.raw, "confluence").tombstones()) == MANY
 
 
 def test_a_page_that_comes_back_is_mirrored_again_from_its_kept_snapshot(
@@ -472,7 +477,7 @@ def test_a_page_that_comes_back_is_mirrored_again_from_its_kept_snapshot(
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     assert "1002" in stored_pages(chosen)
     run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND + timedelta(days=3))
-    prepared_sources(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
     assert list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
 
 
@@ -482,14 +487,16 @@ def test_a_gone_page_leaves_the_mirror_even_when_another_has_a_problem(
     """Problems elsewhere keep last good copies, but never a page known to be gone."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    prepared_sources(RawStore(chosen.raw), chosen.docs, SITE, identity)
+    prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
     assert list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     broken = next((chosen.raw / "confluence" / "pages" / "1001").iterdir()) / "view.json"
     broken.write_text("{}", "utf-8")  # another document now unreadable
-    outcome = prepared_sources(RawStore(chosen.raw), chosen.docs, SITE, identity)["confluence"]
+    outcome = prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)[
+        "confluence"
+    ]
     assert outcome.problems
     assert not list((chosen.docs / "confluence" / "MFS").glob("1002-*.md"))
     assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
@@ -521,7 +528,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
 
 def test_a_moved_page_takes_its_new_space_everywhere_and_leaves_the_old(tmp_path: Path) -> None:
     """The freshest listing wins: path, front matter, tree, and the old file goes."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     docs = tmp_path / "docs"
     responses = {
         "document.json": v2_page(),
@@ -545,7 +552,7 @@ def test_a_moved_page_takes_its_new_space_everywhere_and_leaves_the_old(tmp_path
 
 def test_a_damaged_listing_time_is_one_problem_not_one_per_document(tmp_path: Path) -> None:
     """The time a space was listed is read once a run, and a damaged record named once."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with store.writing():
         for page_id in ("1001", "1002"):
             view = {"view": {"value": "<p>v</p>", "representation": "view"}}
@@ -574,7 +581,7 @@ def test_a_page_whose_probe_failed_is_probed_again_on_a_later_run(
     monkeypatch.setattr(http, "client", lambda *_: failing.client())
     outcome = run_fetch(chosen, catch_up(["MFS"], []), lambda: SECOND, lambda _: None)
     assert Problem(where="confluence pages 1002", reason="status 503") in outcome.problems
-    [pending] = RawStore(chosen.raw).tombstones().values()
+    [pending] = RawStore(chosen.raw, "confluence").tombstones().values()
     assert (pending.key, pending.first_gone, pending.confirmed) == (
         ("confluence", "page", "1002"),
         None,
@@ -583,13 +590,13 @@ def test_a_page_whose_probe_failed_is_probed_again_on_a_later_run(
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
-    [stone] = RawStore(chosen.raw).tombstones().values()
+    [stone] = RawStore(chosen.raw, "confluence").tombstones().values()
     assert stone.confirmed
 
 
 def test_a_moved_page_whose_new_file_fails_keeps_its_old_file(tmp_path: Path) -> None:
     """The last good copy of a moved page stays until its new file is built."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     docs = tmp_path / "docs"
     responses = {
         "document.json": v2_page(),
@@ -634,12 +641,12 @@ def test_a_deleted_page_whose_listing_entry_changed_is_still_tracked(
         key: {k: v for k, v in page.items() if k != "title"} for key, page in PAGES.items()
     }
     run(chosen, monkeypatch, RefreshSite(listing=titleless), first_week(["MFS"], []), FIRST)
-    assert "1002" in RawStore(chosen.raw).stored_ids(Page)
+    assert "1002" in RawStore(chosen.raw, "confluence").stored_ids(Page)
     rest = {key: page for key, page in titleless.items() if key != "1002"}
     for day in (1, 2):
         gone = RefreshSite(listing=rest, gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
-    [stone] = RawStore(chosen.raw).tombstones().values()
+    [stone] = RawStore(chosen.raw, "confluence").tombstones().values()
     assert (stone.key, stone.confirmed) == (("confluence", "page", "1002"), True)
 
 
@@ -648,7 +655,7 @@ def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(
 ) -> None:
     """A space listed long before the page answered gone cannot revive it."""
     chosen = settings(tmp_path)
-    store = RawStore(chosen.raw)
+    store = RawStore(chosen.raw, "confluence")
     with store.writing():
         stale = v2_space(id=OTHER_SPACE, key="OPS", name="Ops")
         entry = {**PAGES["1002"], "spaceId": OTHER_SPACE}
@@ -730,7 +737,7 @@ def test_a_failure_ends_a_project_s_coverage_at_its_update_time(
             Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
             RUN,
         )
-    assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING)
     assert said_coverage(events) == [("project PRB", "capped")]
 
 
@@ -757,7 +764,7 @@ def test_a_stored_snapshot_that_cannot_be_read_ends_the_coverage_at_it(
     again = Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START)
     with capture_logs() as events:
         run(chosen, monkeypatch, RefreshSite(issues=two_issues()), again, NEXT)
-    assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING)
     assert said_coverage(events) == [("project PRB", "capped")]
 
 
@@ -788,7 +795,7 @@ def test_what_failed_is_asked_for_again_and_the_coverage_then_reaches_the_run(
     with capture_logs() as events:
         run(chosen, monkeypatch, again, catch_up([], ["PRB"]), NEXT)
     assert asked_again in [url.path for url in again.asked]
-    assert RawStore(chosen.raw).coverage() == exactly(START, NEXT)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, NEXT)
     assert said_coverage(events) == [("project PRB", "extended")]
 
 
@@ -810,13 +817,13 @@ def test_a_snapshot_refused_holds_the_coverage_until_the_adapter_reads_it(
         RUN,
     )
     run(chosen, monkeypatch, RefreshSite(issues=two_issues()), catch_up([], ["PRB"]), NEXT)
-    assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING)
     stored_issue(chosen, "20001").write_text(json.dumps(issue_at("20001", FAILING)), "utf-8")
     again = RefreshSite(issues=two_issues())
     later = NEXT + timedelta(hours=6)
     run(chosen, monkeypatch, again, catch_up([], ["PRB"]), later)
     assert ISSUE_FILE in [url.path for url in again.asked]
-    assert RawStore(chosen.raw).coverage() == exactly(START, later)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, later)
 
 
 def test_among_several_failures_the_earliest_ends_the_coverage(
@@ -834,7 +841,7 @@ def test_among_several_failures_the_earliest_ends_the_coverage(
         Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
-    assert RawStore(chosen.raw).coverage() == exactly(START, earlier)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, earlier)
 
 
 def test_a_search_entry_that_the_adapter_refuses_holds_the_coverage(
@@ -843,7 +850,7 @@ def test_a_search_entry_that_the_adapter_refuses_holds_the_coverage(
     """Without its update time, it has no moment to stop at: the coverage stays, said held."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(issues=two_issues()), first_week([], ["PRB"]), FIRST)
-    before = RawStore(chosen.raw).coverage()
+    before = RawStore(chosen.raw, "confluence").coverage()
     timeless = issue_at("20004", FINE)
     values = timeless["fields"]
     assert isinstance(values, dict)
@@ -851,7 +858,7 @@ def test_a_search_entry_that_the_adapter_refuses_holds_the_coverage(
     refused = RefreshSite(issues={**two_issues(), "20004": timeless})
     with capture_logs() as events:
         run(chosen, monkeypatch, refused, catch_up([], ["PRB"]), RUN)
-    assert RawStore(chosen.raw).coverage() == before
+    assert RawStore(chosen.raw, "confluence").coverage() == before
     assert said_coverage(events) == [("project PRB", "held", "entries refused")]
 
 
@@ -866,12 +873,12 @@ def test_a_run_stopped_during_a_project_leaves_its_coverage_and_extends_those_be
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(issues=two_issues()), first_week(["MFS"], []), FIRST)
     run(chosen, monkeypatch, RefreshSite(issues=two_issues()), first_week([], ["PRB"]), FIRST)
-    before = RawStore(chosen.raw).coverage().periods[PRB]
+    before = RawStore(chosen.raw, "confluence").coverage().periods[PRB]
     many = {str(30000 + n): issue_at(str(30000 + n), RUN - timedelta(hours=1)) for n in range(MANY)}
     failing = RefreshSite(issues=many, failing_issues=dict.fromkeys(many, status))
     assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), RUN) == "done"
     assert run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), RUN) == stopped
-    periods = RawStore(chosen.raw).coverage().periods
+    periods = RawStore(chosen.raw, "confluence").coverage().periods
     assert periods[PRB] == before
     assert periods[MFS] == Period(FIRST - WEEK, RUN)
 
@@ -887,16 +894,16 @@ def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
     chosen.raw.mkdir(parents=True)
     old = [{"source": "jira", "key": "PRB", "start": START.isoformat(), "end": RUN.isoformat()}]
     (chosen.raw / "coverage.json").write_text(json.dumps(old), "utf-8")
-    windows = catch_up([], ["PRB"]).windows(RawStore(chosen.raw).coverage(), NEXT)
+    windows = catch_up([], ["PRB"]).windows(RawStore(chosen.raw, "confluence").coverage(), NEXT)
     assert windows == {PRB: FetchWindow(period=Period(START, NEXT), reason="covered start")}
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
     run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
-    assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING)
     again = RefreshSite(issues=two_issues())
     later = NEXT + timedelta(hours=6)
     run(chosen, monkeypatch, again, catch_up([], ["PRB"]), later)
     assert "/rest/api/3/issue/20001" in [url.path for url in again.asked]
-    assert RawStore(chosen.raw).coverage() == exactly(START, later)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, later)
 
 
 def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
@@ -912,7 +919,7 @@ def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
         scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=FAILING - timedelta(hours=1)
     )
     run(chosen, monkeypatch, failing, inside, NEXT)
-    after = RawStore(chosen.raw).coverage()
+    after = RawStore(chosen.raw, "confluence").coverage()
     assert after == Coverage(periods={PRB: Period(START, NEXT)})
     later = NEXT + timedelta(hours=6)
     assert catch_up([], ["PRB"]).windows(after, later) == {
@@ -949,7 +956,7 @@ def test_a_project_catches_up_from_a_day_before_its_last_fetch(
         Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         LAST_FETCH,
     )
-    assert RawStore(chosen.raw).coverage() == exactly(START, LAST_FETCH)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, LAST_FETCH)
     issues = {
         "20010": stored,
         "20011": issue_at("20011", datetime(2026, 10, 26, 9, tzinfo=UTC), files=False),
@@ -962,7 +969,7 @@ def test_a_project_catches_up_from_a_day_before_its_last_fetch(
     assert 'updated >= "2026-10-24"' in search.params["jql"]
     fetched = {path for path in jira_asked(later) if not path.endswith("/comment")}
     assert fetched == {"/rest/api/3/issue/20011", "/rest/api/3/issue/20013"}
-    assert RawStore(chosen.raw).coverage() == exactly(START, CATCH_UP)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, CATCH_UP)
 
 
 def test_a_catch_up_until_a_moment_reaches_that_moment(
@@ -989,7 +996,7 @@ def test_a_catch_up_until_a_moment_reaches_that_moment(
         CATCH_UP,
     )
     assert jira_asked(later) == []
-    assert RawStore(chosen.raw).coverage() == exactly(START, until)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, until)
 
 
 def test_a_failure_at_the_start_of_a_catch_up_ends_the_coverage_there(
@@ -1008,12 +1015,12 @@ def test_a_failure_at_the_start_of_a_catch_up_ends_the_coverage_there(
     issues = {"20020": issue_at("20020", start_of_catch_up)}
     failing = RefreshSite(issues=issues, failing_issues={"20020": 500})
     run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
-    assert RawStore(chosen.raw).coverage() == exactly(START, start_of_catch_up)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, start_of_catch_up)
     again = RefreshSite(issues=issues)
     later = NEXT + timedelta(hours=6)
     run(chosen, monkeypatch, again, catch_up([], ["PRB"]), later)
     assert "/rest/api/3/issue/20020" in jira_asked(again)
-    assert RawStore(chosen.raw).coverage() == exactly(START, later)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, later)
 
 
 def test_a_space_catches_up_over_its_covered_period_by_version(
@@ -1046,7 +1053,7 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
         RUN,
     )
     targets = catch_up(["MFS"], ["PRB"])
-    assert targets.windows(RawStore(chosen.raw).coverage(), NEXT) == {
+    assert targets.windows(RawStore(chosen.raw, "confluence").coverage(), NEXT) == {
         MFS: FetchWindow(period=Period(NEXT - WEEK, NEXT), reason="first fetch"),
         PRB: FetchWindow(
             period=Period(RUN - timedelta(days=1), NEXT), reason="since the last fetch"
@@ -1054,7 +1061,7 @@ def test_a_target_never_fetched_fetches_its_last_week_while_the_others_catch_up(
     }
     assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up(["MFS"], []), NEXT) == "done"
     assert run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), NEXT) == "done"
-    assert RawStore(chosen.raw).coverage().periods == {
+    assert RawStore(chosen.raw, "confluence").coverage().periods == {
         MFS: Period(NEXT - WEEK, NEXT),
         PRB: Period(START, NEXT),
     }
@@ -1073,7 +1080,7 @@ def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing
         Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         RUN,
     )
-    before = RawStore(chosen.raw).coverage().periods[PRB]
+    before = RawStore(chosen.raw, "confluence").coverage().periods[PRB]
     until = RUN - timedelta(days=1)
     fake = RefreshSite(issues=two_issues())
     with capture_logs() as events:
@@ -1082,7 +1089,7 @@ def test_a_target_whose_catch_up_starts_after_until_is_skipped_and_asked_nothing
         project = Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, until=until)
         run(chosen, monkeypatch, fake, project, NEXT)
     assert not [url for url in fake.asked if url.path.startswith("/rest/api/3/search")]
-    periods = RawStore(chosen.raw).coverage().periods
+    periods = RawStore(chosen.raw, "confluence").coverage().periods
     assert periods[PRB] == before
     assert periods[MFS] == Period(FIRST - WEEK, until)
     assert said_coverage(events) == [
@@ -1108,7 +1115,7 @@ def test_a_kept_file_that_fails_again_keeps_the_coverage_at_its_issue(
     with capture_logs() as events:
         run(chosen, monkeypatch, again, catch_up([], ["PRB"]), NEXT)
     assert ISSUE_FILE in [url.path for url in again.asked]
-    assert RawStore(chosen.raw).coverage() == exactly(START, FAILING)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING)
     assert said_coverage(events) == [("project PRB", "capped")]
 
 
@@ -1118,13 +1125,13 @@ def test_a_space_whose_catch_up_starts_after_until_is_skipped_and_said_so(
     """No listing, the coverage as it was; the summary and the JSON say why, without a window."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
-    before = RawStore(chosen.raw).coverage()
+    before = RawStore(chosen.raw, "confluence").coverage()
     fake = RefreshSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     early = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, until=FIRST - WEEK)
     outcome = run_fetch(chosen, early, lambda: SECOND, lambda _: None)
     assert not [url for url in fake.asked if url.path.startswith("/wiki/api/v2/spaces")]
-    assert RawStore(chosen.raw).coverage() == before
+    assert RawStore(chosen.raw, "confluence").coverage() == before
     detailed = outcome.counts.text("detailed")
     assert "space MFS: skipped, after --until; coverage held\n" in detailed
     [window] = to_jsonable_python(outcome)["counts"]["windows"]
@@ -1151,7 +1158,7 @@ def test_a_run_apart_from_what_is_covered_leaves_it_and_says_why(
     apart = Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=RUN + timedelta(days=1))
     with capture_logs() as events:
         run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
-    assert RawStore(chosen.raw).coverage() == exactly(START, RUN)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, RUN)
     assert said_coverage(events) == [("project PRB", "held", "apart from what is covered")]
 
 

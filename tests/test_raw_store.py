@@ -51,7 +51,7 @@ NEWER = 10
 @pytest.fixture
 def store(tmp_path: Path) -> Iterator[RawStore]:
     """Give a store under a scratch folder, held for writing."""
-    raw = RawStore(tmp_path / "raw")
+    raw = RawStore(tmp_path / "raw", "confluence")
     with raw.writing():
         yield raw
 
@@ -101,10 +101,12 @@ def test_responses_are_kept_as_received(store: RawStore) -> None:
     assert store.responses(folder) == responses
 
 
-def test_issues_are_stored_by_their_id_and_update_time(store: RawStore) -> None:
-    """An issue's folder is its id, and its revision its update time in UTC."""
+def test_issues_are_stored_by_their_id_and_update_time(tmp_path: Path) -> None:
+    """An issue's folder is its id, and its revision its update time in UTC, in its source's."""
+    store = RawStore(tmp_path / "raw", "jira")
     responses = {jira_v3.ISSUE: v3_issue(), jira_v3.COMMENTS: [v3_comment()]}
-    folder = store.put(Issue, responses, FETCHED, {})
+    with store.writing():
+        folder = store.put(Issue, responses, FETCHED, {})
     assert folder == store.root / "jira" / "issues" / "10000" / "20261020T213758.027000Z"
     [stored] = readable(store.latest(Issue))
     assert stored.snapshot.document.title == "What are archived ideas?"
@@ -231,10 +233,14 @@ def test_a_digest_that_is_a_path_is_refused(store: RawStore) -> None:
 
 def test_writing_needs_the_lock_and_one_writer_holds_it(tmp_path: Path) -> None:
     """Writes happen inside writing(); a second writer is refused while the first holds."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with pytest.raises(RuntimeError, match="only inside"):
         store.put_blob(b"bytes")
-    with store.writing(), pytest.raises(StoreBusyError), RawStore(store.root).writing():
+    with (
+        store.writing(),
+        pytest.raises(StoreBusyError),
+        RawStore(store.root, "confluence").writing(),
+    ):
         pass
     with store.writing():
         store.put_blob(b"bytes")
@@ -242,7 +248,7 @@ def test_writing_needs_the_lock_and_one_writer_holds_it(tmp_path: Path) -> None:
 
 def test_an_empty_store_has_nothing(tmp_path: Path) -> None:
     """A store that was never written has no snapshots, spaces or users."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     assert list(store.latest(Issue)) == []
     assert store.spaces() == []
     assert store.users() == []
@@ -317,7 +323,7 @@ def test_a_snapshot_without_one_of_its_responses_is_refused(
     del responses[missing]
     with pytest.raises(ValueError, match=f"a snapshot without {missing}"):
         store.put(document_class, responses, FETCHED, {})
-    assert not (store.root / document_class.source).exists()
+    assert not (store.root / store.source).exists()
 
 
 def test_a_blob_of_another_attachment_is_not_a_file_of_this_snapshot(store: RawStore) -> None:
@@ -347,7 +353,7 @@ def test_a_user_without_an_account_id_is_named_by_its_index(store: RawStore) -> 
 )
 def test_every_write_needs_the_lock(tmp_path: Path, write: object) -> None:
     """No method writes outside writing()."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with pytest.raises(RuntimeError, match="only inside"):
         write(store)  # type: ignore[operator]
     assert not (store.root / "confluence").exists()
@@ -500,7 +506,7 @@ def test_a_space_s_entry_marked_exact_is_read_as_exact(store: RawStore) -> None:
 
 def test_records_never_written_read_as_empty(tmp_path: Path) -> None:
     """A first run has no coverage and no tombstone."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     assert store.coverage() == Coverage()
     assert store.tombstones() == {}
 

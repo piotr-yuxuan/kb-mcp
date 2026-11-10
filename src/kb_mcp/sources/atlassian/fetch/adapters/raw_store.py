@@ -56,6 +56,9 @@ COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
 # The store's own record, beside a space's listings, of when they were listed.
 LISTED_AT = "listed_at.json"
+# The site's users, merged, where Confluence's one source keeps its documents: they are
+# the site's, which plan 059 keys by site.
+USERS = Path(CONFLUENCE, "users.json")
 # The scope types of the coverage's entries, by name; an entry written before plan 056
 # names none, and its source, then always its connector's name, gives it.
 SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
@@ -189,19 +192,22 @@ def _identifier(value: str, name: str) -> str:
 
 
 class RawStore:
-    """Responses kept as received, by document and revision, and files by SHA-256.
+    """One source's view of the raw store: responses as received, and files by SHA-256.
 
-    A snapshot is the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file
-    per response plus the store's record. It is written whole into a hidden folder and
-    renamed into place, so it is either complete or absent, and its responses never
-    change. A space's listings are ``<root>/confluence/spaces/<id>/*.json``, each
-    replaced whole; site users are ``<root>/confluence/users.json``, merged. A file is
+    The sources of one site share the store under ``root``: its files, coverage, records
+    of what answered as gone, site users and lock. Its source's snapshot of a document is
+    the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file per response
+    plus the store's record. It is written whole into a hidden folder and renamed into
+    place, so it is either complete or absent, and its responses never change. A space's
+    listings are ``<root>/<source>/spaces/<id>/*.json``, each replaced whole; site users
+    are ``<root>/confluence/users.json``, merged. A file is
     ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
     """
 
-    def __init__(self, root: Path) -> None:
-        """Use ``root`` as the store, creating its folders as they are needed."""
+    def __init__(self, root: Path, source: str) -> None:
+        """Use ``root`` as the store, for ``source``, creating its folders as needed."""
         self.root = root
+        self.source = source
         self._lock: int | None = None
 
     @contextmanager
@@ -230,7 +236,7 @@ class RawStore:
         """Return where the snapshot of this document at this revision is, or would be."""
         return (
             self.root
-            / document.source
+            / self.source
             / document.document_type.plural
             / document.id
             / document.revision
@@ -270,11 +276,7 @@ class RawStore:
             raise ValueError(message)
         self._check_blobs(blobs)
         folder = (
-            self.root
-            / document_class.source
-            / document_class.document_type.plural
-            / identifier
-            / revision
+            self.root / self.source / document_class.document_type.plural / identifier / revision
         )
         if not folder.is_dir():
             folder.parent.mkdir(parents=True, exist_ok=True)
@@ -345,7 +347,7 @@ class RawStore:
         others still follow.
         """
         for item in _named(
-            self.root / document_class.source / document_class.document_type.plural, IDENTIFIER
+            self.root / self.source / document_class.document_type.plural, IDENTIFIER
         ):
             revisions = _named(item, REVISION)
             if not revisions:
@@ -365,7 +367,7 @@ class RawStore:
         }
 
     def _space(self, space_id: str) -> Path:
-        return self.root / CONFLUENCE / "spaces" / _identifier(space_id, "space id")
+        return self.root / self.source / "spaces" / _identifier(space_id, "space id")
 
     def put_space(
         self,
@@ -412,7 +414,7 @@ class RawStore:
     def spaces(self) -> list[Space | Problem]:
         """Read every space ever listed."""
         spaces: list[Space | Problem] = []
-        for folder in _named(self.root / CONFLUENCE / "spaces", IDENTIFIER):
+        for folder in _named(self.root / self.source / "spaces", IDENTIFIER):
             where = str((folder / "space.json").relative_to(self.root))
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
@@ -447,7 +449,7 @@ class RawStore:
     def put_users(self, users: list[object]) -> None:
         """Merge site users, as received, into those kept from earlier runs, by account id."""
         self._check_writing()
-        path = self.root / CONFLUENCE / "users.json"
+        path = self.root / USERS
         kept = _decode(path) if path.exists() else []
         if type(kept) is not list or type(users) is not list:
             message = "users: expected a list"
@@ -460,7 +462,7 @@ class RawStore:
 
     def users(self) -> list[SiteUser | Problem]:
         """Read every site user kept."""
-        return self._entries(self.root / CONFLUENCE / "users.json", confluence_v2.person)
+        return self._entries(self.root / USERS, confluence_v2.person)
 
     def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Problem]:
         if not path.exists():
@@ -480,9 +482,7 @@ class RawStore:
 
     def stored_ids(self, document_class: type[FetchedDocument]) -> set[str]:
         """Return the ids of the documents of a type that have a stored snapshot."""
-        folders = _named(
-            self.root / document_class.source / document_class.document_type.plural, IDENTIFIER
-        )
+        folders = _named(self.root / self.source / document_class.document_type.plural, IDENTIFIER)
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:

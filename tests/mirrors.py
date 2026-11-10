@@ -17,17 +17,23 @@ from typing import TYPE_CHECKING
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import time_revision
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.app.preparer import classes_of
+from kb_mcp.sources.registry import SOURCES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from kb_mcp.kernel.outcome import Outcome
-    from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
     from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts
 
+# The registry's Atlassian sources, by name, each with its connector's document classes.
+ATLASSIAN = {
+    each.name: classes_of(each.connector) for each in SOURCES if each.connector.account is not None
+}
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (
     "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer posuere erat a ante "
@@ -148,7 +154,9 @@ def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
 def prepared_source(
     store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str], source: str
 ) -> Outcome[AtlassianCounts]:
-    """Mirror one source of ``store`` into ``docs``; give its outcome.
+    """Mirror one source of the store that ``store`` views into ``docs``; give its outcome.
+
+    Among ``ATLASSIAN``, as the preparer does.
 
     It converts by ``convert`` through its rows of the cache beside ``docs``, the file
     of the data layout, ``conversions.sqlite``, which each Atlassian source adopts, as the
@@ -157,16 +165,16 @@ def prepared_source(
     """
     path = docs.parent / "conversions.sqlite"
     with conversions.opened(
-        path, lambda: convert.__qualname__, convert, source=source, adopted=tuple(PREPARED)
+        path, lambda: convert.__qualname__, convert, source=source, adopted=tuple(ATLASSIAN)
     ) as cache:
-        return prepare_atlassian(store, docs, site, cache, PREPARED[source])
+        return prepare_atlassian(RawStore(store.root, source), docs, site, cache, ATLASSIAN)
 
 
 def prepared_sources(
     store: RawStore, docs: Path, site: str | None, convert: Callable[[str], str]
 ) -> dict[str, Outcome[AtlassianCounts]]:
     """Mirror ``store`` into ``docs``, each source as a run does; give its outcome by its name."""
-    return {source: prepared_source(store, docs, site, convert, source) for source in PREPARED}
+    return {source: prepared_source(store, docs, site, convert, source) for source in ATLASSIAN}
 
 
 def fillers(docs: Path, count: int = FILLERS) -> None:

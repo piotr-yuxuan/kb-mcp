@@ -17,7 +17,7 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, ISSUE, JIRA, PAGE
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, ISSUE, PAGE
 from kb_mcp.sources.declaration import DocumentType
 
 # A path on the site, never another host's: one slash, no second one, no backslash, no
@@ -103,11 +103,10 @@ class Comment(Record):
 class FetchedDocument(Record):
     """A page, a blog post or an issue: what becomes one file of the mirror.
 
-    ``source`` and ``document_type`` name where it is stored; ``revision`` names this state of it,
-    and orders states as text.
+    ``document_type`` names where its source's view of the raw store keeps it; ``revision``
+    names this state of it, and orders states as text.
     """
 
-    source: ClassVar[str]
     document_type: ClassVar[DocumentType]
 
     id: str
@@ -133,8 +132,6 @@ class FetchedDocument(Record):
 
 class ConfluenceDocument(FetchedDocument):
     """A page or a blog post, versioned within its space."""
-
-    source: ClassVar[str] = CONFLUENCE
 
     space_id: str
     version: int
@@ -174,7 +171,6 @@ class Page(ConfluenceDocument):
 class Issue(FetchedDocument):
     """A Jira issue; its id stays when it moves, its key does not."""
 
-    source: ClassVar[str] = JIRA
     document_type: ClassVar[DocumentType] = ISSUE
 
     key: str
@@ -218,11 +214,6 @@ class Listed(Record):
         require(IDENTIFIER, self.id, "id")
         require(REVISION, self.revision, "revision")
         return self
-
-    @property
-    def source(self) -> str:
-        """Name the source, as the document's type does."""
-        return self.document_class.source
 
     @property
     def document_type(self) -> DocumentType:

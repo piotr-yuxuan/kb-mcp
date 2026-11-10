@@ -476,7 +476,7 @@ def test_a_first_fetch_without_since_fetches_the_last_week_of_each_target(
     rule = "period: since each scope's last fetch; the last 7 days for one never fetched\n"
     assert capsys.readouterr().err.count(rule) == 1
     assert signed_in.asked
-    periods = RawStore((home / "data" / "raw").resolve()).coverage().periods
+    periods = RawStore((home / "data" / "raw").resolve(), "confluence").coverage().periods
     assert set(periods) == {
         Scope(source="confluence", type=names.SPACE, key="MFS"),
         Scope(source="jira", type=names.PROJECT, key="PRB"),
@@ -494,11 +494,12 @@ def runs(
     """Give a run of each connector's one source, at ``now``, as the command builds it.
 
     Each source's options are those of ``options`` that its connector declares, None when
-    not given.
+    not given; the registry is ``SOURCES``.
     """
     return [
         SourceRun(
             source=each,
+            sources=SOURCES,
             settings=settings,
             source_table=getattr(settings.sources, each.name),
             account_table=None

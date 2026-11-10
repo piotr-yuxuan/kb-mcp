@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import replace
 from datetime import UTC, datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,9 +17,15 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Issue,
     Page,
     SiteUser,
+    Snapshot,
     Space,
 )
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from kb_mcp.mirror.domain.mirror import FrontMatter
 
 PARIS = timezone(timedelta(hours=2))
 MOMENT = datetime(2026, 10, 20, 23, 52, 41, 371000, tzinfo=PARIS)
@@ -85,6 +92,15 @@ CATALOGUE = Catalogue(
 )
 
 
+def matter_of(
+    document: Page | BlogPost | Issue, comments: Iterable[Comment] = (), site: str | None = SITE
+) -> FrontMatter:
+    """Give the front matter of a snapshot of ``document`` with ``comments``, of its source."""
+    source = "jira" if isinstance(document, Issue) else "confluence"
+    snapshot = Snapshot(document=document, html="", comments=tuple(comments))
+    return front_matter(source, snapshot, FETCHED, CATALOGUE, site)
+
+
 def test_a_name_is_the_display_name_else_the_users_else_the_account_id() -> None:
     """Jira gives names; Confluence names come from the users; else the account id."""
     assert CATALOGUE.name(SiteUser(account_id="account-2", display_name="Given")) == "Given"
@@ -126,7 +142,7 @@ def test_a_breadcrumb_stops_at_an_unlisted_parent_or_a_loop() -> None:
 
 def test_a_page_front_matter_follows_the_layout_table() -> None:
     """Confluence keys set, Jira keys null, times in UTC, url from the site."""
-    matter = front_matter(LEAF, (), FETCHED, CATALOGUE, SITE)
+    matter = matter_of(LEAF)
     assert (matter.source, matter.type, matter.id, matter.key) == ("confluence", "page", "30", None)
     assert (matter.space, matter.project, matter.issue_type) == ("MFS", None, None)
     assert (matter.status, matter.author, matter.assignee) == ("archived", "A Person", None)
@@ -138,12 +154,12 @@ def test_a_page_front_matter_follows_the_layout_table() -> None:
     assert matter.fetched_at == datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
     assert matter.url == f"{SITE}/wiki/spaces/MFS/pages/30"
     assert matter.breadcrumb == ("Root", "A folder")
-    assert front_matter(LEAF, (), FETCHED, CATALOGUE, None).url is None
+    assert matter_of(LEAF, site=None).url is None
 
 
 def test_an_issue_front_matter_is_one_line_texts() -> None:
     """Jira keys set, Confluence keys null; line breaks in texts become spaces."""
-    matter = front_matter(ISSUE, (), FETCHED, CATALOGUE, SITE)
+    matter = matter_of(ISSUE)
     assert (matter.source, matter.type, matter.key, matter.project) == (
         "jira",
         "issue",
@@ -160,23 +176,37 @@ def test_an_issue_front_matter_is_one_line_texts() -> None:
 def test_a_page_of_a_space_not_listed_is_refused() -> None:
     """Its folder cannot be named, so its front matter has no space key."""
     other = page("50", "Elsewhere", None, space_id="2")
-    with pytest.raises(RefusedError, match=r"^space: only and always for confluence$"):
-        front_matter(other, (), FETCHED, CATALOGUE, SITE)
+    with pytest.raises(RefusedError, match=r"^space: only and always in a space$"):
+        matter_of(other)
+
+
+def test_a_front_matter_of_a_source_of_any_name_keeps_confluence_s_and_jira_s_rules() -> None:
+    """Plan 056: the rules are the document type's; the source is the user's to name."""
+    assert replace(matter_of(LEAF), source="wiki").source == "wiki"
+    assert replace(matter_of(ISSUE), source="tracker").source == "tracker"
 
 
 @pytest.mark.parametrize(
     ("document", "changes", "refusal"),
     [
-        (ISSUE, {"space": "MFS"}, r"^space: only and always for confluence$"),
-        (ISSUE, {"version": 3}, r"^version: only and always for confluence$"),
-        (ISSUE, {"key": None}, r"^key: only and always for jira$"),
-        (ISSUE, {"type": "page"}, r"^type: not one of the source's types$"),
-        (LEAF, {"type": "issue"}, r"^type: not one of the source's types$"),
-        (LEAF, {"source": "worklog", "type": "entry"}, r"^type: not one of the source's types$"),
-        (LEAF, {"key": "PRB-1"}, r"^key: only and always for jira$"),
-        (LEAF, {"project": "PRB"}, r"^project: only and always for jira$"),
-        (LEAF, {"issue_type": "Idea"}, r"^issue_type: only and always for jira$"),
-        (LEAF, {"version": None}, r"^version: only and always for confluence$"),
+        (ISSUE, {"space": "MFS"}, r"^space: only and always in a space$"),
+        (ISSUE, {"version": 3}, r"^version: only and always in a space$"),
+        (ISSUE, {"key": None}, r"^key: only and always in a project$"),
+        (ISSUE, {"type": "page"}, r"^space: only and always in a space$"),
+        (LEAF, {"type": "issue"}, r"^space: only and always in a space$"),
+        (
+            LEAF,
+            {"source": "worklog", "type": "entry"},
+            r"^type: not one of Confluence's or Jira's$",
+        ),
+        (LEAF, {"key": "PRB-1"}, r"^key: only and always in a project$"),
+        (LEAF, {"project": "PRB"}, r"^project: only and always in a project$"),
+        (
+            LEAF,
+            {"issue_type": "Idea"},
+            r"^issue_type: only and always in a project$",
+        ),
+        (LEAF, {"version": None}, r"^version: only and always in a space$"),
         (LEAF, {"revision": "3"}, r"^revision: does not match"),
         (ISSUE, {"revision": "20261020T215241Z"}, r"^revision: does not match"),
         (
@@ -193,7 +223,7 @@ def test_a_front_matter_off_confluence_s_and_jira_s_rules_is_refused(
 
     Each refusal names the key, as the rules common to every source let each of these pass.
     """
-    matter = front_matter(document, (), FETCHED, CATALOGUE, SITE)
+    matter = matter_of(document)
     with pytest.raises(RefusedError, match=refusal):
         replace(matter, **changes)
 
@@ -225,7 +255,7 @@ def test_an_issue_names_its_people_in_the_order_of_the_roles() -> None:
 
     Each by the identity that the Atlassian issuer gave: their account id.
     """
-    matter = front_matter(FILED, COMMENTS, FETCHED, CATALOGUE, SITE)
+    matter = matter_of(FILED, COMMENTS)
     assert matter.people == (
         Mention(role="author", name="A Person", identity="atlassian:account-1"),
         Mention(role="creator", name="Another Person", identity="atlassian:account-2"),
@@ -249,8 +279,8 @@ def test_an_issue_names_its_people_in_the_order_of_the_roles() -> None:
 
 def test_commenters_come_by_their_first_comment_in_whatever_order_given() -> None:
     """Comments given newest first name the same commenters, in the same order."""
-    given = front_matter(FILED, COMMENTS, FETCHED, CATALOGUE, SITE)
-    reversed_ = front_matter(FILED, reversed(COMMENTS), FETCHED, CATALOGUE, SITE)
+    given = matter_of(FILED, COMMENTS)
+    reversed_ = matter_of(FILED, reversed(COMMENTS))
     assert reversed_.people == given.people
 
 
@@ -264,7 +294,7 @@ def test_a_commenter_is_one_name_with_one_identity() -> None:
         Comment(id="7", author=renamed, created=datetime(2026, 10, 21, 10, tzinfo=UTC), html=""),
         Comment(id="8", author=namesake, created=datetime(2026, 10, 21, 11, tzinfo=UTC), html=""),
     )
-    matter = front_matter(FILED, comments, FETCHED, CATALOGUE, SITE)
+    matter = matter_of(FILED, comments)
     commenters = [person for person in matter.people if person.role == "commenter"]
     assert [(person.name, person.identity, len(person.at)) for person in commenters] == [
         ("Another Person", "atlassian:account-2", 1),
@@ -276,5 +306,5 @@ def test_a_commenter_is_one_name_with_one_identity() -> None:
 def test_a_comment_without_an_author_names_nobody() -> None:
     """Jira leaves out the author of an anonymous comment; no commenter stands for it."""
     anonymous = Comment(id="4", author=None, created=MOMENT, html="")
-    matter = front_matter(FILED, (anonymous,), FETCHED, CATALOGUE, SITE)
+    matter = matter_of(FILED, (anonymous,))
     assert [person.role for person in matter.people] == ["author", "creator", "assignee"]
