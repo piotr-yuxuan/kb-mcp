@@ -309,7 +309,7 @@ class Logged(BaseModel):
     arguments: dict[str, object]
     tokens: int = Field(ge=0)
     seconds: float = Field(ge=0)
-    status: Literal["answered", "refused", "timeout", "failed", "unconsented"]
+    status: Literal["answered", "refused", "timeout", "failed", "unconsented", "outdated"]
 
 
 def logged(directory: Path, run: AgentRun) -> list[Logged]:
@@ -345,21 +345,18 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
     ``consented`` is this call's consent to remote embeddings, which reaches its server
     alone, and only when the runs need it.
 
-    Refused, before any server starts: runs that hold the consent in their server's
-    command, a run not there, arguments not one JSON object, a tool not of the run's
-    surface, a call past the run's bound, and runs that need the consent without it,
-    which is logged, ``unconsented``, so that the run gives no result. The log line
-    holds the tool, the arguments, the answer's estimated tokens, the seconds and the
-    status.
+    Refused, before any server starts: a run not there, arguments not one JSON object, a
+    tool not of the run's surface, a call past the run's bound; and, logged so that the
+    run gives no result, runs that hold the consent in their server's command,
+    ``outdated``, and runs that need the consent without it, ``unconsented``. The log
+    line holds the tool, the arguments, the answer's estimated tokens, the seconds and
+    the status.
 
     The call is the span ``eval.agent.call``, which holds the client's; it is counted by
     status in ``kb_mcp.eval.agent.calls``, its seconds and tokens measured, and
     ``eval.agent.call`` says it at INFO, the arguments aside.
     """
     runs = readied(directory)
-    if EMBEDDINGS.flag in runs.server:  # written by prepare before plan 063
-        message = "runs.json: prepared before the consent was given per call; prepare it again"
-        raise AgentsError(message)
     run = runs.run(name)
     try:
         arguments = json.loads(given)
@@ -376,17 +373,23 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
         if len(logged(directory, run)) >= runs.calls:
             message = f"calls: this run's {runs.calls} are spent; give your answer now"
             raise AgentsError(message)
-        if runs.remote_embeddings and not consented:
-            line = Logged(tool=tool, arguments=arguments, tokens=0, seconds=0, status="unconsented")
-            with log.open("a", encoding="utf-8") as kept:
-                kept.write(line.model_dump_json() + "\n")
+        refusal = ""
+        if EMBEDDINGS.flag in runs.server:  # written by prepare before plan 063
+            status = "outdated"
+            refusal = "runs.json: prepared before the consent was given per call; prepare it again"
+        elif runs.remote_embeddings and not consented:
+            status = "unconsented"
             # Said to the agent, which must not give the consent itself: no flag is named.
-            message = (
+            refusal = (
                 "consent: this call lacks the consent of the person running the evaluation"
                 " to send the mirror's text to an embedding endpoint off this machine; stop,"
                 ' and answer with "found": false'
             )
-            raise AgentsError(message)
+        if refusal:
+            line = Logged(tool=tool, arguments=arguments, tokens=0, seconds=0, status=status)
+            with log.open("a", encoding="utf-8") as kept:
+                kept.write(line.model_dump_json() + "\n")
+            raise AgentsError(refusal)
         started = time.monotonic()
         server = [
             *runs.server,
@@ -483,6 +486,7 @@ BROKEN = {
     "timeout": "a call timeout",
     "failed": "a call failed",
     "unconsented": "a call lacked the consent",
+    "outdated": "prepared before the consent was given per call",
 }
 
 

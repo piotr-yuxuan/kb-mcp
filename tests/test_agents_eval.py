@@ -754,7 +754,7 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
 def test_runs_prepared_with_the_consent_in_their_server_s_command_are_refused(
     world: World, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], *, consented: bool
 ) -> None:
-    """A runs.json written before plan 063: exit 2, no server, prepare it again."""
+    """A runs.json written before plan 063: exit 2, no server, prepare it again; no result."""
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1") == 0
     written = json.loads((out / "runs.json").read_text("utf-8"))
@@ -768,13 +768,24 @@ def test_runs_prepared_with_the_consent_in_their_server_s_command_are_refused(
         return Answered(text="an answer", refused=False)
 
     monkeypatch.setattr(agents, "called", recorded)
-    run = runs_of(out)[0]
+    outdated, other = (run["id"] for run in runs_of(out))
     flag = ["--allow-remote-embeddings"] if consented else []
     capsys.readouterr()
-    status = main([*bridged(out, run["id"], "search", {"query": "kafka"}), *flag])
+    status = main([*bridged(out, outdated, "search", {"query": "kafka"}), *flag])
     assert (status, started) == (REFUSED, [])
     said = capsys.readouterr().err
     assert "runs.json: prepared before the consent was given per call; prepare it again" in said
+    assert answering(out, outdated, json.dumps({"found": False, "answer": "Stopped."})) == 0
+    assert answering(out, other, json.dumps(VALID)) == 0
+    for each in (outdated, other):
+        harness(out, each, status="returned")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    results = json.loads(capsys.readouterr().out)
+    judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
+    reason = "prepared before the consent was given per call"
+    assert judged[outdated] == ("no result", reason)
+    assert (results["pairs"], results["left_out"]) == (0, 1)
 
 
 @pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])

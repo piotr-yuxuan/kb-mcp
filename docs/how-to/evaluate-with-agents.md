@@ -35,7 +35,9 @@ the prompts' bridge command does not hold. The person running the evaluation, an
 they, gives it, in the instructions to each subagent, batch by batch, as the next step
 says; else keep the endpoint on this machine. A call refused for want of it names no
 flag: it tells the agent to stop and answer with `"found": false`, and leaves its run
-without a result.
+without a result. A directory prepared with `--allow-remote-embeddings` before the
+consent was given per call holds it in its server's command: prepare it again, since
+each of its calls is refused, logged `outdated`, and gives no result.
 
 ## Prepare the runs
 
@@ -104,8 +106,8 @@ recall and precision, quotes grounded in the documents that their refs name, and
 evidence quoted. A run succeeds when its answer says the base holds it, every quote is
 grounded, and each expected document's evidence is within a quote. A run returned
 without an answer kept is a failure; one `failed`, `invalid`, or whose call timed out,
-lost its server or lacked the consent gives no result, and its question leaves the
-tests, counted. It writes
+lost its server, lacked the consent or was of runs prepared before it was given per
+call gives no result, and its question leaves the tests, counted. It writes
 `results.json`, of ids and numbers, the prompts' SHA-256 and the models reported, never
 a question's text, and says B against A on success, calls and tokens handed over, each
 with its interval, and whether `ask` stays among the default tools. `--summary detailed`
@@ -139,7 +141,7 @@ and are reported only.
 |---|---|---|
 | `runs.json` | `prepare` | the runs, their bound, the server's command, whether its calls need the consent to remote embeddings, what grades each question |
 | `prompts/<run>.md` | `prepare` | the run's prompt, with its question |
-| `calls/<run>.jsonl` | `call` | each call: tool, arguments, estimated tokens answered, seconds, status (`answered`, `refused` by the tool, `timeout`, `failed`, or `unconsented`, refused before any server started) |
+| `calls/<run>.jsonl` | `call` | each call: tool, arguments, estimated tokens answered, seconds, status (`answered`, `refused` by the tool, `timeout`, `failed`, or, refused before any server started, `unconsented` or `outdated`) |
 | `answers/<run>.json` | `answer` | the answer kept |
 | `harness/<run>.json` | the orchestrator | status, model and tokens as the harness reports them |
 | `results.json` | `grade` | ids and numbers, never a question's text |
