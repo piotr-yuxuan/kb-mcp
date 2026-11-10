@@ -298,7 +298,7 @@ finds there (030):
 | `confluence/` | Confluence's prepare (005), of the source of that name, as of any source of Confluence's connector | `sources.atlassian.prepare.adapters.owned.owned` |
 | `jira/` | Jira's prepare (005), likewise | the same |
 | `assets/` | Confluence's and Jira's together: each writes the files of its own documents | `sources.atlassian.prepare.adapters.owned.attached`, a file that no placed document of either wants and no document file of either links (`unlinked`), unless a problem was found, of either source |
-| `worklog/` | the work log's prepare (017, [below](#the-work-log)) | `sources.worklog.prepare.adapters.owned.worklog_owned` |
+| `worklog/` | the work log's prepare (017, [below](#the-work-log)), of the source of that name, as of any source of its connector | `sources.worklog.prepare.adapters.owned.worklog_owned` |
 | `<name>/` | any other source: `<name>` is its own, which the registry's rule keeps off `assets` | its connector's |
 
 A source that attaches files keeps them under `<name>/_assets/`, in its own folder, so that

@@ -58,7 +58,6 @@ MEETING_FILE = "meeting-"
 ARCHIVED = "archive"
 ORG = ".org"
 # The work log's name as a source, in its documents' front matter.
-SOURCE = "worklog"
 # A document's revision: a digest of what pandoc converts, and how.
 WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
 # The roles of the work log's documents, which hold no other: a meeting's participants
@@ -162,12 +161,12 @@ class WorklogFrontMatter(FrontMatter):
     def check_worklog(self) -> Self:
         """Refuse what the layout's table rules out for the work log.
 
-        A source or type not the work log's, a key that it never fills, an id off its
+        A type not the work log's, a key that it never fills, an id off its
         type's rule, so that a day never bears a meeting's, a revision off
         ``WORKLOG_REVISION``, and a role of another source.
         """
-        if self.source != SOURCE or self.type not in WORKLOG_TYPES:
-            message = "type: not one of the source's types"
+        if self.type not in WORKLOG_TYPES:
+            message = "type: not one of the work log's types"
             raise RefusedError(message)
         filled = [name for name in NOT_FILLED if getattr(self, name) is not None]
         if filled:

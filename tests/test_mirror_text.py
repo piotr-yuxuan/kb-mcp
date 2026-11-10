@@ -115,7 +115,8 @@ def test_work_log_documents_are_placed_by_type_id_and_title(
     A day's and a meeting's file is <data>/docs/worklog/{days,meetings}/<id>.md alone, as
     plan 042 says: the title is in the id already.
     """
-    assert worklog_path(document_type, identifier, title) == PurePosixPath("worklog", expected)
+    path = worklog_path("worklog", document_type, identifier, title)
+    assert path == PurePosixPath("worklog", expected)
 
 
 def test_an_empty_slug_leaves_the_id_alone() -> None:

@@ -344,6 +344,20 @@ def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: P
     assert sources == {"wiki"}
 
 
+def test_a_work_log_of_another_name_is_prepared_under_its_name(home: Path, worklog: Path) -> None:
+    """Plan 056: the work log's connector, its one source named ``notes``: its folder and name."""
+    registry = (*sourced(CONFLUENCE, JIRA), Source(name="notes", connector=WORKLOG))
+    config = home / "config.toml"
+    config.write_text(f"[sources.notes]\npath = {json.dumps(str(worklog))}\n", "utf-8")
+    data = home / "data"
+    given = ["prepare", "notes", "--yes", "--config", str(config), "--data-dir", str(data)]
+    assert main(given, registry) == ExitStatus.OK
+    assert sorted(each.name for each in (data / "docs").iterdir()) == ["notes"]
+    written = sorted((data / "docs" / "notes").rglob("*.md"))
+    assert len(written) == WORKLOG_DOCUMENTS
+    assert {load(path.read_text("utf-8"), path.name)[0].source for path in written} == {"notes"}
+
+
 def test_a_fetch_with_no_session_saved_is_to_sign_in_before_any_request(
     settings: Settings, site: FakeSite
 ) -> None:

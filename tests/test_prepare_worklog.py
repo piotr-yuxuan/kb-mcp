@@ -140,14 +140,14 @@ class Run:
     ) -> Outcome[WorklogCounts]:
         """Mirror the work log; return what the run did."""
         pandoc = Counting(path=Pandoc.find().path, failing=failing)
-        outcome = prepare_worklog(self.root, self.docs, pandoc, archives=archives)
+        outcome = prepare_worklog(self.root, self.docs, pandoc, source="worklog", archives=archives)
         self.runs.append(pandoc.runs)
         return outcome
 
     def plan(self, *, archives: bool = True) -> Outcome[WorklogPlanned]:
         """Say what preparing would do; pandoc's runs are recorded as for a run."""
         pandoc = Counting(path=Pandoc.find().path)
-        planned = plan_worklog(self.root, self.docs, pandoc, archives=archives)
+        planned = plan_worklog(self.root, self.docs, pandoc, source="worklog", archives=archives)
         self.runs.append(pandoc.runs)
         return planned
 

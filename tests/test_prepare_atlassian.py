@@ -748,7 +748,10 @@ def test_the_mirror_leaves_the_work_log_s_files_and_the_work_log_the_mirror_s(
         "confluence": 0,
         "jira": 0,
     }
-    assert write_changed(sandbox.docs, {}, worklog_owned, remove=True).removed == len(worklog)
+    owned = write_changed(
+        sandbox.docs, {}, lambda docs: worklog_owned(docs, "worklog"), remove=True
+    )
+    assert owned.removed == len(worklog)
     assert set(sandbox.files()) == prepared
 
 

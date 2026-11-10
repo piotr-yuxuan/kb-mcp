@@ -1026,9 +1026,8 @@ def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, ob
 @pytest.mark.parametrize(
     ("changes", "refusal"),
     [
-        ({"type": "page"}, r"^type: not one of the source's types$"),
-        ({"source": "jira", "type": "issue"}, r"^type: not one of the source's types$"),
-        ({"source": "memo"}, r"^type: not one of the source's types$"),
+        ({"type": "page"}, r"^type: not one of the work log's types$"),
+        ({"source": "jira", "type": "issue"}, r"^type: not one of the work log's types$"),
         ({"id": "196845"}, r"^id: does not match"),
         ({"id": "e-0123456789ABCDEF"}, r"^id: does not match"),
         ({"id": "t-20261020-" + "a" * 65}, r"^id: does not match"),
@@ -1051,6 +1050,11 @@ def test_the_work_log_s_front_matter_off_its_rules_is_refused(
     """Another source's type, id, revision, keys or roles are refused, naming the key."""
     with pytest.raises(RefusedError, match=refusal):
         copy.replace(ENTRY_MATTER, **changes)
+
+
+def test_the_work_log_s_front_matter_takes_a_source_of_any_name() -> None:
+    """Plan 056: the rules are the work log's types'; its source is the user's to name."""
+    assert copy.replace(ENTRY_MATTER, source="notes").source == "notes"
 
 
 @pytest.mark.parametrize(
