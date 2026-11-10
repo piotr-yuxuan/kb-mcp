@@ -242,8 +242,8 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == SOME_FAILED
     rows = document["sources"]
-    assert [sorted(row) for row in rows] == [
-        ["counts", "ending", "problems", "source", "warnings"]
+    assert [list(row) for row in rows] == [
+        ["source", "ending", "counts", "problems", "warnings"]
     ] * 2
     assert [(row["source"], row["ending"]) for row in rows] == [
         ("confluence", "failed"),

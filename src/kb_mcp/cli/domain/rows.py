@@ -8,15 +8,28 @@ that a command writes rows without importing what it does not run.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from pydantic import model_serializer
+
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.kernel.record import Record
 
+if TYPE_CHECKING:
+    from pydantic import SerializerFunctionWrapHandler
+
 
 class Row(Outcome):
-    """A source's row: its outcome, and the name of its source."""
+    """A source's row: the name of its source, then its outcome, which JSON writes in order."""
 
     source: str
+
+    @model_serializer(mode="wrap")
+    def source_first(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        """Write the source before the outcome's fields, which a subclass's come after."""
+        written = handler(self)
+        return {"source": written.pop("source"), **written}
 
 
 class Ran(Record):
