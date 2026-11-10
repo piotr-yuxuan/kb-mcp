@@ -543,6 +543,22 @@ COMMENTED = issue(
 )
 
 
+def test_a_file_of_plan_041_s_people_is_indexed_with_atlassian_identities(data: Path) -> None:
+    """A file that the former prepare wrote, ``account: <id>``, before the next prepare.
+
+    ``index`` takes it, each mention with the identity of the Atlassian issuer.
+    """
+    path = write(data / "docs", COMMENTED)
+    file = data / "docs" / path
+    text = file.read_text(encoding="utf-8")
+    file.write_text(text.replace("identity: 'atlassian:", "account: '"), encoding="utf-8")
+    report = build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert report.skipped == []
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        held = connection.execute("SELECT DISTINCT identity FROM people ORDER BY 1").fetchall()
+    assert held == [("atlassian:account-1",), ("atlassian:account-2",)]
+
+
 def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data: Path) -> None:
     """The side table filters; the documents' own column gives the front matter back whole."""
     path = write(data / "docs", COMMENTED)
@@ -1008,12 +1024,16 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         pass
 
 
-def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path) -> None:
-    """Plan 054: the mirror's files of schema 6 are read as they are, so no prepare first."""
+@pytest.mark.parametrize("schema", ["6", "7"])
+def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path, schema: str) -> None:
+    """Plans 054 and 058: the mirror's files of 6 and 7 are read as they are: no prepare.
+
+    Plan 058 reads their people's former ``account``.
+    """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with sqlite3.connect(data / "index.sqlite") as connection:
-        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
+        connection.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (schema,))
     connection.close()
     with pytest.raises(UnavailableIndexError) as refused, reading(data / "index.sqlite"):
         pass

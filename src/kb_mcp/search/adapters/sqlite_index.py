@@ -82,7 +82,7 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 SCHEMA = "8"
 # The former schemas whose mirror's files this version reads as they are: rebuilding the
 # index is enough, with no prepare first.
-SAME_MIRROR = frozenset({"6"})
+SAME_MIRROR = frozenset({"6", "7"})
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.

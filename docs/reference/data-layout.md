@@ -399,7 +399,7 @@ people:
 |---|---|
 | `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter`, `participant` |
 | `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
-| `identity` | the issuer, a colon, then the value that the issuer gave, when the source gives one: `atlassian:` and the account id for Confluence and Jira, whose sites share the issuer `atlassian` (058); absent otherwise. Plan 041's `account`, the account id alone, is refused, until the next `prepare` writes the file again |
+| `identity` | the issuer, a colon, then the value that the issuer gave, when the source gives one: `atlassian:` and the account id for Confluence and Jira, whose sites share the issuer `atlassian` (058); absent otherwise. Plan 041's `account`, the account id alone, which the Atlassian connectors alone wrote, reads as `atlassian:` and that id (`mirror.adapters.markdown.load`), until the next `prepare` writes the file again |
 | `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
 
 | Role | Who |
@@ -734,12 +734,12 @@ by the next `index`, and `embed` then finds in the vector cache every vector tha
 identities: the column `account` of `people` becomes `identity`, written
 `<issuer>:<value>` as the front matter writes it, and `person_names.joined` says
 `identity` and `attendance` where it said `account` and `meeting`; an index of 7 is
-rebuilt whole by the next `index`, after the `prepare` that writes each file's
-`identity`, and `embed` then finds every vector in the vector cache, no chunk's text
+rebuilt whole by the next `index`, which reads a file's former `account` as an
+identity, and `embed` then finds every vector in the vector cache, no chunk's text
 holding a person. An index of another schema is refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
-index, as a new schema can come with a new format of the files; one of schema 6, whose
-files this version reads as they are, naming `index`, then `embed`; one cut by a
+index, as a new schema can come with a new format of the files; one of schema 6 or 7,
+whose files this version reads as they are, naming `index`, then `embed`; one cut by a
 chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the

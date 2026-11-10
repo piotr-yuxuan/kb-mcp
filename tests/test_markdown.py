@@ -162,6 +162,21 @@ def test_people_in_every_role_read_back_byte_for_byte() -> None:
     )
 
 
+def test_a_former_account_reads_as_an_atlassian_identity_and_is_written_as_one() -> None:
+    """Plan 041's ``account: account-1`` is the identity ``atlassian:account-1``.
+
+    The Atlassian connectors alone wrote it; the file written again says ``identity``.
+    """
+    text = dump(ISSUE, "# What are archived ideas?\n")
+    former = text.replace(PEOPLE, PEOPLE.replace("identity: 'atlassian:", "account: '"))
+    assert "account: 'account-1'" in former
+    front_matter, body = load(former, "issue.md")
+    assert [person.identity for person in front_matter.people] == [
+        person.identity for person in ISSUE.people
+    ]
+    assert dump(front_matter, body) == text
+
+
 def test_an_identity_and_people_are_left_out_when_the_source_has_none() -> None:
     """No identity where the source gives none, ``[]`` without people or links; nobody named."""
     assert "people:\n- {role: author, name: A Person}\nlinks: []\ncreated: " in dump(PAGE, "")

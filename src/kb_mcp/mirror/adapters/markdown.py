@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import ASSETS
+from kb_mcp.kernel.names import ASSETS, ATLASSIAN_ISSUER
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 
 if TYPE_CHECKING:
@@ -91,7 +91,10 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
 
     Any other key, order or type is refused, naming ``path`` and the key, as is a
     person's field other than ``Mention``'s, out of their order, or an empty ``at``,
-    and a link's field other than ``Link``'s, or out of their order.
+    and a link's field other than ``Link``'s, or out of their order. A person's
+    ``account``, which plan 041's files hold in place of ``identity`` and the Atlassian
+    connectors alone wrote, reads as an identity of ATLASSIAN_ISSUER's, until the next
+    ``prepare`` writes the file again.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
     if not text.startswith(OPENING) or end < 0:
@@ -111,7 +114,9 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     fields = Fields(values, path)
     people = []
     for person in fields.objects("people"):
-        in_order(person, PERSON)
+        held = "account" if "account" in person.value else "identity"
+        in_order(person, [held if name == "identity" else name for name in PERSON])
+        value = person.text(held) if held in person.value else None
         # The times go through a Fields of their own, keyed at[0], at[1] and so on, so
         # that Fields.time reads each strictly and a refusal names its place, as objects
         # names an entry's. An empty list, which dump never writes, would read as no
@@ -126,7 +131,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
                 Mention(
                     role=person.text("role"),
                     name=person.text("name"),
-                    identity=person.text("identity") if "identity" in person.value else None,
+                    identity=f"{ATLASSIAN_ISSUER}:{value}" if held == "account" else value,
                     at=tuple(times.time(name) for name in times.value),
                 )
             )
