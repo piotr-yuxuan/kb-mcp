@@ -289,20 +289,12 @@ def prepare(
 
 
 def readied(directory: Path) -> Runs:
-    """Read ``runs.json``, as ``prepare`` wrote it; refuse a directory without one.
-
-    One prepared before plan 063 holds the consent in its server's command: it is read
-    as runs that need it, without it, so that each call gives its own.
-    """
+    """Read ``runs.json``, as ``prepare`` wrote it; refuse a directory without one."""
     try:
-        runs = Runs.model_validate_json((directory / "runs.json").read_text(encoding="utf-8"))
+        return Runs.model_validate_json((directory / "runs.json").read_text(encoding="utf-8"))
     except OSError, ValidationError:
         message = "runs.json: missing or not as prepare writes it"
         raise AgentsError(message) from None
-    if EMBEDDINGS.flag not in runs.server:
-        return runs
-    server = tuple(each for each in runs.server if each != EMBEDDINGS.flag)
-    return runs.model_copy(update={"server": server, "remote_embeddings": True})
 
 
 class Logged(BaseModel):
@@ -352,17 +344,21 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
 
     ``consented``, this call's consent to remote embeddings, reaches its server alone,
     and only when the runs need it.
-    Refused, before any server starts: a run not there, arguments not one JSON object, a
-    tool not of the run's surface, a call past the run's bound, and runs that need the
-    consent without it, which is logged, ``unconsented``, so that the run gives no
-    result. The log line holds the tool, the arguments, the answer's estimated tokens,
-    the seconds and the status.
+    Refused, before any server starts: runs that hold the consent in their server's
+    command, a run not there, arguments not one JSON object, a tool not of the run's
+    surface, a call past the run's bound, and runs that need the consent without it,
+    which is logged, ``unconsented``, so that the run gives no result. The log line
+    holds the tool, the arguments, the answer's estimated tokens, the seconds and the
+    status.
 
     The call is the span ``eval.agent.call``, which holds the client's; it is counted by
     status in ``kb_mcp.eval.agent.calls``, its seconds and tokens measured, and
     ``eval.agent.call`` says it at INFO, the arguments aside.
     """
     runs = readied(directory)
+    if EMBEDDINGS.flag in runs.server:  # written by prepare before plan 063
+        message = "runs.json: prepared before the consent was given per call; prepare it again"
+        raise AgentsError(message)
     run = runs.run(name)
     try:
         arguments = json.loads(given)

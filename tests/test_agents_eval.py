@@ -751,16 +751,15 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
 
 
 @pytest.mark.parametrize("consented", [False, True])
-def test_runs_prepared_with_the_consent_in_their_server_s_command_need_each_call_s(
-    world: World, monkeypatch: MonkeyPatch, *, consented: bool
+def test_runs_prepared_with_the_consent_in_their_server_s_command_are_refused(
+    world: World, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], *, consented: bool
 ) -> None:
-    """A runs.json written before plan 063: the flag in it reaches no server by itself."""
+    """A runs.json written before plan 063: exit 2, no server, prepare it again."""
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1") == 0
     written = json.loads((out / "runs.json").read_text("utf-8"))
-    server = written["server"]
     del written["remote_embeddings"]
-    written["server"] = [*server, "--allow-remote-embeddings"]
+    written["server"] = [*written["server"], "--allow-remote-embeddings"]
     (out / "runs.json").write_text(json.dumps(written), "utf-8")
     started: list[list[str]] = []
 
@@ -771,9 +770,11 @@ def test_runs_prepared_with_the_consent_in_their_server_s_command_need_each_call
     monkeypatch.setattr(agents, "called", recorded)
     run = runs_of(out)[0]
     flag = ["--allow-remote-embeddings"] if consented else []
+    capsys.readouterr()
     status = main([*bridged(out, run["id"], "search", {"query": "kafka"}), *flag])
-    tools = ["--tools", ",".join(run["tools"])]
-    assert (status, started) == ((0, [[*server, *flag, *tools]]) if consented else (REFUSED, []))
+    assert (status, started) == (REFUSED, [])
+    said = capsys.readouterr().err
+    assert "runs.json: prepared before the consent was given per call; prepare it again" in said
 
 
 @pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])
