@@ -36,7 +36,6 @@ class Reordered(Record):
 
     order: tuple[int, ...] | None
     reason: str = ""  # why the texts were not reranked
-    kind: str = ""  # the failure's kind, or "quiet" while one is remembered
 
 
 class Reranking:
@@ -69,7 +68,7 @@ class Reranking:
             reason, until = self._failure
         if self._clock() < until:
             FALLBACKS.add(1, {"kb_mcp.rerank.fallback": "quiet"})
-            return Reordered(order=None, reason=reason, kind="quiet")
+            return Reordered(order=None, reason=reason)
         try:
             scores = self._score(query, texts).scores
         except RerankError as error:
@@ -78,5 +77,5 @@ class Reranking:
             if error.kind != "refused":
                 with self._lock:
                     self._failure = (str(error), self._clock() + QUIET_S)
-            return Reordered(order=None, reason=str(error), kind=error.kind)
+            return Reordered(order=None, reason=str(error))
         return Reordered(order=tuple(sorted(range(len(scores)), key=lambda place: -scores[place])))
