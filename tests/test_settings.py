@@ -479,14 +479,29 @@ def test_the_old_keys_at_the_top_of_the_file_are_refused_naming_their_new_places
     assert f"  {key} ({FILE}) to {moved}\n" in refused.value.advice
 
 
-def test_a_moved_key_goes_to_the_sources_configured_when_there_are_any() -> None:
-    """Of the sources whose table holds it, those whose first setting holds a value."""
-    settings = MODEL(data_dir=HOME, sources={"jira": {"projects": ["PRB"]}})
+@pytest.mark.parametrize(
+    ("sources", "to"),
+    [
+        ({"jira": {"projects": ["PRB"]}}, "sources.confluence.site and sources.jira.site"),
+        ({"confluence": {"site": "https://own.example.invalid"}}, "sources.jira.site"),
+        (
+            {"confluence": {"site": "https://a.invalid"}, "jira": {"site": "https://b.invalid"}},
+            "nowhere: delete it, as each source holds its own",
+        ),
+    ],
+    ids=["one configured", "one with its own", "both with their own"],
+)
+def test_a_moved_key_goes_to_each_source_that_holds_no_value_of_its_own(
+    sources: dict[str, object], to: str
+) -> None:
+    """Review round 1: each source that read the account, configured or not.
+
+    But one that holds its own value, which the account's never reached.
+    """
+    settings = MODEL(data_dir=HOME, sources=sources)
     with pytest.raises(SettingsError) as refused:
         refuse_moved({"accounts": {"atlassian": {"site": "x"}}}, FILE, {}, settings)
-    assert refused.value.advice.endswith(
-        f"  accounts.atlassian.site ({FILE}) to sources.jira.site\n"
-    )
+    assert refused.value.advice.endswith(f"  accounts.atlassian.site ({FILE}) to {to}\n")
 
 
 @pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "DATA_DIR", "unknown"])

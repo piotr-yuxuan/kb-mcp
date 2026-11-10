@@ -684,14 +684,14 @@ def moved(path: tuple[str, ...], model: type[Settings]) -> bool:
 def moved_to(key: str, sources: BaseModel) -> tuple[tuple[str, ...], ...]:
     """Give the paths of a key moved into the sources' tables: that of each table holding it.
 
-    Of the sources configured, whose first setting holds a value, when there are any;
-    else of every source whose table holds it.
+    Of each source that read it where it was, configured or not: one whose table holds it
+    and gives it no value of its own, which another layer may write.
     """
-    holding = [(name, table) for name, table in sources if key in type(table).model_fields]
-    configured = [
-        name for name, table in holding if getattr(table, next(iter(type(table).model_fields)))
-    ]
-    return tuple(("sources", name, key) for name in configured or [name for name, _ in holding])
+    return tuple(
+        ("sources", name, key)
+        for name, table in sources
+        if key in type(table).model_fields and not getattr(table, key)
+    )
 
 
 def refuse_moved(
@@ -733,7 +733,9 @@ def refuse_moved(
             variable(path) if by_variable or paths.get(path) == "secret" else ".".join(path)
             for path in (moved_to(key, settings.sources) if key else ())
         ]
-        to = " and ".join(named) or "the table of each source that holds each of its keys"
+        to = " and ".join(named) or (
+            "nowhere: delete it, as each source holds its own" if key else "each source's table"
+        )
         lines.append(f"  {where} to {to}\n")
     if lines:
         error = SettingsError(f"{', '.join(said)}: moved into the table of each source")
