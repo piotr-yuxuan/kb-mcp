@@ -340,8 +340,8 @@ WHERE p.person = :person AND d.path IN (SELECT value FROM json_each(:paths))
 GROUP BY 1, 2 ORDER BY 1, 2
 """
 # What status says of persons: how many, by name alone, of no identity, in more than one
-# source; and each name of two identities or more, with the persons holding its key.
-# :identity is how a name joins by its identity.
+# source; and each name that the identities of two persons or more write, however they
+# joined, with the persons holding its key.
 PERSON_COUNTS = """
 SELECT count(*), count(*) FILTER (WHERE id NOT IN
   (SELECT person FROM people WHERE identity IS NOT NULL))
@@ -355,7 +355,11 @@ SELECT count(*) FROM (
 """
 SHARED = """
 SELECT min(n.name), (SELECT count(DISTINCT m.person) FROM person_names m WHERE m.key = n.key)
-FROM person_names n WHERE n.joined = :identity
+FROM person_names n
+WHERE EXISTS (
+  SELECT 1 FROM people p
+  WHERE p.person = n.person AND p.name = n.name AND p.identity IS NOT NULL
+)
 GROUP BY n.key HAVING count(DISTINCT n.person) > 1
 ORDER BY 2 DESC, 1
 """
@@ -1073,8 +1077,7 @@ class Reader:
         chunks = self._connection.execute("SELECT count(*) FROM chunks").fetchone()[0]
         persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
         across = self._connection.execute(ACROSS).fetchone()[0]
-        identity = {"identity": people.BY_IDENTITY}
-        shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED, identity))
+        shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
         embedded = self.embedded()
         wanting = awaiting(self._connection, embedded.chunking) if embedded else 0
         return IndexStatus(

@@ -838,19 +838,23 @@ def test_attendance_joins_by_summary_links_in_any_source(data: Path) -> None:
     assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
 
 
+@pytest.mark.parametrize(
+    "elsewhere", [(), (issue("PROJ-1", "Same id"),)], ids=["not mirrored", "of another source"]
+)
 def test_a_summary_whose_own_summary_is_not_mirrored_still_joins_by_attendance(
-    data: Path,
+    data: Path, elsewhere: tuple[FrontMatter, ...]
 ) -> None:
-    """A summary link to no document of the mirror makes no chain: rule 4 still joins.
+    """A summary link to no document of its source makes no chain: rule 4 still joins.
 
-    The notes page links by ``summary`` to a page not mirrored, which names nothing:
-    the recording's Robin joins the notes' Robin Example, as without that link.
+    The notes page links by ``summary`` to an id of no Confluence page, which names
+    nothing, though a Jira issue may have that id: the recording's Robin joins the
+    notes' Robin Example, as without that link.
     """
     summary = page(
         "400001",
         "Retro notes",
         people=(Mention(role="participant", name="Robin Example"),),
-        links=(Link(relation="summary", ref="999999"),),
+        links=(Link(relation="summary", ref="10001"),),
     )
     summarised = page(
         "400002",
@@ -858,7 +862,7 @@ def test_a_summary_whose_own_summary_is_not_mirrored_still_joins_by_attendance(
         people=(Mention(role="participant", name="Robin"),),
         links=(Link(relation="summary", ref="400001"),),
     )
-    for front in (summary, summarised):
+    for front in (summary, summarised, *elsewhere):
         write(data / "docs", front)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
@@ -885,6 +889,24 @@ def test_a_person_by_name_that_an_identity_joins_is_no_longer_by_name_alone(
 
     before, after = counted({}), counted({"atlassian:acct-0001": "Alex"})
     assert (after.count, after.alone) == (before.count - 1, before.alone - 1)
+
+
+def test_a_name_of_two_identities_is_shared_after_an_alias_moves_one(data: Path) -> None:
+    """The status lists a name that several persons' identities write, however they joined.
+
+    The alias moves acct-0003, a Sam Sample, to Robin's person: Sam Sample is still the
+    name of two persons' identities, and of the stand-up's person by name alone.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+
+    def shared(aliases: dict[str, str]) -> tuple[tuple[str, int], ...]:
+        build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
+        with reading(data / "index.sqlite") as reader:
+            return reader.index_status().persons.shared
+
+    moved = shared({"atlassian:acct-0003": "atlassian:acct-0001"})
+    assert moved == shared({}) == (("Sam Sample", 3),)
 
 
 def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
