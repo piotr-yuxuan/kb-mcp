@@ -292,13 +292,14 @@ class Joining:
         """Read a line of the alias file: what it holds, and the person its value means.
 
         It holds a name's key, or an identity that a mention holds. Its value is a
-        person's id; an identity that a mention holds, which means that identity's own
+        person's id, or the person that ``moved`` gives that id; an identity that a
+        mention holds, which means that identity's own
         person, or the one that ``moved`` gives it; or a name, which means the one
         identity's person of its key, as rule 3 finds it with ``moved``, else the person
         by name alone of a key that a name without an identity holds.
         """
         if PERSON_ID.fullmatch(value):
-            means: Meant = value
+            means: Meant = moved.get(value, value)
         else:
             compared, own = self.compared_key(value), self.owned.get(value)
             means = (

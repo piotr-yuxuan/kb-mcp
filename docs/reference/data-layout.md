@@ -923,7 +923,8 @@ quoted for its colon:
   are one person to an alias of a name, as to rule 3, but not to another alias of an
   identity; one that is an identity, that identity's own person, or, for an alias of a
   name, the person that an alias of that identity names; one that is a person's id,
-  that person. Each must be a person that an identity or a name makes, not aliases or attendance alone: aliases are not chained,
+  that person, or, for an alias of a name, the person that an alias of the identity of
+  that id names. Each must be a person that an identity or a name makes, not aliases or attendance alone: aliases are not chained,
   and an alias whose value's every mention another alias or attendance joins elsewhere
   names nobody.
 - A file that is not UTF-8 TOML; a value that is a table or not a string; a name or
