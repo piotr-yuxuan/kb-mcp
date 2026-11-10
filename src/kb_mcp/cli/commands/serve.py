@@ -169,11 +169,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
         tools = [
             Tool.from_function(
                 served(getattr(library, name), filters),
-                description=offered.descriptions[name],
+                description=description,
                 annotations=READ_ONLY,
                 structured_output=False,
             )
-            for name in offered.tools
+            for name, description in offered.descriptions.items()
         ]
         server = MCPServer(
             PROGRAM,
