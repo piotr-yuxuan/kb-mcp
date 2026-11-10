@@ -920,11 +920,11 @@ def run_fetch(
                 problems = run.problems
                 try:
                     run.run(targets.spaces, targets.projects)
-                    ending = "failed" if problems else "done"
+                    found: Ending = "failed" if problems else "done"
                 except SignInNeededError:
-                    ending = "sign in again"
+                    found = "sign in again"
                 except TooManyFailuresError:
-                    ending = "failed"
+                    found = "failed"
                     counts.add("runs: stopped, too many failures in a row")
                 finally:
                     signing.keep(client)
@@ -941,6 +941,7 @@ def run_fetch(
                         extensions[target] = "held"
                         log.info("fetch.coverage", target=str(target), outcome="held", reason=why)
                     store.put_coverage(coverage)
+                ending = found  # once the coverage is stored, else an error stopped it
         except SignInNeededError:  # from the client: no session was saved
             ending = "sign in again"
         except KeyboardInterrupt:
@@ -959,5 +960,8 @@ def run_fetch(
             (settings.runs / f"{stamp}-{source}.json").write_text(
                 json.dumps(saved, indent=1), "utf-8"
             )
-    counts.windows = windows_of(windows, extensions)
-    return Outcome(ending=ending, counts=counts, problems=tuple(problems))
+    return Outcome(
+        ending=ending,
+        counts=replace(counts, windows=windows_of(windows, extensions)),
+        problems=tuple(problems),
+    )

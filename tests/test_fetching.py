@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import re
 from dataclasses import dataclass, field
@@ -572,6 +573,22 @@ def test_a_run_that_something_stops_records_how(
         run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     assert json.loads(report.read_text("utf-8"))["ending"] == ending
+
+
+def test_a_run_whose_coverage_cannot_be_written_records_it_failed(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Every document fetched, then the coverage refused by the disk: the record says failed."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
+
+    def refused(*_: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(RawStore, "put_coverage", refused)
+    with pytest.raises(OSError, match="No space left"):
+        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    [report] = chosen.runs.iterdir()
+    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
 def test_a_count_is_named_with_a_colon_so_that_none_meets_the_windows() -> None:
