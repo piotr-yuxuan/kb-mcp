@@ -132,6 +132,6 @@ def fetch_purview(
         return Outcome.of(problems=(Problem(where="raw store", reason=BUSY),))
     if outcome.ending == "sign in again":
         structlog.get_logger().error(
-            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again
+            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings, source).again
         )
     return outcome

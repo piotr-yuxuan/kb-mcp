@@ -46,28 +46,35 @@ GOLDEN = str(Path(__file__).parents[1] / "sandbox" / "golden.yaml")
 # Each command that writes, by plan 015: what it needs besides options to be parsed and
 # to pass its declaration's checks, and the module that runs it.
 WRITING = {
-    "fetch": (["--site", SITE, "--space", "MFS"], "sources"),
+    "fetch": (["--space", "MFS"], "sources"),
     "eval": ([GOLDEN], "evaluate"),
     "embed": ([], "embed"),
     "index": ([], "index"),
-    "login": (["atlassian", "--site", SITE], "login"),
+    "login": (["confluence"], "login"),
     "prepare": ([], "sources"),
 }
 # The work log's folder, which every test's environment names, so that prepare has a source.
 WORKLOG_PATH = "KB_MCP_SOURCES__WORKLOG__PATH"
 # Jira's projects, so that fetch has an Atlassian source too.
 PROJECTS = {"KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]'}
+# The site of each Atlassian source, which every test's environment names, and those
+# variables removed (None), which leaves each unset.
+SITES = {f"KB_MCP_SOURCES__{name}__SITE": SITE for name in ("CONFLUENCE", "JIRA")}
+NO_SITE: dict[str, str | None] = dict.fromkeys(SITES)
 # An embedding endpoint off this machine, over https and over http.
 ELSEWHERE = {"KB_MCP_EMBEDDING_URL": "https://embeddings.example/v1"}
 IN_CLEAR = {"KB_MCP_EMBEDDING_URL": "http://embeddings.example/v1"}
 BY_MEANING = {"KB_MCP_SEARCH_MODE": "hybrid"}
-# An API token, which signs in with its account's email, given without it.
-WITHOUT_EMAIL = {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-4d1c"}
+# An API token of each Atlassian source, which signs in with its account's email, given
+# without it.
+WITHOUT_EMAIL = {
+    f"KB_MCP_SOURCES__{name}__API_TOKEN": "token-sentinel-4d1c" for name in ("CONFLUENCE", "JIRA")
+}
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
-    (["fetch", "--space", "MFS"], {}, "accounts.atlassian.site: not set"),
-    (["fetch", "--site", SITE], {}, "nothing to fetch"),
+    (["fetch", "--space", "MFS"], NO_SITE, "sources.confluence.site: not set"),
+    (["fetch"], {}, "nothing to fetch"),
     (["fetch", *WRITING["fetch"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
     (["fetch", *WRITING["fetch"][0], "--since", "yesterday"], {}, "--since"),
     (["fetch", *WRITING["fetch"][0], "--until", "soon"], {}, "--until"),
@@ -75,13 +82,13 @@ REFUSED_FIRST = [
     (["fetch", *WRITING["fetch"][0], "--since", "0d"], {}, "--since"),
     (["fetch", *WRITING["fetch"][0], "--since", "0h"], {}, "--since"),
     (["fetch", *WRITING["fetch"][0], "--until", "all"], {}, "--until"),
-    (["fetch", *WRITING["fetch"][0]], WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
+    (["fetch", *WRITING["fetch"][0]], WITHOUT_EMAIL, "sources.confluence.email: not set"),
     (
         ["fetch", *WRITING["fetch"][0], "--dry-run"],
         WITHOUT_EMAIL,
-        "accounts.atlassian.email: not set",
+        "sources.confluence.email: not set",
     ),
-    (["login", "atlassian"], {}, "accounts.atlassian.site: not set"),
+    (["login", "confluence"], NO_SITE, "sources.confluence.site: not set"),
     (["embed"], ELSEWHERE, "embedding_url: not an address of this machine"),
     (["embed", "--allow-remote-embeddings"], IN_CLEAR, "over https only"),
     (["eval", GOLDEN], ELSEWHERE, "embedding_url: not an address of this machine"),
@@ -89,9 +96,9 @@ REFUSED_FIRST = [
     (["eval", str(Path(__file__).parent)], {}, f"{Path(__file__).parent}: not a file"),
     (["prepare"], {"PATH": ""}, "pandoc: not found on PATH"),
     (["fetch", "jira"], {}, "jira: not configured"),
-    (["fetch"], PROJECTS, "accounts.atlassian.site: not set"),
-    (["fetch", "--site", SITE, "--since", "yesterday"], PROJECTS, "--since"),
-    (["fetch", "--site", SITE], PROJECTS | WITHOUT_EMAIL, "accounts.atlassian.email: not set"),
+    (["fetch"], PROJECTS | NO_SITE, "sources.jira.site: not set"),
+    (["fetch", "--since", "yesterday"], PROJECTS, "--since"),
+    (["fetch"], PROJECTS | WITHOUT_EMAIL, "sources.jira.email: not set"),
 ]
 
 
@@ -115,12 +122,15 @@ class Interrupting(Terminal):
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, so that none reads or writes the user's.
 
-    Its work log is the home itself, so that prepare has a source to take.
+    Its work log is the home itself, so that prepare has a source to take; each Atlassian
+    source has its site.
     """
     scratch = tmp_path / "home"
     scratch.mkdir()
     monkeypatch.setenv("HOME", str(scratch))
     monkeypatch.setenv(WORKLOG_PATH, str(scratch))
+    for name, value in SITES.items():
+        monkeypatch.setenv(name, value)
     return scratch
 
 
@@ -323,13 +333,16 @@ def test_a_fetch_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "kb-mcp").resolve(),
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     before = tree(home)
     given(monkeypatch, Terminal("n\n"), Terminal() if terminal else io.StringIO())
-    options = ["--site", SITE, "--space", "MFS", "--since", "7d"]
+    options = ["--space", "MFS", "--since", "7d"]
     status = main(["fetch", "--config", str(home / "none.toml"), *options])
     assert status == (DECLINED if terminal else REFUSED)
     assert fake.asked == []
@@ -338,7 +351,7 @@ def test_a_fetch_declined_or_refused_asks_the_site_nothing(
 
 @pytest.mark.parametrize("refusal", REFUSED_FIRST)
 def test_what_needs_no_network_is_refused_before_anything_is_asked(
-    refusal: tuple[list[str], dict[str, str], str],
+    refusal: tuple[list[str], dict[str, str | None], str],
     home: Path,
     monkeypatch: MonkeyPatch,
     runs: list[tuple[argparse.Namespace, Loaded]],
@@ -351,7 +364,10 @@ def test_what_needs_no_network_is_refused_before_anything_is_asked(
     """
     arguments, variables, named = refusal
     for variable, value in {**variables, "NO_COLOR": "1"}.items():
-        monkeypatch.setenv(variable, value)
+        if value is None:
+            monkeypatch.delenv(variable)
+        else:
+            monkeypatch.setenv(variable, value)
     (home / "data").mkdir()
     before = tree(home)
     stdin, stderr = Terminal("y\n"), Terminal()

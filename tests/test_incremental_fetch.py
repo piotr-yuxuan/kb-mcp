@@ -123,7 +123,9 @@ class RefreshSite(FakeSite):
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory, and a saved session, under the scratch folder."""
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=tmp_path / "data"
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     return chosen
 
@@ -676,6 +678,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
     data = (home / "kb-mcp").resolve()
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
@@ -684,8 +687,6 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
         "--yes",
         "--config",
         str(home / "none.toml"),
-        "--site",
-        SITE,
         "--space",
         "MFS",
     ]

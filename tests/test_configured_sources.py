@@ -11,6 +11,7 @@ several are left.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -128,8 +129,7 @@ def test_project_overrides_the_list_of_the_source_named(
     """Named, the source is the one left; the other's list stays the file's."""
     config = tmp_path / "config.toml"
     config.write_text(
-        f'{CLIENT}[sources.jira]\nprojects = ["PRB"]\n'
-        '[accounts.atlassian]\nsite = "https://client.example.invalid"\n',
+        f'{CLIENT}site = "https://client.example.invalid"\n[sources.jira]\nprojects = ["PRB"]\n',
         "utf-8",
     )
     assert main(["fetch", "clientjira", "--yes", "--config", str(config), "--project", "XYZ"]) == 0
@@ -138,3 +138,67 @@ def test_project_overrides_the_list_of_the_source_named(
     assert loaded.settings.sources.jira.projects == ("PRB",)
     assert loaded.layers["sources.clientjira.projects"] == "--project"
     assert "--project XYZ" in capsys.readouterr().err
+
+
+def test_a_dry_run_plans_each_source_of_one_connector_with_its_own_site(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Criterion 1: a row each, and the echo names each one's site.
+
+    No session is saved: each row asks to sign in again, as its own sign-in does, before
+    any request.
+    """
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'{CLIENT}site = "https://client.example.invalid"\n'
+        '[sources.jira]\nprojects = ["PRB"]\nsite = "https://sandbox.example.invalid"\n',
+        "utf-8",
+    )
+    given = ["fetch", "--dry-run", "--config", str(config), "--data-dir", str(tmp_path / "data")]
+    assert main([*given, "--format", "json"]) == ExitStatus.SIGN_IN_AGAIN
+    out, err = capsys.readouterr()
+    rows = json.loads(out)["sources"]
+    assert [(row["source"], row["ending"]) for row in rows] == [
+        ("jira", "sign in again"),
+        ("clientjira", "sign in again"),
+    ]
+    assert "source jira: projects PRB, site https://sandbox.example.invalid" in err
+    assert "source clientjira: projects ABC, site https://client.example.invalid" in err
+
+
+# What criterion 2 refuses: the account's table in the file, or its variable, each with
+# the line that names its new places.
+FORMER = {
+    "a table": (
+        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n',
+        {},
+        ("accounts.atlassian.site (config.toml) to sources.confluence.site and sources.jira.site"),
+    ),
+    "a variable": (
+        "",
+        {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-1b8f"},
+        (
+            "accounts.atlassian.api_token (KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN) to"
+            " KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and KB_MCP_SOURCES__JIRA__API_TOKEN"
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", FORMER.values(), ids=FORMER.keys())
+def test_the_account_s_former_settings_are_refused_naming_each_source_s(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    case: tuple[str, dict[str, str], str],
+) -> None:
+    """Criterion 2: exit 2, with advice naming the key or variable of each Atlassian source."""
+    text, variables, named = case
+    config = tmp_path / "config.toml"
+    config.write_text(text, "utf-8")
+    for name, value in variables.items():
+        monkeypatch.setenv(name, value)
+    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert f"  {named}\n" in err
+    assert "token-sentinel-1b8f" not in err

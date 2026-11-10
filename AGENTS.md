@@ -49,9 +49,12 @@ command mapping the names to the program's variables as
 
 ```bash
 sops exec-env <primary-checkout>/atlassian-test-credientials.sops.json \
-  'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
-  KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
-  KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
+  'KB_MCP_SOURCES__CONFLUENCE__SITE="$ATLASSIAN_SITE" \
+  KB_MCP_SOURCES__CONFLUENCE__EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_SOURCES__CONFLUENCE__API_TOKEN="$ATLASSIAN_API_TOKEN" \
+  KB_MCP_SOURCES__JIRA__SITE="$ATLASSIAN_SITE" \
+  KB_MCP_SOURCES__JIRA__EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_SOURCES__JIRA__API_TOKEN="$ATLASSIAN_API_TOKEN" \
   uv run kb-mcp fetch --yes --config <scratch>/none.toml \
   --data-dir <scratch>/data --space MFS --project PRB --since 7d'
 ```

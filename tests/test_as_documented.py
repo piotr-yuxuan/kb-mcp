@@ -100,9 +100,14 @@ def signed_in(
     """Save a session in the data directory ``data``; have ``handle`` answer the site's client.
 
     The client is the site's own, observed, over the scripted site; no run waits between
-    requests. Give the settings of a run that names the site and the data directory.
+    requests; each Atlassian source's site is the scripted one, by its variable. Give the
+    settings of a run that names the site and the data directory.
     """
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=data.resolve())
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=data.resolve()
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     transport = httpx.MockTransport(handle)
     monkeypatch.setattr(
@@ -115,7 +120,7 @@ def signed_in(
 def fetch_arguments(data: Path, *options: str) -> list[str]:
     """Give the arguments of a fetch of the site into ``data``, without settings file."""
     settings = ("--config", str(data.parent / "none.toml"), "--data-dir", str(data))
-    return ["fetch", "--yes", *settings, "--site", SITE, *options]
+    return ["fetch", "--yes", *settings, *options]
 
 
 def test_fetch_records_as_documented(
@@ -551,11 +556,12 @@ def test_doctor_records_as_documented(
 
     data = tmp_path / "data"
     signed_in(monkeypatch, busy, data)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     arguments = ["doctor", "--config", str(tmp_path / "none.toml"), "--data-dir", str(data)]
     emitted = Emitted()
     with emitted.gathering(telemetry, "doctor"):
-        assert main([*arguments, "--site", SITE]) == ExitStatus.FAILED
+        assert main(arguments) == ExitStatus.FAILED
     assert undocumented("doctor", emitted) == []
 
 
@@ -563,15 +569,8 @@ def test_login_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Signed in, then a window closed: the browser is a stand-in, which signs in nowhere."""
-    arguments = [
-        "login",
-        "atlassian",
-        "--yes",
-        "--config",
-        str(tmp_path / "none.toml"),
-        "--site",
-        SITE,
-    ]
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    arguments = ["login", "confluence", "--yes", "--config", str(tmp_path / "none.toml")]
     emitted = Emitted()
     monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     with emitted.gathering(telemetry, "login"):

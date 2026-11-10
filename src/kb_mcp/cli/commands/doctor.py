@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.app.doctor import doctor
 from kb_mcp.cli.domain.echo import values_of
-from kb_mcp.cli.domain.sources import accounts_to_check
+from kb_mcp.cli.options.doctor import checked
 from kb_mcp.kernel.exit_status import ExitStatus, folded
 
 if TYPE_CHECKING:
@@ -20,10 +20,10 @@ if TYPE_CHECKING:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Check]]:
     """Give each check; exit as the worst of them ends the run: 1 failed, 3 to sign in again.
 
-    A machine that uses no sign-in, as ``accounts_to_check`` judges, gets the machine's alone.
+    A machine that configures no source that signs in, as ``checked`` judges, gets the
+    machine's alone.
     """
-    accounts = accounts_to_check(arguments.sources, values_of(loaded))
-    checks = doctor(loaded.settings, accounts.values())
+    checks = doctor(loaded.settings, checked(arguments, values_of(loaded)))
     return folded("done" if each.state == "well" else each.state for each in checks), checks
 
 

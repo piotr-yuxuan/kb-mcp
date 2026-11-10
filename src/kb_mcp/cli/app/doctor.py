@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Account
+    from kb_mcp.sources.declaration import Source
 
 
 def pandoc() -> Check:
@@ -26,13 +26,20 @@ def pandoc() -> Check:
     )
 
 
-def doctor(settings: Settings, accounts: Iterable[Account]) -> list[Check]:
-    """Check the machine, then each account by the checks that it names; give every check."""
+def doctor(settings: Settings, sources: Iterable[Source]) -> list[Check]:
+    """Check the machine, then the sources by the checks that their connectors name.
+
+    The sources of one checks' function are checked by one call, in the order of the
+    first of them, so that sources that share a sign-in are checked once.
+    """
     checks = [
         Check(name="python", found=sys.version.split()[0]),
         pandoc(),
         Check(name="data directory", found=f"{settings.data_dir}: allowed"),
     ]
-    for account in accounts:
-        checks += pkgutil.resolve_name(account.checks)(settings)
+    by_checks: dict[str, list[Source]] = {}
+    for each in sources:
+        by_checks.setdefault(str(each.connector.checks), []).append(each)
+    for path, checked in by_checks.items():
+        checks += pkgutil.resolve_name(path)(settings, tuple(checked))
     return checks

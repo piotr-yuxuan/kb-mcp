@@ -89,11 +89,9 @@ Then create `~/.config/kb-mcp/config.toml` in your editor, with your site
 and your space:
 
 ```toml
-[accounts.atlassian]
-site = "https://<your-site>.atlassian.net"
-
 [sources.confluence]
 spaces = ["<KEY>"]
+site = "https://<your-site>.atlassian.net"
 ```
 
 Check the settings:
@@ -105,8 +103,8 @@ kb-mcp check
 You should see the two settings that the file gives:
 
 ```text
-accounts.atlassian.site: https://<your-site>.atlassian.net
 sources.confluence.spaces: <KEY>
+sources.confluence.site: https://<your-site>.atlassian.net
 ```
 
 Every other setting keeps its default. The data, the mirror included, go to
@@ -117,15 +115,17 @@ Every other setting keeps its default. The data, the mirror included, go to
 The command reads the site as you, with a session that you open once in Chrome:
 
 ```bash
-kb-mcp login atlassian
+kb-mcp login
 ```
 
-Before it acts, it says what it will do: each setting that it reads, then the same
-command in full, to copy. Its first lines:
+It signs in the site of each source configured, here Confluence's. Before it acts, it says
+what it will do: each setting that it reads, then the same command in full, to copy. Its
+first lines:
 
 ```text
 login, with these settings:
-  accounts.atlassian.site: https://<your-site>.atlassian.net
+  sources.confluence.spaces: <KEY>
+  sources.confluence.site: https://<your-site>.atlassian.net
 ```
 
 It ends with `Proceed? [y/N]`: answer `y`. Chrome opens on your site, in a window of
@@ -133,7 +133,7 @@ its own. Sign in as you usually do; the window closes once the site knows you, a
 command says:
 
 ```text
-Signed in; the session is saved.
+Signed in to https://<your-site>.atlassian.net; the session is saved.
 ```
 
 ## 5. Look before you fetch
@@ -155,7 +155,9 @@ per line, to copy. Its first lines:
 
 ```text
 fetch, with these settings:
-  accounts.atlassian.site: https://<your-site>.atlassian.net
+  data_dir: /Users/<you>/kb-mcp
+  sources.confluence.spaces: <KEY>
+  sources.confluence.site: https://<your-site>.atlassian.net
 ```
 
 After a progress bar, it ends with Confluence's row: the fetch window of the space, from the
@@ -179,7 +181,9 @@ Each command starts as the dry run did, under its own name:
 
 ```text
 fetch, with these settings:
-  accounts.atlassian.site: https://<your-site>.atlassian.net
+  data_dir: /Users/<you>/kb-mcp
+  sources.confluence.spaces: <KEY>
+  sources.confluence.site: https://<your-site>.atlassian.net
 ```
 
 and ends its echo with `Proceed? [y/N]`: answer `y`, four times. A space of tens of

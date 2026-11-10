@@ -12,10 +12,10 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 | Secret | Given by | Kept by the program | Sent to |
 |---|---|---|---|
 | the session's cookies | `login`, in a Chrome window | `<data>/session/cookies.json`, beside the window's own profile | the site's host alone |
-| the API token, with its email | `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN`, in one run's environment | nowhere | the site's host alone, as Basic auth |
+| the API token, with its email | each source's variable, such as `KB_MCP_SOURCES__JIRA__API_TOKEN`, in one run's environment | nowhere | the source's site's host alone, as Basic auth |
 | the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
-A run signs in by the token when one is set, else by the saved session
+Each source signs in by its token when one is set, else by the saved session of its site
 ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 Either opens what the account may read; the program only reads it, as
 [the wire](#on-the-wire) shows.
@@ -64,7 +64,7 @@ what the window sees and what it keeps:
   signed in by the session writes them back
   ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
   Once they no longer hold, the next run stops with exit status 3, and you run
-  `login atlassian` again.
+  `login` again.
 
 Why a file: the session must outlive the run that made it, and no browser stays open
 between runs to hold it. The profile stays too, since the next `login` opens it again,

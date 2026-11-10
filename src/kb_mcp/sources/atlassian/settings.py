@@ -1,7 +1,8 @@
-"""Confluence's and Jira's tables of settings, and the Atlassian account's.
+"""Confluence's and Jira's tables of settings, ``[sources.<name>]`` of each source.
 
-``[sources.confluence]``, ``[sources.jira]`` and ``[accounts.atlassian]``: their
-declarations name them; the entry composes them into the settings' model.
+Their declarations name them; the entry composes them into the settings' model. Each
+source holds its site and its way to sign in, so that two sources of two sites are two
+sources of one connector.
 """
 
 from __future__ import annotations
@@ -37,43 +38,42 @@ def site_address(value: str) -> str:
 Site = Annotated[str, AfterValidator(site_address)]
 SpaceKey = Annotated[str, matching(SPACE_KEY, "a space key, such as ENG or ~5f1a2b")]
 ProjectKey = Annotated[str, matching(PROJECT_KEY, "a project key, such as PLAT")]
-
-
-class AtlassianAccountTable(BaseModel):
-    """The Atlassian account that Confluence and Jira sign in with, on its site."""
-
-    model_config = TABLE
-
-    site: Site | None = Field(
-        default=None,
-        description=(
-            "The Atlassian site, for Confluence and Jira alike: https://<name>.atlassian.net."
-        ),
-    )
-    email: str | None = Field(
-        default=None, description="The email address of the Atlassian account that signs in."
-    )
-    api_token: SecretStr | None = Field(
-        default=None,
-        description="The Atlassian account's API token, a secret: from the environment alone.",
-    )
+# The settings of a source's sign-in, which each table holds after its scopes: its site,
+# then its account's email and API token, which sign in in place of the saved session.
+SiteSetting = Annotated[
+    Site | None,
+    Field(description="The source's Atlassian site: https://<name>.atlassian.net."),
+]
+EmailSetting = Annotated[
+    str | None, Field(description="The email address of the Atlassian account that signs in.")
+]
+TokenSetting = Annotated[
+    SecretStr | None,
+    Field(description="The Atlassian account's API token, a secret: from the environment alone."),
+]
 
 
 class ConfluenceTable(BaseModel):
-    """What to fetch from Confluence when no flag says."""
+    """A Confluence source: what to fetch when no flag says, on its site, and how it signs in."""
 
     model_config = TABLE
 
     spaces: tuple[SpaceKey, ...] = Field(
         default=(), description="The spaces to fetch when no --space is given, by key."
     )
+    site: SiteSetting = None
+    email: EmailSetting = None
+    api_token: TokenSetting = None
 
 
 class JiraTable(BaseModel):
-    """What to fetch from Jira when no flag says."""
+    """A Jira source: what to fetch when no flag says, on its site, and how it signs in."""
 
     model_config = TABLE
 
     projects: tuple[ProjectKey, ...] = Field(
         default=(), description="The projects to fetch when no --project is given, by key."
     )
+    site: SiteSetting = None
+    email: EmailSetting = None
+    api_token: TokenSetting = None

@@ -99,7 +99,7 @@ Beside the packages, directly under `sources/`:
 
 | Module | What it holds | Imported by |
 |---|---|---|
-| `sources/declaration.py` | What a connector declares: `Connector`, `ScopeType`, `DocumentType`, `Option`, `Account`; and `Source`, one instance of a connector; as dataclasses, since `--help` imports them | every declaration |
+| `sources/declaration.py` | What a connector declares: `Connector`, `ScopeType`, `DocumentType`, `Option`; and `Source`, one instance of a connector; as dataclasses, since `--help` imports them | every declaration |
 | `sources/registry.py` | `CONNECTORS`, one line per connector, `SOURCES`, a source of each, and `refuse`, the rules of any registry | `cli`, whose entry takes the sources as a parameter |
 | `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun`, and what an account's checks give, `Check` | each fetcher and preparer, each account's checks, and `cli`'s `run_each` and `doctor` |
 
@@ -209,7 +209,6 @@ table is one:
 | `kernel.endpoint.Service` | G: `--help` imports it |
 | `kernel.output.Output` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
-| `sources.declaration.Account` | G: `--help` imports it |
 | `sources.declaration.Connector` | G: `--help` imports it |
 | `sources.declaration.DocumentType` | G: `--help` imports it |
 | `sources.declaration.Option` | G: `--help` imports it |

@@ -485,7 +485,9 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
-    return MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
+    return MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=tmp_path / "data"
+    )
 
 
 def purview(spaces: list[str], projects: list[str]) -> Purview:

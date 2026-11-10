@@ -124,10 +124,13 @@ def test_pandoc_gone_once_the_run_starts_fails_it_with_an_error(
     assert not (home / "data" / "docs").exists()
 
 
-def test_refused_settings_exit_two(home: Path, capsys: CaptureFixture[str]) -> None:
+def test_refused_settings_exit_two(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
     """A site that is not an https host is refused before anything runs."""
-    assert main(arguments(home, "--site", "http://plain.example.invalid")) == BAD_SETTINGS
-    assert "site" in capsys.readouterr().err
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", "http://plain.example.invalid")
+    assert main(arguments(home)) == BAD_SETTINGS
+    assert "sources.jira.site" in capsys.readouterr().err
 
 
 def test_an_empty_store_prepares_nothing_and_exits_zero(

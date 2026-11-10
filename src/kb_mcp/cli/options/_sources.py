@@ -122,23 +122,14 @@ def left_unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]
     """Name what the run does not apply of the sources left out, and why.
 
     The settings that the command reads of those left out, but the first of one not
-    configured, which holds nothing to apply; and those of an account that no source taken
-    names.
+    configured, which holds nothing to apply.
     """
-    taken, left = chosen(arguments, settings)
+    _, left = chosen(arguments, settings)
     reads = arguments.command.reads
-    signing = {each.account.name for each in (d.connector for d in taken) if each.account}
-    unused = {
+    return {
         path: f"{declared.name} {left[declared.name]}"
         for declared in arguments.sources
         if declared.name in left
         for path in declared.paths
         if path in reads and (left[declared.name] != "not configured" or path != declared.paths[0])
     }
-    unused |= {
-        path: f"no source of the {account.name} account in this {arguments.command.name}"
-        for account in (declared.connector.account for declared in arguments.sources)
-        if account is not None and account.name not in signing
-        for path in account.paths
-    }
-    return unused

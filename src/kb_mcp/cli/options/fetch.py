@@ -8,7 +8,6 @@ from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.domain.sources import FETCH, chosen_to_fetch, fetch_described, given
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 from kb_mcp.cli.options._sources import add_source_options, choice_refused, left_unapplied
-from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
     import argparse
@@ -35,9 +34,11 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
         ),
         choice_refused(arguments, settings),
         *(
-            connector.refused(given(arguments, connector.flags), settings)
-            for connector in (declared.connector for declared in taken)
-            if connector.refused is not None
+            declared.connector.refused(
+                declared, given(arguments, declared.connector.flags), settings
+            )
+            for declared in taken
+            if declared.connector.refused is not None
         ),
     ]
     return next((fault for fault in faults if fault is not None), None)
@@ -52,9 +53,10 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     unused = left_unapplied(arguments, settings)
-    for connector in (declared.connector for declared in taken):
+    for declared in taken:
+        connector = declared.connector
         options = given(arguments, connector.flags)
-        unused |= connector.unapplied(options, settings) if connector.unapplied else {}
+        unused |= connector.unapplied(declared, options, settings) if connector.unapplied else {}
     return unused
 
 
@@ -62,11 +64,11 @@ def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     sources: Sequence[Source],
 ) -> None:
-    """Add ``fetch`` to the command, for the sources of the registry that have a fetcher.
+    """Add ``fetch`` to the command, for the sources that have a fetcher.
 
-    The settings read are each account's that they name, once, the data directory, each
-    of those sources'. A source named comes with the others, after the options or before
-    them: its ``dest`` is ``source``, as ``sources`` holds the registry.
+    The settings read are the data directory and each of those sources'. A source named
+    comes with the others, after the options or before them: its ``dest`` is ``source``,
+    as ``sources`` holds the sources.
     """
     fetched = [declared for declared in sources if declared.connector.fetcher is not None]
     parser = subparsers.add_parser(
@@ -102,11 +104,7 @@ def register(
         command=Command(
             FETCH,
             "kb_mcp.cli.commands.sources",
-            reads=(
-                *(path for account in accounts_of(fetched).values() for path in account.paths),
-                "data_dir",
-                *(path for declared in fetched for path in declared.paths),
-            ),
+            reads=("data_dir", *(path for declared in fetched for path in declared.paths)),
             flags=flags,
             scoped=scoped,
             actions=(*actions, *options, source),

@@ -865,7 +865,7 @@ def plan_fetch(
     windows = purview.windows(store.coverage(), now())
     counts = FetchCounts(windows=windows_of(windows, {}), dry_run=True)
     try:
-        client = choose_sign_in(settings).client()
+        client = choose_sign_in(settings, purview.source).client()
     except SignInNeededError:
         return Outcome(ending="sign in again", counts=counts)
     with client:
@@ -917,7 +917,7 @@ def run_fetch(
     store, started = RawStore(settings.raw, purview.source), now()
     coverage = store.coverage()
     windows = purview.windows(coverage, started)
-    signing = choose_sign_in(settings)
+    signing = choose_sign_in(settings, purview.source)
     with store.writing():
         try:
             with signing.client() as client:

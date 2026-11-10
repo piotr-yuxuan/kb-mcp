@@ -1,8 +1,8 @@
-"""Settings: where data lives, and each account's and each source's table, composed.
+"""Settings: where data lives, and each source's table, composed.
 
 ``settings_model`` composes the model of the settings from the core's, ``Settings``, and
-the table of each account and of each source that the entry gives it, under ``accounts``
-and ``sources``; this module names no source but in ``MOVED``. They come in layers, each
+the table of each source that the entry gives it, under ``sources``; this module names
+no source but in ``MOVED``. They come in layers, each
 stronger than the last: the settings file, the environment, then the flags given. Each
 layer gives entries, a value at a setting's path of that model; ``settings_of`` merges
 them, a stronger value replacing a weaker one whole, a list included, and builds the
@@ -82,14 +82,12 @@ DEFAULT_RERANKER = "qwen3-reranker-0.6b"
 DEFAULT_RERANK_DEPTH = 30
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
-# The settings that the file held at its top before plans 015 and 030, and their tables
-# now.
-MOVED = {
-    "spaces": "[sources.confluence]",
-    "projects": "[sources.jira]",
-    "site": "[accounts.atlassian]",
-    "email": "[accounts.atlassian]",
-}
+# Where the settings file and the environment held settings before plans 015, 030 and
+# 059: at the top, and in each account's table, ``[accounts.<name>]``. A key there is now
+# the key of each source's table that holds it, such as ``sources.jira.site``.
+MOVED = "accounts"
+# The depth of a setting in an account's table, accounts.<name>.<key>, as a path.
+ACCOUNT_DEPTH = 3
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
 # What each source's ``connector`` says, which the model adds to its connector's table.
@@ -182,12 +180,6 @@ TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
 
-class Accounts(BaseModel):
-    """The accounts that sources sign in with, each a table, which ``settings_model`` adds."""
-
-    model_config = TABLE
-
-
 class Sources(BaseModel):
     """The sources of the mirror, each a table of its own, which ``settings_model`` adds."""
 
@@ -261,9 +253,8 @@ class Rerank(BaseModel):
 class Settings(BaseSettings):
     """What every command needs to know: the data directory, the defaults, the tables.
 
-    The core's settings, whose ``accounts`` and ``sources`` hold no table:
-    ``settings_model`` composes from it the model that holds each account's and each
-    source's. The loader builds the settings from the
+    The core's settings, whose ``sources`` holds no table: ``settings_model`` composes
+    from it the model that holds each source's. The loader builds the settings from the
     layers' merge (``settings_of``), with the home that ``~`` stands for: their paths are
     absolute, the default data directory included. The model reads nothing of its own:
     the loader reads its variables by pydantic-settings' ``EnvSettingsSource``, with the
@@ -316,10 +307,6 @@ class Settings(BaseSettings):
             "The embedding endpoint's API key, if it needs one, a secret: from the environment"
             " alone."
         ),
-    )
-    accounts: Accounts = Field(
-        default_factory=Accounts,
-        description="The accounts that sources sign in with, each a table.",
     )
     sources: Sources = Field(
         default_factory=Sources, description="The sources of the mirror, each a table."
@@ -484,81 +471,67 @@ def setting_paths(
     return paths
 
 
-def settings_model(
-    sources: Mapping[str, tuple[str, type[BaseModel]]], accounts: Mapping[str, type[BaseModel]]
-) -> type[Settings]:
-    """Compose the settings' model: the core's, with each account's and each source's table.
+def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[Settings]:
+    """Compose the settings' model: the core's, with each source's table.
 
     ``sources`` gives each source's connector and its connector's table by the source's
     name, which names its table, ``[sources.<name>]``, whose ``connector`` names that
-    connector and no other; ``accounts`` each account's table alike, ``[accounts.<name>]``;
-    the tables of each follow one another in name order, each described by its
-    docstring. Raises TypeError, naming the table, for a name that a model already holds,
-    such as ``json``, which its field would shadow, one that holds a setting of a type
-    that has no kind, one without a default, since a source left unset still has its
-    table, or one that holds a table, as a declaration's settings are values, each said
+    connector and no other; the tables follow one another in name order, each described
+    by its docstring. Raises TypeError, naming the table, for a name that a model already
+    holds, such as ``json``, which its field would shadow, one that holds a setting of a
+    type that has no kind, one without a default, since a source left unset still has
+    its table, or one that holds a table, as a connector's settings are values, each said
     by its path, all before any value is read.
     """
-    places = {
-        "accounts": (Accounts, dict(accounts)),
-        "sources": (
-            Sources,
-            {
-                name: create_model(
-                    table.__name__,
-                    __base__=table,
-                    __doc__=table.__doc__,
-                    **{
-                        CONNECTOR: (
-                            Literal[connector],
-                            Field(default=connector, description=CONNECTOR_DESCRIPTION),
-                        )
-                    },
-                )
-                for name, (connector, table) in sources.items()
-            },
-        ),
-    }
-    for place, (base, tables) in places.items():
-        for name, table in tables.items():
-            if hasattr(base, name):
-                message = f"{place}.{name}: a name that a model already holds"
-                raise TypeError(message)
-            try:
-                kinds = setting_paths(table)
-                table()
-            except TypeError as error:
-                message = f"{place}.{name}: {error}"
-                raise TypeError(message) from None
-            except ValidationError as error:
-                without = [".".join(map(str, each["loc"])) for each in error.errors()]
-                message = f"{place}.{name}: a setting without a default: {', '.join(without)}"
-                raise TypeError(message) from None
-            inner = [".".join(path) for path, kind in kinds.items() if kind == "table"]
-            if inner:
-                message = f"{place}.{name}: a table inside a table: {', '.join(inner)}"
-                raise TypeError(message)
-    composed = {
-        place: create_model(
-            base.__name__,
-            __base__=base,
+    tables = {
+        name: create_model(
+            table.__name__,
+            __base__=table,
+            __doc__=table.__doc__,
             **{
-                name: (table, Field(default_factory=table, description=table.__doc__))
-                for name, table in sorted(tables.items())
+                CONNECTOR: (
+                    Literal[connector],
+                    Field(default=connector, description=CONNECTOR_DESCRIPTION),
+                )
             },
         )
-        for place, (base, tables) in places.items()
+        for name, (connector, table) in sources.items()
     }
+    for name, table in tables.items():
+        if hasattr(Sources, name):
+            message = f"sources.{name}: a name that a model already holds"
+            raise TypeError(message)
+        try:
+            kinds = setting_paths(table)
+            table()
+        except TypeError as error:
+            message = f"sources.{name}: {error}"
+            raise TypeError(message) from None
+        except ValidationError as error:
+            without = [".".join(map(str, each["loc"])) for each in error.errors()]
+            message = f"sources.{name}: a setting without a default: {', '.join(without)}"
+            raise TypeError(message) from None
+        inner = [".".join(path) for path, kind in kinds.items() if kind == "table"]
+        if inner:
+            message = f"sources.{name}: a table inside a table: {', '.join(inner)}"
+            raise TypeError(message)
+    composed = create_model(
+        Sources.__name__,
+        __base__=Sources,
+        **{
+            name: (table, Field(default_factory=table, description=table.__doc__))
+            for name, table in sorted(tables.items())
+        },
+    )
     return create_model(
         "Settings",
         __base__=Settings,
-        **{
-            place: (
-                model,
-                Field(default_factory=model, description=Settings.model_fields[place].description),
-            )
-            for place, model in composed.items()
-        },
+        sources=(
+            composed,
+            Field(
+                default_factory=composed, description=Settings.model_fields["sources"].description
+            ),
+        ),
     )
 
 
@@ -693,21 +666,101 @@ def refuse_secrets(
             raise SettingsError(message)
 
 
+def moved(path: tuple[str, ...], model: type[Settings]) -> bool:
+    """Say whether a path is where a setting was before: under ``MOVED``, or a source's at the top.
+
+    A key at the top that no setting holds, and that a source's table holds, such as
+    ``site``; not a misspelt one.
+    """
+    sources = model.model_fields["sources"].annotation
+    tables = [each.annotation for each in sources.model_fields.values()]
+    return path[0] == MOVED or (
+        len(path) == 1
+        and path[0] not in model.model_fields
+        and any(path[0] in each.model_fields for each in tables)
+    )
+
+
+def moved_to(key: str, sources: BaseModel) -> tuple[tuple[str, ...], ...]:
+    """Give the paths of a key moved into the sources' tables: that of each table holding it.
+
+    Of the sources configured, whose first setting holds a value, when there are any;
+    else of every source whose table holds it.
+    """
+    holding = [(name, table) for name, table in sources if key in type(table).model_fields]
+    configured = [
+        name for name, table in holding if getattr(table, next(iter(type(table).model_fields)))
+    ]
+    return tuple(("sources", name, key) for name in configured or [name for name, _ in holding])
+
+
+def refuse_moved(
+    values: Mapping[str, object], layer: str, environ: Mapping[str, str], settings: Settings
+) -> None:
+    """Raise SettingsError, with advice, for each setting given where it was before, ``moved``.
+
+    The settings file's, of ``layer``, and the environment's, by a variable of the prefix
+    under ``MOVED``, a table's JSON read key by key; a variable at the top names no
+    setting, and is ignored as one. The advice names each by its path and its layer,
+    never its value, and the setting of each source that it moved to, as ``moved_to``
+    gives them: by its variable for one given by a variable, or for a secret, which a
+    variable alone gives; by its path for another; so one round of edits moves them all.
+    A table given empty names no key, and is said alone.
+    """
+    model = type(settings)
+    paths = setting_paths(model)
+    found = [
+        entry
+        for name, value in values.items()
+        for entry in entries_of(value, (name,), layer, model)
+        if moved(entry.path, model)
+    ]
+    for name, text in sorted(environ.items()):
+        path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
+        if text and name.lower().startswith(PREFIX.lower()) and path[0] == MOVED:
+            try:
+                value = json.loads(text) if text.startswith("{") else text
+            except ValueError:
+                value = text
+            found += entries_of(value, path, name, model)
+    said = [f"{'.'.join(entry.path)} ({entry.layer})" for entry in found]
+    lines = []
+    for entry, where in zip(found, said, strict=True):
+        under = entry.path[0] == MOVED
+        key = entry.path[-1] if len(entry.path) == (ACCOUNT_DEPTH if under else 1) else None
+        by_variable = entry.layer != layer
+        named = [
+            variable(path) if by_variable or paths.get(path) == "secret" else ".".join(path)
+            for path in (moved_to(key, settings.sources) if key else ())
+        ]
+        to = " and ".join(named) or "the table of each source that holds each of its keys"
+        lines.append(f"  {where} to {to}\n")
+    if lines:
+        error = SettingsError(f"{', '.join(said)}: moved into the table of each source")
+        error.advice = (
+            "Move each setting into the table of each source, or rename each variable"
+            " where it is set (a shell's profile, an MCP client, sops):\n" + "".join(lines)
+        )
+        raise error
+
+
 def file_entries(
     values: Mapping[str, object], layer: str, model: type[Settings]
 ) -> list[LayerValue]:
-    """Give the settings file's values as entries; refuse a moved or unknown one, then a secret."""
+    """Give the settings file's values as entries; refuse an unknown one, then a secret.
+
+    One where it was before, ``moved``, is left out: ``refuse_moved`` refuses it, once
+    the settings name the sources that it moved to.
+    """
     entries = [
         entry
         for name, value in values.items()
         for entry in entries_of(value, (name,), layer, model)
+        if not moved(entry.path, model)
     ]
     paths = setting_paths(model)
     for entry in entries:
         setting = ".".join(entry.path)
-        if entry.path[0] in MOVED:
-            message = f"{setting} ({layer}): moved, as {setting} under {MOVED[entry.path[0]]}"
-            raise SettingsError(message)
         refuse_not_a_source(entry.path, layer, model)
         if entry.path not in paths:
             message = f"{setting} ({layer}): not a setting"

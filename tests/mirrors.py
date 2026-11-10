@@ -35,7 +35,7 @@ ATLASSIAN = {
         known for known in DOCUMENT_CLASSES if known.document_type in each.connector.document_types
     )
     for each in SOURCES
-    if each.connector.account is not None
+    if each.connector.fetcher is not None
 }
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (

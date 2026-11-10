@@ -34,8 +34,12 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-EMAIL = "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"
-CREDENTIAL = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
+# The sign-in's variables of Confluence's source, then of Jira's: each source signs in
+# with its own.
+EMAIL = "KB_MCP_SOURCES__CONFLUENCE__EMAIL"
+CREDENTIAL = "KB_MCP_SOURCES__CONFLUENCE__API_TOKEN"
+JIRA_EMAIL = "KB_MCP_SOURCES__JIRA__EMAIL"
+JIRA_CREDENTIAL = "KB_MCP_SOURCES__JIRA__API_TOKEN"
 ADDRESS = "someone@example.invalid"
 SENTINEL = "token-sentinel-4d1c"
 ENCODED = base64.b64encode(f"{ADDRESS}:{SENTINEL}".encode()).decode()
@@ -46,18 +50,24 @@ HOST = httpx.URL(SITE).host
 REFUSED = 2
 SIGN_IN_NEEDED = 3
 # What a command that signs in says of a token given without its email.
-WITHOUT_EMAIL = "accounts.atlassian.email: not set; an API token signs in with its account's email"
+WITHOUT_EMAIL = "sources.confluence.email: not set; an API token signs in with its account's email"
 
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give a scratch home, no waiting between requests, and the token with its email."""
+    """Give a scratch home, no waiting between requests, and each source's site and token.
+
+    The token with its email, alike for Confluence's source and Jira's.
+    """
     scratch = tmp_path / "home"
     scratch.mkdir()
     monkeypatch.setenv("HOME", str(scratch))
     monkeypatch.setattr(time, "sleep", lambda _: None)
-    monkeypatch.setenv(EMAIL, ADDRESS)
-    monkeypatch.setenv(CREDENTIAL, SENTINEL)
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
+    for email, credential in ((EMAIL, CREDENTIAL), (JIRA_EMAIL, JIRA_CREDENTIAL)):
+        monkeypatch.setenv(email, ADDRESS)
+        monkeypatch.setenv(credential, SENTINEL)
     return scratch
 
 
@@ -76,6 +86,12 @@ def served(
     return sent
 
 
+def configure_both(monkeypatch: MonkeyPatch) -> None:
+    """Give Confluence's source and Jira's their scopes, so that ``doctor`` checks both."""
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["MFS"]')
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+
+
 def fetch_arguments(home: Path, *more: str) -> list[str]:
     """Give the arguments of a fetch of the scripted site's space and project."""
     return [
@@ -83,8 +99,6 @@ def fetch_arguments(home: Path, *more: str) -> list[str]:
         "--yes",
         "--config",
         str(home / "none.toml"),
-        "--site",
-        SITE,
         "--space",
         "MFS",
         "--project",
@@ -143,20 +157,21 @@ def test_a_fetch_refused_by_the_site_exits_3_naming_the_variables(
     needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
         ("confluence", f"check {EMAIL} and {CREDENTIAL}"),
-        ("jira", f"check {EMAIL} and {CREDENTIAL}"),
+        ("jira", f"check {JIRA_EMAIL} and {JIRA_CREDENTIAL}"),
     ]
 
 
 def test_the_doctor_signs_in_with_the_token(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """It names the token as the sign-in, which Confluence and Jira take."""
+    """It names the token as the sign-in of their one site, which Confluence and Jira take."""
     sent = served(monkeypatch, FakeSite().handle)
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
-    options = ["--config", str(home / "none.toml"), "--site", SITE, "--format", "json"]
+    configure_both(monkeypatch)
+    options = ["--config", str(home / "none.toml"), "--format", "json"]
     assert main(["doctor", *options]) != SIGN_IN_NEEDED
     verdicts = {verdict["name"]: verdict for verdict in json.loads(capsys.readouterr().out)}
-    assert verdicts["sign-in"]["found"] == "an API token"
+    assert verdicts[f"sign-in {HOST}"]["found"] == "an API token"
     assert [verdicts[name]["found"] for name in ("confluence", "jira")] == ["signed in"] * 2
     assert sent
     assert all(request.headers.get("authorization") == AUTHORISATION for request in sent)
@@ -168,7 +183,8 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
     """A 401 from each product: both verdicts name the email and the token to check."""
     served(monkeypatch, lambda _: httpx.Response(401))
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
-    assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == SIGN_IN_NEEDED
+    configure_both(monkeypatch)
+    assert main(["doctor", "--config", str(home / "none.toml")]) == SIGN_IN_NEEDED
     out = capsys.readouterr().out
     for name in ("confluence", "jira"):
         assert f"{name}: refused: check {EMAIL} and {CREDENTIAL}\n" in out
@@ -180,7 +196,8 @@ def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
     """Exit 2 naming the email, as a fetch does, before any request: one error alone."""
     monkeypatch.delenv(EMAIL)
     sent = served(monkeypatch, FakeSite().handle)
-    assert main(["doctor", "--config", str(home / "none.toml"), "--site", SITE]) == REFUSED
+    configure_both(monkeypatch)
+    assert main(["doctor", "--config", str(home / "none.toml")]) == REFUSED
     out, err = capsys.readouterr()
     assert out == ""
     (line,) = err.splitlines()
@@ -200,10 +217,10 @@ def test_login_with_a_token_signs_in_in_the_browser(
     monkeypatch.setattr(
         login_module, "save_session", lambda _, site, *__, **___: signed_in.append(site)
     )
-    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE]
-    assert main(["login", "atlassian", *options]) == 0
+    options = ["--yes", "--config", str(home / "none.toml")]
+    assert main(["login", "confluence", *options]) == 0
     assert signed_in == [SITE]
-    ignored = f"ignored: accounts.atlassian.api_token ({CREDENTIAL}): login signs in in a browser\n"
+    ignored = f"ignored: sources.confluence.api_token ({CREDENTIAL}): login signs in in a browser\n"
     assert ignored in capsys.readouterr().err
 
 
@@ -226,7 +243,7 @@ def test_check_shows_no_secret_in_any_format_or_detail(
     options = ["--config", str(home / "none.toml"), "--format", output_format]
     assert main(["check", *options, "--detail", detail, "-v"]) == 0
     out, err = capsys.readouterr()
-    assert "accounts.atlassian.api_token" in out
+    assert "sources.confluence.api_token" in out
     assert "embedding_api_key" in out
     assert shown(out + err) == []
 

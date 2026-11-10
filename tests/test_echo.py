@@ -41,9 +41,11 @@ if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Loaded
 
 SITE = "https://sandbox.example.invalid"
-# The variables of the email, the API token and the embedding endpoint's key.
-EMAIL = "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"
-CREDENTIAL = "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"
+# The variables of Confluence's site, email and API token, and the embedding endpoint's
+# key.
+SITE_VARIABLE = "KB_MCP_SOURCES__CONFLUENCE__SITE"
+EMAIL = "KB_MCP_SOURCES__CONFLUENCE__EMAIL"
+CREDENTIAL = "KB_MCP_SOURCES__CONFLUENCE__API_TOKEN"
 KEY = "KB_MCP_EMBEDDING_API_KEY"
 SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
@@ -56,7 +58,7 @@ OWN_OPTIONS = {
     "prepare": [],
     "embed": ["--allow-remote-embeddings"],
     "eval": ["golden.yaml", "--model", "tiny", "--model", "qwen3-embedding:0.6b"],
-    "login": ["--chrome", "chrome", "--keep-extensions", "atlassian"],
+    "login": ["--chrome", "chrome", "--keep-extensions", "confluence"],
 }
 # What the command to copy never carries, by plan 015: the output's options and the
 # question's.
@@ -94,24 +96,23 @@ def test_login_says_that_it_ignores_the_email_and_the_token(
 
     Neither is among the settings that its echo shows.
     """
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
     monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
-    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--detail", detail]
-    assert main(["login", "atlassian", *options]) == 0
+    options = ["--yes", "--config", str(home / "none.toml"), "--detail", detail]
+    assert main(["login", "confluence", *options]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
-        f"ignored: accounts.atlassian.email ({EMAIL}): login signs in in a browser",
-        f"ignored: accounts.atlassian.api_token ({CREDENTIAL}): login signs in in a browser",
+        f"ignored: sources.confluence.email ({EMAIL}): login signs in in a browser",
+        f"ignored: sources.confluence.api_token ({CREDENTIAL}): login signs in in a browser",
     ]
     assert "someone@example.invalid" not in out + err
     assert SECRETS[CREDENTIAL] not in out + err
 
 
-@pytest.mark.parametrize(
-    "command", [["doctor", "--site", SITE], ["fetch", "--yes", "--site", SITE, "--space", "ENG"]]
-)
+@pytest.mark.parametrize("command", [["doctor"], ["fetch", "--yes"]])
 @pytest.mark.usefixtures("runs")
 def test_an_email_without_a_token_is_ignored(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: list[str]
@@ -120,19 +121,21 @@ def test_an_email_without_a_token_is_ignored(
 
     The fetch's run is left out: what is ignored is said before it.
     """
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["ENG"]')
     monkeypatch.setenv("PATH", str(home))
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     options = [*command, "--config", str(home / "none.toml")]
     main(options)
     ignored = (
-        f"ignored: accounts.atlassian.email ({EMAIL}):"
+        f"ignored: sources.confluence.email ({EMAIL}):"
         " without an API token, the browser's session signs in\n"
     )
     assert ignored in capsys.readouterr().err
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
     main(options)
     err = capsys.readouterr().err
-    assert "ignored: accounts.atlassian.email" not in err
+    assert "ignored: sources.confluence.email" not in err
     assert SECRETS[CREDENTIAL] not in err
 
 
@@ -152,12 +155,13 @@ def test_a_fetch_s_echo_says_how_it_signs_in(
     sign_in: str,
 ) -> None:
     """By the token when one is set, else by the session saved; and never the token itself."""
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
     for variable, value in variables.items():
         monkeypatch.setenv(variable, value)
-    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
+    options = ["--yes", "--config", str(home / "none.toml"), "--space", "ENG"]
     assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
-    assert f"\n  sign-in: {sign_in}\n" in err.split("kb-mcp fetch")[0]
+    assert f"\n  source confluence: signs in by {sign_in}\n" in err.split("kb-mcp fetch")[0]
     assert not any(secret in err for secret in SECRETS.values())
 
 
@@ -170,10 +174,11 @@ def test_a_fetch_s_echo_says_how_it_signs_in(
 )
 @pytest.mark.usefixtures("runs")
 def test_a_fetch_s_echo_says_where_its_windows_start(
-    home: Path, capsys: CaptureFixture[str], given: list[str], rule: str
+    monkeypatch: MonkeyPatch, home: Path, capsys: CaptureFixture[str], given: list[str], rule: str
 ) -> None:
     """The rule in words, before the run reads the store: from --since, or the last fetch."""
-    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--space", "ENG"]
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
+    options = ["--yes", "--config", str(home / "none.toml"), "--space", "ENG"]
     assert main(["fetch", *options, *given]) == 0
     err = capsys.readouterr().err
     assert f"\n  {rule}\n" in err.split("kb-mcp fetch")[0]
@@ -232,7 +237,8 @@ def test_the_echo_says_why_the_run_does_not_apply_a_setting_whatever_its_layer(
 ) -> None:
     """At its default too, where no value is said to be ignored.
 
-    ``eval``'s --model replaces the model; a ``prepare`` of the work log alone signs in nowhere.
+    ``eval``'s --model replaces the model; a ``prepare`` of the work log alone gives no
+    address of a site.
     """
     monkeypatch.chdir(home)
     (home / "golden.yaml").write_text("", "utf-8")
@@ -247,9 +253,9 @@ def test_the_echo_says_why_the_run_does_not_apply_a_setting_whatever_its_layer(
     marked = [
         line.strip().partition(": ")[0]
         for line in echo.splitlines()
-        if line.endswith(" (not applied: no source of the atlassian account in this prepare)")
+        if line.endswith(" not named)")
     ]
-    assert marked == ["accounts.atlassian.site"]
+    assert marked == ["sources.confluence.site", "sources.jira.site"]
 
 
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(
@@ -341,34 +347,38 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
     In detail, the entry's own follow, which it reads for every command.
     """
     config = home / "config.toml"
-    config.write_text(f'model = "tiny"\n[accounts.atlassian]\nsite = "{SITE}"\n', "utf-8")
+    config.write_text(f'model = "tiny"\n[sources.confluence]\nsite = "{SITE}"\n', "utf-8")
     monkeypatch.setenv(UNKNOWN, "1")
     data = (home / "data").resolve()
     options = ["prepare", "--yes", "--config", str(config), "--data-dir", str(data)]
     command = (
         "kb-mcp prepare \\\n"
         f"  --config {shlex.quote(str(config))} \\\n"
-        f"  --data-dir {shlex.quote(str(data))} \\\n"
-        f"  --site {SITE}\n"
+        f"  --data-dir {shlex.quote(str(data))}\n"
+        "not in the command: sources.confluence.site (config.toml): no flag sets it\n"
     )
+    unset = "  sources.jira.site: not set; any documents of jira get no address there\n"
     assert main(options) == 0
     assert capsys.readouterr().err == (
         "prepare, with these settings:\n"
-        f"  accounts.atlassian.site: {SITE}\n"
         f"  data_dir: {data}\n"
+        f"  sources.confluence.site: {SITE}\n"
+        "  sources.jira.site: (not set)\n"
         "  sources.worklog.path: (not set)\n"
         "  sources.worklog.archives: True (not applied: worklog not configured)\n"
         "  source confluence: all that its store holds\n"
         "  source jira: all that its store holds\n"
         "  source worklog: left out, not configured\n"
+        f"{unset}"
         f"ignored: {UNKNOWN}: names no setting\n"
         f"{command}"
     )
     assert main([*options, "--detail", "detailed"]) == 0
     assert capsys.readouterr().err == (
         "prepare, with these settings:\n"
-        f"  accounts.atlassian.site: {SITE} [config.toml]\n"
         f"  data_dir: {data} [--data-dir]\n"
+        f"  sources.confluence.site: {SITE} [config.toml]\n"
+        "  sources.jira.site: (not set) [default]\n"
         "  sources.worklog.path: (not set) [default]\n"
         "  sources.worklog.archives: True [default] (not applied: worklog not configured)\n"
         f"  logs.dir: {user_log_folder(home.resolve())} [default]\n"
@@ -376,6 +386,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
         "  source confluence: all that its store holds\n"
         "  source jira: all that its store holds\n"
         "  source worklog: left out, not configured\n"
+        f"{unset}"
         f"ignored: {UNKNOWN}: names no setting\n"
         "ignored: model (config.toml): not read by prepare\n"
         f"{command}"
@@ -474,14 +485,18 @@ def test_the_level_error_leaves_out_the_values_ignored_alone(
 
 
 def test_a_command_s_described_lines_end_its_echo(
-    home: Path, capsys: CaptureFixture[str], runs: list[tuple[argparse.Namespace, Loaded]]
+    monkeypatch: MonkeyPatch,
+    home: Path,
+    capsys: CaptureFixture[str],
+    runs: list[tuple[argparse.Namespace, Loaded]],
 ) -> None:
     """They are its own function's, of the arguments and the settings' values by path."""
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
 
     def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-        return (f"fetches {settings['accounts.atlassian.site']}", f"as {arguments.command.name}")
+        return (f"fetches {settings['sources.confluence.site']}", f"as {arguments.command.name}")
 
-    given = ["prepare", "--yes", "--config", str(home / "none.toml"), "--site", SITE]
+    given = ["prepare", "--yes", "--config", str(home / "none.toml")]
     arguments = parser().parse_args(given)
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
@@ -498,11 +513,12 @@ def test_the_command_to_copy_is_preceded_by_an_empty_list_that_no_flag_can_say(
     runs: list[tuple[argparse.Namespace, Loaded]],
 ) -> None:
     """A variable emptied the file's projects: the command, run again, would read the file."""
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
     config = home / "config.toml"
     config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
     variable = "KB_MCP_SOURCES__JIRA__PROJECTS"
     monkeypatch.setenv(variable, "[]")
-    options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG"]
+    options = ["--yes", "--config", str(config), "--space", "ENG"]
     assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
     said, _, copied = err.partition("kb-mcp fetch")
@@ -525,8 +541,8 @@ EMPTY_TABLE = '[sources.jira]\n# projects = ["PLAT"]\n'
         ("", {"KB_MCP_SOURCES__JIRA__PROJECTS": "[]"}, []),
         ("[sources.jira]\nprojects = []\n", {}, []),
         (EMPTY_TABLE, {}, []),
-        (EMPTY_TABLE, {"KB_MCP_SOURCES": "{}"}, []),
-        (EMPTY_TABLE, {}, ["--project", "PRB"]),
+        (EMPTY_TABLE, {"KB_MCP_SOURCES__JIRA": "{}"}, []),
+        (EMPTY_TABLE, {"KB_MCP_SOURCES__JIRA__SITE": SITE}, ["--project", "PRB"]),
     ],
 )
 @pytest.mark.usefixtures("runs")
@@ -540,18 +556,20 @@ def test_an_empty_list_that_replaced_no_value_given_is_neither_ignored_nor_named
 
     An empty table's settings are at their defaults, which no layer wrote: a stronger
     value replaces none of them. ``layers`` are the file's text, the variables and the
-    flags.
+    flags. Plan 059: the site, which no flag sets, is named for its own reason.
     """
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
     text, variables, flags = layers
     config = home / "config.toml"
     config.write_text(text, "utf-8")
     for variable, value in variables.items():
         monkeypatch.setenv(variable, value)
-    options = ["--yes", "--config", str(config), "--site", SITE, "--space", "ENG", *flags]
+    options = ["--yes", "--config", str(config), "--space", "ENG", *flags]
     assert main(["fetch", *options]) == 0
     err = capsys.readouterr().err
-    assert "ignored: " not in err
-    assert "not in the command: " not in err
+    assert "projects" not in "".join(
+        line for line in err.splitlines() if line.startswith(("ignored: ", "not in the command: "))
+    )
 
 
 @pytest.mark.usefixtures("runs")
@@ -607,18 +625,19 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
 ) -> None:
     """Split by shlex and run with no settings' variable nor file, it gives the same values.
 
-    The settings come from the file (site, projects), the environment (data_dir) and the
+    The settings come from the file (sites, projects), the environment (data_dir) and the
     flags (spaces); each that the command reads and a flag sets is carried, whatever its
     layer. Another option is carried when not at its default. The output's options are
-    not, nor the email, the secrets, nor the model, which no flag sets; ``eval``'s
-    --model, an option of its own, is.
+    not, nor the sites, the email, the secrets, nor the model, which no flag sets: the
+    sites are given to the second run by their variables. ``eval``'s --model, an option
+    of its own, is.
     """
     monkeypatch.chdir(home)
     (home / "golden.yaml").write_text("", "utf-8")
     config = home / "config.toml"
     config.write_text(
-        f'model = "tiny"\n[accounts.atlassian]\nsite = "{SITE}"\n'
-        '[sources.jira]\nprojects = ["PRB"]\n',
+        f'model = "tiny"\n[sources.confluence]\nsite = "{SITE}"\n'
+        f'[sources.jira]\nprojects = ["PRB"]\nsite = "{SITE}"\n',
         "utf-8",
     )
     given = {
@@ -649,6 +668,8 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     config.unlink()
     for variable in given:
         monkeypatch.delenv(variable)
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
     elsewhere = home / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -680,10 +701,11 @@ def test_the_command_to_copy_carries_each_path_absolute(
 
     The settings take the data directory absolute alone.
     """
+    monkeypatch.setenv(SITE_VARIABLE, SITE)
     monkeypatch.chdir(home)
     paths = {"--config": "cfg/c.toml", "--chrome": "bin/chrome"}
     given = [item for option, path in paths.items() for item in (option, path)]
-    assert main(["login", "atlassian", "--yes", "--site", SITE, *given]) == 0
+    assert main(["login", "confluence", "--yes", *given]) == 0
     err = capsys.readouterr().err
     argv = shlex.split(err[err.index("kb-mcp login") :].replace("\\\n", ""))
     assert {option: argv[argv.index(option) + 1] for option in paths} == {

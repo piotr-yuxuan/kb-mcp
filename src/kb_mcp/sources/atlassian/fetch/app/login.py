@@ -21,7 +21,10 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.sources.declaration import Source
 
 PROFILE = "browser"
 
@@ -47,12 +50,28 @@ def save_session(settings: Settings, site: str, chrome: Path | None, *, extensio
     write_cookies(settings.session / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
 
 
-def login(settings: Settings, chrome: Path | None, *, extensions: bool) -> SignedIn | None:
-    """Sign in to the account's site; a sign-in that does not complete is an error, and None."""
-    site = str(settings.accounts.atlassian.site)
-    try:
-        save_session(settings, site, chrome, extensions=extensions)
-    except SignInFailedError as error:
-        structlog.get_logger().error("login.not_signed_in", reason=str(error))
-        return None
-    return SignedIn(site=site, session=settings.session)
+def login(
+    settings: Settings,
+    sources: Sequence[Source],
+    chrome: Path | None,
+    *,
+    extensions: bool,
+    named: bool,
+) -> tuple[SignedIn, ...] | None:
+    """Sign in to the site of each source, once a site, one after another.
+
+    A source not ``named`` that signs in by an API token is left: a session would serve it
+    nothing. A sign-in that does not complete is an error, and None; no site after it is
+    tried.
+    """
+    tables = [getattr(settings.sources, each.name) for each in sources]
+    sites = dict.fromkeys(str(each.site) for each in tables if named or each.api_token is None)
+    signed: list[SignedIn] = []
+    for site in sites:
+        try:
+            save_session(settings, site, chrome, extensions=extensions)
+        except SignInFailedError as error:
+            structlog.get_logger().error("login.not_signed_in", site=site, reason=str(error))
+            return None
+        signed.append(SignedIn(site=site, session=settings.session))
+    return tuple(signed)

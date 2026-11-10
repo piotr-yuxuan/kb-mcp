@@ -13,6 +13,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError, o
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
 SITE = "https://sandbox.example.invalid"
@@ -96,9 +97,12 @@ class Playwright:
 
 
 def test_a_sign_in_through_an_identity_provider_is_seen_to_end(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """The window comes back to the site after the user signs in, and the cookies follow."""
+    """The window comes back to the site after the user signs in, and the cookies follow.
+
+    What to do in it is said first, on stderr, naming the site; stdout holds nothing.
+    """
     page = Page(waits=3)
     context = Context(page)
     monkeypatch.setattr(browser, "sync_playwright", lambda: Playwright(context))
@@ -106,6 +110,7 @@ def test_a_sign_in_through_an_identity_provider_is_seen_to_end(
     assert open_sign_in_window(SITE, tmp_path / "profile", None) == context.cookies()
     assert page.checks == 1
     assert context.closed
+    assert capsys.readouterr() == ("", f"Sign in to {SITE} in the Chrome window that opens.\n")
 
 
 def test_closing_the_window_on_the_identity_provider_is_seen(

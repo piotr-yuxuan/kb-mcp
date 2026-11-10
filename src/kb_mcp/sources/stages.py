@@ -38,23 +38,20 @@ class Check(Record):
 
 
 class SourceRun(Record):
-    """What a fetcher or a preparer runs with: its source, the settings, tables, options, a dry run.
+    """What a fetcher or a preparer runs with: its source, the settings, table, options, a dry run.
 
     ``source`` is the source that it is run for, its name and connector, which a fetcher
-    or preparer serving several connectors reads; ``sources`` every source of the
-    registry, which a preparer that places documents across sources reads;
-    ``source_table`` is that source's
-    ``[sources.<name>]``, ``account_table`` its account's table, None for a source that
-    signs in with none. ``options`` holds its options' values by flag, None when not given,
-    and nothing for a preparer, a source's options being its fetch's; ``now`` and ``sleep``
-    are the clock and the pause between requests.
+    or preparer serving several connectors reads; ``sources`` every source that the
+    settings configure, which a preparer that places documents across sources reads;
+    ``source_table`` is that source's ``[sources.<name>]``. ``options`` holds its options'
+    values by flag, None when not given, and nothing for a preparer, a source's options
+    being its fetch's; ``now`` and ``sleep`` are the clock and the pause between requests.
     """
 
     source: InstanceOf[Source]
     sources: tuple[InstanceOf[Source], ...]
     settings: Settings
     source_table: BaseModel
-    account_table: BaseModel | None
     options: Mapping[str, object]
     now: Callable[[], datetime]
     sleep: Callable[[float], None]

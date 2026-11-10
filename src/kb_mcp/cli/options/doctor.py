@@ -1,13 +1,11 @@
-"""``doctor``'s declaration, from the registry's accounts; ``cli.commands.doctor`` runs it."""
+"""``doctor``'s declaration, from the sources that sign in; ``cli.commands.doctor`` runs it."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.sources import accounts_to_check
 from kb_mcp.cli.options._common import add_output_options, add_settings_options
-from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
     import argparse
@@ -16,31 +14,42 @@ if TYPE_CHECKING:
     from kb_mcp.sources.declaration import Source
 
 
+def checked(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[Source, ...]:
+    """Give the sources whose sign-in ``doctor`` checks: each configured whose connector checks."""
+    return tuple(
+        each
+        for each in arguments.sources
+        if each.connector.checks is not None and settings[each.paths[0]]
+    )
+
+
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse what a sign-in to check cannot run with, by its account's ``refused``: the first."""
+    """Refuse what a sign-in to check cannot run with, by its connector's ``refused``: the first.
+
+    Asked with none of its options given.
+    """
     faults = (
-        account.refused({}, settings)
-        for account in accounts_to_check(arguments.sources, settings).values()
-        if account.refused is not None
+        each.connector.refused(each, dict.fromkeys(each.connector.flags), settings)
+        for each in checked(arguments, settings)
+        if each.connector.refused is not None
     )
     return next((fault for fault in faults if fault is not None), None)
 
 
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Name what each sign-in does not apply, by each account's ``unapplied``, and the unchecked.
+    """Name what each sign-in does not apply, by its connector's ``unapplied``, and the unchecked.
 
-    The settings of an account that this machine does not use are not checked, whatever they
-    say, so that a token and an email without a site do not read as a sign-in that holds.
+    The settings of a source not configured are not checked, whatever they say, so that a
+    token and an email without a source do not read as a sign-in that holds.
     """
-    checked = accounts_to_check(arguments.sources, settings)
+    taken = checked(arguments, settings)
     unused: dict[str, str] = {}
-    for name, account in accounts_of(arguments.sources).items():
-        if name not in checked:
-            unused |= dict.fromkeys(
-                account.paths, "no site nor source of it: its sign-in not checked"
-            )
-        elif account.unapplied:
-            unused |= account.unapplied({}, settings)
+    for each in (each for each in arguments.sources if each.connector.checks is not None):
+        connector = each.connector
+        if each not in taken:
+            unused |= dict.fromkeys(each.paths[1:], f"{each.name} not configured: not checked")
+        elif connector.unapplied:
+            unused |= connector.unapplied(each, dict.fromkeys(connector.flags), settings)
     return unused
 
 
@@ -50,8 +59,8 @@ def register(
 ) -> None:
     """Add ``doctor`` to the command.
 
-    It reads each account's settings, the data folder, and the first setting of each source
-    naming an account, which says whether that account is checked.
+    It reads the data folder and the settings of each source of a connector with checks,
+    whose first says whether it is checked.
     """
     parser = subparsers.add_parser(
         "doctor",
@@ -68,9 +77,8 @@ def register(
             "doctor",
             "kb_mcp.cli.commands.doctor",
             reads=(
-                *(path for account in accounts_of(sources).values() for path in account.paths),
                 "data_dir",
-                *(each.paths[0] for each in sources if each.connector.account is not None),
+                *(path for each in sources if each.connector.checks for path in each.paths),
             ),
             flags=flags,
             actions=actions,

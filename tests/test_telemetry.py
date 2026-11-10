@@ -41,6 +41,8 @@ from tests.test_api_token import (
     EMAIL,
     ENCODED,
     HOST,
+    JIRA_CREDENTIAL,
+    JIRA_EMAIL,
     KEY,
     KEY_SENTINEL,
     SENTINEL,
@@ -233,6 +235,8 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
     exported as ``exporting`` has it, through ``Exported``.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
     monkeypatch.setattr(time, "sleep", lambda _: None)
     exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider(shutdown_on_exit=False)
@@ -256,8 +260,9 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
     root.addHandler(sink)
     try:
         with monkeypatch.context() as token:
-            token.setenv(EMAIL, ADDRESS)
-            token.setenv(CREDENTIAL, SENTINEL)
+            for email, credential in ((EMAIL, CREDENTIAL), (JIRA_EMAIL, JIRA_CREDENTIAL)):
+                token.setenv(email, ADDRESS)
+                token.setenv(credential, SENTINEL)
             assert main(fetch_arguments(tmp_path, "-vv")) == SIGN_IN_NEEDED
         session = tmp_path / "kb-mcp" / "session" / COOKIES
         write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
@@ -423,8 +428,6 @@ def test_a_fetch_s_root_says_whether_it_is_a_dry_run(
             "--yes",
             *options,
             *check(tmp_path, endpoint)[1:],
-            "--site",
-            SITE,
             "--space",
             "MFS",
             "--since",
@@ -432,7 +435,8 @@ def test_a_fetch_s_root_says_whether_it_is_a_dry_run(
             "--until",
             "2026-10-01",
         ]
-        ran = guarded(tmp_path, port_of(endpoint), arguments, {}, LIMIT_S)
+        site = {"KB_MCP_SOURCES__CONFLUENCE__SITE": SITE}
+        ran = guarded(tmp_path, port_of(endpoint), arguments, site, LIMIT_S)
     assert ran.status == ExitStatus.REFUSED
     (root,) = collector.spans()
     assert attributes(root.attributes) == {

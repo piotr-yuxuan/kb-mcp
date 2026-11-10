@@ -79,7 +79,7 @@ takes the token when one is set, else the session.
   shows. The token serves the sandbox, the agents that test against it, and anyone who
   has one.
 - **Cost.** Cookies expire: a 401, or a redirect to sign in, stops a run with exit status
-  3 until a person runs `login atlassian` again. The cookies sit in clear in
+  3 until a person runs `login` again. The cookies sit in clear in
   `<data>/session/`, mode 0600, as the browser's own profile holds them. A token is in no
   file of the program: the environment gives it to one run, for instance through
   `sops exec-env`.

@@ -12,7 +12,6 @@ from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.output import DETAILS, FORMATS, LEVELS
-from kb_mcp.sources.atlassian.declared import SITE
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -101,15 +100,14 @@ def add_yes_option(parser: argparse.ArgumentParser) -> None:
 def add_settings_options(
     parser: argparse.ArgumentParser,
 ) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
-    """Add --config, --data-dir and --site; return their actions, and each flag's setting."""
+    """Add --config and --data-dir; return their actions, and each flag's setting."""
     config = parser.add_argument(
         "--config", type=Path, default=SETTINGS_PATH, help="the settings file"
     )
     config.completer = FilesCompleter(["toml"])
     data_dir = parser.add_argument("--data-dir", help="the data directory, overriding the settings")
     data_dir.completer = DirectoriesCompleter()
-    site = parser.add_argument("--site", help="the site, as https://<name>.atlassian.net")
-    return (config, data_dir, site), {"data_dir": "data_dir", "site": SITE}
+    return (config, data_dir), {"data_dir": "data_dir"}
 
 
 def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:

@@ -15,11 +15,9 @@ The runs followed have a settings file that names the site and one space, and Ol
 this machine as the embedding endpoint, the example of any OpenAI-compatible API:
 
 ```toml
-[accounts.atlassian]
-site = "https://<your-site>.atlassian.net"
-
 [sources.confluence]
 spaces = ["ENG"]
+site = "https://<your-site>.atlassian.net"
 ```
 
 ```bash

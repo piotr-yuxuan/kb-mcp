@@ -1,27 +1,29 @@
 # Sign in with an API token kept by sops
 
 How to let `fetch` and `doctor` sign in with an Atlassian API token, rather than the
-browser session that `login atlassian` saves, with the token encrypted at rest by
+browser session that `login` saves, with the token encrypted at rest by
 [sops](https://getsops.io) and given to the command in its environment alone. It suits a
 machine where Chrome cannot open, or a test site with an account of its own.
 
 ## How the command takes a token
 
-- Three settings of the Atlassian account sign in by token: `site`, `email` and
-  `api_token`, under `[accounts.atlassian]`. The token is a secret, read from the
-  variable `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` alone: the settings file refuses it
+- Three settings of each Confluence or Jira source sign it in by token: `site`, `email`
+  and `api_token`, in its table, such as `[sources.jira]`. Each source signs in on its
+  own, so that two sources of two sites take two tokens; Confluence's and Jira's of one
+  site take the same one, given to each. The token is a secret, read from the source's
+  variable alone, such as `KB_MCP_SOURCES__JIRA__API_TOKEN`: the settings file refuses it
   and no flag takes it, so that it never reaches the file, your shell's history or a
-  command line. The email comes from `KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL` or the settings
-  file, the site from `KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, the settings file or `--site`.
+  command line. The email comes from `KB_MCP_SOURCES__JIRA__EMAIL` or the settings file,
+  the site from `KB_MCP_SOURCES__JIRA__SITE` or the settings file.
 - With a token set, `fetch`, its dry run and `doctor` sign in with it, as Basic auth
   with the email, sent to the site's host alone, never to another host that a redirect
   leads to. Nothing under `<data>/session/` is read or written. The echo before a
-  fetch says `sign-in: an API token`; `check` says `accounts.atlassian.api_token: set`,
-  never the value.
+  fetch says `source jira: signs in by an API token`; `check` says
+  `sources.jira.api_token: set`, never the value.
 - A token without its email is refused before anything is asked (exit 2); a token that
-  the site refuses stops the run (exit 3), naming the two variables to check.
-  `login atlassian` always signs in in the browser, and reports a token and an email as
-  ignored.
+  the site refuses ends that source's row (exit 3), naming the two variables to check.
+  `login jira` always signs in in the browser, and reports a token and an email as
+  ignored; `login` alone leaves a source that signs in by a token.
 - Generic names such as `ATLASSIAN_API_TOKEN` are never read, so that a token exported
   for another tool does not change how the command signs in.
 
@@ -52,28 +54,35 @@ says), for instance with `sops edit ~/secrets/atlassian.sops.json`, holding:
 `sops exec-env` decrypts the file in memory and puts each top-level key into the
 environment of the command it runs. These generic names, which other tools may read
 too, are mapped to the command's own in the next step; a file whose keys are already
-`KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, `KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL` and
-`KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` needs no mapping. A site already in the settings
-file, under `[accounts.atlassian]`, needs no key at all.
+each source's, such as `KB_MCP_SOURCES__JIRA__SITE`, `KB_MCP_SOURCES__JIRA__EMAIL` and
+`KB_MCP_SOURCES__JIRA__API_TOKEN`, needs no mapping. A site already in the settings file,
+in each source's table, needs no key at all.
 
 ## 3. Run the command through sops
 
 Check the sign-in first:
 
 ```bash
-sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
-  KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
-  KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
+sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_SOURCES__CONFLUENCE__SITE="$ATLASSIAN_SITE" \
+  KB_MCP_SOURCES__CONFLUENCE__EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_SOURCES__CONFLUENCE__API_TOKEN="$ATLASSIAN_API_TOKEN" \
+  KB_MCP_SOURCES__JIRA__SITE="$ATLASSIAN_SITE" \
+  KB_MCP_SOURCES__JIRA__EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_SOURCES__JIRA__API_TOKEN="$ATLASSIAN_API_TOKEN" \
   kb-mcp doctor --detail detailed'
 ```
 
-It says `sign-in: an API token`, then `confluence: signed in` and `jira: signed in`.
+It says `sign-in <name>.atlassian.net: an API token`, then `confluence: signed in` and
+`jira: signed in`.
 Then fetch:
 
 ```bash
-sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE" \
-  KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL="$ATLASSIAN_EMAIL" \
-  KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN="$ATLASSIAN_API_TOKEN" \
+sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_SOURCES__CONFLUENCE__SITE="$ATLASSIAN_SITE" \
+  KB_MCP_SOURCES__CONFLUENCE__EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_SOURCES__CONFLUENCE__API_TOKEN="$ATLASSIAN_API_TOKEN" \
+  KB_MCP_SOURCES__JIRA__SITE="$ATLASSIAN_SITE" \
+  KB_MCP_SOURCES__JIRA__EMAIL="$ATLASSIAN_EMAIL" \
+  KB_MCP_SOURCES__JIRA__API_TOKEN="$ATLASSIAN_API_TOKEN" \
   kb-mcp fetch --yes --space ENG --project PLAT --since 7d'
 ```
 
@@ -88,7 +97,7 @@ needs: where no terminal can answer, a command that writes is refused without it
 
 `prepare`, `index` and `embed` reach no site, and need no token. `prepare` reads the site's
 address all the same, for each document's `url` and the links between pages: keep it in the
-settings file, or give it by `--site`.
+settings file, or give it by its variable.
 
 ## Revoke the token
 
@@ -101,8 +110,9 @@ token signs in as you, wherever it is, until it expires.
    a new token in its place. The command keeps nothing of a token, in no file and in no
    log, so there is nothing else of it to remove.
 
-A run given the revoked token stops at its first request with exit status 3, and says
-`check KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL and KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN`.
+A run given the revoked token ends each source's row at its first request, exit status
+3, and says `check KB_MCP_SOURCES__JIRA__EMAIL and KB_MCP_SOURCES__JIRA__API_TOKEN`, of
+each source.
 Without a token in its environment, a run signs in by the session that `login` saved, if
 any.
 [Credentials](../explanation/credentials.md) explains where each secret goes.

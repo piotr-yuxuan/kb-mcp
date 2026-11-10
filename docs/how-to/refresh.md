@@ -10,20 +10,21 @@ vectors, for search by meaning. Nothing runs them for you, and no command runs a
 Each source is configured by its table in `~/.config/kb-mcp/config.toml`:
 
 ```toml
-[accounts.atlassian]
-site = "https://<your-site>.atlassian.net"
-
 [sources.confluence]
 spaces = ["ENG", "OPS"]
+site = "https://<your-site>.atlassian.net"
 
 [sources.jira]
 projects = ["PLAT"]
+site = "https://<your-site>.atlassian.net"
 
 [sources.worklog]
 path = "~/todo"  # absolute or under ~
 ```
 
-Confluence and Jira sign in with the Atlassian account, on its site. A table that names
+Confluence and Jira each sign in on their own site, which may be one; a second Jira site
+is a second source, such as `[sources.clientjira]` with `connector = "jira"`, its own
+projects and its own site. A table that names
 nothing (no space, no project, no folder) leaves its source out of `fetch`, and the work log
 out of `prepare`. The work log has its own guide: [add the work log](work-log.md).
 

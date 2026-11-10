@@ -47,11 +47,16 @@ INTERRUPTED = 130
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give each test a scratch home directory, and no waiting between requests."""
+    """Give each test a scratch home directory, no waiting between requests, and the sites.
+
+    Confluence's source and Jira's are of the scripted site.
+    """
     scratch = tmp_path / "home"
     scratch.mkdir()
     monkeypatch.setenv("HOME", str(scratch))
     monkeypatch.setattr(time, "sleep", lambda _: None)
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
     return scratch
 
 
@@ -67,12 +72,13 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
     Its space and project changed since 2 October: two pages, a blog post and an issue,
     with three files to keep, of which one fails, and a video, which is not kept.
     """
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "kb-mcp").resolve(),
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
-    return command(
-        home, "--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02"
-    )
+    return command(home, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
 
 
 def test_a_fetch_shows_what_it_fetched_by_kind_its_files_and_failures(
@@ -137,11 +143,14 @@ def test_each_source_is_fetched_alone_into_a_report_of_its_own(
     ``<time>-confluence.json`` and ``<time>-jira.json``, and neither counts anything of
     the other source's.
     """
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "kb-mcp").resolve(),
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
+    options = ("--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
     assert main(command(home, *options)) == SOME_FAILED
     paths = [url.path for url in fake.asked]
     jira = [at for at, path in enumerate(paths) if path.startswith("/rest/api/3/")]
@@ -175,14 +184,14 @@ def test_without_a_session_each_source_is_to_sign_in_before_any_request(
     """
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
+    options = ("--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == SIGN_IN_NEEDED
     rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
     assert rows == ["confluence: sign in again", "jira: sign in again"]
     needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
-        ("confluence", "run kb-mcp login atlassian"),
-        ("jira", "run kb-mcp login atlassian"),
+        ("confluence", "run kb-mcp login confluence"),
+        ("jira", "run kb-mcp login jira"),
     ]
     assert fake.asked == []
 
@@ -199,7 +208,7 @@ def test_a_stopped_fetch_says_why_in_short(
     failed = tuple(Problem(where=f"confluence pages {n}", reason="status 503") for n in range(5))
     stopped = Outcome(ending="failed", counts=FetchCounts(counts=Counter(counts)), problems=failed)
     monkeypatch.setattr(fetcher, "run_fetch", lambda *_: stopped)
-    assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
+    assert main(command(home, "--space", "MFS")) == SOME_FAILED
     assert capsys.readouterr().out == (
         "confluence: failed\n"
         "  confluence pages: fetched: 3\n"
@@ -279,17 +288,20 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
     assert [each["dry_run"] for each in (confluence, jira)] == [False, False]
 
 
-def test_a_fetch_without_a_site_is_refused_by_name(home: Path, capsys: CaptureFixture[str]) -> None:
-    """The site is named as the missing setting, by the error run.refused."""
+def test_a_fetch_without_a_site_is_refused_by_name(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The source's site is named as the missing setting, by the error run.refused."""
+    monkeypatch.delenv("KB_MCP_SOURCES__CONFLUENCE__SITE")
     assert main(command(home, "--space", "MFS", "--since", "7d")) == REFUSED
     err = capsys.readouterr().err
     assert said(err) == [("error", "run.refused")]
-    assert "site: not set" in err
+    assert "sources.confluence.site: not set" in err
 
 
 def test_a_fetch_of_nothing_is_refused(home: Path, capsys: CaptureFixture[str]) -> None:
     """Without a space or a project, there is nothing to do."""
-    assert main(command(home, "--site", SITE, "--since", "7d")) == REFUSED
+    assert main(command(home, "--since", "7d")) == REFUSED
     assert "nothing to fetch" in capsys.readouterr().err
 
 
@@ -299,7 +311,7 @@ def test_a_key_that_is_not_one_is_refused_by_the_options(
 ) -> None:
     """A space or project key is checked before anything runs."""
     with pytest.raises(SystemExit) as stopped:
-        main(command(home, "--site", SITE, option, value, "--since", "7d"))
+        main(command(home, option, value, "--since", "7d"))
     assert stopped.value.code == REFUSED
     assert "key" in capsys.readouterr().err
 
@@ -308,7 +320,7 @@ def test_a_period_that_ends_before_it_starts_is_refused(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """The option at fault is named, by the error fetch.refused, in the log file too."""
-    options = ("--site", SITE, "--space", "MFS", "--since", "2026-10-22", "--until", "2026-10-01")
+    options = ("--space", "MFS", "--since", "2026-10-22", "--until", "2026-10-01")
     assert main(command(home, *options)) == REFUSED
     err = capsys.readouterr().err
     assert ("error", "fetch.refused") in said(err)
@@ -322,12 +334,12 @@ def test_without_a_session_the_user_is_told_to_sign_in(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """No saved session: exit 3, and the command to run, by fetch.sign_in_needed."""
-    assert main(command(home, "--site", SITE, "--space", "MFS", "--since", "7d")) == SIGN_IN_NEEDED
+    assert main(command(home, "--space", "MFS", "--since", "7d")) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
     assert ("error", "fetch.sign_in_needed") in said(err)
-    assert "run kb-mcp login atlassian" in err
+    assert "run kb-mcp login confluence" in err
     (needed,) = logged_as(home, "fetch.sign_in_needed")
-    assert (needed["level"], needed["hint"]) == ("error", "run kb-mcp login atlassian")
+    assert (needed["level"], needed["hint"]) == ("error", "run kb-mcp login confluence")
 
 
 def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
@@ -337,11 +349,14 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 
     It is the warning fetch.scope_failed, which the run's log file holds too.
     """
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "kb-mcp").resolve(),
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
-    options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--detail", "detailed")
+    options = ("--space", "NOPE", "--since", "7d", "--detail", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
     assert ("warning", "fetch.scope_failed") in said(captured.err)
@@ -359,10 +374,13 @@ def test_a_dry_run_whose_space_finds_nothing_fails_and_exits_1(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """A dry run that finds a problem ends failed, not not run, so that its exit says so."""
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "kb-mcp").resolve(),
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite(spaces=[]).client())
-    options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--dry-run", "--format", "json")
+    options = ("--space", "NOPE", "--since", "7d", "--dry-run", "--format", "json")
     assert main(command(home, *options)) == SOME_FAILED
     (row,) = json.loads(capsys.readouterr().out)["sources"]
     assert (row["source"], row["ending"]) == ("confluence", "failed")
@@ -382,7 +400,7 @@ def test_ctrl_c_exits_130_and_says_which_source_it_stopped(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(fetcher, "run_fetch", interrupted)
-    options = ("--site", SITE, "--space", "MFS", "--project", "PRB", "--since", "7d")
+    options = ("--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == INTERRUPTED
     captured = capsys.readouterr()
     assert ("warning", "fetch.interrupted") in said(captured.err)
@@ -395,10 +413,13 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it, by an error."""
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "kb-mcp").resolve(),
+    )
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
-    options = ("--site", SITE, "--space", "MFS", "--since", "7d")
+    options = ("--space", "MFS", "--since", "7d")
     with RawStore(chosen.raw, "confluence").writing():
         assert main(command(home, *options)) == SOME_FAILED
     err = capsys.readouterr().err
@@ -522,7 +543,7 @@ def test_options_before_the_names_keep_their_values_with_no_question(
     """Plan 031, criterion 3: the file, the period, --yes and a source's name, in this order."""
     config = home / "mine.toml"
     config.write_text('[sources.confluence]\nspaces = ["MFS"]\n', "utf-8")
-    given = ("fetch", "--yes", "--config", str(config), "--site", SITE, "--since", "2026-10-02")
+    given = ("fetch", "--yes", "--config", str(config), "--since", "2026-10-02")
     assert main([*given, "confluence"]) == SOME_FAILED
     captured = capsys.readouterr()
     assert captured.out.startswith("confluence: failed\n")
@@ -565,7 +586,7 @@ def test_a_source_named_but_not_configured_is_refused_naming_its_setting(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Before anything is asked: exit 2."""
-    assert main(command(home, "--site", SITE, "--space", "MFS", "jira")) == REFUSED
+    assert main(command(home, "--space", "MFS", "jira")) == REFUSED
     assert "jira: not configured; set sources.jira.projects" in capsys.readouterr().err
 
 
@@ -578,7 +599,7 @@ def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left
         "run_fetch",
         lambda *_: Outcome(ending="done", counts=FetchCounts()),
     )
-    assert main(command(home, "--site", SITE, "--space", "MFS")) == 0
+    assert main(command(home, "--space", "MFS")) == 0
     captured = capsys.readouterr()
     assert captured.out.splitlines()[0] == "confluence: done"
     assert "jira:" not in captured.out

@@ -1,16 +1,16 @@
 """The registry of sources: their connectors, its rules, and the settings it composes.
 
-The expectations come from plan 030 and plan 056: the registry lists Confluence, Jira and
-the work log in name order, each a source of its connector, of its name; any registry
-that the entry is given is refused, naming the source, for a name off the rule,
-``assets``, a name declared twice, a second source of one connector, a name that a model
-holds, an account that two connectors name differently, no setting, neither fetcher nor
-preparer, settings that are not its table's, a scope type enumerated in a way that the
-help has no words for, or an option that is no flag, that another connector declares
-otherwise, or that is ``fetch``'s own; an option's value takes no name that the program
-holds; each connector names its table, whose settings are the connector's; Confluence
-and Jira sign in with one account, ``[accounts.atlassian]`` (question 1); and a source,
-or an account, that a registry leaves out has no setting (criterion 3).
+The expectations come from plan 030 and plan 056: the registry lists Confluence, Jira
+and the work log in name order, each a source of its connector, of its name; any
+registry that the entry is given is refused, naming the source, for a name off the rule,
+``assets``, a name declared twice, a name that a model holds, no setting, neither
+fetcher nor preparer, a login without a location, settings that are not its table's, a
+scope type enumerated in a way that the help has no words for, or an option that is no
+flag, that another connector declares otherwise, or that is ``fetch``'s own; an option's
+value takes no name that the program holds; each connector names its table, whose
+settings are the connector's; Confluence and Jira sources each hold their site and
+sign-in (plan 059); and a source that a registry leaves out has no setting (criterion
+3).
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from kb_mcp.cli.domain.sources import given
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
+from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA, LOGIN, SINCE
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, PAGE, SPACE
 from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, Source
@@ -141,8 +141,7 @@ def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     registry = sourced(replace(CONFLUENCE, scope_types=(spaces,)), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
-        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
-        '[sources.confluence]\nspaces = ["MFS"]\n',
+        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
         "utf-8",
     )
     data = tmp_path / "data"
@@ -194,16 +193,6 @@ def test_a_registry_with_a_source_that_names_no_setting_is_refused_naming_it(
             " ('path', 'archives'), not the settings named, ('archives', 'path')",
             id="the first setting another",
         ),
-        pytest.param(
-            sourced(
-                replace(CONFLUENCE, account=replace(ATLASSIAN, settings=("site",))),
-                replace(JIRA, account=replace(ATLASSIAN, settings=("site",))),
-                WORKLOG,
-            ),
-            "account 'atlassian': kb_mcp.sources.atlassian.settings:AtlassianAccountTable: holds"
-            " ('site', 'email', 'api_token'), not the settings named, ('site',)",
-            id="an account's",
-        ),
     ],
 )
 def test_a_registry_whose_settings_are_not_its_table_s_is_refused_naming_it(
@@ -223,7 +212,7 @@ def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source(
     """Refused as the model is composed: not a validation error of no source at a first read."""
     said = r"^sources\.memo: a setting without a default: folder$"
     with pytest.raises(TypeError, match=said):
-        settings_model({"memo": ("memo", Required)}, {})
+        settings_model({"memo": ("memo", Required)})
     memo = replace(
         WORKLOG, name="memo", settings=("folder",), table_path=f"{__name__}:{Required.__name__}"
     )
@@ -354,7 +343,7 @@ def test_an_option_takes_no_name_that_the_program_holds(
     assert arguments.command.name == "fetch"
     assert (arguments.dry_run, arguments.level, arguments.quiet) == (False, "warning", False)
     config = tmp_path / "config.toml"
-    config.write_text('[accounts.atlassian]\nsite = "https://x.atlassian.net"\n', "utf-8")
+    config.write_text('[sources.jira]\nsite = "https://x.atlassian.net"\n', "utf-8")
     command = [
         "fetch",
         "jira",
@@ -438,43 +427,28 @@ def test_a_flag_of_one_dash_and_a_letter_or_of_two_and_a_word_is_a_flag(flag: st
     refuse(declaring(Option(flag=flag, help="another")))
 
 
-def test_confluence_and_jira_sign_in_with_one_atlassian_account() -> None:
-    """Question 1's answer: its site, email and token, in ``[accounts.atlassian]``.
+def test_confluence_and_jira_sources_each_sign_in_by_their_own_site() -> None:
+    """Plan 059: each source's table holds its site, email and token; one login, one doctor.
 
     The work log, read in place, signs in with none.
     """
-    assert {each.name: each.connector.account for each in SOURCES} == {
-        "confluence": ATLASSIAN,
-        "jira": ATLASSIAN,
-        "worklog": None,
+    assert {
+        each.name: (each.connector.settings[1:], each.connector.location, each.connector.login)
+        for each in SOURCES
+    } == {
+        "confluence": (("site", "email", "api_token"), "site", LOGIN),
+        "jira": (("site", "email", "api_token"), "site", LOGIN),
+        "worklog": (("archives",), None, None),
     }
-    assert ATLASSIAN.name == "atlassian"
-    table = pkgutil.resolve_name(ATLASSIAN.table_path)
-    assert tuple(table.model_fields) == ("site", "email", "api_token")
 
 
-def test_a_registry_naming_one_account_differently_is_refused_naming_the_source(
+def test_a_connector_that_signs_in_without_a_location_is_refused_naming_it(
     tmp_path: Path,
 ) -> None:
-    """The sources that name an account share its table: two tables of one name are refused."""
-    other = replace(ATLASSIAN, table_path=WORKLOG.table_path)
-    registry = sourced(CONFLUENCE, replace(JIRA, account=other), WORKLOG)
-    with pytest.raises(
-        ValueError, match=r"^source 'jira': account 'atlassian' declared otherwise$"
-    ):
-        main(["check", "--config", str(tmp_path / "none.toml")], registry)
-
-
-def test_an_account_that_no_source_of_the_registry_names_has_no_setting(
-    tmp_path: Path, capsys: CaptureFixture[str]
-) -> None:
-    """Without Confluence and Jira, ``[accounts.atlassian]`` is refused; with them, read."""
-    config = tmp_path / "config.toml"
-    config.write_text('[accounts.atlassian]\nsite = "https://x.atlassian.net"\n', "utf-8")
-    assert main(["check", "--config", str(config)], sourced(WORKLOG)) == ExitStatus.REFUSED
-    assert "accounts.atlassian.site (config.toml): not a setting" in capsys.readouterr().err
-    assert main(["check", "--config", str(config)]) == ExitStatus.OK
-    assert capsys.readouterr().out == "accounts.atlassian.site: https://x.atlassian.net\n"
+    """Signing in reads its location: a login without one, or one off its settings, would not."""
+    for changed in (replace(JIRA, location=None), replace(JIRA, location="host")):
+        with pytest.raises(ValueError, match=r"^source 'jira': a location that is none of its"):
+            main(["check", "--config", str(tmp_path / "none.toml")], sourced(CONFLUENCE, changed))
 
 
 @pytest.mark.parametrize("left_out", ["worklog", "confluence"])
@@ -548,8 +522,7 @@ def test_a_fetcher_or_preparer_that_does_not_load_refuses_the_run_of_its_source(
     registry = sourced(replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
-        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
-        '[sources.confluence]\nspaces = ["MFS"]\n',
+        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
         "utf-8",
     )
     data = tmp_path / "data"
@@ -581,8 +554,7 @@ def test_a_role_whose_module_breaks_on_import_refuses_the_run_naming_the_path(
     registry = sourced(replace(CONFLUENCE, preparers=("kb_broken",)), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
-        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
-        '[sources.confluence]\nspaces = ["MFS"]\n',
+        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
         "utf-8",
     )
     given = ["prepare", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]

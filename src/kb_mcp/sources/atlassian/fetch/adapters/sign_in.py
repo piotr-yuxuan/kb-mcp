@@ -32,11 +32,13 @@ if TYPE_CHECKING:
 
 
 class SignIn(Protocol):
-    """A way to sign in to the site: what it is, a client for the site, what a run keeps.
+    """A way to sign in to a site: what it is, a client for the site, what a run keeps.
 
-    ``name`` says which it is, and ``again`` what the user does once the site refuses it.
+    ``site`` is where it signs in, ``name`` says which it is, and ``again`` what the user
+    does once the site refuses it.
     """
 
+    site: str
     name: str
     again: str
 
@@ -52,8 +54,8 @@ class SavedSession(Record):
 
     site: str
     folder: Path
+    again: str
     name: str = "the session saved by login"
-    again: str = "run kb-mcp login atlassian"
 
     def client(self) -> httpx.Client:
         """Return a client carrying the saved cookies; raise SignInNeededError if none are."""
@@ -74,11 +76,8 @@ class ApiToken(Record):
 
     site: str
     authorisation: str = Field(repr=False)
+    again: str
     name: str = "an API token"
-    again: str = (
-        f"check {variable(('accounts', 'atlassian', 'email'))}"
-        f" and {variable(('accounts', 'atlassian', 'api_token'))}"
-    )
 
     def client(self) -> httpx.Client:
         """Return a client that sends the header to the site's host, and to no other."""
@@ -99,18 +98,24 @@ class ApiToken(Record):
         """Keep nothing: the environment gives the token to each run."""
 
 
-def choose_sign_in(settings: Settings) -> SignIn:
-    """Sign in by the API token when one is set, else by the session that ``login`` saved.
+def choose_sign_in(settings: Settings, source: str) -> SignIn:
+    """Sign in by the source's API token when one is set, else by the session that ``login`` saved.
 
-    Either signs in as the Atlassian account, ``[accounts.atlassian]``, to its site. The
-    token goes with the account's email; the commands refuse a token without one before
-    they run, and the site would refuse it.
+    Either signs in as the account that the source's table, ``[sources.<source>]``, gives,
+    to its site. The token goes with the account's email; the commands refuse a token
+    without one before they run, and the site would refuse it.
     """
-    account = settings.accounts.atlassian
-    token = account.api_token
+    table = getattr(settings.sources, source)
+    token = table.api_token
     if token is None:
-        return SavedSession(site=str(account.site), folder=settings.session)
-    pair = f"{account.email or ''}:{token.get_secret_value()}"
+        again = f"run kb-mcp login {source}"
+        return SavedSession(site=str(table.site), folder=settings.session, again=again)
+    pair = f"{table.email or ''}:{token.get_secret_value()}"
     return ApiToken(
-        site=str(account.site), authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}"
+        site=str(table.site),
+        authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}",
+        again=(
+            f"check {variable(('sources', source, 'email'))}"
+            f" and {variable(('sources', source, 'api_token'))}"
+        ),
     )
