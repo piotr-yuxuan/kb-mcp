@@ -658,6 +658,38 @@ build, row for row, and ranks the golden questions alike
   answered by the user, aside, and its fourth too: `embed` warns of a mirror
   changed since the index, and goes on.
 
+## Chunks named by the concepts, in body offsets
+
+A chunk is the text that one vector stands for, and its range is given in offsets from
+the body's start, as every position in a body is; the index keeps chunks in the table
+`chunks`, and the sections' words in `section_words`
+([`CREATE`](../../src/kb_mcp/search/adapters/sqlite_index.py)). A ranking holds the chunk
+that placed each document by meaning
+([`Ranking`](../../src/kb_mcp/mcp/app/tools.py)); a document's section by words is found
+as a page or the reranker reads it
+([`snippet_of`](../../src/kb_mcp/mcp/app/tools.py)).
+
+- **Why.** One word and one coordinate system for each thing, as
+  [the concepts](../reference/concepts.md#section) define them: the conversion between
+  offsets within a section and within the body, in the query of the vectors and in
+  `windows`, went with the former names. Finding each document's section by words in the
+  ranking would cost a query of the words per document ranked, up to 5,000 per word.
+- **Cost.** One rebuild, at schema 7
+  ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
+  embeds nothing new: no text embedded changed, so `embed` finds every vector that
+  `vectors.sqlite` still holds. Until then the server refuses the index of 6; each
+  evaluation's index built before then holds every prune back, the vector cache growing
+  meanwhile, until `eval` rebuilds it or its folder is deleted. The results of `embed`
+  and `eval`, the event `index.chunk_refused`, the counter `kb_mcp.index.chunks` and
+  eval's `indexes` break the scripts and dashboards that read the former names
+  ([move to kb-mcp](../how-to/move-to-kb-mcp.md#8-what-runs-do-differently)). A search
+  keeps each chunk's section and range in columns beside the matrix of vectors, not as
+  a record per chunk, which would hold about 229 MB more for 200,000 chunks
+  ([`ChunkVectors`](../../src/kb_mcp/search/domain/search.py)).
+- **Rejected.** Keeping the former names, which the concepts retired; a record per chunk
+  in a search; the section by words held by the ranking, as above.
+- **Settled** by plan 054.
+
 ## Filters on the index as it is
 
 The filters of `search` and `ask`, the created range among them, are conditions on the

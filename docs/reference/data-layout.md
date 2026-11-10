@@ -729,10 +729,11 @@ cut the sections, and `aliases`, the digest of what the alias file meant
 built before them is served, rebuilt whole by the next `index`, and refused by `embed`
 until then. Schema 7 (054) gives the tables their names now: `chunks` was `pieces`, its
 column `end` was `stop`, and `section_words` was `chunks`; an index of 6 is rebuilt whole
-by the next `index`, and `embed` then finds every vector in the vector cache, no text
-embedded having changed. An index of another schema is refused, naming `prepare`, then
-`index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the index, as a new
-schema can come with a new format of the files; one cut by a chunking that this version
+by the next `index`, and `embed` then finds in the vector cache every vector that
+`vectors.sqlite` still holds, no text embedded having changed. An index of another schema
+is refused, naming `prepare`, then `index`, then `embed`: `prepare` writes the mirror
+again before `index` rebuilds the index, as a new schema can come with a new format of
+the files; one cut by a chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the
 index names, and only while the endpoint's fingerprint for it is the index's.

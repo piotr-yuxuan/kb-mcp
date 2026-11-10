@@ -203,6 +203,14 @@ the former name:
   embedding only what it lacks. `embed` before that `index` stops, exit 1, naming
   `kb-mcp index`, and leaves the index as it was. From then on, `index` reads only the
   files that changed, and writes nothing when none did.
+- **An index of schema 6 is rebuilt whole by the first `index`,** at schema 7, whose tables
+  are `chunks` and `section_words`. `kb-mcp index`, then `kb-mcp embed`, suffice:
+  the mirror's files did not change, so no `prepare` is needed, and `embed` takes every
+  chunk's vector back from `<data>/vectors.sqlite`, as no text embedded changed. Keep that
+  file in place: a deleted one costs a full embedding of the mirror. Each evaluated index
+  under `<data>/eval/indexes/` built at schema 6 holds every prune of the vector cache
+  back, `index.prune_skipped` saying so, until `eval` builds it again; or delete
+  `<data>/eval/indexes/`, which the next `eval` builds again.
 
 ## 9. The commands that moved
 
@@ -234,18 +242,24 @@ What reads a run's output follows:
   the documents held by type, their sections and the files skipped, then the documents
   `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
   when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,
-  why the index was rebuilt whole, if it was; its `model` and `pruned` are null. `embed`'s
-  result by meaning gives `index`, `model`, `chunks` and `documents`, those that the index
-  holds, `skipped`, the files that it lacks, `added` and `removed`, the chunks,
-  `embedded`, `found` and `refused`, `unchanged`, and `pruned`.
+  why the index was rebuilt whole, if it was; its `model` and `pruned` are null; its
+  `chunks` was `pieces` before schema 7. `embed`'s result by meaning gives `index`,
+  `model`, `chunks` (formerly `pieces`) and `documents`, those that the index holds,
+  `skipped`, the files that it lacks, `added` and `removed`, the chunks, `embedded`,
+  `found` and `refused`, `unchanged`, and `pruned`. `eval`'s result and results file
+  give each evaluated index under `indexes`, formerly `runs`, with its `costs.chunks`,
+  formerly `costs.pieces`; results files already written keep `runs`.
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
   `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,
   `prepare.` and `kb_mcp.prepare.`; `sync.` is gone, for each command's `start`, `source`,
   `interrupted`, `end` and `refused`. `fetch.interrupted` names the source that it stopped,
   where `download.interrupted` named the folder of the reports. The index's events, spans
-  and instruments keep their names, `index.` and `kb_mcp.index.`, under whichever command
-  writes the index, and `embed` adds its own, `embed.`, as
+  and instruments are named `index.` and `kb_mcp.index.`, under whichever command writes
+  the index; since schema 7, `index.piece_refused` is `index.chunk_refused`, the counter
+  `kb_mcp.index.pieces` is `kb_mcp.index.chunks`, of unit `{chunk}`, and the field
+  `pieces` of `index.built`, `embed.filled` and `embed.unchanged` is `chunks`. `embed`
+  adds its own events, `embed.`, as
   [its telemetry](../reference/telemetry/embed.md) lists them. Log files of the retired
   commands go after their 30 days, as every command's.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
