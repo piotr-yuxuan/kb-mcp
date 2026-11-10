@@ -873,8 +873,9 @@ role, name and identity, the rows of documents that link by `summary` last, so t
 their summaries' persons are known. The join reads the `summary` links that name a
 document of the same source, by its id, but for one that links by `summary` to a
 document of its source itself, as a file edited by hand may
-(`search.adapters.sqlite_index.SUMMARY_LINKS`); it refuses such a chain from another
-caller, as a programming error.
+(`search.adapters.sqlite_index.SUMMARY_LINKS`), and the build warns of each such one,
+`index.summary_chained`; it refuses such a chain from another caller, as a programming
+error.
 
 | Table or column | Holds |
 |---|---|

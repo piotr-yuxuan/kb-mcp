@@ -206,6 +206,7 @@ class JoinOutcome(Record):
     count: int = 0
     ambiguous: tuple[Ambiguity, ...] = ()
     unused: tuple[Alias, ...] = ()
+    chained: tuple[str, ...] = ()  # the paths of the summaries that summarise others too
 
 
 class Joining:

@@ -42,7 +42,7 @@ from kb_mcp.search.domain.people import (
     written_key,
 )
 from tests.endpoint import nothing_listening
-from tests.mirrors import PERSONS, write
+from tests.mirrors import PERSONS, worklog_document, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
 
@@ -1251,6 +1251,22 @@ def test_index_joins_two_identities_by_a_quoted_key_of_the_alias_file(
             "SELECT DISTINCT person FROM people WHERE identity IS NOT NULL AND name = 'Sam Sample'"
         )
         assert sams.fetchall() == [(SAM_2,)]
+
+
+def test_index_warns_of_each_summary_that_summarises_another_itself(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Two transcripts whose summaries link each other, as a hand-edited mirror may.
+
+    Neither is a summary, each warned of once by its path; the build exits 0.
+    """
+    paths = [
+        write(data / "docs", worklog_document("transcript", one, "Loop", ("Alex",), other))
+        for one, other in (("t-20261022-1", "t-20261022-2"), ("t-20261022-2", "t-20261022-1"))
+    ]
+    assert index(data, capsys)[0] == 0
+    chained = logged_as(data.parent / "home", "index.summary_chained")
+    assert [each["path"] for each in chained] == sorted(paths)
 
 
 @pytest.mark.parametrize(

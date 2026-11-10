@@ -296,10 +296,10 @@ COPY = (
     """,
 )
 # What the join reads: each row of people, with when its document was updated; and the
-# documents that each document's summary links name in its source, by rowid. A document
-# that links by summary to another of its source itself is named by none, as a file
-# edited by hand may hold: rule 4 needs the participants of each summary joined before
-# those that it summarises.
+# documents that each document's summary links name in its source, by rowid, with their
+# paths and whether each links by summary to another of its source itself, as a file
+# edited by hand may: such a one is no summary, as rule 4 needs the participants of
+# each summary joined before those that it summarises.
 # CROSS JOIN keeps SQLite's order, each document, its links, then the one linked by its
 # source and id, and so for the links of that one, so that the work grows with the
 # links, not with the square of one source's documents.
@@ -311,15 +311,14 @@ FROM people p JOIN documents d ON d.rowid = p.document
 # first row, and by rowid to whichever file was not edited last.
 BY_PATH = "SELECT rowid, row_number() OVER (ORDER BY path) FROM documents"
 SUMMARY_LINKS = """
-SELECT t.rowid, m.rowid
-FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
-WHERE json_extract(l.value, '$.relation') = 'summary'
-  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref')
-  AND NOT EXISTS (
+SELECT t.rowid, m.rowid, m.path, EXISTS (
     SELECT 1 FROM json_each(m.links) n CROSS JOIN documents o
     WHERE json_extract(n.value, '$.relation') = 'summary'
       AND o.source = m.source AND o.id = json_extract(n.value, '$.ref')
   )
+FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
+WHERE json_extract(l.value, '$.relation') = 'summary'
+  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref')
 """
 # A person's documents per role, then per source with the newest update, the most first.
 PERSON_ROLES = """
@@ -543,7 +542,8 @@ class Writer:
         Once the last document is added: every row of ``people`` is given its person, and
         ``persons`` and ``person_names`` hold each person and each of its spellings, with
         how it joined. A document's summaries are the documents of its source that its
-        ``summary`` links name, none of which links so to a document of its source.
+        ``summary`` links name, but those that link so to a document of their source,
+        which the outcome names.
         ``aliases`` gives each alias's name and value, as the alias file's reader checks
         them, and the build records their digest. Documents go to the join by the order
         of their paths, so that its ties go as in a whole build, whichever file was edited
@@ -566,8 +566,12 @@ class Writer:
             )
         }
         summaries: dict[int, set[int]] = {}
-        for document, summary in self._connection.execute(SUMMARY_LINKS):
-            summaries.setdefault(places[document], set()).add(places[summary])
+        chained: set[str] = set()  # the paths of those that summarise others themselves
+        for document, summary, path, summarises in self._connection.execute(SUMMARY_LINKS):
+            if summarises:
+                chained.add(path)
+            else:
+                summaries.setdefault(places[document], set()).add(places[summary])
         found = people.joined(rows.values(), summaries, aliases)
         self._connection.executemany(
             "UPDATE people SET person = ? WHERE rowid = ?",
@@ -586,7 +590,10 @@ class Writer:
             ],
         )
         return people.JoinOutcome(
-            count=len(found.persons), ambiguous=found.ambiguous, unused=found.unused
+            count=len(found.persons),
+            ambiguous=found.ambiguous,
+            unused=found.unused,
+            chained=tuple(sorted(chained)),
         )
 
     def update(self, change: Change, old: Path | None) -> Updated:
