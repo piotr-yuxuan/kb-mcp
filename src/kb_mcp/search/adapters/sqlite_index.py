@@ -30,7 +30,7 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
@@ -41,6 +41,7 @@ from kb_mcp.search.domain.indexes import (
     Skipped,
     UnavailableIndexError,
     Updated,
+    sources_digest,
 )
 from kb_mcp.search.domain.search import (
     WORDS,
@@ -107,6 +108,11 @@ CREATE TABLE documents (
 );
 CREATE INDEX documents_key ON documents (key);
 CREATE INDEX documents_id ON documents (id);
+CREATE TABLE types (
+  source TEXT NOT NULL, type TEXT NOT NULL, roles TEXT NOT NULL, PRIMARY KEY (source, type)
+);
+CREATE VIEW typed AS
+SELECT d.*, t.roles AS type_roles FROM documents d LEFT JOIN types t USING (source, type);
 CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
@@ -193,7 +199,7 @@ ORDER BY bm25(section_words, :title, :labels, :breadcrumb, :heading, :body), s.n
 # The documents of some paths and refs: each ref a key or id, alone or after its source.
 ENTRIES = """
 WITH refs AS (SELECT value AS ref, instr(value, ':') AS colon FROM json_each(:refs))
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE (d.path IN (SELECT value FROM json_each(:paths))
        OR d.rowid IN (
          SELECT e.rowid FROM refs r JOIN documents e
@@ -204,7 +210,7 @@ WHERE (d.path IN (SELECT value FROM json_each(:paths))
 ORDER BY d.path
 """
 RECENT = """
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 ORDER BY CASE WHEN :by = 'created' THEN d.created ELSE d.updated END DESC, d.updated DESC, d.path
 LIMIT :limit OFFSET :offset
@@ -214,7 +220,7 @@ SELECT count(*) FROM documents d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 """
 LISTING = """
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 ORDER BY d.path
 """
@@ -262,7 +268,7 @@ ORDER BY s.number
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
 # The documents that hold a section but no chunk: those that may await their vectors.
 UNFILLED = """
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE d.last_section >= d.first_section
   AND d.rowid NOT IN (SELECT s.document FROM chunks p JOIN sections s ON s.rowid = p.section)
 """
@@ -429,6 +435,7 @@ class Writer:
         self._next_section = 1
         self.embedded = embedded
         self.aliases = people.aliases_digest({})  # what the join read: no alias, yet
+        self.sources = sources_digest({})  # what the sources' files said: none, yet
         self.build = uuid.uuid4().hex  # unlike any other build
 
     def add(self, put: Put) -> int:
@@ -515,6 +522,21 @@ class Writer:
         first = self._next_section
         self._next_section += len(sections)
         return first
+
+    def describe(self, sources: Mapping[str, SourceFile]) -> None:
+        """Hold what the sources' files of the mirror say: the roles of each document type.
+
+        Called once a build; the build records their digest.
+        """
+        self.sources = sources_digest(sources)
+        self._connection.executemany(
+            "INSERT INTO types (source, type, roles) VALUES (?, ?, ?)",
+            [
+                (source, name, json.dumps(roles))
+                for source, said in sources.items()
+                for name, roles in said.roles.items()
+            ],
+        )
 
     def add_chunks(self, chunks: Iterable[tuple[int, int, int, str, bytes]]) -> None:
         """Add chunks: each its section's rowid, its range in the body, its vector.
@@ -637,6 +659,7 @@ class Writer:
                 taken.add(put.path)
         for each in skipped:
             self.skip(each)
+        self.describe(change.sources)
         persons = self.join(change.aliases)
         replaced = len(taken & held.keys())
         wanting = None if self.embedded is None else awaiting(connection, self.embedded.chunking)
@@ -724,6 +747,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
                     ("skipped", str(skipped)),
                     ("words", WORDS),
                     ("aliases", writer.aliases),
+                    ("sources", writer.sources),
                     ("build", writer.build),
                     ("model", embedded.model if embedded else ""),
                     ("fingerprint", embedded.fingerprint if embedded else ""),
@@ -737,7 +761,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
 
 
 def indexed_document(row: sqlite3.Row) -> IndexedDocument:
-    """Read a row of ``documents`` back into the front matter it was written from."""
+    """Read a row of ``typed`` back: the front matter it was written from, its type's roles."""
     front = FrontMatter(
         source=row["source"],
         type=row["type"],
@@ -770,7 +794,13 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         breadcrumb=tuple(json.loads(row["breadcrumb"])),
     )
     sections = row["last_section"] - row["first_section"] + 1
-    return IndexedDocument(path=row["path"], front=front, length=row["length"], sections=sections)
+    return IndexedDocument(
+        path=row["path"],
+        front=front,
+        length=row["length"],
+        sections=sections,
+        type_roles=tuple(json.loads(row["type_roles"] or "[]")),
+    )
 
 
 class Reader:
@@ -957,13 +987,21 @@ class Reader:
         """
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         if "words" not in meta:
-            return Held(build=meta["build"], words=None, aliases=None, documents={}, skipped={})
+            return Held(
+                build=meta["build"],
+                words=None,
+                aliases=None,
+                sources=None,
+                documents={},
+                skipped={},
+            )
         documents = self._connection.execute("SELECT path, digest FROM documents").fetchall()
         skipped = self._connection.execute("SELECT path, digest, reason FROM skipped")
         return Held(
             build=meta["build"],
             words=meta["words"],
             aliases=meta["aliases"],
+            sources=meta["sources"],
             documents=dict(documents),
             skipped={
                 path: Skipped(path=path, digest=digest, reason=reason)
@@ -979,7 +1017,7 @@ class Reader:
         bodies: dict[str, list[str]] = {}
         for path, text in self._connection.execute(BODIES):
             bodies.setdefault(path, []).append(text)
-        rows = self._connection.execute("SELECT * FROM documents ORDER BY path")
+        rows = self._connection.execute("SELECT * FROM typed ORDER BY path")
         return [
             IndexedBody(
                 path=row["path"],

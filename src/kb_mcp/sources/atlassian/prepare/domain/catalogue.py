@@ -19,7 +19,7 @@ from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER, RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Mention, document_id
+from kb_mcp.mirror.domain.mirror import FrontMatter, Mention, document_id
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
@@ -30,7 +30,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Page,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, ISSUE, PAGE, PROJECT, SPACE
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
@@ -38,6 +38,12 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.atlassian.fetch.domain.content import SiteUser, Snapshot
 
+# The roles that each document type takes, by its name, in the order of the roles.
+TYPE_ROLES = {
+    PAGE.name: ("author", "commenter"),
+    BLOGPOST.name: ("author", "commenter"),
+    ISSUE.name: ("author", "creator", "assignee", "commenter"),
+}
 # Keys that the documents of one scope type alone have, always: a space's, a project's.
 ONLY = {"version": SPACE, "key": PROJECT, "subtype": PROJECT}
 
@@ -50,8 +56,8 @@ class AtlassianFrontMatter(FrontMatter):
         """Refuse what the layout's table rules out for Confluence and Jira.
 
         A type of neither, a key that only another type has, a scope not of its type's
-        scope type or off its key's rule, a revision off ``REVISION``, and a participant,
-        a role of another source.
+        scope type or off its key's rule, a revision off ``REVISION``, and a role that its
+        type does not take.
         """
         if self.type not in {
             each.name for each in (*SPACE.document_types, *PROJECT.document_types)
@@ -70,8 +76,8 @@ class AtlassianFrontMatter(FrontMatter):
             raise RefusedError(message)
         require(scope_type.key, key, "scope")
         require(REVISION, self.revision, "revision")
-        if any(person.role == PARTICIPANT for person in self.people):
-            message = "people: a role of another source"
+        if any(person.role not in TYPE_ROLES[self.type] for person in self.people):
+            message = "people: a role that its type does not take"
             raise RefusedError(message)
         return self
 

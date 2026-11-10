@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.search.domain.search import Activity, IndexedDocument, IndexStatus, Passage
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
@@ -204,15 +203,15 @@ def roles(name: str, held: Sequence[tuple[str, int, datetime | None]]) -> str:
     return f"{short(name, LABEL)}: {', '.join(shown)}"
 
 
-def facts(front: FrontMatter) -> str:
+def facts(entry: IndexedDocument) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
-    Its subtype, its status unless current, its assignee (``unassigned`` for a document
-    with a key, an issue, with none), its author, its creator when named otherwise than its
-    author, and its created day, leaving out what it lacks.
+    Its subtype, its status unless current, its assignee (``unassigned`` for one of a
+    type that takes an assignee, and with none), its author, its creator when named
+    otherwise than its author, and its created day, leaving out what it lacks.
     """
-    # A stopgap: plan 057 decides it by the roles that the document's type takes.
-    unassigned = "unassigned" if front.key is not None else ""
+    front = entry.front
+    unassigned = "unassigned" if "assignee" in entry.type_roles else ""
     creator = front.creator
     shown = (
         short(front.subtype, LABEL) if front.subtype else "",
@@ -225,12 +224,13 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
-def dated(front: FrontMatter, held: str | None) -> str:
+def dated(entry: IndexedDocument, held: str | None) -> str:
     """Say when a ranked document was updated, what it is, and who holds it.
 
     ``held``, unless None, ends it: a person's roles there, as ``roles`` says them.
     """
-    return f"updated {stamp(front.updated)} | {facts(front)}" + (f" | {held}" if held else "")
+    when = f"updated {stamp(entry.front.updated)}"
+    return f"{when} | {facts(entry)}" + (f" | {held}" if held else "")
 
 
 def hit(
@@ -240,7 +240,7 @@ def hit(
     front = entry.front
     lines = [
         f"{number}. {short(front.title)}",
-        f"   {front.ref} | {entry.path} | {dated(front, held)}",
+        f"   {front.ref} | {entry.path} | {dated(entry, held)}",
     ]
     if front.breadcrumb:
         lines.append(f"   in {short(' / '.join(front.breadcrumb))}")
@@ -262,7 +262,7 @@ def passage(
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
         f"{number}. {short(front.title)} | {front.ref} | section"
-        f" {passage.number}{heading} | {dated(front, held)}"
+        f" {passage.number}{heading} | {dated(entry, held)}"
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.text}"
 

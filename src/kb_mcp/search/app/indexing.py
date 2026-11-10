@@ -35,6 +35,7 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters import markdown
+from kb_mcp.mirror.adapters.source_files import source_files
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
@@ -49,6 +50,7 @@ from kb_mcp.search.domain.indexes import (
     Skipped,
     UnavailableIndexError,
     Whole,
+    sources_digest,
 )
 from kb_mcp.search.domain.people import JoinOutcome, aliases_digest
 from kb_mcp.search.domain.search import WORDS, Chunk, Embedded, sections
@@ -58,6 +60,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.kernel.output import Detail
+    from kb_mcp.mirror.domain.mirror import SourceFile
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.domain.indexes import Held, IndexedBody, SearchIndex, WordsIndex
 
@@ -336,6 +339,7 @@ def build_index(
                     texts[key] = text
                 FILES.add(1, {"kb_mcp.outcome": "indexed"})
                 log.debug("index.document", path=path, type=front.type, sections=len(cut))
+        writer.describe(source_files(docs))
         report.persons = writer.join(aliases or {})
         if embedding is not None:
             with TRACER.start_as_current_span("index.embed"):
@@ -363,14 +367,19 @@ def build_index(
 
 
 def change_of(
-    files: Mapping[str, Path], held: Held | None, aliases: Mapping[str, str], built_at: datetime
+    files: Mapping[str, Path],
+    held: Held | None,
+    aliases: Mapping[str, str],
+    sources: Mapping[str, SourceFile],
+    built_at: datetime,
 ) -> Change | None:
     """Say what an update changes of an index that holds ``held`` of the mirror's ``files``.
 
     None when nothing changed: no file new, changed or gone, the same alias file, so the
-    same files skipped. Else the documents of files changed or gone are removed, and
-    every file new or changed is read, with every file skipped, as what kept one out may
-    be gone. With nothing held, the change is whole, every file read. The span
+    same files skipped, and the same ``sources``, the sources' files. Else the documents
+    of files changed or gone are removed, and every file new or changed is read, with
+    every file skipped, as what kept one out may be gone. With nothing held, the change
+    is whole, every file read. The span
     ``index.files`` and the task ``files`` hold the reading, ``index.document`` saying
     each document read, at DEBUG.
     """
@@ -378,7 +387,11 @@ def change_of(
     if held is not None:
         found = differences(digested(files), held)
         if not (
-            found.changed or found.added or found.removed or held.aliases != aliases_digest(aliases)
+            found.changed
+            or found.added
+            or found.removed
+            or held.aliases != aliases_digest(aliases)
+            or held.sources != sources_digest(sources)
         ):
             return None
         paths = found.changed | found.added | (held.skipped.keys() & files.keys())
@@ -402,6 +415,7 @@ def change_of(
         put=tuple(put),
         skipped=tuple(skipped),
         aliases=dict(aliases),
+        sources=dict(sources),
         built_at=built_at,
         whole=held is None,
     )
@@ -409,18 +423,22 @@ def change_of(
 
 def updated(
     path: Path,
-    files: Mapping[str, Path],
+    docs: Path,
     aliases: Mapping[str, str],
     built_at: datetime,
     whole: Whole | None,
 ) -> Outcome[IndexCounts]:
-    """Update the index at ``path`` to the mirror's files, or rebuild it whole; give its outcome.
+    """Update the index at ``path`` to the files of the mirror at ``docs``; give its outcome.
+
+    The documents' files and the sources' are read first: raises MirrorMissingError
+    without a mirror, and RepresentationError for a source's file that does not read.
 
     Whole when ``whole`` says why, or when there is no index that this version reads,
     one written by another ``WORDS`` or before it was recorded, or one damaged, which
     the copy too may find. Another run that wrote the index meanwhile starts the update
     again, once, ``index.restarted`` saying so, then raises ChangedMeanwhileError.
     """
+    files, sources = document_files(docs), source_files(docs)
     index: WordsIndex = sqlite_index.SqliteIndex(path)
     restarted = False
     while True:
@@ -435,7 +453,7 @@ def updated(
                 whole = "unavailable"
         if held is not None and held.words != WORDS:
             held, whole = None, "another version"
-        change = change_of(files, held, aliases, built_at)
+        change = change_of(files, held, aliases, sources, built_at)
         if change is None and held is not None and state is not None:  # nothing changed
             unchanged = IndexCounts(
                 index=path,
@@ -487,7 +505,8 @@ def update_index(
     The alias file is read first. Nothing changed, nothing is written; else the index
     takes the change aside, as ``WordsIndex.update`` says, or is rebuilt whole when it
     cannot be read, was written by another ``WORDS``, is damaged, or ``rebuild`` asks.
-    When the alias file is refused or cannot be read, there is no mirror, the index
+    When the alias file is refused or cannot be read, there is no mirror, a source's file
+    of the mirror does not read, the index
     cannot be written, its lock is held too long, or another run writes it at each
     attempt, the index in place stays, the outcome fails by a problem of that input, and
     ``index.not_built`` is an error. Each file skipped is a problem and a warning event,
@@ -498,12 +517,12 @@ def update_index(
     log = structlog.get_logger()
     try:
         aliases = read_aliases(indexing.aliases)
-        files = document_files(indexing.docs)
         whole = "--rebuild" if rebuild else None
-        outcome = updated(indexing.index, files, aliases, built_at, whole)
+        outcome = updated(indexing.index, indexing.docs, aliases, built_at, whole)
     except (
         MirrorMissingError,
         AliasFileError,
+        RepresentationError,
         ChangedMeanwhileError,
         OSError,
         sqlite3.OperationalError,

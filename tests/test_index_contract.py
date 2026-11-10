@@ -100,6 +100,7 @@ def change(
         put=tuple(put_of(document) for document in put),
         skipped=tuple(skipped),
         aliases={},
+        sources={},
         built_at=MOMENT,
         whole=whole,
     )

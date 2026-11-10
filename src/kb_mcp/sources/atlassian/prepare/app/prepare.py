@@ -34,6 +34,8 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
+from kb_mcp.mirror.domain.mirror import SourceFile
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
@@ -55,7 +57,7 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     RenderContext,
     normalise,
 )
-from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES, Catalogue, front_matter
 from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,
     confluence_path,
@@ -370,6 +372,16 @@ def prepare_atlassian(
         problems=len(problems),
     )
     wanted: dict[PurePosixPath, bytes | Path] = {**files}
+    if own:
+        # The source's file beside its documents: the roles that each of its types takes.
+        wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
+            SourceFile(
+                roles={
+                    each.document_type.name: TYPE_ROLES[each.document_type.name]
+                    for each in document_classes
+                }
+            )
+        )
     unsupported: Counter[str] = Counter()
     with TRACER.start_as_current_span("prepare.build"):
         with task(f"{source} documents", len(own)) as built:
@@ -412,7 +424,6 @@ def prepare_atlassian(
             except PandocFailedError as error:
                 at = f"{source}/spaces/{space.id}"
                 problems.append(Problem(where=at, reason=str(error)))
-    written = sum(1 for each in own if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
     with TRACER.start_as_current_span("prepare.write"):
@@ -445,7 +456,7 @@ def prepare_atlassian(
     )
     return Outcome.of(
         AtlassianCounts(
-            documents=written,
+            documents=sum(1 for each in own if each.path in wanted),
             converted=conversions.converted,
             reused=conversions.reused,
             changes=changes,

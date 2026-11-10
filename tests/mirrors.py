@@ -16,11 +16,14 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, time_revision
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES as ATLASSIAN_ROLES
 from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.worklog.prepare.domain.worklog import TYPE_ROLES as WORKLOG_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -44,6 +47,12 @@ LOREM = (
     "fermentum. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor."
 )
 FILLERS = 30
+# What each source's prepare writes beside its documents, as its connector declares it.
+DECLARED = {
+    "confluence": SourceFile(roles={name: ATLASSIAN_ROLES[name] for name in ("page", "blogpost")}),
+    "jira": SourceFile(roles={"issue": ATLASSIAN_ROLES["issue"]}),
+    "worklog": SourceFile(roles=WORKLOG_ROLES),
+}
 WORKLOG_FOLDERS = {
     "entry": "entries",
     "day": "days",
@@ -145,11 +154,17 @@ def location(front: FrontMatter) -> str:
 
 
 def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
-    """Write a document into the mirror at ``docs``; return its path relative to it."""
+    """Write a document into the mirror at ``docs``; return its path relative to it.
+
+    The file of its source, one of DECLARED, is written beside it too, as its prepare
+    writes it.
+    """
     path = location(front)
     text = f"# {front.title}\n\n{LOREM}\n" if body is None else body
     (docs / path).parent.mkdir(parents=True, exist_ok=True)
     (docs / path).write_text(dump(front, text), encoding="utf-8")
+    if front.source in DECLARED:
+        (docs / front.source / SOURCE_FILE).write_bytes(dumped(DECLARED[front.source]))
     return path
 
 

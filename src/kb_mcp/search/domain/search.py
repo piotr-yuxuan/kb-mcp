@@ -292,12 +292,13 @@ class Filters(Record):
 
 
 class IndexedDocument(Record):
-    """A document as the index holds it."""
+    """A document as the index holds it, with the roles that its type takes, if declared."""
 
     path: str  # relative to <data>/docs, with /
     front: FrontMatter
     length: int  # characters of the body
     sections: int
+    type_roles: tuple[str, ...] = ()
 
 
 class Passage(Record):

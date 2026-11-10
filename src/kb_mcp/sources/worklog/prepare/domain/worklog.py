@@ -60,9 +60,14 @@ ARCHIVED = "archive"
 ORG = ".org"
 # A document's revision: a digest of what pandoc converts, and how.
 WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
-# The roles of the work log's documents, which hold no other: a meeting's participants
-# and a transcript's speakers.
-WORKLOG_ROLES = frozenset({PARTICIPANT})
+# The roles that each type of the work log's documents takes: a meeting's participants
+# and a transcript's speakers; an entry and a day name nobody.
+TYPE_ROLES = {
+    ENTRY_TYPE: (),
+    DAY_TYPE: (),
+    MEETING_TYPE: (PARTICIPANT,),
+    TRANSCRIPT_TYPE: (PARTICIPANT,),
+}
 # The keys of the front matter that Confluence or Jira fills, and the work log never.
 NOT_FILLED = ("key", "subtype", "parent", "version")
 # The relations of a meeting to its transcript, and of a transcript to each meeting
@@ -163,7 +168,8 @@ class WorklogFrontMatter(FrontMatter):
 
         A type not the work log's, a scope other than its source's one, ``folder:<source>``,
         a key that it never fills, an id off its type's rule, so that a day never bears a
-        meeting's, a revision off ``WORKLOG_REVISION``, and a role of another source.
+        meeting's, a revision off ``WORKLOG_REVISION``, and a role that its type does not
+        take.
         """
         if self.type not in WORKLOG_TYPES:
             message = "type: not one of the work log's types"
@@ -177,8 +183,8 @@ class WorklogFrontMatter(FrontMatter):
             raise RefusedError(message)
         require(WORKLOG_TYPES[self.type].id_rule, self.id, "id")
         require(WORKLOG_REVISION, self.revision, "revision")
-        if any(person.role not in WORKLOG_ROLES for person in self.people):
-            message = "people: a role of another source"
+        if any(person.role not in TYPE_ROLES[self.type] for person in self.people):
+            message = "people: a role that its type does not take"
             raise RefusedError(message)
         return self
 

@@ -34,7 +34,8 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, document_id
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, SourceFile, document_id
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -43,6 +44,7 @@ from kb_mcp.sources.worklog.prepare.domain.layout import worklog_globs, worklog_
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     TODO,
     TODO_ARCHIVE,
+    TYPE_ROLES,
     WorklogDocument,
     WorklogFrontMatter,
     held_back,
@@ -336,6 +338,9 @@ def prepare_worklog(
         ).encode()
         for path, (matter, body) in ready.items()
     }
+    if ready:
+        # The source's file beside its documents: the roles that each of its types takes.
+        wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(SourceFile(roles=TYPE_ROLES))
     retired = moved((matter.id for matter, _ in ready.values()), placed)
     with TRACER.start_as_current_span("worklog.write"):
         changes = write_changed(
@@ -347,14 +352,14 @@ def prepare_worklog(
         )
     log.info(
         "worklog.end",
-        documents=len(wanted),
+        documents=len(ready),
         written=changes.written,
         unchanged=changes.unchanged,
         removed=changes.removed,
         problems=len(problems),
     )
     return Outcome.of(
-        WorklogCounts(documents=len(wanted), changes=changes, html=read.html, held_back=held),
+        WorklogCounts(documents=len(ready), changes=changes, html=read.html, held_back=held),
         problems,
         read.warnings,
     )

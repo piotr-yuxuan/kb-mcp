@@ -16,11 +16,13 @@ it.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.mirror.domain.mirror import FrontMatter, SourceFile
 from kb_mcp.search.domain.people import JoinOutcome
 from kb_mcp.search.domain.search import Chunk, Section
 
@@ -83,12 +85,19 @@ class IndexedBody(Record):
     body: str
 
 
+def sources_digest(sources: Mapping[str, SourceFile]) -> str:
+    """Give the digest of what the sources' files of the mirror say, by source, in order."""
+    said = {name: sources[name].model_dump(mode="json") for name in sorted(sources)}
+    return hashlib.sha256(json.dumps(said).encode()).hexdigest()
+
+
 class Held(Record):
     """What a words index holds of the mirror's files: what an update compares them with."""
 
     build: str
     words: str | None  # the ``search.WORDS`` of the code that wrote it; None if unrecorded
     aliases: str | None  # what the alias file meant, as ``people.aliases_digest`` gives it
+    sources: str | None  # what the sources' files said, as ``sources_digest`` gives it
     documents: dict[str, str]  # each document's path, and its file's digest
     skipped: dict[str, Skipped]  # each file skipped, by path
 
@@ -99,13 +108,15 @@ class Change(Record):
     The documents of ``removed`` go, those of ``put`` come, replacing any of their path,
     and the index holds no other skipped file than those of ``skipped`` and those that
     two of one source and id leave out. A ``whole`` update keeps nothing of the index in
-    place. Persons are joined again over every document, through ``aliases``.
+    place. Persons are joined again over every document, through ``aliases``, and the
+    index holds what ``sources``, every source's file of the mirror, say, and no more.
     """
 
     removed: frozenset[str]  # the paths of documents to remove
     put: tuple[Put, ...]
     skipped: tuple[Skipped, ...]
     aliases: dict[str, str]  # each alias's name and value, in the file's order
+    sources: dict[str, SourceFile]  # by source
     built_at: datetime
     whole: bool = False
 

@@ -73,6 +73,11 @@ work log's. A connector is a [`Connector`](../../src/kb_mcp/sources/declaration.
 [`Connector.location`](../../src/kb_mcp/sources/declaration.py), and its sign-in
 [`Connector.login`](../../src/kb_mcp/sources/declaration.py) and
 [`Connector.checks`](../../src/kb_mcp/sources/declaration.py).
+The roles that each document type takes are Confluence's and Jira's
+[`TYPE_ROLES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) and the
+work log's [`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
+which each prepare writes into its source's file of the mirror, a
+[`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py), for the index.
 
 ### source
 

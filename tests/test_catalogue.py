@@ -225,7 +225,12 @@ def test_a_front_matter_of_a_source_of_any_name_keeps_confluence_s_and_jira_s_ru
         (
             LEAF,
             {"people": (Mention(role="participant", name="A Person"),)},
-            r"^people: a role of another source$",
+            r"^people: a role that its type does not take$",
+        ),
+        (
+            LEAF,
+            {"people": (Mention(role="assignee", name="A Person"),)},
+            r"^people: a role that its type does not take$",
         ),
     ],
 )

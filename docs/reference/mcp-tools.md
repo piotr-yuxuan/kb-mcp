@@ -43,7 +43,8 @@ says why.
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
 with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref, such as `jira:PRB-12`,
 path and update time, then what the document has of its subtype, such as an issue's type, its status
-unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
+unless `current`, `assignee <name>` (`unassigned` for a document of a type that takes an assignee, as
+its connector declares, such as an issue, with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
 otherwise than its author, and `created <day>`, such as
 `Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-01`.

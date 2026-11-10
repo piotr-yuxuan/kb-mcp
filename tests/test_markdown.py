@@ -12,7 +12,8 @@ import yaml
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped, source_files
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -647,3 +648,38 @@ def test_the_documents_are_every_markdown_file_but_assets_and_hidden_names(
         "worklog/transcripts/t-20261020-1-stand-up.md",
         "x.md",
     ]
+
+
+def test_each_source_s_file_reads_back_by_its_folder_and_a_source_without_one_has_none(
+    tmp_path: Path,
+) -> None:
+    """``_source.json`` of each source's folder, by the folder's name; no document is it."""
+    declared = SourceFile(roles={"issue": ("author", "assignee"), "page": ()})
+    (tmp_path / "jira").mkdir()
+    (tmp_path / "jira" / SOURCE_FILE).write_bytes(dumped(declared))
+    (tmp_path / "memo").mkdir()
+    assert source_files(tmp_path) == {"jira": declared}
+    assert list(documents(tmp_path)) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("{", "not JSON"),
+        ('{"roles": {}, "as_of": {}}', "keys other than roles"),
+        ('{"roles": {"issue": ["reviewer"]}}', "roles: not of the roles"),
+        ('{"roles": {"issue": ["assignee", "author"]}}', "roles: not of the roles, or out"),
+        ('{"roles": {"Issue": []}}', "roles: does not match"),
+        ('{"roles": {"issue": "author"}}', r"roles\.issue: expected a list"),
+    ],
+)
+def test_a_source_s_file_off_its_format_names_it_and_prepare(
+    tmp_path: Path, text: str, reason: str
+) -> None:
+    """Refused by its path, with what is wrong and the command that writes it again."""
+    (tmp_path / "jira").mkdir()
+    (tmp_path / "jira" / SOURCE_FILE).write_text(text, encoding="utf-8")
+    with pytest.raises(
+        RepresentationError, match=rf"^jira/_source\.json.*{reason}.*kb-mcp prepare"
+    ):
+        source_files(tmp_path)

@@ -20,11 +20,14 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
+from kb_mcp.mcp.app.responses import facts
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
 from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
+from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
@@ -62,9 +65,10 @@ WORDS = "Words of the leaf page."
 DOCUMENTS = {"confluence": 3, "jira": 1}
 # A conversion for each document's file, and Confluence's for the space's tree.
 CONVERSIONS = {"confluence": 4, "jira": 1}
-# Each source's files: its documents, Confluence's tree, and the file that its documents
-# attach, the leaf's image and the blog post's being one, the issue's another.
-FILES = {"confluence": 5, "jira": 2}
+# Each source's files: its documents, Confluence's tree, the file that its documents
+# attach, the leaf's image and the blog post's being one, the issue's another, and its
+# source's file.
+FILES = {"confluence": 6, "jira": 3}
 
 
 def listing_page(
@@ -262,7 +266,9 @@ def test_the_mirror_writes_exactly_the_layouts_paths(sandbox: Sandbox) -> None:
         "confluence/MFS/300-leaf.md",
         "confluence/MFS/blog/600-news.md",
         "confluence/MFS/_tree.md",
+        "confluence/_source.json",
         "jira/PRB/PRB-1.md",
+        "jira/_source.json",
         f"assets/{digest(IMAGE)}.png",
         f"assets/{digest(OTHER_IMAGE)}.png",
     }
@@ -343,6 +349,21 @@ def test_an_issue_breadcrumb_climbs_its_parents_in_the_store(sandbox: Sandbox) -
     sandbox.run(sources=("jira",))
     issue, _ = load(sandbox.text("jira/PRB/PRB-1.md"), "issue")
     assert issue.breadcrumb == ("Epic", "Ideas")
+
+
+def test_an_issue_without_assignee_is_unassigned_and_a_page_is_not(sandbox: Sandbox) -> None:
+    """Plan 057, criterion 6: by the roles that each type takes, as its prepare wrote them.
+
+    PRB-1 has no assignee, and an issue takes one; a page takes none, so says nothing of it.
+    """
+    sandbox.run()
+    build_index(sandbox.docs, sandbox.data / "index.sqlite", FETCHED)
+    with reading(sandbox.data / "index.sqlite") as reader:
+        issue, leaf = (reader.indexed_documents(refs=[ref])[0] for ref in ("PRB-1", "300"))
+    assert "assignee" in issue.type_roles
+    assert facts(issue).split(" | ")[2] == "unassigned"
+    assert "unassigned" not in facts(leaf)
+    assert leaf.type_roles == ("author", "commenter")
 
 
 def test_without_a_site_no_address_is_absolute(sandbox: Sandbox) -> None:
@@ -818,7 +839,11 @@ def test_jira_alone_links_confluence_s_pages_and_writes_its_own_files_alone(
     """
     outcomes = crossed.run(sources=("jira",))
     assert each(outcomes, lambda outcome: outcome.problems) == {"jira": ()}
-    assert set(crossed.files()) == {"jira/PRB/PRB-1.md", f"assets/{digest(IMAGE)}.png"}
+    assert set(crossed.files()) == {
+        "jira/PRB/PRB-1.md",
+        "jira/_source.json",
+        f"assets/{digest(IMAGE)}.png",
+    }
     _, body = load(crossed.text("jira/PRB/PRB-1.md"), "issue")
     assert "[the leaf](../../confluence/MFS/300-leaf.md)" in body
 

@@ -331,6 +331,7 @@ nothing in them depends on when they were prepared.
 <data>/docs/worklog/days/<id>.md                     a work-log day
 <data>/docs/worklog/meetings/<id>.md                 a work-log meeting
 <data>/docs/worklog/transcripts/<id>-<slug>.md       a work-log transcript
+<data>/docs/<source>/_source.json                    a source's file, beside its documents
 ```
 
 - The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
@@ -440,14 +441,18 @@ people:
 | `participant` | someone at a work-log meeting, as its `:PARTICIPANTS:` names them, or a speaker of a transcript (042) |
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
-commenter and each participant once by name and identity. `participant` is the work
-log's one role
-(`sources.worklog.prepare.domain.worklog.WORKLOG_ROLES`), which no other source's
-documents hold, so that no document names people of both kinds. `load` refuses any
+commenter and each participant once by name and identity. Each connector declares the roles that each of its document types takes, in the order
+of the roles, and its front matter's check refuses any other
+(`sources.atlassian.prepare.domain.catalogue.TYPE_ROLES`,
+`sources.worklog.prepare.domain.worklog.TYPE_ROLES`): a page and a blog post take
+`author` and `commenter`, an issue every role but `participant`, a work-log meeting
+and transcript `participant` alone, and an entry and a day none, so that no document
+names people of both kinds. Each prepare writes them into its source's file of the
+mirror, [below](#a-sources-file). `load` refuses any
 other role, a field other than these or out of their order, a `null`, an empty `at` and
 any other broken rule of one entry, naming the entry, such as `people[1]`; and a second
-author, creator or assignee, a commenter or a participant twice, a role of another
-source, or people out of the order of the roles, naming `people`. Names are
+author, creator or assignee, a commenter or a participant twice, a participant beside
+another role, or people out of the order of the roles, naming `people`. Names are
 kept as written, never normalised, merged or masked: a colleague renamed between two
 fetches appears under two names, with one identity, which the index alone joins into
 one person ([persons](#persons)). `FrontMatter.author`,
@@ -691,6 +696,31 @@ transcript, the word-by-word record. The MCP server says so to agents in its
 instructions, and its `source` filter says it of entries and transcripts; `read` opens a
 document by its id.
 
+### A source's file
+
+Each source's prepare writes, beside its documents, `<source>/_source.json`
+(`mirror.adapters.source_files`, from a `mirror.domain.mirror.SourceFile`), so that what
+its connector declares reaches the index through the mirror alone, as nothing past the
+mirror decides by a source's name. It is written with the source's documents, and none
+when it has none; its name begins with `_`, so that no reader takes it for a document.
+
+```json
+{
+  "roles": {
+    "issue": ["author", "creator", "assignee", "commenter"]
+  }
+}
+```
+
+| Key | Value |
+|---|---|
+| `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
+
+`index` reads every source's file at each run (`source_files`); a file that is not JSON,
+or holds other keys or values, stops it, naming the file and `kb-mcp prepare`, which
+writes it again. A source without one, such as a mirror not yet prepared since the
+upgrade, declares nothing: its documents say no `unassigned`.
+
 ### Reading the mirror from another program
 
 Another program may read the mirror's files, such as a search engine of your own
@@ -776,8 +806,13 @@ document id; an index of 8 is rebuilt whole by the next `index`, which reads a f
 plan 058's front matter as `mirror.adapters.markdown.load` says, and `embed` then finds
 in the vector cache every vector whose chunk's text is unchanged, the breadcrumb of an
 issue, in the context prefix of the chunkings `section-paths` and `small-to-big`, being
-the titles along its parents once `prepare` has written its file again. An index of
-another schema is refused, naming `prepare`, then
+the titles along its parents once `prepare` has written its file again. Schema 9 also
+holds what the sources' files of the mirror say ([above](#a-sources-file)): the table
+`types`, each source's document type with the roles that it takes, as JSON, written
+whole at each build and update; the view `typed`, each document with its type's roles;
+and the meta row `sources`, their digest (`search.domain.indexes.sources_digest`), so
+that a change of a source's file alone is an update. An index of another schema is
+refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
 index, as a new schema can come with a new format of the files; one of schema 6, 7 or 8,
 whose files this version reads as they are, naming `index`, then `embed`; one cut by a
@@ -789,10 +824,11 @@ index names, and only while the endpoint's fingerprint for it is the index's.
 ### Updates
 
 `index` (`search.app.indexing.update_index`) reads the alias file first, then digests
-every file of the mirror, the SHA-256 of its bytes, and compares them with what the
-index holds (`search.adapters.sqlite_index.Reader.held`): each document's path and
-digest, each file skipped, and the meta rows `words`, `aliases` and `build`. With no
-file added, changed or gone, and the same alias file, it writes nothing,
+every file of the mirror, the SHA-256 of its bytes, reads the sources' files, and
+compares them with what the index holds (`search.adapters.sqlite_index.Reader.held`):
+each document's path and digest, each file skipped, and the meta rows `words`,
+`aliases`, `sources` and `build`. With no file added, changed or gone, the same alias
+file and the same sources' files, it writes nothing,
 `index.unchanged`, and the index keeps its bytes and its `build`. Else it reads the
 files added or changed, and each file skipped again, as what kept it out may be gone,
 before it takes any lock; then it writes a new file beside the index, named by

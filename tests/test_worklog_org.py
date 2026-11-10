@@ -1013,7 +1013,11 @@ ENTRY_MATTER = WorklogFrontMatter(
         {"type": "day", "id": "d-20261028"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up--2"},
-        {"people": (Mention(role="participant", name="A Person"),)},
+        {
+            "type": "transcript",
+            "id": "t-20261020-1",
+            "people": (Mention(role="participant", name="A Person"),),
+        },
     ],
 )
 def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, object]) -> None:
@@ -1036,7 +1040,11 @@ def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, ob
         ({"type": "meeting", "id": "m-20261027-"}, r"^id: does not match"),
         ({"type": "meeting", "id": "m-20261027-" + "a" * 65}, r"^id: does not match"),
         ({"type": "meeting", "id": "m-2026-10-27-stand-up"}, r"^id: does not match"),
-        ({"people": (Mention(role="author", name="A Person"),)}, r"^people: a role of another"),
+        ({"people": (Mention(role="author", name="A Person"),)}, r"^people: a role that its type"),
+        (
+            {"people": (Mention(role="participant", name="A Person"),)},
+            r"^people: a role that its type does not take$",
+        ),
         ({"revision": "000003"}, r"^revision: does not match"),
         ({"scope": "space:MFS"}, r"^scope: not the source's one scope$"),
         ({"version": 3}, r"^version: never the work log's$"),

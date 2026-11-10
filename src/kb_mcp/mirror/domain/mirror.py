@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Self
 
@@ -72,6 +73,26 @@ class Mention(Record):
         ):
             message = "at: a time not in UTC, or out of order"
             raise RefusedError(message)
+        return self
+
+
+class SourceFile(Record):
+    """What a source's file of the mirror says beside its documents.
+
+    ``roles`` gives each of the source's document types, by name, the roles that its
+    documents take, in the order of ROLES, as its connector declares them.
+    """
+
+    roles: Mapping[str, tuple[str, ...]]
+
+    @model_validator(mode="after")
+    def check_source_file(self) -> Self:
+        """Refuse a type off TYPE_NAME, and a role not in ROLES, given twice or out of order."""
+        for name, roles in self.roles.items():
+            require(TYPE_NAME, name, "roles")
+            if not set(roles) <= set(ROLES) or list(roles) != sorted(set(roles), key=ROLES.index):
+                message = "roles: not of the roles, or out of their order"
+                raise RefusedError(message)
         return self
 
 
