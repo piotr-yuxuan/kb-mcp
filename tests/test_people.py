@@ -852,12 +852,25 @@ def test_aliases_of_identities_are_not_chained() -> None:
     ]
 
 
-def test_an_alias_of_an_identity_that_no_mention_holds_is_reported() -> None:
-    """It changes nothing, and says that no mention holds that identity."""
-    result = joined(ACCOUNTS, {}, {"atlassian:acct-0009": "Robin Example"})
-    assert [(alias.key, alias.reason) for alias in result.unused] == [
-        ("atlassian:acct-0009", UNOWNED)
-    ]
+@pytest.mark.parametrize(
+    ("written", "key", "reason"),
+    [
+        ("atlassian:acct-0009", "atlassian:acct-0009", UNOWNED),
+        ("team:ops", "team:ops", UNHELD),
+        ("Team: Ops", "team: ops", UNHELD),
+    ],
+    ids=["a known issuer's", "no issuer's", "a name with a colon"],
+)
+def test_an_alias_of_an_identity_that_no_mention_holds_is_reported(
+    written: str, key: str, reason: str
+) -> None:
+    """It changes nothing, saying that no mention holds that identity when its issuer is one.
+
+    The known issuers are those of the mentions' identities and the Atlassian
+    connectors'; any other line is a name that no name without an identity has.
+    """
+    result = joined(ACCOUNTS, {}, {written: "Robin Example"})
+    assert [(alias.key, alias.reason) for alias in result.unused] == [(key, reason)]
     assert replace(result, unused=()) == joined(ACCOUNTS, {}, {})
 
 

@@ -159,16 +159,17 @@ class Alias(Record):
     value: str = Field(serialization_alias="target")  # a name, an identity or a person's id
     means: Meant  # the person its value names, several, or nobody
     held: bool  # whether a name without an identity has its key, or a mention its identity
+    # Why it changes nothing, where the line alone cannot say: an identity of a known
+    # issuer that no mention holds. Not written in ``index``'s JSON.
+    why: str | None = Field(default=None, exclude=True)
 
     @property
     def reason(self) -> str | None:
-        """Say why the alias changes nothing, or None when it joins its names.
-
-        One written as an identity, which no mention holds, says so rather than that no
-        name has its key.
-        """
+        """Say why the alias changes nothing, or None when it joins its names."""
+        if self.why is not None:
+            return self.why
         if not self.held:
-            return UNOWNED if IDENTITY.fullmatch(self.name) else UNHELD
+            return UNHELD
         if self.means is None:
             return NOBODY
         return SEVERAL if isinstance(self.means, Ambiguity) else None
@@ -249,6 +250,8 @@ class Joining:
             for row in each
             if row.identity is not None
         }
+        # The issuers of the mentions' identities, and the Atlassian connectors'.
+        self.issuers = {each.partition(":")[0] for each in self.owned} | {ATLASSIAN_ISSUER}
         # The name keys that names, of an identity or not, write with two annotations or more.
         self.split = {
             key
@@ -309,7 +312,9 @@ class Joining:
             )
         key = name if name in self.owned else name_key(name)
         held = name in self.owned or key in self.alone
-        return Alias(name=name, key=key, value=value, means=means, held=held)
+        issued = IDENTITY.fullmatch(name) and name.partition(":")[0] in self.issuers
+        why = UNOWNED if issued and not held else None
+        return Alias(name=name, key=key, value=value, means=means, held=held, why=why)
 
     def compared_key(self, name: str) -> str:
         """Give the key by which the join compares a name, and a name alone's id hashes.
