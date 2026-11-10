@@ -325,9 +325,10 @@ class Fetching:
         """List a space whole, store its listings, and fetch what changed in its window.
 
         And what joined it since its stored listing, whatever its update time, as a page
-        moved in keeps its own, with what joined before and is not stored yet; a space
-        never listed before has none. The listing is stored once its documents are
-        fetched, with the joined that are still not stored, which the next run takes. An
+        moved in keeps its own, with what joined before and is not stored whole yet; a
+        space never listed before has none. Joined is by every listed entry's id, one that
+        the adapter refuses among them. The listing is stored once its documents are
+        fetched, with the joined that this run did not store whole, which the next takes. An
         entry that the adapter refuses has no update time: it leaves the space's coverage
         inexact, so that the next run asks for its whole period again. The task
         ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
@@ -353,30 +354,28 @@ class Fetching:
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
+            # By id alone, as the last listing is read: an entry refused for its other
+            # fields still names its document, which is then not absent, or joins.
+            listed = {
+                Page: confluence_v2.entry_ids(pages),
+                BlogPost: confluence_v2.entry_ids(posts),
+            }
+            entries = listed[Page] | listed[BlogPost]
             joined: set[str] = set()
             if self.store.was_listed(space.id):
                 named = {
                     i for each in CONFLUENCE_CLASSES for i in self.store.listed_ids(space.id, each)
                 }
-                joined = {each.id for each in documents} - named | self.store.pending(space.id)
+                joined = (entries - named | self.store.pending(space.id)) & entries
             if not self.plan:
-                # By id alone, as the last listing is read: an entry refused for its other
-                # fields still names its document, which is then not absent.
-                listed = {
-                    Page: confluence_v2.entry_ids(pages),
-                    BlogPost: confluence_v2.entry_ids(posts),
-                }
                 self.track(scope, space.id, listed)
                 folders = self.folders(pages)
-            self.fetch_listed(scope, documents, window, joined)
+            whole = self.fetch_listed(scope, documents, window, joined)
             if len(documents) < len(pages) + len(posts):
                 self.first_failed.setdefault(scope, window.period.start)
             if not self.plan:
-                pending = {each.id for each in documents if each.id in joined} - {
-                    each.id for each in documents if self.store.has(each)
-                }
                 # Pending first: a run that stops between keeps the former listing.
-                self.store.put_pending(space.id, pending)
+                self.store.put_pending(space.id, joined - whole)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
             return True
 
@@ -548,10 +547,11 @@ class Fetching:
         documents: Sequence[Listed],
         window: FetchWindow,
         joined: Collection[str] = frozenset(),
-    ) -> None:
+    ) -> set[str]:
         """Fetch what a scope lists in its window and the raw store lacks; complete what it has.
 
-        A document that ``joined`` names, by id, is taken as if in the window.
+        A document that ``joined`` names, by id, is taken as if in the window. Return the
+        ids of those taken and stored whole, all in a plan.
         ``fetch.listed`` says at INFO how many documents the scope lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.
         The counts hold, by type, those in the window and those stored when --since gave
@@ -592,15 +592,16 @@ class Fetching:
             for what, each in counted.items()
             for document in each
         )
-        failed = [each.updated for each in stored if not (self.plan or self.complete(each))]
+        done = {each: self.plan or self.complete(each) for each in stored}
         with task("documents", len(to_fetch)) as fetching:
-            failed += [
-                document.updated
+            done |= {
+                document: self.fetch_document(document)
                 for document in fetching.each(to_fetch, lambda listed: listed.id)
-                if not self.fetch_document(document)
-            ]
+            }
+        failed = [each.updated for each, whole in done.items() if not whole]
         if failed:
             self.first_failed[scope] = min(failed)
+        return {each.id for each, whole in done.items() if whole}
 
     def count_files(self, entries: Iterable[object], period: Period) -> None:
         """Count the files, and their bytes, that a run would download for these issues.

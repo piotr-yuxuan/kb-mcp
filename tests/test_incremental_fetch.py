@@ -268,6 +268,26 @@ def test_a_former_tombstone_of_a_space_not_yet_listed_is_found_by_its_whole_read
     assert (stone.scope, stone.id, stone.first_gone) == (MFS, "1009", FIRST)
 
 
+def test_a_joined_entry_that_the_adapter_refuses_comes_once_it_reads_without_an_edit(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Joined by its entry's id, refused, it stays pending: read unedited, it comes.
+
+    The space is exact only after the run that stores it.
+    """
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(listing=without("1003")), first_week(["MFS"], []), FIRST)
+    versionless = {key: value for key, value in PAGES["1003"].items() if key != "version"}
+    refused = RefreshSite(listing={**PAGES, "1003": versionless})
+    assert run(chosen, monkeypatch, refused, catch_up(["MFS"], []), SECOND) == "failed"
+    store = RawStore(chosen.raw, "confluence")
+    assert (store.pending(SPACE), store.coverage().exact) == ({"1003"}, frozenset())
+    later = SECOND + timedelta(hours=1)
+    assert run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), later) == "done"
+    assert stored_pages(chosen)["1003"] == "000003"
+    assert (store.pending(SPACE), store.coverage().exact) == (set(), {MFS})
+
+
 def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

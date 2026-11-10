@@ -736,6 +736,39 @@ def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None
     assert not [url for url in again.asked if url.path.startswith("/wiki/api/v2/pages/")]
 
 
+def test_a_joined_page_whose_file_failed_stays_pending_until_its_file_comes(
+    tmp_path: Path,
+) -> None:
+    """Stored but not whole, it is still joined: the next run downloads its file.
+
+    The stored listing lacks the page, so it joined; the window starts after its update.
+    Its space has a failure after the first run alone.
+    """
+    store = RawStore(tmp_path / "raw", "confluence")
+    with store.writing():
+        store.put_space(v2_space(), [PAGES["1002"], PAGES["1003"]], [POSTS["1101"]], [])
+    span = Period(datetime(2026, 10, 21, tzinfo=UTC), NOW)
+    runs = []
+    for fake in (FakeSite(media_fails=True), FakeSite()):
+        with fake.client() as client, store.writing():
+            done = Fetching(
+                SiteClient(client, sleep=no_sleep),
+                store,
+                CAP,
+                lambda: NOW,
+                windows=given(span, ["MFS"], []),
+            )
+            done.run(scopes(["MFS"], []))
+        runs.append((store.pending(SPACE), scopes(["MFS"], [])[0] in done.first_failed))
+    assert runs == [({"1001"}, True), (set(), False)]
+    [fresh] = [
+        item
+        for item in store.latest(Page)
+        if isinstance(item, StoredSnapshot) and item.snapshot.document.id == "1001"
+    ]
+    assert fresh.blobs["att1"]
+
+
 def test_a_second_run_downloads_no_file_again(tmp_path: Path) -> None:
     """Posts and issues already stored, with their files, cost no request but listings."""
     store = RawStore(tmp_path / "raw", "confluence")
