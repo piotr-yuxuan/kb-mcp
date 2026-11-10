@@ -91,12 +91,12 @@ def run(
 
 
 def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
-    """Write each run's measures, each model's choice of chunking, then the results file.
+    """Write each evaluated index's measures, each model's chunking, then the results file.
 
-    Short gives each run's row of all the questions, mode by mode, for search and for
+    Short gives each index's row of all the questions, mode by mode, for search and for
     ask, and its costs; detailed, its tables of every group and the tests of each mode
     against words. Both end with each model's default chunking by the rule, and its
-    tests against the control. Lexical search's rows come with the first run alone.
+    tests against the control. Lexical search's rows come with the first index alone.
     """
     choices = [
         line
@@ -115,13 +115,19 @@ def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
     if summary == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"
     lines = []
-    for run in evaluated.indexes:
-        modes = [mode for mode in run.groups if mode != "lexical" or run is evaluated.indexes[0]]
-        lines += [heading(run), "", built(run), "", HEADER, DIVIDER]
-        lines += [row(mode, "all", run.groups[mode]["all"], run.times[mode]) for mode in modes]
+    for measures in evaluated.indexes:
+        modes = [
+            mode
+            for mode in measures.groups
+            if mode != "lexical" or measures is evaluated.indexes[0]
+        ]
+        lines += [heading(measures), "", built(measures), "", HEADER, DIVIDER]
+        lines += [
+            row(mode, "all", measures.groups[mode]["all"], measures.times[mode]) for mode in modes
+        ]
         lines += ["", ASK_HEADER, ASK_DIVIDER]
         lines += [
-            ask_row(mode, "all", run.asked_groups[mode]["all"], run.ask_times[mode])
+            ask_row(mode, "all", measures.asked_groups[mode]["all"], measures.ask_times[mode])
             for mode in modes
         ]
         lines.append("")
