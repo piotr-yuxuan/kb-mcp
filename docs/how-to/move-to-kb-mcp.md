@@ -210,10 +210,21 @@ the former name:
   text embedded changed. Keep that file in place: a deleted one costs a full embedding of
   the mirror. Each evaluated index under `<data>/eval/indexes/` built at schema 6 holds
   every prune of the vector cache back, `index.prune_skipped` saying so, until `eval`
-  builds it again: run `kb-mcp eval --model <model>` for each model evaluated before,
-  which takes its vectors from the cache. Deleting `<data>/eval/indexes/` instead is not
-  free: the next prune deletes the vectors that only those indexes read, and the next
-  `eval` embeds them again.
+  builds it again. For each `<data>/eval/indexes/<chunking>/<model>.sqlite`, run
+  `kb-mcp eval <golden file> --model <model> --chunking <chunking>`, the model's name
+  read from the index's meta row, as the file's name writes its `/` and `:` as `_`:
+
+  ```bash
+  sqlite3 <data>/eval/indexes/<chunking>/<model>.sqlite \
+    "SELECT value FROM meta WHERE name = 'model'"
+  ```
+
+  One run may take several `--chunking` for one model's chunkings, but `--model` and
+  `--chunking` cross: every model given is evaluated in every chunking given. Only the
+  pairs evaluated before take their vectors from the cache; any other chunking is
+  embedded anew. Deleting `<data>/eval/indexes/` instead is not free: the next prune
+  deletes the vectors that only those indexes read, and the next `eval` embeds them
+  again.
 
 ## 9. The commands that moved
 
