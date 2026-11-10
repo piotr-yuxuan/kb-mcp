@@ -302,6 +302,11 @@ What reads a run's output follows:
   `eval`'s result and results file give each evaluated index under `indexes`, formerly
   `runs`, with its `costs.chunks`, formerly `costs.pieces`; results files already
   written keep `runs`.
+- **`login` and `doctor`.** `login`'s result is a list, a row per site signed in, each
+  with its `site` and `session`, the site's folder `<data>/session/<host>/`, where it was
+  one object naming `<data>/session/`. `doctor`'s checks of a site are `tls <host>` once,
+  then for each source `sign-in <source>` and one named after the source, `confluence` or
+  `jira` by default, where they were `tls`, `sign-in`, `confluence` and `jira`.
 - **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
   cache", where they said "vector store".
 - **Endings.** A row says `sign in again` where it said `sign in`. The events
@@ -333,8 +338,9 @@ What reads a run's output follows:
   that `summary` links name but that have summaries themselves, as does `index.built`.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
-- **`doctor`.** A machine with no Confluence or Jira source whose site or scopes are set gets the machine's
-  checks alone, exit 0, where it failed `site: not set`.
+- **`doctor`.** A machine with no Confluence or Jira source whose site or scopes are set
+  gets the machine's checks alone, exit 0, where it failed `site: not set`; one whose
+  source has scopes and no site is refused, exit 2, naming the setting.
 
 ## 10. Check again
 
