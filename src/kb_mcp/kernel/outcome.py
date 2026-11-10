@@ -37,7 +37,7 @@ class Outcome[C](Record):
 
     ``counts`` is None for a unit that gave none: one that could not start, or that an
     interruption reached; else a record whose ``text`` writes it, short or detailed. A
-    problem ends its unit failed.
+    problem ends its unit failed, a dry run's too: never done nor not run.
     """
 
     ending: Ending
@@ -47,9 +47,11 @@ class Outcome[C](Record):
 
     @model_validator(mode="after")
     def check_outcome(self) -> Self:
-        """Refuse an outcome done with a problem."""
-        if self.ending == "done" and self.problems:
-            message = f"ending done with {len(self.problems)} problems: a problem fails its unit"
+        """Refuse an outcome done or not run with a problem."""
+        if self.ending in {"done", "not run"} and self.problems:
+            message = (
+                f"ending {self.ending} with {len(self.problems)} problems: a problem fails its unit"
+            )
             raise RefusedError(message)
         return self
 

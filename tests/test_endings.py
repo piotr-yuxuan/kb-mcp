@@ -13,6 +13,8 @@ from itertools import product
 import pytest
 
 from kb_mcp.kernel.exit_status import ExitStatus, folded
+from kb_mcp.kernel.names import RefusedError
+from kb_mcp.kernel.outcome import Outcome, Problem
 
 # Each ending and its status, most severe first, as the page lists them.
 SEVERITY = (
@@ -48,3 +50,20 @@ def test_a_run_s_own_ending_folds_into_its_status(ending: str, status: int) -> N
     """The run's own endings go through the same fold as its units'."""
     assert folded([ending]) == status
     assert folded([ending, "done"]) == status
+
+
+# A problem's place and reason, as fetch gives one.
+PROBLEM = Problem(where="space MFS", reason="not found")
+
+
+@pytest.mark.parametrize("ending", ["done", "not run"])
+def test_an_outcome_done_or_not_run_with_a_problem_is_refused(ending: str) -> None:
+    """A problem ends its unit failed, a dry run's too."""
+    with pytest.raises(RefusedError, match=f"^ending {ending} with 1 problems"):
+        Outcome(ending=ending, problems=(PROBLEM,))
+
+
+@pytest.mark.parametrize("ending", ["failed", "sign in again", "interrupted"])
+def test_an_outcome_that_did_not_end_well_may_hold_problems(ending: str) -> None:
+    """Failed, to sign in again or interrupted, a unit says what it left undone."""
+    assert Outcome(ending=ending, problems=(PROBLEM,)).problems == (PROBLEM,)
