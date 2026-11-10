@@ -328,3 +328,17 @@ def test_the_options_that_went_are_refused_saying_what_took_their_place(
         main([*given, "--config", str(tmp_path / "none.toml")])
     assert stopped.value.code == ExitStatus.REFUSED
     assert said in capsys.readouterr().err
+
+
+def test_an_empty_variable_of_a_source_that_the_settings_do_not_name_is_ignored(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Review round 1: as any empty variable, said ignored; refused once it holds a value."""
+    monkeypatch.setenv("KB_MCP_SOURCES__TRACKER__SITE", "")
+    assert main(["check", "--config", str(tmp_path / "none.toml")]) == ExitStatus.OK
+    assert "ignored: KB_MCP_SOURCES__TRACKER__SITE: names no setting\n" in capsys.readouterr().err
+    monkeypatch.setenv("KB_MCP_SOURCES__TRACKER__SITE", SITE)
+    assert main(["check", "--config", str(tmp_path / "none.toml")]) == ExitStatus.REFUSED
+    assert "sources.tracker (KB_MCP_SOURCES__TRACKER__SITE): not a source" in (
+        capsys.readouterr().err
+    )

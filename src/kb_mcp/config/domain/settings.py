@@ -783,8 +783,8 @@ def environment_entries(
     Each variable of the prefix is first scanned by the paths of the model's settings,
     without regard to case, as pydantic-settings reads it. One that names no setting, at
     any depth, or that is empty, is ignored, since other tools and versions share the
-    environment; but one under ``sources`` of a source that the model does not hold,
-    even empty, is refused, as ``refuse_not_a_source`` says. A table is a JSON object, a
+    environment; but one under ``sources`` of a source that the model does not hold, not
+    empty, is refused, as ``refuse_not_a_source`` says. A table is a JSON object, a
     list a JSON array: else SettingsError names the variable, never its value, where
     pydantic-settings would name none. So it does
     for two variables of one setting, or of a table and of a path inside it:
@@ -803,7 +803,8 @@ def environment_entries(
     for name in sorted(name for name in environ if name.lower().startswith(PREFIX.lower())):
         path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
         kind = paths.get(path)
-        refuse_not_a_source(path, name, model)
+        if environ[name]:
+            refuse_not_a_source(path, name, model)
         if kind is None or not environ[name]:
             setting = None if kind is None else ".".join(path)
             ignored.append(
