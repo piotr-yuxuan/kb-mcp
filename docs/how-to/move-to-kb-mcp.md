@@ -247,6 +247,7 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 | `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
 | `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
 | `login` | `login atlassian` |
+| `--summary short` or `--summary detailed` | `--detail short` or `--detail detailed`; `--summary` is refused, exit 2 |
 
 A script that wants search by meaning ends with `index`, then `embed`, never with
 `prepare && embed`: `embed` reads the index, not the mirror, so a page that `prepare`
@@ -271,6 +272,10 @@ What reads a run's output follows:
   formerly `costs.pieces`; results files already written keep `runs`.
 - **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
   cache", where they said "vector store".
+- **Endings.** A row says `sign in again` where it said `sign in`. The events
+  `fetch.source` and `prepare.source` give `ending` where they gave `outcome`, their spans
+  `kb_mcp.ending` where they had `kb_mcp.outcome`, and a run report `ending` where it held
+  `status`, the exit status; the dashboards read the new attribute.
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
   `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,

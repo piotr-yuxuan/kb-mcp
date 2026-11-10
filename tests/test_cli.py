@@ -591,6 +591,13 @@ def test_the_detail_is_no_longer_called_summary(capsys: CaptureFixture[str]) -> 
     assert "unrecognized arguments: --summary=short" in capsys.readouterr().err
 
 
+def test_the_former_detail_option_spaced_from_its_value_is_refused_too() -> None:
+    """``fetch --summary detailed``, as scripts wrote it, exits 2, whatever the parser reads."""
+    with pytest.raises(SystemExit) as stopped:
+        parser().parse_args(["fetch", "--summary", "detailed"])
+    assert stopped.value.code == BAD_SETTINGS
+
+
 def test_check_quiet_prints_nothing_but_still_its_document(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
