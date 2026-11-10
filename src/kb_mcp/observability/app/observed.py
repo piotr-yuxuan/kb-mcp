@@ -54,10 +54,8 @@ RUN_DURATION = metrics.get_meter(__name__).create_histogram(
 class Invocation(Record):
     """What a run is asked to do: its command, by name, and what ``run.start`` says of it.
 
-    ``described`` holds the command line's fields, such as the arguments and the
-    settings. A ``dry_run`` only says what it would do; a run that is not ``traced`` is
-    no trace of its own, such as a server's, each of whose requests is one. The
-    program's ``commands``, by name, are those whose log files past 30 days the run
+    A run that is not ``traced`` is no trace of its own, such as a server's, each of
+    whose requests is one. ``commands`` names those whose log files past 30 days the run
     removes from its folder: none by default.
     """
 
@@ -105,37 +103,13 @@ def observed(
     endpoint: str | None,
     invocation: Invocation,
 ) -> Iterator[Run]:
-    """Observe a run as ``invocation`` has it: its logs on stderr at its level, and in a file.
+    """Observe a run as ``invocation`` has it, yielding a ``Run`` whose status the body sets.
 
-    Its events go through the standard library, as ``route_through_logging`` has them,
-    never to stdout, and stay so after it; within ``early``, which puts structlog back,
-    it replaces early's stderr while it lasts. The run's id, 16 random hex digits, is
-    made first, so that a run without a file has one too. Stderr is drawn at
-    ``output``'s level, through a console that is a terminal as ``output`` says. The
-    file, ``log_file``'s in ``folder``, holds all from DEBUG, under the run's id; a
-    folder that cannot be written gives one warning, ``log.unwritable``, and no file.
-    The run then writes ``run.start``: the version, the invocation's ``described``, the
-    log file, if any, and the telemetry endpoint, if any. It ends with ``run.end``, its
-    status as the body set it, or ``run.interrupted`` by Ctrl-C, or ``run.failed`` with
-    the exception's traceback; each says how many seconds it lasted. The run's status
-    is then ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the interruption or the
-    exception goes no further.
-
-    On a terminal, unless -q, the tasks' progress is drawn on stderr as bars, and their
-    events ``progress`` are kept off it; elsewhere, these events show it from -v.
-    ``serve`` reports no task, so it draws no bar.
-
-    With an ``endpoint``, the run's traces, metrics and logs from INFO are sent there,
-    as ``exporting`` has it, from before ``run.start`` to after ``run.end``; one that
-    does not take a connection gives one warning, ``telemetry.undelivered``, and the run
-    goes on without. Without, the SDK is not even imported: what the run traces and
-    measures goes nowhere.
-
-    A ``traced`` run is one trace, whose root span, named after the command, holds
-    ``run.start``, ``run.end`` and all that the body traces. It says the command
-    (``kb_mcp.command``), whether the run is a ``dry_run`` (``kb_mcp.dry_run``) and its exit
-    status (``kb_mcp.exit_status``). Each run, traced or not, records how long it lasted in
-    ``kb_mcp.run.duration``, by command and exit status.
+    Ctrl-C or an exception in the body goes no further: the status becomes
+    ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``. A ``folder`` that cannot be
+    written, or an ``endpoint`` that takes no connection, gives one warning and the run
+    goes on without. Within ``early``, it replaces early's stderr while it lasts. The
+    events, fields, spans and metrics: docs/reference/telemetry/README.md.
     """
     route_through_logging()
     root = logging.getLogger()
