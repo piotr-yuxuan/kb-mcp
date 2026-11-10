@@ -26,7 +26,7 @@ from kb_mcp.search.app.meaning import Meaning, Nearest
 from kb_mcp.search.domain.search import Filters, Matched, Score, plan_query
 from tests.answers import parts
 from tests.endpoint import DIGEST, URL, Scripted, connect_scripted, scripted, tiny
-from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.mirrors import MOMENT, fillers, issue, location, page, write
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -525,3 +525,32 @@ def test_a_ranking_holds_the_chunk_of_each_document_that_meaning_placed(
     assert sections[RUNBOOK] == 1
     assert sections[mixed] == (3 if mode == "semantic" else 2)
     assert sections[PROJ_7] == 1
+
+
+def test_each_ranked_document_shows_its_chunk_s_section_else_its_words_else_the_first(
+    tmp_path: Path,
+) -> None:
+    """Plan 054, criterion 5, each case on a section other than the first where they differ.
+
+    For "PROJ-9 PROJ-8 notes" in hybrid: the page that meaning alone finds shows the section of
+    the chunk that placed it, its second; the issue named, pinned, its best section by
+    words, its second too; the other issue named, whose sections hold no word of the
+    query, its first.
+    """
+    docs = tmp_path / "docs"
+    fillers(docs)
+    placed, named, other = page("4100", "Placed"), issue("PROJ-9", "Kafka"), issue("PROJ-8", "Zoo")
+    write(docs, placed, "# Placed\n\n## One\n\nalpha\n\n## Two\n\nbeta gamma\n")
+    write(docs, named, "# Kafka\n\n## Notes\n\nnotes here\n\n## Other\n\nnothing\n")
+    write(docs, other, "# Zoo\n\n## Animals\n\ngiraffes\n")
+    build_index(docs, tmp_path / "index.sqlite", MOMENT, Embedding(tiny(), tmp_path / "v.db"))
+    with reading(tmp_path / "index.sqlite") as reader:
+        start, end = reader.bounds(location(placed))[1]
+    ordered = Ordered([(location(placed), 2, start, end)])
+    tools = Library(SqliteIndex(tmp_path / "index.sqlite"), docs, ordered, "hybrid")
+    shown = {each.path: each.section for each in tools.ranked("PROJ-9 PROJ-8 notes", "hybrid")[0]}
+    assert {path: shown[path] for path in map(location, (placed, named, other))} == {
+        location(placed): 2,
+        location(named): 2,
+        location(other): 1,
+    }
