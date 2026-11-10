@@ -869,9 +869,10 @@ name, else its most frequent spelling; ties go to the first row in the join's or
 document, in the order of their paths' text whichever file was written last, then
 role, name and identity, the rows of documents that link by `summary` last, so that
 their summaries' persons are known. The join reads the `summary` links that name a
-document of the same source, by its id, which links by `summary` itself to none, as a
-file edited by hand may (`search.adapters.sqlite_index.SUMMARY_LINKS`); it refuses such
-a chain from another caller, as a programming error.
+document of the same source, by its id, but for one that links by `summary` to a
+document of its source itself, as a file edited by hand may
+(`search.adapters.sqlite_index.SUMMARY_LINKS`); it refuses such a chain from another
+caller, as a programming error.
 
 | Table or column | Holds |
 |---|---|

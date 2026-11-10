@@ -838,11 +838,41 @@ def test_attendance_joins_by_summary_links_in_any_source(data: Path) -> None:
     assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
 
 
+def test_a_summary_whose_own_summary_is_not_mirrored_still_joins_by_attendance(
+    data: Path,
+) -> None:
+    """A summary link to no document of the mirror makes no chain: rule 4 still joins.
+
+    The notes page links by ``summary`` to a page not mirrored, which names nothing:
+    the recording's Robin joins the notes' Robin Example, as without that link.
+    """
+    summary = page(
+        "400001",
+        "Retro notes",
+        people=(Mention(role="participant", name="Robin Example"),),
+        links=(Link(relation="summary", ref="999999"),),
+    )
+    summarised = page(
+        "400002",
+        "Retro recording",
+        people=(Mention(role="participant", name="Robin"),),
+        links=(Link(relation="summary", ref="400001"),),
+    )
+    for front in (summary, summarised):
+        write(data / "docs", front)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with reading(data / "index.sqlite") as reader:
+        activity = reader.person(anchored("name\nrobin example"))
+    assert activity is not None
+    assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
+
+
 def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
     persons: Path,
 ) -> None:
     """The join reads each transcript's links, then each meeting by its key.
 
+    And so each of that meeting's own links, ``o``, which keep it from being a summary.
     Its work then grows with the links, where a search of a source's documents for each
     of a source's documents grows with their square: a build of 20,000 issues took
     tens of seconds so.
@@ -852,10 +882,11 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
             f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARY_LINKS}"
         ).fetchall()
     steps = [row[3] for row in plan_query]
-    meeting = [step for step in steps if step.startswith(("SCAN m", "SEARCH m "))]
-    assert len(meeting) == 1
-    assert meeting[0].startswith("SEARCH m USING ")
-    assert meeting[0].endswith("(source=? AND id=?)")
+    for table in ("m", "o"):
+        found = [step for step in steps if step.startswith((f"SCAN {table}", f"SEARCH {table} "))]
+        assert len(found) == 1
+        assert found[0].startswith(f"SEARCH {table} USING ")
+        assert found[0].endswith("(source=? AND id=?)")
 
 
 def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:
