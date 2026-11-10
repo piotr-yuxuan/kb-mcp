@@ -16,15 +16,20 @@ if TYPE_CHECKING:
 
 
 def signing(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[Source, ...]:
-    """Give the sources that ``login`` signs in: the one named, else each configured one.
+    """Give the sources that ``login`` signs in: the one named, else each one in use.
 
-    Each of a connector that signs in, in the sources' order.
+    Each of a connector that signs in, in the sources' order; one is in use when its
+    first setting, what it covers, or its location is set.
     """
     return tuple(
         each
         for each in arguments.sources
         if each.connector.login is not None
-        and (each.name == arguments.source if arguments.source else settings[each.paths[0]])
+        and (
+            each.name == arguments.source
+            if arguments.source
+            else settings[each.paths[0]] or settings[each.path(each.connector.location)]
+        )
     )
 
 
@@ -55,7 +60,12 @@ def nothing_to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, obj
         if (location := each.connector.location) is not None
         and settings[each.path(location)] is None
     ]
-    faults.append(None if taken else "nothing to sign in: no source that signs in is configured")
+    faults.append(
+        None
+        if taken
+        else "nothing to sign in: no source that signs in has what it covers or where it is"
+        " set; set them, or name one: kb-mcp login <source>"
+    )
     return next((fault for fault in faults if fault is not None), None)
 
 

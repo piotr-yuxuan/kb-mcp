@@ -123,7 +123,20 @@ def test_login_alone_with_no_source_configured_is_refused(
 ) -> None:
     """Plan 059: nothing to sign in, exit 2, before a window opens."""
     assert main(login(tmp_path)) == BAD_ARGUMENTS
-    assert "nothing to sign in" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "nothing to sign in" in err
+    assert "kb-mcp login <source>" in err
+
+
+def test_login_alone_signs_in_a_source_with_its_site_alone(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review round 1: no project yet, its site set: in use, and signed in."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    signed_in = opened(monkeypatch)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
+    assert main(login(tmp_path)) == 0
+    assert signed_in == [SITE]
 
 
 def test_login_alone_signs_in_each_site_of_the_sources_configured_once(

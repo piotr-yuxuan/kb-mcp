@@ -224,7 +224,7 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
     assert main(options) == 0
     err = capsys.readouterr().err
     assert "ignored: sources.jira.api_token (KB_MCP_SOURCES__JIRA__API_TOKEN)" in err
-    assert "jira not configured: not checked" in err
+    assert "jira not in use: not checked" in err
     assert "token-sentinel-7f2b" not in err
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     monkeypatch.setenv(A_SITE, SITE)
@@ -235,13 +235,26 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
 def test_a_token_without_its_email_refuses_only_a_sign_in_that_is_checked(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """A source not configured: not checked, exit 0. Configured, with its site: exit 2."""
+    """A source not in use: not checked, exit 0. In use, with its site: exit 2."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__API_TOKEN", "token-sentinel-7f2b")
     options = ["doctor", "--config", str(tmp_path / "none.toml")]
     assert main(options) == 0
-    assert "jira not configured: not checked" in capsys.readouterr().err
+    assert "jira not in use: not checked" in capsys.readouterr().err
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     monkeypatch.setenv(A_SITE, SITE)
     assert main(options) == REFUSED
     assert "sources.jira.email: not set" in capsys.readouterr().err
+
+
+def test_a_source_with_its_site_alone_is_checked(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Review round 1: a site and a token, as sops gives them, with no project: checked."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
+    monkeypatch.setenv(A_SITE, SITE)
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
+    assert main(options) == NOT_SIGNED_IN
+    names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
+    assert names[3:] == [f"tls {HOST}", "sign-in jira"]

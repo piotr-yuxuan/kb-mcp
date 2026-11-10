@@ -78,7 +78,7 @@ one, where pandoc is among them.
 kb-mcp login
 ```
 
-It signs in each site of the sources configured, once a site: `kb-mcp login jira` signs in
+It signs in each site of the sources in use, a site or scopes set, once a site: `kb-mcp login jira` signs in
 Jira's alone. Like every command that writes under the data directory, it first says what
 it will do, then asks `Proceed? [y/N]`: answer `y`.
 

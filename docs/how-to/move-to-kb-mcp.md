@@ -269,7 +269,7 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 | `download` | `fetch` |
 | `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
 | `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
-| `login` | `login`, each site of the sources configured, or `login jira` for one source |
+| `login` | `login`, each site of the sources whose site or scopes are set, or `login jira` for one source |
 | `--summary short` or `--summary detailed` | `--detail short` or `--detail detailed`; `--summary` is refused, exit 2 |
 
 A script that wants search by meaning ends with `index`, then `embed`, never with
@@ -330,7 +330,7 @@ What reads a run's output follows:
   that `summary` links name but that have summaries themselves, as does `index.built`.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
-- **`doctor`.** A machine with no Confluence or Jira source configured gets the machine's
+- **`doctor`.** A machine with no Confluence or Jira source whose site or scopes are set gets the machine's
   checks alone, exit 0, where it failed `site: not set`.
 
 ## 10. Check again

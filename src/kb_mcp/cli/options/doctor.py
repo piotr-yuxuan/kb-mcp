@@ -15,11 +15,18 @@ if TYPE_CHECKING:
 
 
 def checked(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[Source, ...]:
-    """Give the sources whose sign-in ``doctor`` checks: each configured whose connector checks."""
+    """Give the sources whose sign-in ``doctor`` checks: each in use whose connector checks.
+
+    One is in use when its first setting, what it covers, or its location is set.
+    """
     return tuple(
         each
         for each in arguments.sources
-        if each.connector.checks is not None and settings[each.paths[0]]
+        if each.connector.checks is not None
+        and (
+            settings[each.paths[0]]
+            or (each.connector.location and settings[each.path(each.connector.location)])
+        )
     )
 
 
@@ -39,15 +46,15 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
     """Name what each sign-in does not apply, by its connector's ``unapplied``, and the unchecked.
 
-    The settings of a source not configured are not checked, whatever they say, so that a
-    token and an email without a source do not read as a sign-in that holds.
+    The settings of a source not in use are not checked, whatever they say, so that a
+    token and an email without a site do not read as a sign-in that holds.
     """
     taken = checked(arguments, settings)
     unused: dict[str, str] = {}
     for each in (each for each in arguments.sources if each.connector.checks is not None):
         connector = each.connector
         if each not in taken:
-            unused |= dict.fromkeys(each.paths[1:], f"{each.name} not configured: not checked")
+            unused |= dict.fromkeys(each.paths[1:], f"{each.name} not in use: not checked")
         elif connector.unapplied:
             unused |= connector.unapplied(each, dict.fromkeys(connector.flags), settings)
     return unused
