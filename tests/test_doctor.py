@@ -14,6 +14,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, model_of, sourced
+from tests.test_fetching import FakeSite
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -76,15 +77,15 @@ def test_without_a_saved_session_the_doctor_exits_3(
     options = ["doctor", "--config", str(tmp_path / "none.toml")]
     assert main(options) == NOT_SIGNED_IN
     out = capsys.readouterr().out
-    assert f"sign-in {HOST}: no session saved: run kb-mcp login jira" in out
+    assert "sign-in jira: no session saved: run kb-mcp login jira" in out
     found = states(doctor(configured(tmp_path), sourced(JIRA)))
-    assert found[f"sign-in {HOST}"] == "sign in again"
+    assert found["sign-in jira"] == "sign in again"
 
 
 def test_two_sources_of_one_site_are_checked_once_and_each_of_another_site_alone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Plan 059: once a site, its TLS and its sign-in; each source by its own API."""
+    """Plan 059: once a site, its TLS; each source by its own sign-in and API."""
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     sources = (*sourced(CONFLUENCE, JIRA), CLIENT_JIRA)
     settings = model_of(sources)(
@@ -101,10 +102,36 @@ def test_two_sources_of_one_site_are_checked_once_and_each_of_another_site_alone
         "pandoc",
         "data directory",
         f"tls {HOST}",
-        f"sign-in {HOST}",
+        "sign-in confluence",
+        "sign-in jira",
         f"tls {CLIENT.removeprefix('https://')}",
-        f"sign-in {CLIENT.removeprefix('https://')}",
+        "sign-in clientjira",
     ]
+
+
+def test_each_source_of_one_site_is_checked_by_its_own_sign_in(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review round 1: Confluence by its token, Jira by the site's session, none saved.
+
+    Jira asks to sign in again by its own login; Confluence's check is its token's.
+    """
+    monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
+    monkeypatch.setattr(http, "client", lambda *_, **__: FakeSite().client())
+    settings = MODEL(
+        sources={
+            "confluence": {"site": SITE, "email": "someone@example.invalid", "api_token": "t"},
+            "jira": {"site": SITE},
+        },
+        data_dir=tmp_path / "data",
+    )
+    found = {each.name: each for each in doctor(settings, sourced(CONFLUENCE, JIRA))}
+    assert (found["sign-in confluence"].found, found["confluence"].state) == (
+        "an API token",
+        "well",
+    )
+    assert found["sign-in jira"].found == "no session saved: run kb-mcp login jira"
+    assert "jira" not in found
 
 
 def test_a_source_configured_without_its_site_refuses_the_doctor(

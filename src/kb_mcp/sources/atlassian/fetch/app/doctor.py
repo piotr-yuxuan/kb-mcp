@@ -38,43 +38,41 @@ def public_trust(site: str) -> Check:
     )
 
 
-def access(settings: Settings, sources: Sequence[Source]) -> list[Check]:
-    """Say how the first of these sources of one site signs in, and whether that opens each.
+def access(settings: Settings, source: Source) -> list[Check]:
+    """Say how a source signs in, and whether that still opens it, by its connector's API.
 
-    By its API token when one is set, else by the session that ``login`` saved. Each
-    source's check is named after it.
+    By its API token when one is set, else by the session that ``login`` saved for its
+    site; each check is named after the source, and says what the source's user does
+    once its sign-in no longer holds.
     """
-    signing = choose_sign_in(settings, sources[0].name)
-    name = f"sign-in {urlsplit(signing.site).hostname}"
+    signing = choose_sign_in(settings, source.name)
+    name = f"sign-in {source.name}"
     try:
         client = signing.client()
     except SignInNeededError:
         return [Check(name=name, found=f"no session saved: {signing.again}", state="sign in again")]
-    done = [Check(name=name, found=signing.name)]
+    request, signed_in = SIGNED_IN[source.connector.name]
     with client:
-        reader = SiteClient(client)
-        for source in sources:
-            request, signed_in = SIGNED_IN[source.connector.name]
-            try:
-                user = Fields(reader.json(request()), "user")
-                check = (
-                    Check(name=source.name, found="signed in")
-                    if signed_in(user)
-                    else Check(
-                        name=source.name, found=f"anonymous: {signing.again}", state="sign in again"
-                    )
+        try:
+            user = Fields(SiteClient(client).json(request()), "user")
+            check = (
+                Check(name=source.name, found="signed in")
+                if signed_in(user)
+                else Check(
+                    name=source.name, found=f"anonymous: {signing.again}", state="sign in again"
                 )
-            except SignInNeededError:
-                found = f"refused: {signing.again}"
-                check = Check(name=source.name, found=found, state="sign in again")
-            except (RepresentationError, SiteError) as error:
-                check = Check(name=source.name, found=f"no answer ({error})", state="failed")
-            done.append(check)
-    return done
+            )
+        except SignInNeededError:
+            check = Check(
+                name=source.name, found=f"refused: {signing.again}", state="sign in again"
+            )
+        except (RepresentationError, SiteError) as error:
+            check = Check(name=source.name, found=f"no answer ({error})", state="failed")
+    return [Check(name=name, found=signing.name), check]
 
 
 def checks(settings: Settings, sources: Sequence[Source]) -> list[Check]:
-    """Say, once a site, whether it answers, and whether a sign-in still opens each source.
+    """Say, once a site, whether it answers; then whether each source's sign-in opens it.
 
     The sources are configured, and each has a site, as ``doctor``'s light checks refuse
     one without.
@@ -85,5 +83,8 @@ def checks(settings: Settings, sources: Sequence[Source]) -> list[Check]:
     return [
         check
         for site, on_site in by_site.items()
-        for check in (public_trust(site), *access(settings, on_site))
+        for check in (
+            public_trust(site),
+            *(found for each in on_site for found in access(settings, each)),
+        )
     ]

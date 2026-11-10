@@ -164,14 +164,16 @@ def test_a_fetch_refused_by_the_site_exits_3_naming_the_variables(
 def test_the_doctor_signs_in_with_the_token(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """It names the token as the sign-in of their one site, which Confluence and Jira take."""
+    """It names the token as each source's sign-in, which Confluence and Jira take."""
     sent = served(monkeypatch, FakeSite().handle)
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     configure_both(monkeypatch)
     options = ["--config", str(home / "none.toml"), "--format", "json"]
     assert main(["doctor", *options]) != SIGN_IN_NEEDED
     verdicts = {verdict["name"]: verdict for verdict in json.loads(capsys.readouterr().out)}
-    assert verdicts[f"sign-in {HOST}"]["found"] == "an API token"
+    assert [verdicts[f"sign-in {name}"]["found"] for name in ("confluence", "jira")] == [
+        "an API token"
+    ] * 2
     assert [verdicts[name]["found"] for name in ("confluence", "jira")] == ["signed in"] * 2
     assert sent
     assert all(request.headers.get("authorization") == AUTHORISATION for request in sent)
@@ -180,14 +182,17 @@ def test_the_doctor_signs_in_with_the_token(
 def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """A 401 from each product: both verdicts name the email and the token to check."""
+    """A 401 from each product: each verdict names its source's email and token to check."""
     served(monkeypatch, lambda _: httpx.Response(401))
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     configure_both(monkeypatch)
     assert main(["doctor", "--config", str(home / "none.toml")]) == SIGN_IN_NEEDED
     out = capsys.readouterr().out
-    for name in ("confluence", "jira"):
-        assert f"{name}: refused: check {EMAIL} and {CREDENTIAL}\n" in out
+    for name, email, credential in (
+        ("confluence", EMAIL, CREDENTIAL),
+        ("jira", JIRA_EMAIL, JIRA_CREDENTIAL),
+    ):
+        assert f"{name}: refused: check {email} and {credential}\n" in out
 
 
 def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(

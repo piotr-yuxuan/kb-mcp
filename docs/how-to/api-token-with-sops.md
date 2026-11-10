@@ -72,8 +72,8 @@ sops exec-env ~/secrets/atlassian.sops.json 'KB_MCP_SOURCES__CONFLUENCE__SITE="$
   kb-mcp doctor --detail detailed'
 ```
 
-It says `sign-in <name>.atlassian.net: an API token`, then `confluence: signed in` and
-`jira: signed in`.
+It says `sign-in confluence: an API token` and `confluence: signed in`, then the same of
+Jira's source.
 Then fetch:
 
 ```bash
