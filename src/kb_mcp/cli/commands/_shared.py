@@ -15,7 +15,7 @@ from kb_mcp.cli.adapters.confirmation import ask
 from kb_mcp.cli.domain.echo import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model
-from kb_mcp.kernel.exit_status import ENDED
+from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.output import Output
 from kb_mcp.observability.app.observed import Invocation, observed
 from kb_mcp.sources.registry import tables
@@ -69,7 +69,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     except SettingsError as error:
         structlog.get_logger().error("settings.refused", reason=str(error))
         sys.stderr.write(error.advice)
-        return ENDED["refused"]
+        return ExitStatus.REFUSED
     refusal = command.refused(arguments, values_of(loaded)) if command.refused else None
     refusal = refusal or next(
         (f"{name}: not found on PATH" for name in command.programs if not shutil.which(name)),
@@ -86,7 +86,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     if refusal is not None:
         sys.stderr.write(ignored_lines(loaded.ignored if output.level != "error" else ()))
         structlog.get_logger().error("run.refused", reason=refusal)
-        return ENDED["refused"]
+        return ExitStatus.REFUSED
     said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())
     # Each unlogged argument is a positional string, given as the last token equal to it.
     hidden = {

@@ -23,7 +23,7 @@ from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field
 from rich.console import Console
 
-from kb_mcp.kernel.exit_status import ENDED, ExitStatus
+from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.kernel.record import Record
 from kb_mcp.observability.adapters import progress
@@ -118,8 +118,8 @@ def observed(
     log file, if any, and the telemetry endpoint, if any. It ends with ``run.end``, its
     status as the body set it, or ``run.interrupted`` by Ctrl-C, or ``run.failed`` with
     the exception's traceback; each says how many seconds it lasted. The run's status
-    is then its own ending's, interrupted or failed: the interruption or the exception
-    goes no further.
+    is then ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``: the interruption or the
+    exception goes no further.
 
     On a terminal, unless -q, the tasks' progress is drawn on stderr as bars, and their
     events ``progress`` are kept off it; elsewhere, these events show it from -v.
@@ -186,10 +186,10 @@ def observed(
         try:
             yield run
         except KeyboardInterrupt:
-            run.status = ENDED["interrupted"]
+            run.status = ExitStatus.INTERRUPTED
             log.warning("run.interrupted", seconds=round(time.monotonic() - began, 3))
         except Exception:
-            run.status = ENDED["failed"]
+            run.status = ExitStatus.FAILED
             log.exception("run.failed", seconds=round(time.monotonic() - began, 3))
         else:
             log.info("run.end", status=run.status, seconds=round(time.monotonic() - began, 3))
