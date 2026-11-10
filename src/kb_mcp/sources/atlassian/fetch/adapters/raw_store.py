@@ -161,14 +161,14 @@ def _decode(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _record_json(path: Path) -> object:
-    # A record the store wrote and cannot read back is a changed shape, named by its file,
+def _record_json(path: Path, where: str) -> object:
+    # A record the store wrote and cannot read back is a changed shape, named by ``where``,
     # as is one that no read reaches, such as a folder in its place.
     try:
         return _decode(path)
     except UNREADABLE as error:
         why = "not JSON" if isinstance(error, ValueError) else f"not read: {type(error).__name__}"
-        message = f"{path.name}: {why}"
+        message = f"{where}: {why}"
         raise RepresentationError(message) from None
 
 
@@ -422,11 +422,12 @@ class RawStore:
         path = self._space(space_id) / PENDING
         if not path.exists():
             return set()
-        values = _record_json(path)
+        where = path.relative_to(self.root).as_posix()
+        values = _record_json(path, where)
         if type(values) is not list or not all(
             type(each) is str and IDENTIFIER.fullmatch(each) for each in values
         ):
-            message = f"{PENDING}: expected a list of ids"
+            message = f"{where}: expected a list of ids"
             raise RepresentationError(message)
         return set(values)
 
@@ -529,7 +530,7 @@ class RawStore:
         periods: dict[Scope, Period] = {}
         exact: set[Scope] = set()
         times: dict[str, dict[Scope, datetime]] = {name: {} for name in COVERAGE_TIMES}
-        for item in Fields.each(_record_json(path), COVERAGE):
+        for item in Fields.each(_record_json(path, COVERAGE), COVERAGE):
             with item.refusals():
                 source = item.text("source")
                 named = item.optional_text("type", absent=True) or FORMER_TYPES.get(source, "")
@@ -593,7 +594,7 @@ class RawStore:
         stones: dict[DocumentKey, Tombstone] = {}
         keys: dict[str, str] | None = None  # each space's key by its id, for a former entry
         unresolved: set[str] = set()
-        for item in Fields.each(_record_json(path), TOMBSTONES):
+        for item in Fields.each(_record_json(path, TOMBSTONES), TOMBSTONES):
             former = "kind" in item.value
             if former and keys is None:
                 spaces = RawStore(self.root, CONFLUENCE).spaces()

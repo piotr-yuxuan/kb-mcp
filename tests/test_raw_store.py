@@ -549,7 +549,7 @@ def test_a_pending_record_that_does_not_read_is_refused_by_name(store: RawStore,
     """Truncated, of another shape, or naming no id: refused, not read as no id at all."""
     store.put_space(v2_space(), [], [], [])
     (store.root / "confluence" / "spaces" / "196613" / "pending.json").write_text(text, "utf-8")
-    with pytest.raises(RepresentationError, match=r"^pending\.json: "):
+    with pytest.raises(RepresentationError, match=r"^confluence/spaces/196613/pending\.json: "):
         store.pending("196613")
 
 

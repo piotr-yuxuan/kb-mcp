@@ -530,16 +530,23 @@ def test_a_record_of_confluence_s_stops_no_run_without_confluence(
     assert stones.read_text("utf-8") == "not json"
 
 
-def test_a_damaged_pending_record_refuses_a_fetch_of_spaces_before_any_request(
+def test_a_damaged_pending_record_refuses_a_fetch_of_its_space_alone(
     settings: Settings, site: FakeSite
 ) -> None:
-    """Truncated: named by the preflight, as the store's other records are."""
+    """Truncated: named by its path by the preflight of a run of its space, and of no other.
+
+    The run's space is MFS; a space outside it, damaged, stops nothing.
+    """
     store = RawStore(settings.raw, "confluence")
     with store.writing():
+        store.put_space(v2_space(id="111", key="OPS"), [], [], [])
         store.put_space(v2_space(id=SPACE_ID), [], [], [])
+    (settings.raw / "confluence" / "spaces" / "111" / "pending.json").write_text("[", "utf-8")
+    run = run_of(CONFLUENCE, signed_in(settings), SINCE)
+    assert fetcher_of(CONFLUENCE).preflight(run) is None
     (settings.raw / "confluence" / "spaces" / SPACE_ID / "pending.json").write_text("[", "utf-8")
-    refusal = fetcher_of(CONFLUENCE).preflight(run_of(CONFLUENCE, signed_in(settings), SINCE))
-    assert refusal == "pending.json: not JSON"
+    refusal = fetcher_of(CONFLUENCE).preflight(run)
+    assert refusal == f"confluence/spaces/{SPACE_ID}/pending.json: not JSON"
     assert site.asked == []
 
 
