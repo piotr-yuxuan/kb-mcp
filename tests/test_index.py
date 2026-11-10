@@ -641,27 +641,27 @@ def persons(data: Path) -> Path:
 # spellings' first in the order of the files, all being as frequent: the review's Alex
 # Example, the stand-up's Sam Sample.
 ROBIN_SPELT = (
-    Spelling(name="Robin", name_key="robin", how="meeting"),
-    Spelling(name="Robin Example", name_key="robin example", how="account"),
+    Spelling(name="Robin", name_key="robin", how="attendance"),
+    Spelling(name="Robin Example", name_key="robin example", how="identity"),
     Spelling(name="Robin Example", name_key="robin example", how="name"),
-    Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+    Spelling(name="Robin Sample", name_key="robin sample", how="identity"),
     Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
 )
 JOINED = {
     ROBIN: ("Robin Sample", ROBIN_SPELT),
-    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
-    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
+    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="identity"),)),
+    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="identity"),)),
     SAM_ALONE: (
         "Sam Sample",
         (
-            Spelling(name="Sam", name_key="sam", how="meeting"),
+            Spelling(name="Sam", name_key="sam", how="attendance"),
             Spelling(name="Sam Sample", name_key="sam sample", how="name"),
         ),
     ),
     ALEX_EXAMPLE: (
         "Alex Example",
         (
-            Spelling(name="Alex", name_key="alex", how="meeting"),
+            Spelling(name="Alex", name_key="alex", how="attendance"),
             Spelling(name="Alex Example", name_key="alex example", how="name"),
             Spelling(name="Alex Example (not in the header)", name_key="alex example", how="name"),
         ),
@@ -842,8 +842,8 @@ def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None
         assert reader.persons("robin example") == [ROBIN]  # of three spellings, once
         assert reader.persons("Robin Sample") == []  # a name, not its key
         assert reader.persons("nobody") == []
-        assert reader.persons("sam sample", "account") == sorted([SAM_2, SAM_3])
-        assert reader.persons("robin", "account") == []  # by meeting and by name alone
+        assert reader.persons("sam sample", "identity") == sorted([SAM_2, SAM_3])
+        assert reader.persons("robin", "identity") == []  # by attendance and by name alone
 
 
 def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -> None:
@@ -1493,15 +1493,15 @@ PINNED_PERSONS = sorted(
 )
 PINNED_SPELLINGS = sorted(
     [
-        (ROBIN, "Robin Example", "robin example", "account"),
-        (ROBIN, "Robin Sample", "robin sample", "account"),
+        (ROBIN, "Robin Example", "robin example", "identity"),
+        (ROBIN, "Robin Sample", "robin sample", "identity"),
         (ROBIN, "robin  EXAMPLE", "robin example", "name"),
         (SAM_ALONE, "Sam Sample", "sam sample", "name"),
         (SAM_ALONE, "Kim", "kim", "alias"),
-        (SAM_ALONE, "Sam", "sam", "meeting"),
+        (SAM_ALONE, "Sam", "sam", "attendance"),
         (ALEX, "Alex", "alex", "name"),
-        (JO_2, "Jo Two", "jo two", "account"),
-        (JO_3, "Jo Two", "jo two", "account"),
+        (JO_2, "Jo Two", "jo two", "identity"),
+        (JO_3, "Jo Two", "jo two", "identity"),
         (JO_ALONE, "Jo Two", "jo two", "name"),
     ]
 )

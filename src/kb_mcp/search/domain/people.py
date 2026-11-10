@@ -48,9 +48,9 @@ ANNOTATION = re.compile(r"(?<=\S) ?\(([^()]*)\)\Z")
 # A person's id, as an alias's value may give it.
 PERSON_ID = re.compile(r"p-[0-9a-f]{16}")
 # How a name joined its person.
-BY_IDENTITY = "account"
+BY_IDENTITY = "identity"
 BY_ALIAS = "alias"
-BY_ATTENDANCE = "meeting"
+BY_ATTENDANCE = "attendance"
 BY_NAME = "name"
 # What a person's id hashes before an identity, the word of the accounts that came before
 # identities, and before a name's key.

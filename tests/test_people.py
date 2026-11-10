@@ -157,7 +157,7 @@ def account(person: str, *names: str) -> Person:
         id=person,
         name=names[0],
         spellings=tuple(
-            Spelling(name=name, name_key=name_key(name), how="account") for name in names
+            Spelling(name=name, name_key=name_key(name), how="identity") for name in names
         ),
     )
 
@@ -335,10 +335,12 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                         id=ROBIN,
                         name="Robin Sample",
                         spellings=(
-                            Spelling(name="Robin", name_key="robin", how="meeting"),
-                            Spelling(name="Robin Example", name_key="robin example", how="account"),
+                            Spelling(name="Robin", name_key="robin", how="attendance"),
+                            Spelling(
+                                name="Robin Example", name_key="robin example", how="identity"
+                            ),
                             Spelling(name="Robin Example", name_key="robin example", how="name"),
-                            Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+                            Spelling(name="Robin Sample", name_key="robin sample", how="identity"),
                             Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
                         ),
                     ),
@@ -348,7 +350,7 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                         id=SAM_ALONE,
                         name="Sam Sample",
                         spellings=(
-                            Spelling(name="Sam", name_key="sam", how="meeting"),
+                            Spelling(name="Sam", name_key="sam", how="attendance"),
                             Spelling(name="Sam Sample", name_key="sam sample", how="name"),
                         ),
                     ),
@@ -356,7 +358,7 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                         id=ALEX_EXAMPLE,
                         name="Alex Example (not in the header)",
                         spellings=(
-                            Spelling(name="Alex", name_key="alex", how="meeting"),
+                            Spelling(name="Alex", name_key="alex", how="attendance"),
                             Spelling(name="Alex Example", name_key="alex example", how="name"),
                             Spelling(
                                 name="Alex Example (not in the header)",
@@ -593,7 +595,7 @@ def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
     assert result.of[named(PLANNED, "Robin")] == ROBIN
     robin = next(person for person in result.persons if person.id == ROBIN)
     assert Spelling(name="Robin", name_key="robin", how="alias") in robin.spellings
-    assert Spelling(name="Robin", name_key="robin", how="meeting") not in robin.spellings
+    assert Spelling(name="Robin", name_key="robin", how="attendance") not in robin.spellings
     assert ROBIN_ALONE not in {person.id for person in result.persons}
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Sam Sample"]
     assert result.unused == ()
@@ -612,7 +614,7 @@ def test_an_alias_never_takes_a_speaker_its_meeting_gives_another() -> None:
     assert result.of[named(linked_to_retro, "Robin")] == ROBIN_OTHER
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
     robin_other = next(person for person in result.persons if person.id == ROBIN_OTHER)
-    assert Spelling(name="Robin", name_key="robin", how="meeting") in robin_other.spellings
+    assert Spelling(name="Robin", name_key="robin", how="attendance") in robin_other.spellings
     assert result.unused == ()
 
 
@@ -629,9 +631,9 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
         id=SAM_3,
         name="Sam Sample",
         spellings=(
-            Spelling(name="Sam", name_key="sam", how="meeting"),
-            Spelling(name="Sam Sample", name_key="sam sample", how="account"),
+            Spelling(name="Sam", name_key="sam", how="attendance"),
             Spelling(name="Sam Sample", name_key="sam sample", how="alias"),
+            Spelling(name="Sam Sample", name_key="sam sample", how="identity"),
         ),
     )
     assert SAM_ALONE not in {person.id for person in result.persons}
