@@ -750,22 +750,41 @@ def test_a_change_of_chunking_embeds_only_what_the_store_lacks(
         assert embedded.chunking == cut
 
 
-# The key of the last chunk of BODY, under a fingerprint "tiny", by chunking, as the code
-# before plan 054 gave it: the vector cache keeps serving the vectors it holds.
+# A body of several chunks by every chunking, more than SMALL characters in one section.
+STEPS = "\n\n".join(f"Step {n}: deploy the seller service to region {n}." for n in range(40))
+LONG_BODY = f"# Rollback\n\nUndo the payout.\n\n## Release\n\n{STEPS}\n"
+# The keys of LONG_BODY's first and last chunks, under a fingerprint "tiny", by chunking,
+# as the code before plan 054 gave them: the vector cache keeps serving what it holds.
 KEYS = {
-    "sections": "c48ff3c13ed1f13c569f32215e7d048dba9f9e7e97a34d6ceb0455e2200d59dc",
-    "windows": "d3a63b813868fd354ff54ca9e40d91f04ce42ffc26862086d067cbfbed3b04a7",
-    "section-paths": "493baf6ee934c0a0c8f5f9fa9941345431bea264ad51beaf120ac7117d1f347c",
-    "small-to-big": "493baf6ee934c0a0c8f5f9fa9941345431bea264ad51beaf120ac7117d1f347c",
+    "sections": (
+        "5d708f00f30412625ad1c211338d75121e8893548a58d37e5b8b9779127a2127",
+        "760bef63e96e003b051989e47664d03f2cc3ec91244009e8c92b97c9f4f445b2",
+    ),
+    "windows": (
+        "5178af0ab06ff7d4990405cdb6e8cef883ad79de92d16d2aecd12f945e8793cc",
+        "b49ed782b2ff57d1ae3417b1488a4be0e718fd7207fc476f612eaf5636ff6faf",
+    ),
+    "section-paths": (
+        "28668b547a1bb24cbe54c4ce6854c37924c3d256747d6ea2c542aa7dce38c28f",
+        "982ebee3530ce4b761064e59893ea015caf9442d9ab1322720b3d66690796d5e",
+    ),
+    "small-to-big": (
+        "28668b547a1bb24cbe54c4ce6854c37924c3d256747d6ea2c542aa7dce38c28f",
+        "78dd3198a5a2aff8c796b6a5df29fda9ac0975597f638fdee5aa34031adc7f14",
+    ),
 }
+# How many chunks each chunking cuts LONG_BODY into.
+CHUNKS_OF_LONG_BODY = {"sections": 3, "windows": 2, "section-paths": 3, "small-to-big": 5}
 
 
 @pytest.mark.parametrize("chunking", CHUNKINGS)
 def test_a_chunk_s_vector_key_stays_what_it_was(chunking: Chunking) -> None:
     """Plan 054: no rename nor offset changes the text embedded, which the key names."""
     front = page("196845", "Rollback", breadcrumb=("Handbook", "Payments"))
-    *_, text = CHUNKERS[chunking].cut(front, sections(BODY))[-1]
-    assert vector_cache.vector_key("tiny", text) == KEYS[chunking]
+    texts = [text for *_, text in CHUNKERS[chunking].cut(front, sections(LONG_BODY))]
+    assert len(texts) == CHUNKS_OF_LONG_BODY[chunking]
+    first, last = (vector_cache.vector_key("tiny", text) for text in (texts[0], texts[-1]))
+    assert (first, last) == KEYS[chunking]
 
 
 def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
