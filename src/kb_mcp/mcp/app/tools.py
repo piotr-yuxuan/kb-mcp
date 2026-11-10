@@ -443,7 +443,7 @@ def about(
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
     the same: of each ``people.first_word`` of their names, the one other person whose
     names of that key joined by name, whom an alias of the word, written as their name
-    of that key, would join to them; none where an identity is named by the word, from
+    of that key, would join to them; none where an identity's mention writes the word, from
     which the alias would take the name, or where those names are several persons, which
     annotations keep apart and the alias would join too. Then their roles by path, as
     ``responses.roles`` says them. Nothing without that filter.
@@ -455,7 +455,7 @@ def about(
     moved = [
         (word, reader.persons(word, people.BY_NAME))
         for word in words
-        if not reader.persons(word, people.BY_IDENTITY)
+        if not reader.persons(word, identified=True)
     ]
     alike = [
         (word, reader.person(ids[0]))

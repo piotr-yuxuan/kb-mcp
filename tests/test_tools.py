@@ -1054,6 +1054,33 @@ def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
     assert offered == perhaps
 
 
+def test_a_word_that_an_identity_writes_is_never_shown_after_an_alias_moves_it(
+    tmp_path: Path,
+) -> None:
+    """The identity named Robin, which an alias moves to Sam Sample's, still names Robin.
+
+    The unlinked transcript's Robin joins that person by the identity's name: an alias of
+    Robin would take the name from it, so Robin Example's answer suggests none.
+    """
+    example = Mention(role="author", name="Robin Example", identity="atlassian:acct-0001")
+    sam = Mention(role="author", name="Sam Sample", identity="atlassian:acct-0002")
+    documents = (
+        page("300001", "Ledger runbook", people=(example,)),
+        issue("PAY-1", "Ledger export", people=(sam,)),
+        issue("PAY-3", "Ledger audit", people=(ROBIN_ACCOUNT,)),
+        worklog("transcript", "t-20261022-1", "Pairing", "Robin"),
+    )
+    for front in documents:
+        write(tmp_path / "docs", front)
+    aliases = {"atlassian:acct-0004": "atlassian:acct-0002"}
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
+    library = Library(SqliteIndex(tmp_path / "index.sqlite"), tmp_path / "docs")
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert header.startswith("Person: Robin Example, ")
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
+
+
 def test_the_alias_suggested_writes_the_word_as_its_person_does(tmp_path: Path) -> None:
     """The unlinked Robin, whom an alias by id gives three transcripts' Rob, is named Rob.
 

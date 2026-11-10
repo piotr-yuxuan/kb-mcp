@@ -960,6 +960,8 @@ def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None
         assert reader.persons("nobody") == []
         assert reader.persons("sam sample", "identity") == sorted([SAM_2, SAM_3])
         assert reader.persons("robin", "identity") == []  # by attendance and by name alone
+        assert reader.persons("robin example", identified=True) == [ROBIN]
+        assert reader.persons("robin", identified=True) == []
 
 
 def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -> None:

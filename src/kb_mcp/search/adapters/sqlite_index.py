@@ -895,15 +895,20 @@ class Reader:
         """Give each value that a filter or count can take, the most used first."""
         return [(row[0], row[1]) for row in self._connection.execute(VALUES[name])]
 
-    def persons(self, key: str, joined: str | None = None) -> list[str]:
+    def persons(
+        self, key: str, joined: str | None = None, *, identified: bool = False
+    ) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.BY_IDENTITY``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_IDENTITY``;
+        ``identified`` keeps those that a mention with an identity writes, however it joined.
         """
         rows = self._connection.execute(
-            "SELECT DISTINCT person FROM person_names"
-            " WHERE key = :key AND (:joined IS NULL OR joined = :joined) ORDER BY person",
-            {"key": key, "joined": joined},
+            "SELECT DISTINCT person FROM person_names n"
+            " WHERE key = :key AND (:joined IS NULL OR joined = :joined)"
+            " AND (NOT :identified OR EXISTS (SELECT 1 FROM people p WHERE p.person = n.person"
+            " AND p.name = n.name AND p.identity IS NOT NULL)) ORDER BY person",
+            {"key": key, "joined": joined, "identified": identified},
         )
         return [row[0] for row in rows]
 
