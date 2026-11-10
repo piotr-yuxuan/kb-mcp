@@ -116,13 +116,11 @@ class Conversions:
         self.converted += 1
         return markdown
 
-    def drop_unused(self, *, remove: bool) -> int:
-        """Delete every row of the source that this run did not use, unless ``remove`` is false.
+    def drop_unused(self) -> int:
+        """Delete every row of the source that this run did not use.
 
         Return how many rows were deleted. Another source's rows stay.
         """
-        if not remove:
-            return 0
         deleted = self._connection.execute(
             "DELETE FROM conversions"
             " WHERE source = ? AND key NOT IN (SELECT value FROM json_each(?))",
