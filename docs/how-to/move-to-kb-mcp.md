@@ -309,7 +309,10 @@ What reads a run's output follows:
   with its `site` and `session`, the site's folder `<data>/session/<host>/`, where it was
   one object naming `<data>/session/`. `doctor`'s checks of a site are `tls <host>` once,
   then for each source `sign-in <source>` and one named after the source, `confluence` or
-  `jira` by default, where they were `tls`, `sign-in`, `confluence` and `jira`.
+  `jira` by default, where they were `tls`, `sign-in`, `confluence` and `jira`. `check`'s
+  `settings` hold `site`, `email` and `api_token` under each source, `sources.confluence`
+  and `sources.jira`, with its `connector`, where `accounts.atlassian` held them once, and
+  its `layers` name them so.
 - **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
   cache", where they said "vector store".
 - **Endings.** A row says `sign in again` where it said `sign in`. The events
