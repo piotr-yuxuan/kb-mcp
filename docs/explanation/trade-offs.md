@@ -385,10 +385,10 @@ afresh at each run
   meeting by the meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org
   does not escape
   ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)):
-  the longest title of the day that begins the path wins, but the day keeps a chunk of
+  the longest title of the day that begins the path wins, but the day keeps a part of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
-  joins none, its chunks staying in the day. A meeting and a dated transcript are their
+  joins none, its parts staying in the day. A meeting and a dated transcript are their
   day at midnight UTC, since plan 044: the work log gives the day of a meeting, never
   its time, so one day's documents tie when sorted by date, and come by path; a
   caption tool's offset, `00:05`, no longer dates a transcript at five past midnight. A
