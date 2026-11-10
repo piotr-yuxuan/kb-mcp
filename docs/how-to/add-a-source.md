@@ -393,8 +393,6 @@ notes: done
   written: 1
   unchanged: 0
   removed: 0
-  problems: 0
-  warnings: 0
 documents: 1
 sections: 1
 ```

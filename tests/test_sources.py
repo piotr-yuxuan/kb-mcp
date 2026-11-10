@@ -703,7 +703,7 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
         f"  to convert: {WORKLOG_DOCUMENTS}\n"
         "  files to remove: 0\n"
         "  HTML left out: 1\n"
-        "  problems: 0\n"
+        "  warning: meetings/2026-10-27 Tue/2.org: its :MEETING: link reaches no transcript found\n"
         "  warnings: 1\n"
     )
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
@@ -714,7 +714,7 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
         "  files unchanged: 0\n"
         "  files removed: 0\n"
         "  HTML left out: 1\n"
-        "  problems: 0\n"
+        "  warning: meetings/2026-10-27 Tue/2.org: its :MEETING: link reaches no transcript found\n"
         "  warnings: 1\n"
     )
 
@@ -957,9 +957,7 @@ def test_each_command_s_text_gives_each_source_s_counts_under_its_row(
     assert main(given) == ExitStatus.FAILED
     out = capsys.readouterr().out
     assert out.startswith("confluence: failed\n  confluence blogposts: fetched: 1\n")
-    assert (
-        "  failures: 1\n  problems: 0\n  warnings: 0\njira: done\n  files: downloaded: 1\n" in out
-    )
+    assert "  failures: 1\njira: done\n  files: downloaded: 1\n" in out
     assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
     out = capsys.readouterr().out
     assert out.startswith("confluence: done\n  documents: ")

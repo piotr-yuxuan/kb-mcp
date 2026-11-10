@@ -1072,14 +1072,14 @@ def test_a_prepare_of_confluence_says_what_it_could_not_read_of_jira(crossed: Sa
     assert [(each["event"], each["source"], each["where"]) for each in warned] == [
         ("prepare.not_mirrored", "confluence", theirs.where)
     ]
-    assert "warnings: 1\n" in done.text("short")
+    assert done.text("short").endswith(f"warning: {theirs.where}: {theirs.reason}\nwarnings: 1\n")
 
 
 def test_a_prepare_of_a_source_with_no_problem_anywhere_says_nothing(crossed: Sandbox) -> None:
     """Nothing is said of another source when its documents all read."""
     done, warned = prepared(crossed, "jira")
     assert (done.warnings, warned) == ((), [])
-    assert "warnings: 0\n" in done.text("short")
+    assert "warning" not in done.text("short")
 
 
 def test_each_source_prunes_its_own_conversions_alone(sandbox: Sandbox) -> None:

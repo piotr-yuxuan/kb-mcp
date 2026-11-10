@@ -90,14 +90,10 @@ def test_a_fetch_shows_what_it_fetched_by_kind_its_files_and_failures(
         "  confluence pages: fetched: 2\n"
         "  files: downloaded: 1\n"
         "  failures: 1\n"
-        "  problems: 0\n"
-        "  warnings: 0\n"
         "jira: done\n"
         "  files: downloaded: 1\n"
         "  jira issues: fetched: 1\n"
         "  failures: 0\n"
-        "  problems: 0\n"
-        "  warnings: 0\n"
     )
 
 
@@ -111,8 +107,8 @@ def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
     """
     assert main([*signed_in, "--detail", "detailed"]) == SOME_FAILED
     confluence, jira = capsys.readouterr().out.split("jira: done\n")
-    row, space, *counts, failures, _, _ = confluence.splitlines()
-    project, *issues, none_failed, _, _ = jira.splitlines()
+    row, space, *counts, failures = confluence.splitlines()
+    project, *issues, none_failed = jira.splitlines()
     since = "from 2026-10-02T00:00:00+00:00 to "
     assert row == "confluence: failed"
     assert space.startswith(f"  space MFS: {since}")
@@ -208,8 +204,6 @@ def test_a_stopped_fetch_says_why_in_short(
         "  confluence pages: fetched: 3\n"
         "  runs: stopped, too many failures in a row: 1\n"
         "  failures: 5\n"
-        "  problems: 0\n"
-        "  warnings: 0\n"
     )
 
 
@@ -231,11 +225,9 @@ def test_a_dry_run_shows_what_it_would_fetch(
     assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
     assert "".join(pages) == (
         "  confluence blogposts: to fetch: 1\n  confluence pages: to fetch: 2\n  failures: 0\n"
-        "  problems: 0\n  warnings: 0\n"
     )
     assert "".join(issues) == (
         "  files: to download: 1\n  jira issues: to fetch: 1\n  failures: 0\n"
-        "  problems: 0\n  warnings: 0\n"
     )
 
 

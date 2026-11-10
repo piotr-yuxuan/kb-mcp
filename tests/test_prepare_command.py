@@ -53,8 +53,6 @@ NOTHING = (
     "  files written: 0\n"
     "  files unchanged: 0\n"
     "  files removed: 0\n"
-    "  problems: 0\n"
-    "  warnings: 0\n"
 )
 
 
@@ -166,7 +164,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         "  files written",
         "  files unchanged",
         "  files removed",
-        "  problems",
+        "jira",
     ]
     assert [line.split(": ")[0] for line in first[: len(names)]] == names
     assert first[1] == "  documents: 1"
@@ -182,8 +180,6 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         f"  files unchanged: {written}\n"
         "  files removed: 0\n"
         "  not shown, element: iframe: 1\n"
-        "  problems: 0\n"
-        "  warnings: 0\n"
         f"jira: done\n{NOTHING}"
     )
 
@@ -483,8 +479,8 @@ def test_a_dry_run_counts_the_work_log_and_says_of_the_others_that_it_cannot(
     command += ["--data-dir", str(home / "data")]
     assert main(command) == 0
     out = capsys.readouterr().out
-    assert "confluence: not run\n  problems: 0\n  warnings: 1\n" in out
-    assert "jira: not run\n  problems: 0\n  warnings: 1\n" in out
+    assert "confluence: not run\n  warning: confluence: not counted: " in out
+    assert "jira: not run\n  warning: jira: not counted: " in out
     assert "worklog: not run\n  documents: " in out
     assert not (home / "data" / "docs").exists()
     assert main([*command, "--format", "json"]) == 0

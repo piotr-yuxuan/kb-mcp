@@ -69,21 +69,16 @@ class Outcome[C: Counts](Record):
         return self
 
     def text(self, detail: Detail) -> str:
-        """Write the counts, then how many problems and warnings; in detail, each of them.
+        """Write the counts, then each problem and warning by place and reason, then each total.
 
-        A unit that gave nothing, no counts, problems or warnings, writes nothing.
+        Problems and warnings are few, so the short text names them too; a total of none
+        is not written, so that a unit that gave nothing writes nothing.
         """
-        if self.counts is None and not self.problems and not self.warnings:
-            return ""
-        shown = (
-            [("problem", each) for each in self.problems]
-            + [("warning", each) for each in self.warnings]
-            if detail == "detailed"
-            else []
-        )
+        said = [("problem", each) for each in self.problems]
+        said += [("warning", each) for each in self.warnings]
+        totals = {"problems": len(self.problems), "warnings": len(self.warnings)}
         return (
             ("" if self.counts is None else self.counts.text(detail))
-            + "".join(f"{kind}: {each.where}: {each.reason}\n" for kind, each in shown)
-            + f"problems: {len(self.problems)}\n"
-            + f"warnings: {len(self.warnings)}\n"
+            + "".join(f"{kind}: {each.where}: {each.reason}\n" for kind, each in said)
+            + "".join(f"{name}: {count}\n" for name, count in totals.items() if count)
         )
