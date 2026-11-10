@@ -47,12 +47,17 @@ class Scope(Record):
 
     @model_validator(mode="after")
     def check_scope(self) -> Self:
-        """Refuse a source off its rule, and a key off its scope type's, which must have one."""
+        """Refuse a source off its rule, and a key off its scope type's.
+
+        A scope type without a key's rule has one scope, the whole source, keyed by the
+        source's name.
+        """
         require(SOURCE_NAME, self.source, "source")
-        if self.type.key is None:
-            message = "type: its one scope is the whole source, without a key"
+        if self.type.key is None and self.key != self.source:
+            message = "key: not the source's name, its one scope's"
             raise RefusedError(message)
-        require(self.type.key, self.key, "key")
+        if self.type.key is not None:
+            require(self.type.key, self.key, "key")
         return self
 
     @field_serializer("type")

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
@@ -16,6 +17,7 @@ from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     fetch_window,
 )
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
+from kb_mcp.sources.worklog.declared import WORKLOG
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -24,6 +26,14 @@ NOW = datetime(2026, 11, 1, 9, tzinfo=UTC)
 COVERED = datetime(2026, 10, 15, 9, tzinfo=UTC)
 SPACE = Scope(source="confluence", type=names.SPACE, key="ENG")
 PROJECT = Scope(source="jira", type=names.PROJECT, key="PLAT")
+
+
+def test_a_scope_type_without_a_key_s_rule_has_one_scope_keyed_by_its_source() -> None:
+    """The work log's folder: its one scope is the whole source, by the source's name."""
+    (folder,) = WORKLOG.scope_types
+    assert str(Scope(source="notes", type=folder, key="notes")) == "folder notes"
+    with pytest.raises(RefusedError, match=r"^key: not the source's name"):
+        Scope(source="notes", type=folder, key="todo")
 
 
 def covered() -> Coverage:

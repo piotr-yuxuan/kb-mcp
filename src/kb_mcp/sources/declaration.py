@@ -75,8 +75,9 @@ class ScopeType:
 
     A scope of it is known by its source, this type and a key that matches ``key``, and
     holds documents of ``document_types``. ``option``, if any, replaces for one run the
-    list of keys that a source's table holds, which its ``setting`` names; a scope type
-    without one has one scope, the whole source, as a read in place has, and no key.
+    list of keys that a source's table holds, which its ``setting`` names. A scope type
+    without a key's rule has one scope, the whole source, as a read in place has, keyed
+    by the source's name.
     """
 
     name: str
