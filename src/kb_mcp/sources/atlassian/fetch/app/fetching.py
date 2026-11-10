@@ -49,6 +49,7 @@ from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     fetch_window,
 )
 from kb_mcp.sources.atlassian.fetch.domain.deletions import (
+    DocumentKey,
     ProbeAnswer,
     Tombstone,
     after_probes,
@@ -57,7 +58,7 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     too_many_gone,
 )
 from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
-from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, ISSUE, PAGE, PROJECT, SPACE
+from kb_mcp.sources.atlassian.fetch.domain.names import ISSUE, PAGE, PROJECT, SPACE
 from kb_mcp.sources.atlassian.fetch.domain.period import (
     DEFAULT_MAX_FILE_MB,
     MAX_FILE_MB_FLAG,
@@ -210,9 +211,9 @@ class Fetching:
     covered: dict[Scope, Period] = field(default_factory=dict)
     first_failed: dict[Scope, datetime] = field(default_factory=dict)
     held: dict[Scope, str] = field(default_factory=dict)
-    tombstones: dict[tuple[str, str], Tombstone] = field(default_factory=dict)
-    absent: dict[str, tuple[dict[tuple[str, str], str], int, dict[tuple[str, str], Tombstone]]] = (
-        field(default_factory=dict)
+    tombstones: dict[DocumentKey, Tombstone] = field(default_factory=dict)
+    absent: dict[Scope, tuple[dict[DocumentKey, Scope], int, dict[DocumentKey, Tombstone]]] = field(
+        default_factory=dict
     )
 
     def run(self, scopes: Sequence[Scope]) -> None:
@@ -363,42 +364,43 @@ class Fetching:
                     Page: confluence_v2.entry_ids(pages),
                     BlogPost: confluence_v2.entry_ids(posts),
                 }
-                self.track(space.id, listed)
+                self.track(scope, space.id, listed)
                 folders = self.folders(pages)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
             self.fetch_listed(scope, documents, window, joined)
             return True
 
-    def track(self, space_id: str, listed: Mapping[type[FetchedDocument], set[str]]) -> None:
+    def track(
+        self, scope: Scope, space_id: str, listed: Mapping[type[FetchedDocument], set[str]]
+    ) -> None:
         """Record, as pending, what the space's last listing named and the new one does not.
 
         The absent are the documents the last listing named, read by id alone, and the
-        store holds, and those already tombstoned in the space. The record is written
-        before the listing is replaced, so that no absent document is lost to a run that
-        stops; they are probed once every space of the run is listed.
+        store holds, and those already tombstoned in the space's scope. The record is
+        written before the listing is replaced, so that no absent document is lost to a
+        run that stops; they are probed once every space of the run is listed.
         """
-        known = {key: stone for key, stone in self.tombstones.items() if stone.space_id == space_id}
-        absent: dict[tuple[str, str], str] = {}
+        known = {key: stone for key, stone in self.tombstones.items() if stone.scope == scope}
+        absent: dict[DocumentKey, Scope] = {}
         stored = 0
         for document_class in CONFLUENCE_CLASSES:
             before = self.store.listed_ids(space_id, document_class) & self.store.stored_ids(
                 document_class
             )
             stored += len(before)
-            again = {key[1] for key in known if key[0] == document_class.document_type.plural}
+            named = document_class.document_type.name
+            again = {key[2] for key in known if key[1] == named}
             absent |= {
-                (document_class.document_type.plural, each): space_id
+                (scope.source, named, each): scope
                 for each in (before | again) - listed[document_class]
             }
-        self.absent[space_id] = (absent, stored, known)
-        others = {
-            key: stone for key, stone in self.tombstones.items() if stone.space_id != space_id
-        }
+        self.absent[scope] = (absent, stored, known)
+        others = {key: stone for key, stone in self.tombstones.items() if stone.scope != scope}
         self.tombstones = {**others, **after_probes(known, absent, {}, self.now())}
         self.store.put_tombstones(self.tombstones.values())
 
     def probe_absent(self) -> None:
-        """Probe what each space no longer lists, and record what is gone.
+        """Probe what each space's scope no longer lists, and record what is gone.
 
         Those not confirmed are probed, at most ``MAX_PROBES`` a space and a run, those
         on their way first; the rest stay pending. A document answering from another
@@ -411,20 +413,20 @@ class Fetching:
         canary = (confluence_v2.current_user_request(), confluence_v2.is_signed_in)
         kept = {each.id for each in self.store.spaces() if not isinstance(each, Problem)}
         with TRACER.start_as_current_span("fetch.probes"):
-            for space_id, (absent, stored, before) in self.absent.items():
-                known = {k: s for k, s in self.tombstones.items() if s.space_id == space_id}
+            for scope, (absent, stored, before) in self.absent.items():
+                known = {k: s for k, s in self.tombstones.items() if s.scope == scope}
                 # By the tombstones as they stood before this run: those on their way first.
                 order = probing_order(absent, before)[:MAX_PROBES]
                 with task("probes", len(order)) as probes:
                     answers = {
                         k: a
-                        for k in probes.each(order, lambda key: key[1])
+                        for k in probes.each(order, lambda key: key[2])
                         if (a := self.probe(k, kept))
                     }
-                if too_many_gone(answers, stored) and not self.reachable(CONFLUENCE, *canary):
+                if too_many_gone(answers, stored) and not self.reachable(scope.source, *canary):
                     answers = {}  # the site stopped answering: believe none of these answers
                 now = after_probes(known, absent, answers, self.now())
-                others = {k: s for k, s in self.tombstones.items() if s.space_id != space_id}
+                others = {k: s for k, s in self.tombstones.items() if s.scope != scope}
                 self.tombstones = {**others, **now}
                 self.store.put_tombstones(self.tombstones.values())
                 probed = "confluence documents: probed, absent from their listing"
@@ -432,15 +434,16 @@ class Fetching:
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
                 self.counts.add("confluence documents: absent, waiting for a probe", waiting)
 
-    def probe(self, key: tuple[str, str], kept: set[str]) -> ProbeAnswer | None:
+    def probe(self, key: DocumentKey, kept: set[str]) -> ProbeAnswer | None:
         """GET a document absent from its listing, and say what became of it.
 
         A probe that fails is a problem by its document, as ``fetch_document`` names one.
         """
-        document_class = Page if key[0] == Page.document_type.plural else BlogPost
-        where = f"{label(document_class)} {key[1]}"
+        document_class = Page if key[1] == Page.document_type.name else BlogPost
+        request = confluence_v2.probe_request(document_class.document_type.plural, key[2])
+        where = f"{label(document_class)} {key[2]}"
         try:
-            response = Fields(self.site.json(confluence_v2.probe_request(*key)), "probe")
+            response = Fields(self.site.json(request), "probe")
             found_space, status = confluence_v2.whereabouts(response)
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
@@ -450,7 +453,7 @@ class Fetching:
         except RepresentationError as error:
             self.failed("confluence probes", where, error)
             return None
-        named = found_space in kept and key[1] in self.store.listed_ids(found_space, document_class)
+        named = found_space in kept and key[2] in self.store.listed_ids(found_space, document_class)
         return answer_of(found_space, status, kept, named=named)
 
     def folders(self, pages: Iterable[object]) -> list[object]:

@@ -1,9 +1,10 @@
 """Documents that the site no longer has: when to say so, and when not to believe it.
 
-A document absent from its space's new listing gets a tombstone, pending until a probe
-answers. A first answer of gone dates it; a second, on a later run, confirms it, and
-the mirror then leaves the document out. Too many gone at once is more likely a lost session than a
-mass deletion, so the caller checks the session before believing it.
+A document absent from its scope's new whole read, a space's listing, gets a tombstone,
+pending until a probe answers. A first answer of gone dates it; a second, on a later
+run, confirms it, and the mirror then leaves the document out. Too many gone at once is
+more likely a lost session than a mass deletion, so the caller checks the session before
+believing it.
 """
 
 from __future__ import annotations
@@ -17,12 +18,16 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
-# Gone answers in one space beyond which the session is checked again: a count, and a
-# share of the space's stored documents.
+# A document, known by its source, its document type's name and its id.
+type DocumentKey = tuple[str, str, str]
+
+# Gone answers in one scope beyond which the session is checked again: a count, and a
+# share of the scope's stored documents.
 MASS_COUNT = 10
 MASS_SHARE = 0.05
 # How long after a first answer of gone a second one confirms it.
@@ -40,16 +45,18 @@ class ProbeAnswer(StrEnum):
 
 
 class Tombstone(Record):
-    """A document absent from its space's listing, on its way to being believed gone.
+    """A document absent from its scope's whole read, on its way to being believed gone.
 
-    It is pending until a probe answers gone (``first_gone`` is then that time), and
-    confirmed once a later probe, at least ``CONFIRM_AFTER`` later, answers gone again.
-    A pending one waits for a probe, however many runs that takes.
+    Known by its scope's source, its document type and its id; ``scope`` is the scope
+    whose whole read found it absent. It is pending until a probe answers gone
+    (``first_gone`` is then that time), and confirmed once a later probe, at least
+    ``CONFIRM_AFTER`` later, answers gone again. A pending one waits for a probe, however
+    many runs that takes.
     """
 
-    resource_type: str  # pages or blogposts
+    scope: Scope
+    type: str
     id: str
-    space_id: str
     first_gone: datetime | None = None
     confirmed: bool = False
 
@@ -62,28 +69,28 @@ class Tombstone(Record):
         return self
 
     @property
-    def key(self) -> tuple[str, str]:
-        """Name the document by its resource type and id."""
-        return self.resource_type, self.id
+    def key(self) -> DocumentKey:
+        """Name the document by its source, its document type and its id."""
+        return self.scope.source, self.type, self.id
 
 
 def after_probes(
-    known: Mapping[tuple[str, str], Tombstone],
-    absent: Mapping[tuple[str, str], str],
-    answers: Mapping[tuple[str, str], ProbeAnswer],
+    known: Mapping[DocumentKey, Tombstone],
+    absent: Mapping[DocumentKey, Scope],
+    answers: Mapping[DocumentKey, ProbeAnswer],
     now: datetime,
-) -> dict[tuple[str, str], Tombstone]:
-    """Return the tombstones of one space once its absent documents were probed.
+) -> dict[DocumentKey, Tombstone]:
+    """Return the tombstones of one scope once its absent documents were probed.
 
-    ``known`` are the space's tombstones before; ``absent`` maps each document missing
-    from the new listing to its space; ``answers`` holds the probes made, which may be
+    ``known`` are the scope's tombstones before; ``absent`` maps each document missing
+    from the new whole read to its scope; ``answers`` holds the probes made, which may be
     fewer than the absent, or none. An absent document without an answer keeps its
     tombstone, or becomes pending; one answering gone moves on a step; one listed again,
     moved or present loses its tombstone.
     """
-    kept: dict[tuple[str, str], Tombstone] = {}
-    for key, space_id in absent.items():
-        stone = known.get(key, Tombstone(resource_type=key[0], id=key[1], space_id=space_id))
+    kept: dict[DocumentKey, Tombstone] = {}
+    for key, scope in absent.items():
+        stone = known.get(key, Tombstone(scope=scope, type=key[1], id=key[2]))
         answer = answers.get(key)
         if answer is None:
             kept[key] = stone
@@ -97,7 +104,7 @@ def after_probes(
     return kept
 
 
-def too_many_gone(answers: Mapping[tuple[str, str], ProbeAnswer], stored: int) -> bool:
+def too_many_gone(answers: Mapping[DocumentKey, ProbeAnswer], stored: int) -> bool:
     """Say whether so many answered gone that the session must be checked first."""
     gone = sum(answer is ProbeAnswer.GONE for answer in answers.values())
     return gone > MASS_COUNT or gone > MASS_SHARE * stored
@@ -118,8 +125,8 @@ def answer_of(found_space: str, status: str, kept: Collection[str], *, named: bo
 
 
 def probing_order(
-    absent: Collection[tuple[str, str]], known: Mapping[tuple[str, str], Tombstone]
-) -> list[tuple[str, str]]:
+    absent: Collection[DocumentKey], known: Mapping[DocumentKey, Tombstone]
+) -> list[DocumentKey]:
     """Order the absent for probing, leaving out those confirmed gone.
 
     Those on their way (answered gone once, or pending) come first, so that a cap on

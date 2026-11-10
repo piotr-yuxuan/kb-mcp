@@ -399,7 +399,10 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
 # The record of what answered as gone, damaged, and whole but not as the store writes it.
 RECORDS = (
     "not json",
-    '[{"kind":"pages","id":"1001","space":"999","first_gone":null,"confirmed":false}]',
+    (
+        '[{"source":"confluence","type":"page","id":"1001","scope":"OPS","first_gone":null,'
+        '"confirmed":false}]'
+    ),
 )
 
 
@@ -428,7 +431,7 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
     run = run_of(CONFLUENCE, signed_in(settings), SINCE)
     assert fetcher_of(CONFLUENCE).preflight(run) is None
     assert fetcher_of(CONFLUENCE).fetch(run).counts is not None
-    assert list(RawStore(settings.raw).tombstones()) == [("pages", "1001")]
+    assert list(RawStore(settings.raw).tombstones()) == [("confluence", "page", "1001")]
     assert any(each.path.startswith("/wiki/") for each in site.asked)
 
 

@@ -281,7 +281,7 @@ def test_a_page_gone_on_two_runs_is_confirmed_and_one_back_loses_it(
     gone = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND)
     [stone] = RawStore(chosen.raw).tombstones().values()
-    assert (stone.key, stone.confirmed) == (("pages", "1002"), False)
+    assert (stone.key, stone.confirmed) == (("confluence", "page", "1002"), False)
     gone_again = RefreshSite(listing=without("1002"), gone={"1002"})
     run(chosen, monkeypatch, gone_again, catch_up(["MFS"], []), SECOND + timedelta(days=1))
     [stone] = RawStore(chosen.raw).tombstones().values()
@@ -330,7 +330,11 @@ def test_a_page_found_in_a_stored_space_that_does_not_list_it_waits(
         moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
         run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     [stone] = store.tombstones().values()
-    assert (stone.key, stone.first_gone, stone.confirmed) == (("pages", "1001"), None, False)
+    assert (stone.key, stone.first_gone, stone.confirmed) == (
+        ("confluence", "page", "1001"),
+        None,
+        False,
+    )
     prepared_sources(store, chosen.docs, SITE, identity)
     assert list((chosen.docs / "confluence" / "MFS").glob("1001-*.md"))
 
@@ -365,8 +369,8 @@ def test_a_page_on_its_way_is_probed_before_one_newly_absent(
     both = RefreshSite(listing={"1003": PAGES["1003"]}, gone={"1001", "1002"})
     run(chosen, monkeypatch, both, catch_up(["MFS"], []), SECOND + timedelta(days=1))
     stones = RawStore(chosen.raw).tombstones()
-    assert stones[("pages", "1002")].confirmed
-    assert stones[("pages", "1001")].first_gone is None
+    assert stones[("confluence", "page", "1002")].confirmed
+    assert stones[("confluence", "page", "1001")].first_gone is None
 
 
 def test_a_listed_entry_that_the_reader_refuses_is_not_absent(
@@ -389,7 +393,7 @@ def test_a_page_moved_out_of_the_kept_spaces_is_gone(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     moved = RefreshSite(listing=without("1001"), moved={"1001": OTHER_SPACE})
     run(chosen, monkeypatch, moved, catch_up(["MFS"], []), SECOND)
-    assert list(RawStore(chosen.raw).tombstones()) == [("pages", "1001")]
+    assert list(RawStore(chosen.raw).tombstones()) == [("confluence", "page", "1001")]
 
 
 def test_many_gone_with_a_lost_session_write_no_tombstone(
@@ -571,7 +575,11 @@ def test_a_page_whose_probe_failed_is_probed_again_on_a_later_run(
     outcome = run_fetch(chosen, catch_up(["MFS"], []), lambda: SECOND, lambda _: None)
     assert Problem(where="confluence pages 1002", reason="status 503") in outcome.problems
     [pending] = RawStore(chosen.raw).tombstones().values()
-    assert (pending.key, pending.first_gone, pending.confirmed) == (("pages", "1002"), None, False)
+    assert (pending.key, pending.first_gone, pending.confirmed) == (
+        ("confluence", "page", "1002"),
+        None,
+        False,
+    )
     for day in (1, 2):
         gone = RefreshSite(listing=without("1002"), gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
@@ -632,7 +640,7 @@ def test_a_deleted_page_whose_listing_entry_changed_is_still_tracked(
         gone = RefreshSite(listing=rest, gone={"1002"})
         run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(days=day))
     [stone] = RawStore(chosen.raw).tombstones().values()
-    assert (stone.key, stone.confirmed) == (("pages", "1002"), True)
+    assert (stone.key, stone.confirmed) == (("confluence", "page", "1002"), True)
 
 
 def test_a_stale_listing_never_brings_back_a_page_confirmed_gone(

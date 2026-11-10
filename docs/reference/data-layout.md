@@ -255,8 +255,11 @@ Two more of the store's own records, each replaced whole:
   ignore `exact`; those before plan 056 ignore `type` and the times, and read a space's
   `exact` as false.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
-  `put_tombstones()`: each Confluence document absent from its space's listing
-  (`sources.atlassian.fetch.domain.deletions.Tombstone`), pending until a probe answers,
+  `put_tombstones()`: each document absent from its scope's whole read, a space's
+  listing, by its `source`, its document `type` and its `id`, with the key of that
+  `scope` (`sources.atlassian.fetch.domain.deletions.Tombstone`); an entry as plan 056
+  found them names the plural `kind` and the space's id, `space`, and is Confluence's,
+  of the space that the store lists under that id. A tombstone is pending until a probe answers,
   then dated by its first answer of gone (404, trashed, or moved to a space the store
   does not keep), and confirmed by a second, at least an hour later. A document found in
   a kept space whose stored listing names it has moved, and loses its tombstone, as does

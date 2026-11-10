@@ -369,10 +369,48 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     store.put_coverage(coverage)
     assert store.coverage() == coverage
     stone = Tombstone(
-        resource_type="pages", id="1001", space_id="196613", first_gone=FETCHED, confirmed=True
+        scope=Scope(source="confluence", type=names.SPACE, key="MFS"),
+        type="page",
+        id="1001",
+        first_gone=FETCHED,
+        confirmed=True,
     )
     store.put_tombstones([stone])
-    assert store.tombstones() == {("pages", "1001"): stone}
+    assert store.tombstones() == {("confluence", "page", "1001"): stone}
+
+
+def test_a_tombstone_record_written_at_pre_kb_mcp_reads_as_confluence_s_and_is_written_anew(
+    store: RawStore,
+) -> None:
+    """Plan 056: ``kind`` names the plural, ``space`` the id of a space that the store lists.
+
+    Read as Confluence's, of that space's scope; written back with its source, type and
+    scope, by key.
+    """
+    store.put_space(v2_space(), [], [], [])
+    (store.root / "tombstones.json").write_text(
+        '[{"kind": "blogposts", "id": "600", "space": "196613",'
+        ' "first_gone": "2026-10-22T09:00:00+00:00", "confirmed": false}]',
+        "utf-8",
+    )
+    stone = Tombstone(
+        scope=Scope(source="confluence", type=names.SPACE, key="MFS"),
+        type="blogpost",
+        id="600",
+        first_gone=datetime(2026, 10, 22, 9, tzinfo=UTC),
+    )
+    assert store.tombstones() == {("confluence", "blogpost", "600"): stone}
+    store.put_tombstones(store.tombstones().values())
+    assert json.loads((store.root / "tombstones.json").read_text("utf-8")) == [
+        {
+            "source": "confluence",
+            "type": "blogpost",
+            "id": "600",
+            "scope": "MFS",
+            "first_gone": "2026-10-22T09:00:00+00:00",
+            "confirmed": False,
+        }
+    ]
 
 
 def test_a_coverage_record_keeps_plan_034_s_keys_beside_the_scope_type_and_its_times(
@@ -481,8 +519,8 @@ def test_a_record_naming_a_key_that_is_a_path_is_refused(store: RawStore) -> Non
 def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:
     """A damaged record is refused by name, rather than hiding a page for no reason."""
     (store.root / "tombstones.json").write_text(
-        '[{"kind": "pages", "id": "1001", "space": "196613", "first_gone": null,'
-        ' "confirmed": true}]',
+        '[{"source": "confluence", "type": "page", "id": "1001", "scope": "MFS",'
+        ' "first_gone": null, "confirmed": true}]',
         "utf-8",
     )
     with pytest.raises(RepresentationError, match=r"tombstones\.json\[0\]: confirmed"):

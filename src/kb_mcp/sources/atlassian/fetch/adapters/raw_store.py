@@ -33,7 +33,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Space,
 )
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
-from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
+from kb_mcp.sources.atlassian.fetch.domain.deletions import DocumentKey, Tombstone
 from kb_mcp.sources.atlassian.fetch.domain.names import (
     BLOGPOST,
     CONFLUENCE,
@@ -60,6 +60,12 @@ LISTED_AT = "listed_at.json"
 # names none, and its source, then always its connector's name, gives it.
 SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
 FORMER_TYPES = {CONFLUENCE: SPACE.name, JIRA: PROJECT.name}
+# The scope type of each document type that a tombstone may name, by name; and the
+# document type of a tombstone written before plan 056, by the plural it named as ``kind``.
+HELD_IN = {
+    each.name: scope_type for scope_type in (SPACE, PROJECT) for each in scope_type.document_types
+}
+FORMER_KINDS = {PAGE.plural: PAGE.name, BLOGPOST.plural: BLOGPOST.name}
 # The times that a coverage's entry may hold beside its period, each a field of Coverage.
 COVERAGE_TIMES = ("as_of", "whole_read_at")
 # The file name of a response: one safe path part, then .json.
@@ -542,23 +548,38 @@ class RawStore:
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))
 
-    def tombstones(self) -> dict[tuple[str, str], Tombstone]:
-        """Read the documents that answered as gone, by resource type and id."""
+    def tombstones(self) -> dict[DocumentKey, Tombstone]:
+        """Read the documents that answered as gone, by source, document type and id.
+
+        An entry written before plan 056 names the plural of its type as ``kind``, and
+        its space by id as ``space``: it is Confluence's, and of the space that the store
+        lists under that id.
+        """
         path = self.root / TOMBSTONES
         if not path.exists():
             return {}
-        stones: dict[tuple[str, str], Tombstone] = {}
+        stones: dict[DocumentKey, Tombstone] = {}
+        keys: dict[str, str] = {}  # each space's key by its id, for an entry of before 056
         for item in Fields.each(_record_json(path), TOMBSTONES):
+            former = "kind" in item.value
+            if former and not keys:
+                keys = {each.id: each.key for each in self.spaces() if isinstance(each, Space)}
             with item.refusals():
-                resource_type, identifier = item.text("kind"), _identifier(item.text("id"), "id")
-                if resource_type not in {Page.document_type.plural, BlogPost.document_type.plural}:
-                    message = f"{item.path}.kind: not a resource type of Confluence"
-                    raise RepresentationError(message)
+                if former:
+                    source, named = CONFLUENCE, FORMER_KINDS.get(item.text("kind"), "")
+                    scope_key = keys.get(item.text("space"), "")
+                else:
+                    source, named, scope_key = (
+                        item.text(key) for key in ("source", "type", "scope")
+                    )
+                if named not in HELD_IN:
+                    message = "type: not a document type of Confluence or Jira"
+                    raise RefusedError(message)
                 first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
                 stone = Tombstone(
-                    resource_type=resource_type,
-                    id=identifier,
-                    space_id=item.text("space"),
+                    scope=Scope(source=source, type=HELD_IN[named], key=scope_key),
+                    type=named,
+                    id=_identifier(item.text("id"), "id"),
                     first_gone=first_gone,
                     confirmed=item.flag("confirmed"),
                 )
@@ -570,9 +591,10 @@ class RawStore:
         self._check_writing()
         entries = [
             {
-                "kind": stone.resource_type,
+                "source": stone.scope.source,
+                "type": stone.type,
                 "id": stone.id,
-                "space": stone.space_id,
+                "scope": stone.scope.key,
                 "first_gone": stone.first_gone.astimezone(UTC).isoformat()
                 if stone.first_gone
                 else None,

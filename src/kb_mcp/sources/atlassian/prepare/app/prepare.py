@@ -241,7 +241,7 @@ def place(
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        stone = gone.get((document.document_type.plural, document.id))
+        stone = gone.get((document.source, document.document_type.name, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
         named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)

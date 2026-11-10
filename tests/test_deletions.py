@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.sources.atlassian.fetch.domain import names
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     ProbeAnswer,
     Tombstone,
@@ -18,26 +20,25 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
 
 FIRST = datetime(2026, 11, 1, tzinfo=UTC)
 LATER = datetime(2026, 11, 2, tzinfo=UTC)
-PAGE = ("pages", "1001")
+PAGE = ("confluence", "page", "1001")
 SPACE = "196613"
+SCOPE = Scope(source="confluence", type=names.SPACE, key="MFS")
 
 
 def stone(*, confirmed: bool = False) -> Tombstone:
     """Return the tombstone of the page, as the first run made it."""
-    return Tombstone(
-        resource_type="pages", id="1001", space_id=SPACE, first_gone=FIRST, confirmed=confirmed
-    )
+    return Tombstone(scope=SCOPE, type="page", id="1001", first_gone=FIRST, confirmed=confirmed)
 
 
 def test_a_first_gone_answer_makes_a_tombstone_not_yet_confirmed() -> None:
     """One answer is not enough: a moment of trouble on the site would purge pages."""
-    kept = after_probes({}, {PAGE: SPACE}, {PAGE: ProbeAnswer.GONE}, FIRST)
+    kept = after_probes({}, {PAGE: SCOPE}, {PAGE: ProbeAnswer.GONE}, FIRST)
     assert kept == {PAGE: stone()}
 
 
 def test_a_second_gone_answer_confirms_it() -> None:
     """Absent and gone on a later run: the mirror can leave the page out."""
-    kept = after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: ProbeAnswer.GONE}, LATER)
+    kept = after_probes({PAGE: stone()}, {PAGE: SCOPE}, {PAGE: ProbeAnswer.GONE}, LATER)
     assert kept == {PAGE: stone(confirmed=True)}
 
 
@@ -48,19 +49,19 @@ def test_a_page_listed_again_loses_its_tombstone() -> None:
 
 def test_a_moved_page_loses_its_tombstone_and_an_unsettled_one_waits_again() -> None:
     """Followed into a space that lists it: not gone. Found, but unlisted: pending again."""
-    assert after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: ProbeAnswer.MOVED}, LATER) == {}
-    unsettled = after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: ProbeAnswer.UNSETTLED}, LATER)
-    assert unsettled == {PAGE: Tombstone(resource_type="pages", id="1001", space_id=SPACE)}
+    assert after_probes({PAGE: stone()}, {PAGE: SCOPE}, {PAGE: ProbeAnswer.MOVED}, LATER) == {}
+    unsettled = after_probes({PAGE: stone()}, {PAGE: SCOPE}, {PAGE: ProbeAnswer.UNSETTLED}, LATER)
+    assert unsettled == {PAGE: Tombstone(scope=SCOPE, type="page", id="1001")}
 
 
 def test_a_page_not_probed_this_run_keeps_its_tombstone_as_it_was() -> None:
     """Probes are bounded: the page waits for a later run, neither confirmed nor dropped."""
-    assert after_probes({PAGE: stone()}, {PAGE: SPACE}, {}, LATER) == {PAGE: stone()}
+    assert after_probes({PAGE: stone()}, {PAGE: SCOPE}, {}, LATER) == {PAGE: stone()}
 
 
 def test_many_gone_at_once_call_for_a_check_of_the_session() -> None:
     """More than 10, or more than 5% of the stored documents, is too many to believe."""
-    gone = {("pages", str(n)): ProbeAnswer.GONE for n in range(11)}
+    gone = {("confluence", "page", str(n)): ProbeAnswer.GONE for n in range(11)}
     assert too_many_gone(gone, 10_000)
     assert too_many_gone(dict(list(gone.items())[:6]), 100)
     assert not too_many_gone(dict(list(gone.items())[:5]), 100)
@@ -70,7 +71,7 @@ def test_many_gone_at_once_call_for_a_check_of_the_session() -> None:
 def test_a_second_answer_within_the_hour_does_not_confirm() -> None:
     """Two runs moments apart prove little: the tombstone waits."""
     soon = FIRST + timedelta(minutes=5)
-    kept = after_probes({PAGE: stone()}, {PAGE: SPACE}, {PAGE: ProbeAnswer.GONE}, soon)
+    kept = after_probes({PAGE: stone()}, {PAGE: SCOPE}, {PAGE: ProbeAnswer.GONE}, soon)
     assert kept == {PAGE: stone()}
 
 
@@ -87,33 +88,40 @@ def test_a_trashed_or_out_of_scope_page_is_gone_and_one_listed_elsewhere_moved()
 def test_a_confirmation_without_a_first_answer_of_gone_is_refused() -> None:
     """Confirmed means answered gone twice: a tombstone saying otherwise is damaged."""
     with pytest.raises(RefusedError, match="confirmed"):
-        Tombstone(resource_type="pages", id="1001", space_id=SPACE, confirmed=True)
+        Tombstone(scope=SCOPE, type="page", id="1001", confirmed=True)
 
 
 def test_pages_on_their_way_are_probed_first_and_confirmed_ones_not_at_all() -> None:
     """A cap on probes never starves a confirmation, nor is spent on settled pages."""
-    absent = [("pages", "1"), ("pages", "2"), ("pages", "3"), ("pages", "4")]
+    absent = [
+        ("confluence", "page", "1"),
+        ("confluence", "page", "2"),
+        ("confluence", "page", "3"),
+        ("confluence", "page", "4"),
+    ]
     known = {
-        ("pages", "3"): Tombstone(resource_type="pages", id="3", space_id=SPACE, first_gone=FIRST),
-        ("pages", "4"): Tombstone(
-            resource_type="pages", id="4", space_id=SPACE, first_gone=FIRST, confirmed=True
+        ("confluence", "page", "3"): Tombstone(scope=SCOPE, type="page", id="3", first_gone=FIRST),
+        ("confluence", "page", "4"): Tombstone(
+            scope=SCOPE, type="page", id="4", first_gone=FIRST, confirmed=True
         ),
     }
-    assert probing_order(absent, known) == [("pages", "3"), ("pages", "1"), ("pages", "2")]
+    assert probing_order(absent, known) == [
+        ("confluence", "page", "3"),
+        ("confluence", "page", "1"),
+        ("confluence", "page", "2"),
+    ]
 
 
 def test_an_absent_page_without_an_answer_waits_as_pending() -> None:
     """No answer this run (a failed probe, the cap, a silent site): it waits, not lost."""
-    kept = after_probes({}, {PAGE: SPACE}, {}, FIRST)
-    assert kept == {PAGE: Tombstone(resource_type="pages", id="1001", space_id=SPACE)}
-    answered = after_probes(kept, {PAGE: SPACE}, {PAGE: ProbeAnswer.GONE}, LATER)
-    assert answered == {
-        PAGE: Tombstone(resource_type="pages", id="1001", space_id=SPACE, first_gone=LATER)
-    }
+    kept = after_probes({}, {PAGE: SCOPE}, {}, FIRST)
+    assert kept == {PAGE: Tombstone(scope=SCOPE, type="page", id="1001")}
+    answered = after_probes(kept, {PAGE: SCOPE}, {PAGE: ProbeAnswer.GONE}, LATER)
+    assert answered == {PAGE: Tombstone(scope=SCOPE, type="page", id="1001", first_gone=LATER)}
 
 
 def test_a_confirmed_page_absent_and_unprobed_stays_confirmed() -> None:
     """Confirmed pages are not probed again, and stay confirmed while absent."""
-    assert after_probes({PAGE: stone(confirmed=True)}, {PAGE: SPACE}, {}, LATER) == {
+    assert after_probes({PAGE: stone(confirmed=True)}, {PAGE: SCOPE}, {}, LATER) == {
         PAGE: stone(confirmed=True)
     }
