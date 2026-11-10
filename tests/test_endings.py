@@ -1,4 +1,4 @@
-"""How a run's endings fold into its exit status, as the concepts page's run says.
+"""How a run's endings fold into its exit status, and what an outcome holds, as the run says.
 
 The most severe ending gives the status: interrupted 130, over sign in again 3, over
 failed 1, over done 0; not run, a unit that a dry run left alone, is 0 as well. A run
@@ -11,10 +11,12 @@ from __future__ import annotations
 from itertools import product
 
 import pytest
+from pydantic import ValidationError
 
 from kb_mcp.kernel.exit_status import ExitStatus, folded
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.record import Record
 
 # Each ending and its status, most severe first, as the page lists them.
 SEVERITY = (
@@ -67,3 +69,15 @@ def test_an_outcome_done_or_not_run_with_a_problem_is_refused(ending: str) -> No
 def test_an_outcome_that_did_not_end_well_may_hold_problems(ending: str) -> None:
     """Failed, to sign in again or interrupted, a unit says what it left undone."""
     assert Outcome(ending=ending, problems=(PROBLEM,)).problems == (PROBLEM,)
+
+
+class Untold(Record):
+    """Counts that cannot write themselves: no ``text``."""
+
+    documents: int
+
+
+def test_counts_that_cannot_write_themselves_are_refused() -> None:
+    """The counts are a stage's record that writes itself as text, short or detailed."""
+    with pytest.raises(ValidationError, match="instance of Counts"):
+        Outcome(ending="done", counts=Untold(documents=1))
