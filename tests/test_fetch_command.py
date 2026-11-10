@@ -584,12 +584,14 @@ def test_names_split_by_an_option_are_refused_by_the_parser(
 def test_a_flag_of_a_source_not_named_is_said_not_applied(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """``--project`` replaces Jira's setting, which this run does not read: said, and not copied."""
+    """``--project`` replaces the list of no source named: said ignored, copied as given.
+
+    Review round 1 of plan 059: it overrides no setting, Jira's list left as it was.
+    """
     assert main([*signed_in, "confluence"]) == SOME_FAILED
     err = capsys.readouterr().err
-    assert "\n  sources.jira.projects: PRB (not applied: jira not named)\n" in err
-    assert "ignored: sources.jira.projects (--project): jira not named\n" in err
-    assert "--project" not in err.split("kb-mcp fetch")[1]
+    assert "\n  --project: ignored by confluence\n" in err
+    assert "sources.jira.projects (--project)" not in err
 
 
 def test_a_source_named_but_not_configured_is_refused_naming_its_setting(

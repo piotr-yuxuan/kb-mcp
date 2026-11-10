@@ -342,3 +342,17 @@ def test_an_empty_variable_of_a_source_that_the_settings_do_not_name_is_ignored(
     assert "sources.tracker (KB_MCP_SOURCES__TRACKER__SITE): not a source" in (
         capsys.readouterr().err
     )
+
+
+def test_project_given_with_sources_none_of_which_has_projects_is_ignored_by_them(
+    tmp_path: Path, capsys: CaptureFixture[str], runs: list[tuple[argparse.Namespace, Loaded]]
+) -> None:
+    """Review round 1: overriding no list, it is said ignored by the source named."""
+    config = tmp_path / "config.toml"
+    config.write_text(f'{CLIENT}[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n', "utf-8")
+    given = ["fetch", "confluence", "--yes", "--config", str(config), "--project", "XYZ"]
+    assert main(given) == ExitStatus.OK
+    assert "  --project: ignored by confluence\n" in capsys.readouterr().err
+    [(_, loaded)] = runs
+    assert loaded.settings.sources.jira.projects == ()
+    assert loaded.settings.sources.clientjira.projects == ("ABC",)

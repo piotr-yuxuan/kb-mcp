@@ -95,8 +95,9 @@ def fetch_described(
 
     The lines that a source taken says follow, each once, as its connector's
     ``described`` gives them. An option that no setting holds, given, is ignored by each
-    source taken whose connector does not declare it; one that replaces a setting is said
-    by ``unapplied``, as for any setting.
+    source taken whose connector does not declare it, as is one that replaces a setting of
+    no source named (``Command.narrowed``); another that replaces a setting is said by
+    ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
     lines = [source_line(declared, settings) for declared in taken]
@@ -107,11 +108,12 @@ def fetch_described(
         said += connector.described(declared, options, settings) if connector.described else ()
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
+    unbound = {flag for flag, left in arguments.command.narrowed(arguments).items() if not left}
     flags = {
         flag
         for connector in (declared.connector for declared in arguments.sources)
         for flag, option in connector.flags.items()
-        if connector.fetcher is not None and option.setting is None
+        if connector.fetcher is not None and (option.setting is None or flag in unbound)
     }
     for flag, value in sorted(given(arguments, flags).items()):
         ignoring = [each.name for each in taken if flag not in each.connector.flags]

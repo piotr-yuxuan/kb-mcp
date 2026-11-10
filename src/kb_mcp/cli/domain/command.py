@@ -84,14 +84,14 @@ class Command:
     def narrowed(self, arguments: argparse.Namespace) -> dict[str, dict[str, str]]:
         """Give each flag of ``scoped`` the settings that it may override, by source.
 
-        Those of the sources named (``arguments.source``, as ``fetch`` names them) when
-        any of them declares it, else those of every source that declares it.
+        Those of the sources named (``arguments.source``, as ``fetch`` names them), none
+        when none of them declares it; with none named, those of every source that does.
         """
         if not self.scoped:
             return {}
         named = set(arguments.source)
         return {
-            dest: {name: path for name, path in by.items() if name in named} or dict(by)
+            dest: {name: path for name, path in by.items() if name in named or not named}
             for dest, by in self.scoped.items()
         }
 
