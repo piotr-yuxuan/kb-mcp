@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.outcome import Outcome
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
 from kb_mcp.sources.worklog.prepare.app.prepare import plan_worklog, prepare_worklog
 
@@ -33,7 +33,7 @@ def prepare(run: SourceRun) -> Outcome[WorklogCounts | WorklogPlanned]:
     """Mirror the work log, or count what a dry run would, with the pandoc found now.
 
     Pandoc gone from PATH since the run began, or giving no version, fails it, writing
-    nothing: an error, ``worklog.pandoc_failed``. Each problem is a warning,
+    nothing: a problem by pandoc and an error, ``worklog.pandoc_failed``. Each problem is a warning,
     ``worklog.problem``, by its place, its reason and what it held back, never content;
     so is that a run with problems, not a dry run, removed nothing,
     ``worklog.nothing_removed``.
@@ -44,7 +44,7 @@ def prepare(run: SourceRun) -> Outcome[WorklogCounts | WorklogPlanned]:
         done = act(table.path, run.settings.docs, Pandoc.find(), archives=table.archives)
     except (PandocMissingError, PandocFailedError) as error:
         structlog.get_logger().error("worklog.pandoc_failed", reason=str(error))
-        return Outcome(ending="failed")
+        return Outcome(ending="failed", problems=(Problem(where="pandoc", reason=str(error)),))
     log = structlog.get_logger()
     for problem in done.problems:
         log.warning(

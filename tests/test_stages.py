@@ -30,6 +30,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -492,6 +493,9 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
     with capture_logs() as events:
         fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), options))
     assert (fetched.ending, fetched.counts) == ("failed", None)
+    (problem,) = fetched.problems
+    assert problem.where == "confluence"
+    assert said in problem.reason
     (refused,) = [each for each in events if each["event"] == "fetch.refused"]
     assert refused["log_level"] == "error"
     assert refused["source"] == "confluence"
@@ -579,9 +583,9 @@ def test_pandoc_gone_fails_each_preparer_that_converts_and_writes_nothing(
             preparer_of(declared).prepare(run_of(declared, stored))
             for declared in (CONFLUENCE, WORKLOG)
         ]
-    assert [(result.ending, result.counts) for result in results] == [
-        ("failed", None),
-        ("failed", None),
+    assert [(result.ending, result.counts, result.problems) for result in results] == [
+        ("failed", None, (Problem(where="pandoc", reason=message),)),
+        ("failed", None, (Problem(where="pandoc", reason=message),)),
     ]
     assert [(each["event"], each["log_level"], each["reason"]) for each in logged] == [
         ("prepare.pandoc_missing", "error", message),

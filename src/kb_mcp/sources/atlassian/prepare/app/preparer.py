@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
@@ -58,8 +58,8 @@ def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
     A dry run ends not run, with no counts, and a warning that says why.
 
     Pandoc gone from PATH since the run began fails the prepare, which writes nothing:
-    an error, ``prepare.pandoc_missing``. The site is the account's, so that links to its
-    pages resolve and addresses are absolute.
+    a problem by pandoc and an error, ``prepare.pandoc_missing``. The site is the
+    account's, so that links to its pages resolve and addresses are absolute.
     """
     if run.dry_run:
         return Outcome(
@@ -69,7 +69,7 @@ def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
         structlog.get_logger().error("prepare.pandoc_missing", reason=str(error))
-        return Outcome(ending="failed")
+        return Outcome(ending="failed", problems=(Problem(where="pandoc", reason=str(error)),))
     return prepare_classes(
         run.settings, run.account_table.site, pandoc, run.source.name, classes_of(run)
     )

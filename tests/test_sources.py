@@ -1186,6 +1186,9 @@ def test_a_busy_raw_store_fails_the_fetch_and_a_prepare_still_runs(
         ("jira", "failed"),
     ]
     assert ran.exit_status == ExitStatus.FAILED
+    assert [row.problems for row in ran.sources] == [
+        (Problem(where="raw store", reason=fetcher.BUSY),)
+    ] * 2
     assert len(logged_as(logged, "fetch.store_busy")) == len(ran.sources)
     prepared = run_each("prepare", runs(settings, FIRST, WORKLOG))
     assert prepared.exit_status == ExitStatus.OK
