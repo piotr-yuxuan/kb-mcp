@@ -73,12 +73,12 @@ def run(
     built_at = datetime.now(UTC)
     try:
         with open_endpoint(arguments, settings) as opened:
-            indexes = [
+            to_evaluate = [
                 EvaluatedIndex(connect(opened, name), chunking)
                 for name in arguments.model or [settings.model]
                 for chunking in arguments.chunking or CHUNKINGS
             ]
-            measured = evaluate(settings, questions, indexes, time.perf_counter, built_at)
+            measured = evaluate(settings, questions, to_evaluate, time.perf_counter, built_at)
     except (ModelError, EvaluationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
@@ -115,19 +115,19 @@ def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
     if summary == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"
     lines = []
-    for measures in evaluated.indexes:
+    for of_index in evaluated.indexes:
         modes = [
             mode
-            for mode in measures.groups
-            if mode != "lexical" or measures is evaluated.indexes[0]
+            for mode in of_index.groups
+            if mode != "lexical" or of_index is evaluated.indexes[0]
         ]
-        lines += [heading(measures), "", built(measures), "", HEADER, DIVIDER]
+        lines += [heading(of_index), "", built(of_index), "", HEADER, DIVIDER]
         lines += [
-            row(mode, "all", measures.groups[mode]["all"], measures.times[mode]) for mode in modes
+            row(mode, "all", of_index.groups[mode]["all"], of_index.times[mode]) for mode in modes
         ]
         lines += ["", ASK_HEADER, ASK_DIVIDER]
         lines += [
-            ask_row(mode, "all", measures.asked_groups[mode]["all"], measures.ask_times[mode])
+            ask_row(mode, "all", of_index.asked_groups[mode]["all"], of_index.ask_times[mode])
             for mode in modes
         ]
         lines.append("")

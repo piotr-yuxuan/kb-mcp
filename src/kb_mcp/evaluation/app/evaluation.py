@@ -219,10 +219,10 @@ def evaluate(
         name = evaluated.embedder.name
         named = {"gen_ai.request.model": name, "kb_mcp.chunking": evaluated.chunking}
         with TRACER.start_as_current_span("eval.model", attributes=named):
-            measures, library = prepared(evaluated, settings, questions, clock, built_at)
+            of_index, library = prepared(evaluated, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
-                    measures.per[mode], measures.ranks[mode], measures.asked[mode] = {}, {}, {}
+                    of_index.per[mode], of_index.ranks[mode], of_index.asked[mode] = {}, {}, {}
                     spent, asking = [], []
                     for question in asked.each(questions, lambda one: one.id):
                         started = clock()
@@ -236,8 +236,8 @@ def evaluate(
                             raise EvaluationError(message)
                         paths = [each.path for each in shown]
                         texts = {each.path: each.text for each in shown}
-                        measures.per[mode][question.id] = measure(paths, question, texts)
-                        measures.ranks[mode][question.id] = [
+                        of_index.per[mode][question.id] = measure(paths, question, texts)
+                        of_index.ranks[mode][question.id] = [
                             paths.index(path) + 1 if path in paths else None
                             for path in question.expected
                         ]
@@ -245,36 +245,36 @@ def evaluate(
                         quoted = library.quoted(question.text, mode)
                         asking.append(clock() - started)
                         passages = [(each.path, each.text) for each in quoted]
-                        measures.asked[mode][question.id] = quoting(passages, question)
+                        of_index.asked[mode][question.id] = quoting(passages, question)
                         log.debug(
                             "eval.question",
                             id=question.id,
                             chunking=evaluated.chunking,
                             mode=mode,
                             seconds=round(spent[-1], 3),
-                            reciprocal_rank=measures.per[mode][question.id].reciprocal_rank,
+                            reciprocal_rank=of_index.per[mode][question.id].reciprocal_rank,
                         )
-                    measures.groups[mode] = averages(measures.per[mode], questions, Measures.mean)
-                    measures.asked_groups[mode] = averages(
-                        measures.asked[mode], questions, Quoted.mean
+                    of_index.groups[mode] = averages(of_index.per[mode], questions, Measures.mean)
+                    of_index.asked_groups[mode] = averages(
+                        of_index.asked[mode], questions, Quoted.mean
                     )
-                    measures.times[mode] = (median(spent), percentile(spent, TAIL))
-                    measures.ask_times[mode] = (median(asking), percentile(asking, TAIL))
+                    of_index.times[mode] = (median(spent), percentile(spent, TAIL))
+                    of_index.ask_times[mode] = (median(asking), percentile(asking, TAIL))
                     lexical = [
-                        measures.per["lexical"][question.id].reciprocal_rank
+                        of_index.per["lexical"][question.id].reciprocal_rank
                         for question in questions
                     ]
                     moded = [
-                        measures.per[mode][question.id].reciprocal_rank for question in questions
+                        of_index.per[mode][question.id].reciprocal_rank for question in questions
                     ]
-                    measures.pvalues[mode] = paired_test(lexical, moded)
-                    every = measures.groups[mode]["all"]
+                    of_index.pvalues[mode] = paired_test(lexical, moded)
+                    every = of_index.groups[mode]["all"]
                     scored = {**named, "kb_mcp.mode": mode}
                     SCORE.set(every.recall, {**scored, "kb_mcp.measure": f"recall@{CUTOFF}"})
                     SCORE.set(every.reciprocal_rank, {**scored, "kb_mcp.measure": f"mrr@{CUTOFF}"})
                     SCORE.set(every.ndcg, {**scored, "kb_mcp.measure": f"ndcg@{CUTOFF}"})
                     SCORE.set(every.success, {**scored, "kb_mcp.measure": "success@1"})
-                    answered = measures.asked_groups[mode]["all"]
+                    answered = of_index.asked_groups[mode]["all"]
                     SCORE.set(answered.found, {**scored, "kb_mcp.measure": "found@ask"})
                     if answered.evidence is not None:
                         SCORE.set(answered.evidence, {**scored, "kb_mcp.measure": "evidence@ask"})
@@ -283,14 +283,14 @@ def evaluate(
                 model=name,
                 chunking=evaluated.chunking,
                 questions=len(questions),
-                embedded=measures.embedded,
-                index_seconds=round(measures.seconds, 3),
+                embedded=of_index.embedded,
+                index_seconds=round(of_index.seconds, 3),
             )
-        measured.append(measures)
-    tests = [(measures, mode) for measures in measured for mode in MODES[1:]]
-    adjusted = holm([measures.pvalues[mode] for measures, mode in tests])
-    for (measures, mode), value in zip(tests, adjusted, strict=True):
-        measures.adjusted[mode] = value
+        measured.append(of_index)
+    tests = [(of_index, mode) for of_index in measured for mode in MODES[1:]]
+    adjusted = holm([of_index.pvalues[mode] for of_index, mode in tests])
+    for (of_index, mode), value in zip(tests, adjusted, strict=True):
+        of_index.adjusted[mode] = value
     return measured
 
 
@@ -322,7 +322,7 @@ def prepared(
         tokens=embedder.tokens,
         bytes=index.stat().st_size,
     )
-    measures = IndexMeasures(
+    of_index = IndexMeasures(
         model=name,
         fingerprint=embedder.fingerprint,
         embedded=report.embedded,
@@ -340,7 +340,7 @@ def prepared(
         raise EvaluationError(message)
     # Untimed: the first search by meaning reads the index's vectors.
     library.ranked(questions[0].text, "hybrid")
-    return measures, library
+    return of_index, library
 
 
 def compared(measured: Sequence[IndexMeasures], questions: Sequence[Question]) -> dict[str, Choice]:
@@ -349,14 +349,14 @@ def compared(measured: Sequence[IndexMeasures], questions: Sequence[Question]) -
     Only a model with an index cut by the control gets a choice.
     """
     scored: dict[str, dict[str, Scored]] = {}
-    for measures in measured:
-        asked = (measures.asked["hybrid"][question.id].evidence for question in questions)
-        scored.setdefault(measures.model, {})[measures.chunking] = Scored(
+    for of_index in measured:
+        asked = (of_index.asked["hybrid"][question.id].evidence for question in questions)
+        scored.setdefault(of_index.model, {})[of_index.chunking] = Scored(
             reciprocal_ranks=tuple(
-                measures.per["hybrid"][question.id].reciprocal_rank for question in questions
+                of_index.per["hybrid"][question.id].reciprocal_rank for question in questions
             ),
             evidence=tuple(each for each in asked if each is not None),
-            tokens=measures.costs.estimated,
+            tokens=of_index.costs.estimated,
         )
     return {
         model: default_chunking(chunkings)
@@ -378,27 +378,27 @@ def record(
         "test": {"kind": "paired randomisation, two-sided", "samples": SAMPLES, "seed": SEED},
         "indexes": [
             {
-                "model": measures.model,
-                "chunking": measures.chunking,
-                "fingerprint": measures.fingerprint,
-                "embedded": measures.embedded,
-                "seconds": measures.seconds,
-                "costs": measures.costs.model_dump() | {"estimated": measures.costs.estimated},
-                "times": measures.times,
-                "ask_times": measures.ask_times,
-                "pvalues": measures.pvalues,
-                "adjusted": measures.adjusted,
+                "model": of_index.model,
+                "chunking": of_index.chunking,
+                "fingerprint": of_index.fingerprint,
+                "embedded": of_index.embedded,
+                "seconds": of_index.seconds,
+                "costs": of_index.costs.model_dump() | {"estimated": of_index.costs.estimated},
+                "times": of_index.times,
+                "ask_times": of_index.ask_times,
+                "pvalues": of_index.pvalues,
+                "adjusted": of_index.adjusted,
                 "groups": {
                     mode: {group: each.model_dump() for group, each in groups.items()}
-                    for mode, groups in measures.groups.items()
+                    for mode, groups in of_index.groups.items()
                 },
                 "asked": {
                     mode: {group: each.model_dump() for group, each in groups.items()}
-                    for mode, groups in measures.asked_groups.items()
+                    for mode, groups in of_index.asked_groups.items()
                 },
-                "ranks": measures.ranks,
+                "ranks": of_index.ranks,
             }
-            for measures in measured
+            for of_index in measured
         ],
         "chunking": {model: choice.model_dump() for model, choice in choices.items()},
     }
@@ -425,17 +425,17 @@ def ask_row(mode: str, group: str, each: Quoted, times: tuple[float, float]) -> 
     )
 
 
-def heading(measures: IndexMeasures) -> str:
+def heading(of_index: IndexMeasures) -> str:
     """Name an evaluated index: its model, and its chunking."""
-    return f"## {measures.model}, {measures.chunking}"
+    return f"## {of_index.model}, {of_index.chunking}"
 
 
-def built(measures: IndexMeasures) -> str:
+def built(of_index: IndexMeasures) -> str:
     """Say how an evaluated index was built and what it costs."""
-    costs = measures.costs
+    costs = of_index.costs
     reported = "none" if costs.tokens is None else f"{costs.tokens:,}"
     return (
-        f"Index built in {measures.seconds:.1f} s, {measures.embedded} texts embedded for it;"
+        f"Index built in {of_index.seconds:.1f} s, {of_index.embedded} texts embedded for it;"
         f" {costs.chunks:,} chunks of {costs.characters:,} characters, about"
         f" {costs.estimated:,} tokens; tokens reported: {reported}; {costs.bytes:,} bytes."
     )
@@ -448,24 +448,24 @@ def table(measured: Sequence[IndexMeasures]) -> str:
     alone.
     """
     lines: list[str] = []
-    for measures in measured:
-        modes = [mode for mode in measures.groups if mode != "lexical" or measures is measured[0]]
-        lines += [heading(measures), "", built(measures), "", HEADER, DIVIDER]
+    for of_index in measured:
+        modes = [mode for mode in of_index.groups if mode != "lexical" or of_index is measured[0]]
+        lines += [heading(of_index), "", built(of_index), "", HEADER, DIVIDER]
         for mode in modes:
             lines += [
-                row(mode, group, measures.groups[mode][group], measures.times[mode])
-                for group in sorted(measures.groups[mode], key=lambda name: (name != "all", name))
+                row(mode, group, of_index.groups[mode][group], of_index.times[mode])
+                for group in sorted(of_index.groups[mode], key=lambda name: (name != "all", name))
             ]
         lines += ["", ASK_HEADER, ASK_DIVIDER]
         lines += [
-            ask_row(mode, group, measures.asked_groups[mode][group], measures.ask_times[mode])
+            ask_row(mode, group, of_index.asked_groups[mode][group], of_index.ask_times[mode])
             for mode in modes
-            for group in sorted(measures.asked_groups[mode], key=lambda name: (name != "all", name))
+            for group in sorted(of_index.asked_groups[mode], key=lambda name: (name != "all", name))
         ]
         lines.append("")
         lines += [
-            f"MRR@10, {mode} against lexical: p = {measures.pvalues[mode]:.4f},"
-            f" adjusted (Holm) {measures.adjusted[mode]:.4f}"
+            f"MRR@10, {mode} against lexical: p = {of_index.pvalues[mode]:.4f},"
+            f" adjusted (Holm) {of_index.adjusted[mode]:.4f}"
             for mode in MODES[1:]
         ]
         lines.append("")
