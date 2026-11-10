@@ -213,13 +213,6 @@ def embeddings(
         return Embeddings(vectors=(vectors / norms).astype(np.float32), tokens=tokens)
 
 
-def embed(
-    endpoint: Endpoint, model: str, texts: Sequence[str], bounds: Bounds, dimensions: int = 0
-) -> Vectors:
-    """Embed texts with a model, each to a unit vector, as ``embeddings`` does; no tokens."""
-    return embeddings(endpoint, model, texts, bounds, dimensions).vectors
-
-
 def ollama_name(name: str) -> str:
     """Write a model's name as Ollama resolves it, to compare two.
 
@@ -337,16 +330,16 @@ class ApiEmbedder:
                         message = f"{self.name}: the endpoint refuses every text, each alone"
                         raise ModelError(message) from None
                     probe = [self.prefixes.query + PROBE]
-                    embed(self.endpoint, self.name, probe, SINGLE, self.dimensions)
+                    embeddings(self.endpoint, self.name, probe, SINGLE, self.dimensions)
                 found += alone
         self.check()
         return found
 
     def query(self, text: str) -> Vectors:
         """Embed a query, with the model's query prefix."""
-        return embed(
+        return embeddings(
             self.endpoint, self.name, [self.prefixes.query + text], SINGLE, self.dimensions
-        )
+        ).vectors
 
 
 def connect(endpoint: Endpoint, model: str) -> ApiEmbedder:
@@ -357,5 +350,5 @@ def connect(endpoint: Endpoint, model: str) -> ApiEmbedder:
     """
     known = prefixes(model) or Prefixes(query="", document="")
     found = digest(endpoint, model)
-    probe = embed(endpoint, model, [known.query + PROBE], SINGLE)
+    probe = embeddings(endpoint, model, [known.query + PROBE], SINGLE).vectors
     return ApiEmbedder(endpoint, model, found, probe.shape[1], known)

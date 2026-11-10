@@ -52,28 +52,6 @@ UNLISTED = (
     " is not followed: make it readable, or put what it points to in its place; deleting it"
     " would let the next prune delete the vectors of the indexes it holds"
 )
-# How each outcome is said: its level, its event and the fields of its event.
-SAID: dict[PruneOutcome, tuple[str, str, tuple[str, ...]]] = {
-    "pruned": (
-        "info",
-        "index.pruned",
-        (
-            "kept",
-            "kept_for_evaluation",
-            "deleted",
-            "bytes_before",
-            "bytes_after",
-            "seconds",
-            "shrinks",
-            "converted",
-            "reclaimed",
-            "reason",
-        ),
-    ),
-    "deferred": ("info", "index.prune_deferred", ("reason",)),
-    "held back": ("warning", "index.prune_skipped", ("outcome", "reason", "file")),
-    "failed": ("warning", "index.prune_skipped", ("outcome", "reason", "file")),
-}
 
 
 class Written(Record):
@@ -156,9 +134,15 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     pruned = replace(pruned, seconds=round(time.monotonic() - started, 3))
     span.set_attribute("kb_mcp.outcome", pruned.outcome)
     span.set_attribute("kb_mcp.deleted", pruned.deleted)
-    level, event, names = SAID[pruned.outcome]
-    fields = pruned.model_dump()
-    getattr(structlog.get_logger(), level)(event, **{name: fields[name] for name in names})
+    log = structlog.get_logger()
+    if pruned.outcome == "pruned":
+        log.info("index.pruned", **pruned.model_dump(exclude={"outcome", "file"}))
+    elif pruned.outcome == "deferred":
+        log.info("index.prune_deferred", reason=pruned.reason)
+    else:
+        log.warning(
+            "index.prune_skipped", outcome=pruned.outcome, reason=pruned.reason, file=pruned.file
+        )
     return pruned
 
 
