@@ -383,3 +383,17 @@ def test_a_variable_of_a_source_named_as_the_model_s_attribute_is_refused(
     monkeypatch.setenv("KB_MCP_SOURCES__COPY__CONNECTOR", "jira")
     assert main(["check", "--config", str(tmp_path / "none.toml")]) == ExitStatus.REFUSED
     assert "sources.copy: a name that the settings' model holds" in capsys.readouterr().err
+
+
+def test_the_account_s_keys_go_to_the_registry_s_sources_alone(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Review round 2: a source added since never read the account; no key goes to it."""
+    config = tmp_path / "config.toml"
+    config.write_text(f'[accounts.atlassian]\nsite = "{SITE}"\n{CLIENT}', "utf-8")
+    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
+    err = capsys.readouterr().err
+    assert (
+        "  accounts.atlassian.site (config.toml) to sources.confluence.site and sources.jira.site\n"
+    ) in err
+    assert "sources.clientjira.site" not in err

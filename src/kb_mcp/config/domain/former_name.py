@@ -159,11 +159,11 @@ def refuse_former_name(
         and not found.former_data_in_git
     ):
         moves.append(f"mv {FORMER_DATA_DIR} {default_data}")
-    # Every source that holds a key of the former program's: its sources had none of
-    # their own, so the defaults stand for them, whatever a stronger layer gives now.
-    sources = type(loaded.settings.sources)()
+    sources = loaded.settings.sources
     keys = [
-        f"{key}: delete it, and set {' and '.join(map(variable, to))} in the environment"
+        f"{key}: delete it, as each source holds its own"
+        if not to
+        else f"{key}: delete it, and set {' and '.join(map(variable, to))} in the environment"
         if any(loaded.paths.get(path) == "secret" for path in to)
         else f"{key} to {' and '.join('.'.join(path) for path in to)}"
         for key, to in ((key, moved_to(key, sources)) for key in found.renamed_keys)

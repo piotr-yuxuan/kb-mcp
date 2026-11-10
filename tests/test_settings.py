@@ -482,21 +482,22 @@ def test_the_old_keys_at_the_top_of_the_file_are_refused_naming_their_new_places
 @pytest.mark.parametrize(
     ("sources", "to"),
     [
-        ({"jira": {"projects": ["PRB"]}}, "sources.confluence.site and sources.jira.site"),
+        ({}, "sources.confluence.site and sources.jira.site"),
+        ({"jira": {"projects": ["PRB"]}}, "sources.jira.site"),
         ({"confluence": {"site": "https://own.example.invalid"}}, "sources.jira.site"),
         (
             {"confluence": {"site": "https://a.invalid"}, "jira": {"site": "https://b.invalid"}},
             "nowhere: delete it, as each source holds its own",
         ),
     ],
-    ids=["one configured", "one with its own", "both with their own"],
+    ids=["none configured", "one configured", "one with its own", "both with their own"],
 )
 def test_a_moved_key_goes_to_each_source_that_holds_no_value_of_its_own(
     sources: dict[str, object], to: str
 ) -> None:
-    """Review round 1: each source that read the account, configured or not.
+    """Review rounds 1 and 2: each source that read the account and holds no value of its own.
 
-    But one that holds its own value, which the account's never reached.
+    Those configured, when there are any, so that none left out is given a value.
     """
     settings = MODEL(data_dir=HOME, sources=sources)
     with pytest.raises(SettingsError) as refused:

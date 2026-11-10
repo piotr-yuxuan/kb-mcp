@@ -484,12 +484,19 @@ def test_the_former_file_s_site_and_email_are_named_by_their_keys_now(tmp_path: 
 def test_the_former_file_s_keys_are_named_whatever_replaces_their_values(
     home: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A stronger layer replaces the site, not the key that the file holds: still named."""
+    """A stronger layer replaces the site, not the key that the file holds: still named.
+
+    Review round 2: to be deleted, as each source holds its own.
+    """
     place(home, FORMER_FILE, SIGNING_IN)
     for variable in SITE_VARIABLES:
         monkeypatch.setenv(variable, SITE)
     advice = refusal(home).advice
-    assert advice.splitlines()[3:6] == KEYS
+    assert advice.splitlines()[3:6] == [
+        KEYS[0],
+        "site: delete it, as each source holds its own",
+        KEYS[2],
+    ]
 
 
 def test_a_value_that_the_former_file_holds_and_a_setting_refuses_names_the_file(

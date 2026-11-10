@@ -89,8 +89,11 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
 ```
 
 Keys and variables are named, and settings with their layer, never with their values.
-A key or a variable of the sign-in names the setting of each Atlassian source that holds
-no value of its own, configured or not, so that one round of edits moves them all.
+A key or a variable of the sign-in names the setting of `confluence` and `jira`, the
+sources that read it, each that holds no value of its own: those configured, whose spaces
+or projects are set, or both when neither is, so that one round of edits moves them all
+and no source left out is given a value. A key that every one holds already is to be
+deleted.
 The layer of a value that the former settings file holds is that file's path, also when
 a setting refuses the value, before anything is said to move. A token left at a file's
 top, which no run ever took from there, is named by the variable that alone sets it,
