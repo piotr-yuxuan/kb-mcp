@@ -39,7 +39,7 @@ from kb_mcp.search.app.indexing import (
 from kb_mcp.search.app.meaning import Meaning
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import Put, UnavailableIndexError
-from kb_mcp.search.domain.search import Chunk, Embedded, Filters, sections
+from kb_mcp.search.domain.search import Chunk, Embedded, Filters, Matched, sections
 from tests.answers import parts
 from tests.endpoint import (
     DIMENSIONS,
@@ -528,8 +528,8 @@ def test_an_index_names_the_store_s_key_of_each_chunk_s_vector(
     assert keys == {vector_cache.vector_key(tiny().fingerprint, text) for text in embedder.texts}
 
 
-def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: Path) -> None:
-    """A window across sections: its section holds its middle, its span reads the body."""
+def test_a_window_belongs_to_the_section_of_its_middle_and_reads_the_body(data: Path) -> None:
+    """A window across sections: its section holds its middle, its range reads the body."""
     body = "# Rollback\n\nUndo the payout.\n\n## Release\n\n" + "The deploy goes out. " * 120
     write(data / "docs", page("196845", "Rollback"), body)
     embedder = counting()
@@ -539,14 +539,18 @@ def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: 
         chunks = reader.vectors()
         bounds = reader.bounds(path)
         columns = zip(chunks.documents, chunks.sections, chunks.starts, chunks.ends, strict=True)
-        mine = [where for document, *where in columns if chunks.paths[document] == path]
+        mine = [
+            Matched(number=number, start=start, end=end)
+            for document, number, start, end in columns
+            if chunks.paths[document] == path
+        ]
         assert len(mine) == WINDOWS
-        for number, start, end in mine:
-            first, last = bounds[number - 1]
-            assert first <= (start + end) // 2 < last
-            assert reader.text(path, start, end) == body[start:end]
-            assert f"Rollback\n{body[start:end].strip()}" in embedder.texts
-    assert mine[0][:2] == [RELEASE, 0]
+        for each in mine:
+            first, last = bounds[each.number - 1]
+            assert first <= (each.start + each.end) // 2 < last
+            assert reader.text(path, each.start, each.end) == body[each.start : each.end]
+            assert f"Rollback\n{body[each.start : each.end].strip()}" in embedder.texts
+    assert (mine[0].number, mine[0].start) == (RELEASE, 0)
 
 
 def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:
