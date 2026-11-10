@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 from kb_mcp.cli.domain.command import OBSERVING
 from kb_mcp.cli.domain.command_line import command_line
 from kb_mcp.config.domain.settings import Ignored
+from kb_mcp.kernel.names import CONNECTOR
 
 if TYPE_CHECKING:
     import argparse
@@ -84,7 +85,8 @@ def before(
     that name no setting or are empty, as loaded; then, of the values that a layer
     gave, those that the run does not apply, by its ``unapplied``, and in detail those
     of the settings that neither the command nor the entry reads, unless ``unapplied``
-    said why. Each names its setting, if any, and its layer, never its value. A command
+    said why; the entry reads each source's ``connector``, by which it composed the
+    settings' model. Each names its setting, if any, and its layer, never its value. A command
     that writes ends with the command to copy, its paths made ``absolute``, which carries
     the values that a layer gave and the run applies, or names those it cannot carry.
 
@@ -108,6 +110,7 @@ def before(
     values = values_of(loaded)
     unapplied = command.unapplied(arguments, values) if command.unapplied else {}
     read = dict.fromkeys((*command.reads, *OBSERVING))
+    connectors = {each.path(CONNECTOR) for each in arguments.sources}
     ignored = [
         *loaded.ignored,
         *(
@@ -118,7 +121,7 @@ def before(
         *(
             Ignored(setting=setting, layer=layer, why=f"not read by {command.name}")
             for setting, layer in loaded.layers.items()
-            if detailed and setting not in read and setting not in unapplied
+            if detailed and setting not in {*read, *unapplied, *connectors}
         ),
     ]
     warned = ignored if output.level != "error" or then == "ask" else []

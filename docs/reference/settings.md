@@ -45,9 +45,12 @@ A path that starts with `~` starts in the home directory.
 | `accounts.atlassian.email` | `KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL` | text | unset | The email address of the Atlassian account that signs in. |
 | `accounts.atlassian.api_token` | `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` | secret | unset | The Atlassian account's API token, a secret: from the environment alone. |
 | `sources.confluence.spaces` | `KB_MCP_SOURCES__CONFLUENCE__SPACES` | list of text | `[]` | The spaces to fetch when no --space is given, by key. |
+| `sources.confluence.connector` | `KB_MCP_SOURCES__CONFLUENCE__CONNECTOR` | text | `"confluence"` | The connector that reads the source: by default the one of its name, which a source of the registry always keeps. |
 | `sources.jira.projects` | `KB_MCP_SOURCES__JIRA__PROJECTS` | list of text | `[]` | The projects to fetch when no --project is given, by key. |
+| `sources.jira.connector` | `KB_MCP_SOURCES__JIRA__CONNECTOR` | text | `"jira"` | The connector that reads the source: by default the one of its name, which a source of the registry always keeps. |
 | `sources.worklog.path` | `KB_MCP_SOURCES__WORKLOG__PATH` | path | unset | The work log's folder, absolute or under ~, which holds todo.org, todo.org_archive, transcripts/ and meetings/; read in place, never written. |
 | `sources.worklog.archives` | `KB_MCP_SOURCES__WORKLOG__ARCHIVES` | boolean | `true` | Whether todo.org_archive, transcripts/archive/, meetings/archive/ and the subtrees tagged ARCHIVE are prepared too. |
+| `sources.worklog.connector` | `KB_MCP_SOURCES__WORKLOG__CONNECTOR` | text | `"worklog"` | The connector that reads the source: by default the one of its name, which a source of the registry always keeps. |
 | `logs.dir` | `KB_MCP_LOGS__DIR` | path | unset | The folder of each run's log file, ~ being the home directory: by default the user's log folder, where the platform keeps them; never under a synchronised folder, nor inside a git working tree. |
 | `telemetry.endpoint` | `KB_MCP_TELEMETRY__ENDPOINT` | text | unset | The OTLP endpoint on this machine that traces, metrics and logs go to, over http with a port and no path, such as http://127.0.0.1:4318; unset, none is sent. Else OTEL_EXPORTER_OTLP_ENDPOINT gives it, below the settings file; OTEL_SDK_DISABLED=true leaves it unset. |
 | `rerank.enabled` | `KB_MCP_RERANK__ENABLED` | boolean | `false` | Whether search and ask rerank their first documents through the reranking server: off by default, as it ranked worse on the sandbox. |

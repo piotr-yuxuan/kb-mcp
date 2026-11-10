@@ -99,22 +99,23 @@ def test_a_registry_with_a_name_off_the_rule_is_refused_naming_it(
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
 
 
-@pytest.mark.parametrize(
-    "second",
-    [
-        Source(name="jira", connector=replace(JIRA, name="other", table_path=WORKLOG.table_path)),
-        Source(name="tracker", connector=JIRA),
-    ],
-    ids=["a name", "a connector"],
-)
-def test_a_registry_with_a_second_source_of_one_name_or_connector_is_refused_naming_it(
-    tmp_path: Path, second: Source
-) -> None:
-    """Each source is configured once, and a connector's options replace its one source's."""
-    with pytest.raises(
-        ValueError, match=rf"^source {second.name!r}: declared twice, or a second of its connector$"
-    ):
+def test_a_registry_with_a_second_source_of_one_name_is_refused_naming_it(tmp_path: Path) -> None:
+    """Each source is configured once."""
+    second = Source(
+        name="jira", connector=replace(JIRA, name="other", table_path=WORKLOG.table_path)
+    )
+    with pytest.raises(ValueError, match=r"^source 'jira': declared twice$"):
         main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, second))
+
+
+def test_a_registry_may_hold_a_second_source_of_one_connector(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 059: two Jira sites are two sources of one connector, each with its table."""
+    registry = (*SOURCES, Source(name="tracker", connector=JIRA))
+    given = ["check", "--detail", "detailed", "--config", str(tmp_path / "none.toml")]
+    assert main(given, registry) == ExitStatus.OK
+    assert "sources.tracker.projects: (none) [default]\n" in capsys.readouterr().out
 
 
 def test_each_type_that_a_connector_declares_has_a_class_that_its_preparer_builds() -> None:
@@ -222,7 +223,7 @@ def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source(
     """Refused as the model is composed: not a validation error of no source at a first read."""
     said = r"^sources\.memo: a setting without a default: folder$"
     with pytest.raises(TypeError, match=said):
-        settings_model({"memo": Required}, {})
+        settings_model({"memo": ("memo", Required)}, {})
     memo = replace(
         WORKLOG, name="memo", settings=("folder",), table_path=f"{__name__}:{Required.__name__}"
     )
@@ -480,16 +481,17 @@ def test_an_account_that_no_source_of_the_registry_names_has_no_setting(
 def test_a_source_that_the_registry_leaves_out_has_no_setting(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], left_out: str
 ) -> None:
-    """Criterion 3: its table in the file is refused, its variable names no setting.
+    """Criterion 3: its table in the file is refused, and its variable, as of no source.
 
-    With every source registered, the same file and variable are its settings.
+    With every source registered, the same file and variable are its settings. Plan 059:
+    the settings may name a source, but only of a connector that the registry holds.
     """
     registry = tuple(each for each in SOURCES if each.name != left_out)
     setting, value = SET[left_out]
     config = tmp_path / "config.toml"
     config.write_text(f"[sources.{left_out}]\n{setting} = {value}\n", "utf-8")
     assert main(["check", "--config", str(config)], registry) == ExitStatus.REFUSED
-    refused = f"sources.{left_out}.{setting} (config.toml): not a setting"
+    refused = f"sources.{left_out} (config.toml): not a source"
     assert refused in capsys.readouterr().err
     assert main(["check", "--config", str(config)]) == ExitStatus.OK
     assert f"sources.{left_out}.{setting}: " in capsys.readouterr().out
@@ -497,10 +499,8 @@ def test_a_source_that_the_registry_leaves_out_has_no_setting(
     variable = f"KB_MCP_SOURCES__{left_out.upper()}"
     monkeypatch.setenv(variable, "{}")
     none = ["check", "--config", str(tmp_path / "none.toml"), "--detail", "detailed"]
-    assert main(none, registry) == ExitStatus.OK
-    out, err = capsys.readouterr()
-    assert f"sources.{left_out}." not in out
-    assert err == f"ignored: {variable}: names no setting\n"
+    assert main(none, registry) == ExitStatus.REFUSED
+    assert f"sources.{left_out} ({variable}): not a source" in capsys.readouterr().err
     assert main(none) == ExitStatus.OK
     assert f"sources.{left_out}." in capsys.readouterr().out
 

@@ -20,12 +20,19 @@ if TYPE_CHECKING:
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse what no fetch can run with, before anything is asked: the first found.
 
-    A source named but not configured, or none left; then what each source taken refuses,
-    by its connector's ``refused``, such as an option that does not read, or a site not
-    set: no source's options are read unless it is taken.
+    An option of a setting of several sources given when the sources named leave more
+    than one of them, as ``Command.narrowed`` says, naming them; a source named but not
+    configured, or none left; then what each source taken refuses, by its connector's
+    ``refused``, such as an option that does not read, or a site not set: no source's
+    options are read unless it is taken.
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     faults = [
+        *(
+            f"{flag}: overrides a setting of one source; name one of {', '.join(left)}"
+            for flag, left in arguments.command.narrowed(arguments).items()
+            if len(left) > 1 and getattr(arguments, flag) is not None
+        ),
         choice_refused(arguments, settings),
         *(
             connector.refused(given(arguments, connector.flags), settings)
@@ -90,7 +97,7 @@ def register(
     parser.add_argument(
         "--dry-run", action="store_true", help="say what a run would fetch, and fetch nothing"
     )
-    options, replacing = add_source_options(parser, fetched)
+    options, scoped = add_source_options(parser, fetched)
     parser.set_defaults(
         command=Command(
             FETCH,
@@ -100,7 +107,8 @@ def register(
                 "data_dir",
                 *(path for declared in fetched for path in declared.paths),
             ),
-            flags={**flags, **replacing},
+            flags=flags,
+            scoped=scoped,
             actions=(*actions, *options, source),
             writes=True,
             dry_run=True,

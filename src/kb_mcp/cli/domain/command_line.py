@@ -62,7 +62,7 @@ def command_line(
     these from the settings file, the environment or their defaults.
     """
     command: Command = arguments.command
-    settings = {dest: setting for dest, (_, setting) in command.setting_flags().items()}
+    settings = {dest: setting for dest, (_, setting) in command.setting_flags(arguments).items()}
     options: list[str] = []
     positionals: list[str] = []
     emptied: list[str] = []

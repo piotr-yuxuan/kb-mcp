@@ -61,7 +61,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     )
     flags = {
         option: (setting, getattr(arguments, dest))
-        for dest, (option, setting) in command.setting_flags().items()
+        for dest, (option, setting) in command.setting_flags(arguments).items()
     }
     model = settings_model(*tables(sources))
     try:

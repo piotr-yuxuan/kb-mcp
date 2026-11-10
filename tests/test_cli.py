@@ -220,8 +220,10 @@ def test_each_subcommand_reads_settings_by_their_paths_and_declares_each_flag(na
     command = SUBCOMMANDS[name].get_default("command")
     assert set(command.reads) <= SETTINGS
     assert set(command.flags.values()) <= SETTINGS
-    named = command.setting_flags()
-    assert set(named) == set(command.flags)
+    assert {path for by in command.scoped.values() for path in by.values()} <= SETTINGS
+    arguments = parser().parse_args([name, *POSITIONALS.get(name, [])])
+    named = command.setting_flags(arguments)
+    assert set(named) == {*command.flags, *command.scoped}
     assert all(option.startswith("--") for option, _ in named.values())
 
 
@@ -727,9 +729,12 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
         "accounts.atlassian.email: (not set) [default]\n"
         "accounts.atlassian.api_token: set [KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN]\n"
         "sources.confluence.spaces: (none) [default]\n"
+        "sources.confluence.connector: confluence [default]\n"
         "sources.jira.projects: (none) [default]\n"
+        "sources.jira.connector: jira [default]\n"
         "sources.worklog.path: (not set) [default]\n"
         "sources.worklog.archives: True [default]\n"
+        "sources.worklog.connector: worklog [default]\n"
         f"logs.dir: {user_log_folder(home.resolve())} [default]\n"
         "telemetry.endpoint: (not set) [default]\n"
         "rerank.enabled: False [default]\n"

@@ -655,11 +655,12 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     main([*argv[1:], "--yes"])
     [_, (second_arguments, second)] = runs
     command = first_arguments.command
-    for setting in set(command.flags.values()) & set(command.reads):
+    bound = command.setting_flags(first_arguments)
+    for setting in {setting for _, setting in bound.values()} & set(command.reads):
         path = setting.split(".")
         assert reduce(getattr, path, second.settings) == reduce(getattr, path, first.settings)
     for action in command.actions:
-        if action.dest in command.flags:
+        if action.dest in bound:
             continue
         was, is_now = (getattr(each, action.dest) for each in (first_arguments, second_arguments))
         if was == action.default:

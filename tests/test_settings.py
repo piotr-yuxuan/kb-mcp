@@ -248,16 +248,23 @@ def test_a_setting_of_a_type_that_has_no_kind_is_refused(annotation: object) -> 
 
 
 def test_each_source_s_table_is_composed_under_sources_in_name_order() -> None:
-    """Plan 030: ``[sources.<name>]``, in name order, with the core's settings in theirs."""
-    model = settings_model({"worklog": WorklogTable, "confluence": ConfluenceTable}, {})
+    """Plan 030: ``[sources.<name>]``, in name order, with the core's settings in theirs.
+
+    Plan 059: each table ends with ``connector``, which names its connector.
+    """
+    model = settings_model(
+        {"worklog": ("worklog", WorklogTable), "confluence": ("confluence", ConfluenceTable)}, {}
+    )
     assert list(model.model_fields) == list(Settings.model_fields)
     assert [path for path in setting_paths(model) if path[0] == "sources"] == [
         ("sources",),
         ("sources", "confluence"),
         ("sources", "confluence", "spaces"),
+        ("sources", "confluence", "connector"),
         ("sources", "worklog"),
         ("sources", "worklog", "path"),
         ("sources", "worklog", "archives"),
+        ("sources", "worklog", "connector"),
     ]
     given = {"sources": {"worklog": {"archives": False}, "confluence": {"spaces": ["MFS"]}}}
     settings = settings_of(file_entries(given, FILE, model), HOME, model).settings
@@ -271,7 +278,7 @@ def test_a_source_s_table_with_a_type_that_has_no_kind_is_refused_naming_it() ->
     """Refused as the model is composed, before any value is read, naming the source."""
     table = create_model("Memo", folder=(list[str], []))
     with pytest.raises(TypeError, match=r"^sources\.memo: a setting of a type that has no kind"):
-        settings_model({"memo": table}, {})
+        settings_model({"memo": ("memo", table)}, {})
 
 
 def test_a_table_inside_a_source_s_table_is_refused_naming_it() -> None:
@@ -279,7 +286,7 @@ def test_a_table_inside_a_source_s_table_is_refused_naming_it() -> None:
     inner = create_model("Inner", value=(str, "a"), __config__=TABLE)
     table = create_model("Outer", first=(str | None, None), inner=(inner, inner()))
     for place, tables in (
-        ("sources", ({"outer": table}, {})),
+        ("sources", ({"outer": ("outer", table)}, {})),
         ("accounts", ({}, {"outer": table})),
     ):
         with pytest.raises(TypeError, match=rf"^{place}\.outer: a table inside a table: inner$"):
@@ -293,7 +300,7 @@ def test_a_table_inside_a_source_s_table_is_refused_naming_it() -> None:
         ({"sources": {"jira": {"projets": ["PLAT"]}}}, "sources.jira.projets (config.toml):"),
         ({"sources": {"worklog": {"spaces": []}}}, "sources.worklog.spaces (config.toml):"),
         ({"unknown": {}}, "unknown (config.toml): not a setting"),
-        ({"sources": {"gitlab": {}}}, "sources.gitlab (config.toml): not a setting"),
+        ({"sources": {"gitlab": {}}}, "sources.gitlab (config.toml): not a source"),
         (atlassian(site="http://x.atlassian.net"), "accounts.atlassian.site (config.toml):"),
         (atlassian(site="https://user@x.atlassian.net"), "accounts.atlassian.site (config.toml):"),
         (atlassian(site="https://x.atlassian.net/wiki"), "accounts.atlassian.site (config.toml):"),
@@ -419,9 +426,12 @@ def test_an_empty_table_gives_each_setting_under_it_and_none_other() -> None:
     assert loaded.layers == {
         "accounts.atlassian.site": FILE,
         "sources.confluence.spaces": "stronger",
+        "sources.confluence.connector": "stronger",
         "sources.jira.projects": "stronger",
+        "sources.jira.connector": "stronger",
         "sources.worklog.path": "stronger",
         "sources.worklog.archives": "stronger",
+        "sources.worklog.connector": "stronger",
     }
     assert loaded.ignored == (
         Ignored(setting="sources.confluence.spaces", layer=FILE, why="replaced by stronger"),
@@ -440,7 +450,7 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
         MODEL,
     )
     assert loaded.settings.sources.jira.projects == ("PRB",)
-    assert loaded.layers == {"sources.jira.projects": "--project"}
+    assert loaded.layers == {"sources.jira.projects": "--project", "sources.jira.connector": FILE}
     assert loaded.ignored == ()
     assert loaded.replaced == frozenset()
 

@@ -1,8 +1,9 @@
 """The registry: every connector that the program knows, its sources, and their rules.
 
 A new connector is its package and one line here; each gives one source, of its own
-name. The entry, ``kb_mcp.cli.main.main``, takes ``SOURCES`` unless a test gives it a
-registry of its own, and ``refuse`` judges either; ``tables`` loads the tables that their
+name, which always exists. The entry, ``kb_mcp.cli.main.main``, takes ``SOURCES`` unless
+a test gives it a registry of its own, adds the sources that the settings name
+(``configured``), and ``refuse`` judges them; ``tables`` loads the tables that their
 connectors name, once the arguments are parsed. Standard library alone, as the
 declarations are: ``--help`` imports it, and imports no table.
 """
@@ -13,13 +14,13 @@ import pkgutil
 import re
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import ASSETS, SOURCE_NAME
+from kb_mcp.kernel.names import RESERVED, SOURCE_NAME
 from kb_mcp.sources.atlassian import declared as atlassian
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.worklog.declared import WORKLOG
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, Sequence
 
     from kb_mcp.sources.declaration import Account, Option
 
@@ -30,12 +31,35 @@ SOURCES = tuple(Source(name=each.name, connector=each) for each in CONNECTORS)
 FLAG = re.compile(r"-[a-z]|--[a-z][a-z0-9_-]*")
 
 
+def configured(sources: Sequence[Source], named: Mapping[str, str | None]) -> tuple[Source, ...]:
+    """Give the registry's sources, then each other that the settings name, in name order.
+
+    ``named`` gives each source that the settings name, and its connector, None for one
+    of its own name. One whose name or connector the registry's rules refuse is left out:
+    the settings refuse its table, naming it. A source of the registry keeps its
+    connector, which its table's ``connector`` must name.
+    """
+    connectors = {each.connector.name: each.connector for each in sources}
+    known = {each.name for each in sources}
+    return (
+        *sources,
+        *(
+            Source(name=name, connector=connectors[connector or name])
+            for name, connector in sorted(named.items())
+            if name not in known
+            and SOURCE_NAME.fullmatch(name)
+            and name not in RESERVED
+            and (connector or name) in connectors
+        ),
+    )
+
+
 def refuse(sources: Iterable[Source]) -> None:
     """Raise ValueError, naming the source, for the first that a registry may not hold.
 
     A source's name is its table, its folders and the front matter's ``source``, so each
-    source is configured once: a name matches ``SOURCE_NAME``, is not ``assets``, and is
-    declared once. A connector has one source, whose table its options replace. An
+    source is configured once: a name matches ``SOURCE_NAME``, is none of ``RESERVED``,
+    and is declared once. An
     account's name is its table, which the sources naming it share: each names it alike.
     A connector names a setting, its first saying whether a source is configured, and a
     fetcher or a preparer, or a run of it would have no row. An option is one flag of
@@ -44,7 +68,6 @@ def refuse(sources: Iterable[Source]) -> None:
     start.
     """
     seen: set[str] = set()
-    connectors: set[str] = set()
     accounts: dict[str, Account] = {}
     options: dict[str, tuple[str, Option]] = {}
     for declared in sources:
@@ -53,17 +76,16 @@ def refuse(sources: Iterable[Source]) -> None:
         if account is not None and accounts.setdefault(account.name, account) != account:
             message = f"source {declared.name!r}: account {account.name!r} declared otherwise"
             raise ValueError(message)
-        if not SOURCE_NAME.fullmatch(declared.name) or declared.name == ASSETS:
+        if not SOURCE_NAME.fullmatch(declared.name) or declared.name in RESERVED:
             message = (
                 f"source {declared.name!r}: a source's name matches {SOURCE_NAME.pattern},"
-                f" and is not {ASSETS}"
+                f" and is none of {', '.join(RESERVED)}"
             )
             raise ValueError(message)
-        if declared.name in seen or connector.name in connectors:
-            message = f"source {declared.name!r}: declared twice, or a second of its connector"
+        if declared.name in seen:
+            message = f"source {declared.name!r}: declared twice"
             raise ValueError(message)
         seen.add(declared.name)
-        connectors.add(connector.name)
         if not connector.settings:
             message = f"source {declared.name!r}: names no setting"
             raise ValueError(message)
@@ -108,16 +130,19 @@ def table_of(owner: str, path: str, settings: tuple[str, ...]) -> type:
     return table
 
 
-def tables(sources: Iterable[Source]) -> tuple[dict[str, type], dict[str, type]]:
-    """Load the table of each source, then of each account that they name, each by its name.
+def tables(sources: Iterable[Source]) -> tuple[dict[str, tuple[str, type]], dict[str, type]]:
+    """Load the table of each source, with its connector's name, then of each account, by name.
 
     What the entry composes into the settings' model, as each connector names it.
     """
     declared = tuple(sources)
     return (
         {
-            each.name: table_of(
-                f"source {each.name!r}", each.connector.table_path, each.connector.settings
+            each.name: (
+                each.connector.name,
+                table_of(
+                    f"source {each.name!r}", each.connector.table_path, each.connector.settings
+                ),
             )
             for each in declared
         },

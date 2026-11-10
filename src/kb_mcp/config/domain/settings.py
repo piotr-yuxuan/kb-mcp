@@ -46,7 +46,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
 from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
-from kb_mcp.kernel.names import MODEL_NAME
+from kb_mcp.kernel.names import CONNECTOR, MODEL_NAME, NESTING, PREFIX, RESERVED, SOURCE_NAME
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS
 
@@ -92,6 +92,11 @@ MOVED = {
 }
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
+# What each source's ``connector`` says, which the model adds to its connector's table.
+CONNECTOR_DESCRIPTION = (
+    "The connector that reads the source: by default the one of its name, which a source"
+    " of the registry always keeps."
+)
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -269,8 +274,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         **TABLE,
-        env_prefix="KB_MCP_",
-        env_nested_delimiter="__",
+        env_prefix=PREFIX,
+        env_nested_delimiter=NESTING,
         env_ignore_empty=True,
     )
 
@@ -407,9 +412,6 @@ class Settings(BaseSettings):
         )
 
 
-# Each setting's environment variable: the prefix, then its path in capitals, joined.
-PREFIX = Settings.model_config["env_prefix"]
-NESTING = Settings.model_config["env_nested_delimiter"]
 # What a setting is: a table of settings, a list, a secret, a path, or another value.
 type SettingKind = Literal["table", "list", "secret", "path", "value"]
 # The kind of a setting of each type, other than a table, a list or a choice, that the
@@ -483,12 +485,13 @@ def setting_paths(
 
 
 def settings_model(
-    sources: Mapping[str, type[BaseModel]], accounts: Mapping[str, type[BaseModel]]
+    sources: Mapping[str, tuple[str, type[BaseModel]]], accounts: Mapping[str, type[BaseModel]]
 ) -> type[Settings]:
     """Compose the settings' model: the core's, with each account's and each source's table.
 
-    ``sources`` gives each source's table by its name, which names its table,
-    ``[sources.<name>]``, and ``accounts`` each account's alike, ``[accounts.<name>]``;
+    ``sources`` gives each source's connector and its connector's table by the source's
+    name, which names its table, ``[sources.<name>]``, whose ``connector`` names that
+    connector and no other; ``accounts`` each account's table alike, ``[accounts.<name>]``;
     the tables of each follow one another in name order, each described by its
     docstring. Raises TypeError, naming the table, for a name that a model already holds,
     such as ``json``, which its field would shadow, one that holds a setting of a type
@@ -496,7 +499,26 @@ def settings_model(
     table, or one that holds a table, as a declaration's settings are values, each said
     by its path, all before any value is read.
     """
-    places = {"accounts": (Accounts, accounts), "sources": (Sources, sources)}
+    places = {
+        "accounts": (Accounts, dict(accounts)),
+        "sources": (
+            Sources,
+            {
+                name: create_model(
+                    table.__name__,
+                    __base__=table,
+                    __doc__=table.__doc__,
+                    **{
+                        CONNECTOR: (
+                            Literal[connector],
+                            Field(default=connector, description=CONNECTOR_DESCRIPTION),
+                        )
+                    },
+                )
+                for name, (connector, table) in sources.items()
+            },
+        ),
+    }
     for place, (base, tables) in places.items():
         for name, table in tables.items():
             if hasattr(base, name):
@@ -610,6 +632,26 @@ class Loaded(Record):
         return self.layers.get(setting, DEFAULT_LAYER)
 
 
+def refuse_not_a_source(path: tuple[str, ...], layer: str, model: type[Settings]) -> None:
+    """Raise SettingsError for a path under ``sources`` of a source that the model lacks.
+
+    A source is the registry's, or one that the settings name, of a name of the rule, and
+    of a connector that the registry holds, by its ``connector`` or by its name. The
+    message names the source and the layer, never a value.
+    """
+    sources = model.model_fields["sources"].annotation
+    if path[:1] != ("sources",) or len(path) == 1 or path[1] in sources.model_fields:
+        return
+    tables = (each.annotation for each in sources.model_fields.values())
+    connectors = sorted({get_args(each.model_fields[CONNECTOR].annotation)[0] for each in tables})
+    message = (
+        f"sources.{path[1]} ({layer}): not a source: a source's name matches"
+        f" {SOURCE_NAME.pattern}, is none of {', '.join(RESERVED)}, and its connector,"
+        f" sources.{path[1]}.{CONNECTOR} or its name, is one of {', '.join(connectors)}"
+    )
+    raise SettingsError(message)
+
+
 def entries_of(
     value: object, path: tuple[str, ...], layer: str, model: type[Settings]
 ) -> list[LayerValue]:
@@ -666,6 +708,7 @@ def file_entries(
         if entry.path[0] in MOVED:
             message = f"{setting} ({layer}): moved, as {setting} under {MOVED[entry.path[0]]}"
             raise SettingsError(message)
+        refuse_not_a_source(entry.path, layer, model)
         if entry.path not in paths:
             message = f"{setting} ({layer}): not a setting"
             raise SettingsError(message)
@@ -685,8 +728,10 @@ def environment_entries(
     Each variable of the prefix is first scanned by the paths of the model's settings,
     without regard to case, as pydantic-settings reads it. One that names no setting, at
     any depth, or that is empty, is ignored, since other tools and versions share the
-    environment. A table is a JSON object, a list a JSON array: else SettingsError names
-    the variable, never its value, where pydantic-settings would name none. So it does
+    environment; but one under ``sources`` of a source that the model does not hold,
+    even empty, is refused, as ``refuse_not_a_source`` says. A table is a JSON object, a
+    list a JSON array: else SettingsError names the variable, never its value, where
+    pydantic-settings would name none. So it does
     for two variables of one setting, or of a table and of a path inside it:
     pydantic-settings would merge them, below the top by the environment's order, and no
     value would name its variable. Then ``parse``, pydantic-settings'
@@ -703,6 +748,7 @@ def environment_entries(
     for name in sorted(name for name in environ if name.lower().startswith(PREFIX.lower())):
         path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
         kind = paths.get(path)
+        refuse_not_a_source(path, name, model)
         if kind is None or not environ[name]:
             setting = None if kind is None else ".".join(path)
             ignored.append(

@@ -28,11 +28,11 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.config.domain.settings import (
     DEFAULT_DATA_DIR,
-    NESTING,
     SettingsError,
     at_home,
     variable,
 )
+from kb_mcp.kernel.names import NESTING
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:

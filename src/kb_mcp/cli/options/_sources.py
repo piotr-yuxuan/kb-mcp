@@ -54,7 +54,7 @@ def source_groups(
 
 def add_source_options(
     parser: argparse.ArgumentParser, sources: Sequence[Source]
-) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
+) -> tuple[tuple[argparse.Action, ...], dict[str, dict[str, str]]]:
     """Add a group per source, with the options that it alone declares; then the others.
 
     An option that several sources declare is added once, in a group of its own, naming
@@ -62,7 +62,7 @@ def add_source_options(
     replaces a setting of its source's table repeats. Its value is kept under its flag
     itself, so that no flag that a source declares takes a name that the program holds,
     such as ``sources``; help names its value as it would by the flag alone. Give the
-    actions, and each flag's setting, by its path.
+    actions, and each flag's setting by source, by its path, for ``Command.scoped``.
     Raises ValueError, naming the source, for an option that takes a flag of the
     command's own, as the registry's rules do.
     """
@@ -95,12 +95,14 @@ def add_source_options(
         flag = error.argument_name
         message = f"source {declaring[flag][0].name!r}: option {flag}: a flag of the command's own"
         raise ValueError(message) from error
-    flags = {
-        added[flag].dest: f"sources.{declaring[flag][0].name}.{option.setting}"
+    scoped = {
+        added[flag].dest: {
+            each.name: f"sources.{each.name}.{option.setting}" for each in declaring[flag]
+        }
         for flag, option in options.items()
         if option.setting
     }
-    return tuple(added.values()), flags
+    return tuple(added.values()), scoped
 
 
 def choice_refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:

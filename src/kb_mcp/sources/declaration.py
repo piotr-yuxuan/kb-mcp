@@ -169,10 +169,18 @@ class Source:
     name: str
     connector: Connector
 
+    def path(self, setting: str) -> str:
+        """Give one of its settings by its path, joined by dots: ``sources.<name>.<setting>``."""
+        return f"sources.{self.name}.{setting}"
+
     @property
     def paths(self) -> tuple[str, ...]:
-        """Give its settings by their paths, joined by dots: ``sources.<name>.<setting>``."""
-        return tuple(f"sources.{self.name}.{setting}" for setting in self.connector.settings)
+        """Give its connector's settings by their paths, in their order.
+
+        Its table's ``connector`` aside, which every command reads, as the entry composes
+        the settings' model by it.
+        """
+        return tuple(map(self.path, self.connector.settings))
 
     def prepared_by_default(self, settings: Mapping[str, object]) -> bool:
         """Say whether it holds documents to prepare: it keeps a store, or is configured.

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.kernel.names import CONNECTOR
 from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def register(
             reads=(
                 *BEFORE_THE_REGISTRY,
                 *(path for account in accounts_of(sources).values() for path in account.paths),
-                *(path for declared in sources for path in declared.paths),
+                *(path for each in sources for path in (*each.paths, each.path(CONNECTOR))),
                 *AFTER_THE_REGISTRY,
             ),
             flags=flags,
