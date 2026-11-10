@@ -15,6 +15,8 @@ from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from kb_mcp.kernel.output import Detail
 
 
@@ -61,6 +63,24 @@ class Outcome[C: Counts](Record):
     counts: C | None = None
     problems: tuple[Problem, ...] = ()
     warnings: tuple[OutcomeWarning, ...] = ()
+
+    @classmethod
+    def of(
+        cls,
+        counts: C | None = None,
+        problems: Iterable[Problem] = (),
+        warnings: Iterable[OutcomeWarning] = (),
+        *,
+        otherwise: Ending = "done",
+    ) -> Self:
+        """Give an outcome that ends failed when it holds a problem, else ``otherwise``."""
+        found = tuple(problems)
+        return cls(
+            ending="failed" if found else otherwise,
+            counts=counts,
+            problems=found,
+            warnings=tuple(warnings),
+        )
 
     @model_validator(mode="after")
     def check_outcome(self) -> Self:

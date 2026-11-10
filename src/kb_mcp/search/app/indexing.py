@@ -164,12 +164,10 @@ def outcome_of(counts: IndexCounts, problems: Iterable[Problem]) -> Outcome[Inde
     The warnings are what the join left apart: each name that could be several persons,
     and each alias that changed nothing.
     """
-    left = tuple(problems)
-    return Outcome(
-        ending="failed" if left else "done",
-        counts=counts,
-        problems=left,
-        warnings=(
+    return Outcome.of(
+        counts,
+        problems,
+        (
             *(
                 OutcomeWarning(where=each.name, reason=f"could be {len(each.persons)} persons")
                 for each in counts.persons.ambiguous
@@ -525,7 +523,7 @@ def update_index(
     ) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         not_built = Problem(where=str(indexing.index), reason=str(error))
-        return Outcome(ending="failed", problems=(not_built,))
+        return Outcome.of(problems=(not_built,))
     report = outcome.counts
     counts = {name: getattr(report, name) for name in OUTCOMES}
     if report.rebuilt:
@@ -635,12 +633,7 @@ def filled_outcome(
         OutcomeWarning(where=path, reason=f"not in the index: {each.reason}")
         for path, each in sorted(held.skipped.items())
     )
-    return Outcome(
-        ending="failed" if problems else "done",
-        counts=filled,
-        problems=problems,
-        warnings=(*warned, *lacking),
-    )
+    return Outcome.of(filled, problems, (*warned, *lacking))
 
 
 def to_fill(index: SearchIndex) -> tuple[Held, Embedded | None, list[IndexedBody], set[Chunk]]:
@@ -812,7 +805,7 @@ def fill_and_prune(indexing: Indexing) -> Outcome[Filled]:
     ) as error:
         structlog.get_logger().error("index.not_built", reason=str(error))
         not_built = Problem(where=str(indexing.index), reason=str(error))
-        return Outcome(ending="failed", problems=(not_built,))
+        return Outcome.of(problems=(not_built,))
     filled = outcome.counts
     written = Written(skipped=filled.skipped, documents=filled.documents, keys=filled.kept)
     pruned = prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, written)

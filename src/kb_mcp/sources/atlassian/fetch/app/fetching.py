@@ -872,8 +872,7 @@ def plan_fetch(
         except TooManyFailuresError:
             counts.add("runs: stopped, too many failures in a row")
             return Outcome(ending="failed", counts=counts, problems=tuple(run.problems))
-    ending = "failed" if run.problems else "not run"
-    return Outcome(ending=ending, counts=counts, problems=tuple(run.problems))
+    return Outcome.of(counts, run.problems, otherwise="not run")
 
 
 def run_fetch(

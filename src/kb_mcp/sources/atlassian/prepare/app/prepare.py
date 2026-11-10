@@ -435,17 +435,16 @@ def prepare_atlassian(
         reused=conversions.reused,
         pruned=pruned,
     )
-    return Outcome(
-        ending="failed" if problems else "done",
-        counts=AtlassianCounts(
+    return Outcome.of(
+        AtlassianCounts(
             documents=written,
             converted=conversions.converted,
             reused=conversions.reused,
             changes=changes,
             unsupported=unsupported,
         ),
-        problems=tuple(problems),
-        warnings=tuple(
+        problems,
+        (
             OutcomeWarning(where=each.where, reason=f"{name}'s, read here: {each.reason}")
             for name, problems_of in found.items()
             if name != source

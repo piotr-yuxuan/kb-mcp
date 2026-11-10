@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from kb_mcp.kernel.exit_status import ExitStatus, folded
+from kb_mcp.kernel.exit_status import Ending, ExitStatus, folded
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
@@ -102,3 +102,19 @@ def test_short_names_three_problems_and_warnings_of_each_and_counts_the_rest() -
         "and 2 more problems\n" + said
     )
     assert outcome.text("detailed") == "documents: 2\n" + "".join(named) + said
+
+
+@pytest.mark.parametrize(
+    ("otherwise", "problems", "ending"),
+    [
+        ("done", (), "done"),
+        ("not run", (), "not run"),
+        ("done", (PROBLEM,), "failed"),
+        ("not run", (PROBLEM,), "failed"),
+    ],
+)
+def test_an_outcome_of_a_problem_ends_failed_whatever_it_would_end_otherwise(
+    otherwise: Ending, problems: tuple[Problem, ...], ending: str
+) -> None:
+    """The kernel owns the rule: a problem ends its unit failed, a dry run's too."""
+    assert Outcome.of(problems=problems, otherwise=otherwise).ending == ending

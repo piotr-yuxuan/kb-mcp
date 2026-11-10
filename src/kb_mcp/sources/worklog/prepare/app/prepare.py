@@ -340,13 +340,10 @@ def prepare_worklog(
         removed=changes.removed,
         problems=len(problems),
     )
-    return Outcome(
-        ending="failed" if problems else "done",
-        counts=WorklogCounts(
-            documents=len(wanted), changes=changes, html=read.html, held_back=held
-        ),
-        problems=tuple(problems),
-        warnings=read.warnings,
+    return Outcome.of(
+        WorklogCounts(documents=len(wanted), changes=changes, html=read.html, held_back=held),
+        problems,
+        read.warnings,
     )
 
 
@@ -384,15 +381,15 @@ def plan_worklog(
         to_remove=to_remove,
         problems=len(read.problems),
     )
-    return Outcome(
-        ending="failed" if read.problems else "not run",
-        counts=WorklogPlanned(
+    return Outcome.of(
+        WorklogPlanned(
             documents=len(read.documents),
             to_convert=to_convert,
             to_remove=to_remove,
             html=read.html,
             held_back=read.held_back,
         ),
-        problems=read.problems,
-        warnings=read.warnings,
+        read.problems,
+        read.warnings,
+        otherwise="not run",
     )

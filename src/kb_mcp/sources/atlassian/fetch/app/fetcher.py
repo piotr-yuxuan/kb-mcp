@@ -79,9 +79,7 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
         return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
     except (PeriodError, RepresentationError) as error:
         structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
-        return Outcome(
-            ending="failed", problems=(Problem(where=run.source.name, reason=str(error)),)
-        )
+        return Outcome.of(problems=(Problem(where=run.source.name, reason=str(error)),))
 
 
 def fetch_targets(
@@ -108,7 +106,7 @@ def fetch_targets(
         structlog.get_logger().error(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
-        return Outcome(ending="failed", problems=(Problem(where="raw store", reason=BUSY),))
+        return Outcome.of(problems=(Problem(where="raw store", reason=BUSY),))
     if outcome.ending == "sign in again":
         structlog.get_logger().error(
             "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again

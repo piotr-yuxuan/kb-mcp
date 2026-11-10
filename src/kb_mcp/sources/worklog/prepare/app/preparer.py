@@ -44,7 +44,7 @@ def prepare(run: SourceRun) -> Outcome[WorklogCounts | WorklogPlanned]:
         done = act(table.path, run.settings.docs, Pandoc.find(), archives=table.archives)
     except (PandocMissingError, PandocFailedError) as error:
         structlog.get_logger().error("worklog.pandoc_failed", reason=str(error))
-        return Outcome(ending="failed", problems=(Problem(where="pandoc", reason=str(error)),))
+        return Outcome.of(problems=(Problem(where="pandoc", reason=str(error)),))
     log = structlog.get_logger()
     for problem in done.problems:
         log.warning(

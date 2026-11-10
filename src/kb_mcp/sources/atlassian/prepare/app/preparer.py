@@ -69,7 +69,7 @@ def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
         pandoc = Pandoc.find()
     except PandocMissingError as error:
         structlog.get_logger().error("prepare.pandoc_missing", reason=str(error))
-        return Outcome(ending="failed", problems=(Problem(where="pandoc", reason=str(error)),))
+        return Outcome.of(problems=(Problem(where="pandoc", reason=str(error)),))
     return prepare_classes(
         run.settings, run.account_table.site, pandoc, run.source.name, classes_of(run)
     )
