@@ -755,6 +755,23 @@ def test_an_alias_of_a_name_sees_two_identities_that_an_alias_makes_one() -> Non
     assert [(alias.key, alias.reason) for alias in apart.unused] == [("sam", SEVERAL)]
 
 
+def test_an_alias_of_an_identity_names_persons_as_the_mentions_alone_make_them() -> None:
+    """Aliases of identities do not chain: each value is read before any is applied.
+
+    acct-0009's alias to Sam Sample finds the two Sam Sample identities, though another
+    alias makes them one: it names several persons, and changes nothing.
+    """
+    sammy = PersonRow(
+        document=7, role="author", name="Sammy", identity="atlassian:acct-0009", updated=day(19)
+    )
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002", "atlassian:acct-0009": "Sam Sample"}
+    result = joined((SAM_2_ROW, SAM_3_ROW, sammy), {}, aliases)
+    assert result.of[sammy] == anchored("account\nacct-0009")
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0009", SEVERAL)
+    ]
+
+
 @pytest.mark.parametrize("value", [SAM_2, "Robin Sample"], ids=["a person's id", "a spelling"])
 def test_an_alias_of_an_identity_names_a_person_by_an_id_or_a_spelling(value: str) -> None:
     """acct-0003 joins Robin's identity by its person's id, or by Robin Sample, its name."""

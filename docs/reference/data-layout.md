@@ -915,9 +915,10 @@ quoted for its colon:
   identities one person, of `acct-0002`'s id. It holds an identity only where a mention
   holds it; else it is taken for a name.
 - A value that is a name means the one identity's person with a name of its key, else
-  the person by name alone of its key; the aliases of identities are read first, so
-  that two identities that one makes one are one person to an alias of a name, as to
-  rule 3; one that is an identity, that identity's own
+  the person by name alone of its key; the aliases of identities are read first, each
+  value as the mentions alone make persons, so that two identities that one makes one
+  are one person to an alias of a name, as to rule 3, but not to another alias of an
+  identity; one that is an identity, that identity's own
   person; one that is a person's id, that person. Each must be a person that an
   identity or a name makes, not aliases or attendance alone: aliases are not chained,
   and an alias whose value's every mention another alias or attendance joins elsewhere
