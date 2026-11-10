@@ -57,15 +57,8 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     probing_order,
     too_many_gone,
 )
-from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE, skip_reason
+from kb_mcp.sources.atlassian.fetch.domain.files import skip_reason
 from kb_mcp.sources.atlassian.fetch.domain.names import ISSUE, PAGE, PROJECT, SPACE
-from kb_mcp.sources.atlassian.fetch.domain.period import (
-    DEFAULT_MAX_FILE_MB,
-    MAX_FILE_MB_FLAG,
-    SINCE_FLAG,
-    UNTIL_FLAG,
-    moment,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Mapping
@@ -794,23 +787,6 @@ class Purview(Record):
             message = f"a fetch is of one source: scopes {[str(each) for each in self.scopes]}"
             raise ValueError(message)
         return sources.pop()
-
-
-def read_purview(scopes: Sequence[Scope], options: Mapping[str, object], now: datetime) -> Purview:
-    """Read what a run fetches of these scopes from the period's options.
-
-    ``options`` holds each by its flag, as typed, None when not given: --since and
-    --until read as ``moment`` reads them, at ``now``; --max-file-mb not given is
-    ``DEFAULT_MAX_FILE_MB``. Raises KeyError for one that it does not hold, so that a flag
-    renamed cannot read as not given.
-    """
-    since, until = options[SINCE_FLAG], options[UNTIL_FLAG]
-    return Purview(
-        scopes=list(scopes),
-        max_file_bytes=(options[MAX_FILE_MB_FLAG] or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
-        since=moment(since, now, SINCE_FLAG) if since else None,
-        until=moment(until, now, UNTIL_FLAG) if until else None,
-    )
 
 
 class ScopeFetchWindow(Record):

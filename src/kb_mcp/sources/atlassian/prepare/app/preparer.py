@@ -27,20 +27,10 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts, Classes
-    from kb_mcp.sources.declaration import Connector
     from kb_mcp.sources.stages import SourceRun
 
 # What a dry run says of these sources: a count needs a lookup without converting.
 NOT_COUNTED = "not counted: a dry run of this source converts nothing, and cannot tell"
-
-
-def classes_of(connector: Connector) -> Classes:
-    """Give the classes of a connector's document types, in their order."""
-    return tuple(
-        document_class
-        for document_class in DOCUMENT_CLASSES
-        if document_class.document_type in connector.document_types
-    )
 
 
 def preflight(run: SourceRun) -> str | None:
@@ -79,7 +69,11 @@ def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
         return Outcome.of(problems=(Problem(where="pandoc", reason=str(error)),))
     account = run.source.connector.account
     sources = {
-        each.name: classes_of(each.connector)
+        each.name: tuple(
+            known
+            for known in DOCUMENT_CLASSES
+            if known.document_type in each.connector.document_types
+        )
         for each in run.sources
         if each.connector.account == account
     }

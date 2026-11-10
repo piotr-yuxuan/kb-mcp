@@ -18,9 +18,8 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.domain.content import time_revision
+from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, time_revision
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
-from kb_mcp.sources.atlassian.prepare.app.preparer import classes_of
 from kb_mcp.sources.registry import SOURCES
 
 if TYPE_CHECKING:
@@ -32,7 +31,11 @@ if TYPE_CHECKING:
 
 # The registry's Atlassian sources, by name, each with its connector's document classes.
 ATLASSIAN = {
-    each.name: classes_of(each.connector) for each in SOURCES if each.connector.account is not None
+    each.name: tuple(
+        known for known in DOCUMENT_CLASSES if known.document_type in each.connector.document_types
+    )
+    for each in SOURCES
+    if each.connector.account is not None
 }
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (

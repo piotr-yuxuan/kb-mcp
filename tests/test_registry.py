@@ -28,9 +28,8 @@ from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, PAGE, SPACE
-from kb_mcp.sources.atlassian.prepare.app.preparer import classes_of
 from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, Source
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -118,12 +117,12 @@ def test_a_registry_with_a_second_source_of_one_name_or_connector_is_refused_nam
         main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, second))
 
 
-def test_each_source_prepares_the_types_that_its_connector_declares() -> None:
+def test_each_type_that_a_connector_declares_has_a_class_that_its_preparer_builds() -> None:
     """A type added to a connector reaches its preparer, and the tests' store of each type."""
-    assert {
-        connector.name: [each.document_type for each in classes_of(connector)]
-        for connector in (CONFLUENCE, JIRA)
-    } == {connector.name: list(connector.document_types) for connector in (CONFLUENCE, JIRA)}
+    assert [each.document_type for each in DOCUMENT_CLASSES] == [
+        *CONFLUENCE.document_types,
+        *JIRA.document_types,
+    ]
 
 
 @pytest.mark.parametrize(

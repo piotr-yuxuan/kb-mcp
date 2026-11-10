@@ -17,17 +17,25 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
-from kb_mcp.sources.atlassian.fetch.app.fetching import plan_fetch, read_purview, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
+from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE
 from kb_mcp.sources.atlassian.fetch.domain.names import SPACE
-from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
+from kb_mcp.sources.atlassian.fetch.domain.period import (
+    DEFAULT_MAX_FILE_MB,
+    MAX_FILE_MB_FLAG,
+    SINCE_FLAG,
+    UNTIL_FLAG,
+    PeriodError,
+    moment,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview
+    from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
     from kb_mcp.sources.stages import SourceRun
 
 # What to do while another run writes the raw store.
@@ -35,18 +43,27 @@ BUSY = "another run is writing it; try again once that run ends"
 
 
 def purview_of(run: SourceRun) -> Purview:
-    """Read the scopes of ``run``'s source: each key that its table lists of each scope type.
+    """Read what ``run`` fetches: each key of each scope type that its table lists, its period.
 
-    The list is the setting that the scope type's option replaces; the period is its
-    options', as ``read_purview`` reads them.
+    The list is the setting that the scope type's option replaces. ``run.options`` holds
+    each option by its flag, as typed, None when not given: --since and --until read as
+    ``moment`` reads them, at the run's start; --max-file-mb not given is
+    ``DEFAULT_MAX_FILE_MB``. Raises KeyError for one that it does not hold, so that a flag
+    renamed cannot read as not given.
     """
-    scopes = [
-        Scope(source=run.source.name, type=scope_type, key=key)
-        for scope_type in run.source.connector.scope_types
-        if scope_type.option is not None and scope_type.option.setting is not None
-        for key in getattr(run.source_table, scope_type.option.setting)
-    ]
-    return read_purview(scopes, run.options, run.now())
+    options, now = run.options, run.now()
+    since, until = options[SINCE_FLAG], options[UNTIL_FLAG]
+    return Purview(
+        scopes=[
+            Scope(source=run.source.name, type=scope_type, key=key)
+            for scope_type in run.source.connector.scope_types
+            if scope_type.option is not None and scope_type.option.setting is not None
+            for key in getattr(run.source_table, scope_type.option.setting)
+        ],
+        max_file_bytes=(options[MAX_FILE_MB_FLAG] or DEFAULT_MAX_FILE_MB) * MEBIBYTE,
+        since=moment(since, now, SINCE_FLAG) if since else None,
+        until=moment(until, now, UNTIL_FLAG) if until else None,
+    )
 
 
 def preflight(run: SourceRun) -> str | None:
