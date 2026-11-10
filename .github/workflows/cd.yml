@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: EUPL-1.2 OR GPL-3.0-or-later
 #
 # A release after each successful CI of a push to main, and by hand with a bump.  It holds no
-# rule: the release is in scripts/release.py, and docs/reference/release-pipeline.md describes
-# this file.
+# rule: the release is in scripts/release.py.
 name: CD
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [Checks]
     types: [completed]
     branches: [main]
   workflow_dispatch:
