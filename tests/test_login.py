@@ -240,11 +240,11 @@ class DriveTable(BaseModel):
 
 def drive_signed_in(
     settings: Settings, sources: tuple[Source, ...], chrome: Path | None, **given: bool
-) -> tuple[SignedIn, ...]:
+) -> tuple[tuple[SignedIn, ...], bool]:
     """Sign each source in: its run, as its connector names it."""
     assert (chrome, given) == (None, {"extensions": False, "named": True})
     folders = [getattr(settings.sources, each.name).folder for each in sources]
-    return tuple(SignedIn(site=str(folder), session=settings.session) for folder in folders)
+    return tuple(SignedIn(site=str(folder), session=settings.session) for folder in folders), True
 
 
 def drive_checks(settings: Settings, sources: tuple[Source, ...]) -> list[Check]:
@@ -297,3 +297,23 @@ def test_doctor_checks_each_source_by_its_connector_s_own_checks(
     assert main(options, WITH_DRIVE) == 0
     names = [check["name"] for check in json.loads(capsys.readouterr().out)]
     assert names == ["python", "pandoc", "data directory", "drive"]
+
+
+def test_a_login_of_two_sites_that_fails_at_the_second_says_the_first_signed_in(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Review round 1: exit 3, the first site in the result and in login.signed_in."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    def first_alone(_: object, site: str, *__: object, **___: object) -> None:
+        if site == CLIENT:
+            message = "the sign-in window was closed"
+            raise SignInFailedError(message)
+
+    monkeypatch.setattr(login_module, "save_session", first_alone)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", CLIENT)
+    assert main([*login(tmp_path), "--format", "json"]) == SIGN_IN_AGAIN
+    assert [row["site"] for row in json.loads(capsys.readouterr().out)] == [SITE]
+    assert [each["site"] for each in logged_as(tmp_path, "login.signed_in")] == [SITE]
+    assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [CLIENT]

@@ -106,8 +106,8 @@ class Connector:
     does, the run of ``kb-mcp login`` (``login``): a function of the settings, the
     sources to sign in, the browser's path and, by name, ``extensions`` and ``named``,
     whether the user named the one source, which gives a record of each place it signed
-    in to, with its ``site``, or None when a sign-in did not complete, having said so; and
-    ``doctor``'s
+    in to, with its ``site``, and whether every sign-in completed, having said why not;
+    and ``doctor``'s
     checks (``checks``): a function of the settings and of the sources configured, which
     gives its checks, each a ``Check``. A path that does not load raises as it does, as a
     table's: a programmer's error, as no setting can cause it. ``refused``,

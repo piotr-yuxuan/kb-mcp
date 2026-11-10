@@ -10,6 +10,7 @@ as [fetch](fetch.md) records it: `session.moved` and `session.not_moved`.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
+| `login.signed_in` | info | `site` | A site is signed in, its session saved |
 | `login.not_signed_in` | error | `site`, `reason` | A site's sign-in did not complete, such as the window closed: exit 3, and no later site is tried |
 
 ## Spans
