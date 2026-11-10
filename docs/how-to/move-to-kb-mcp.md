@@ -269,7 +269,7 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 | `download` | `fetch` |
 | `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
 | `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
-| `login` | `login atlassian` |
+| `login` | `login`, each site of the sources configured, or `login jira` for one source |
 | `--summary short` or `--summary detailed` | `--detail short` or `--detail detailed`; `--summary` is refused, exit 2 |
 
 A script that wants search by meaning ends with `index`, then `embed`, never with
