@@ -145,12 +145,15 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
 
-With --format json: index, its path; model, the one that embedded; chunks, those that
-the index holds; documents, its documents; skipped, the files that it lacks; added and
-removed, the chunks; embedded, the texts embedded now; found, those that the vector
-cache held; refused, the documents with a chunk refused; unchanged, whether nothing
-was written; pruned, what the prune of the vector cache kept and deleted, or why it
-did not prune.
+With --format json: `ending` (done, failed); `counts`, null when nothing was filled:
+`index`, its path; `model`, the one that embedded; `chunks`, those that the index
+holds; `documents`, its documents; `skipped`, how many files it lacks; `added` and
+`removed`, the chunks; `embedded`, the texts embedded now; `found`, those that the
+vector cache held; `unchanged`, whether nothing was written; `pruned`, what the prune
+of the vector cache kept and deleted, or why it did not prune; `problems`, each
+document with a chunk refused, or why nothing was filled, and `warnings`, a mirror
+changed since the index and each file that the index lacks, each with its `where` and
+`reason`.
 ```
 
 ## `eval`

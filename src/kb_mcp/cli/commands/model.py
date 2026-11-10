@@ -9,11 +9,12 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.commands._embedding import open_endpoint, prefixes_said
+from kb_mcp.cli.commands._embedding import open_endpoint
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.app.indexing import prefixes_said
 
 if TYPE_CHECKING:
     import argparse

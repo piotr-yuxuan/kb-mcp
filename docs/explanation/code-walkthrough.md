@@ -463,10 +463,11 @@ model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
 which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
 `index.not_built`. A file skipped is a problem of `index`'s outcome
 ([`outcome_of`](../../src/kb_mcp/search/app/indexing.py), its counts an
-[`IndexCounts`](../../src/kb_mcp/search/app/indexing.py)), and a chunk refused in `embed`'s
-[`Filled`](../../src/kb_mcp/search/app/indexing.py); `index` exits 0 only when its outcome
-has no problem, and `embed` only when its result is whole
-([`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
+[`IndexCounts`](../../src/kb_mcp/search/app/indexing.py)), and a document with a chunk
+refused one of `embed`'s ([`filled_outcome`](../../src/kb_mcp/search/app/indexing.py), its
+counts a [`Filled`](../../src/kb_mcp/search/app/indexing.py)), whose warnings are a mirror
+changed since the index and each file that the index lacks; each exits 0 only when its
+outcome has no problem.
 
 ### 10. The result
 

@@ -117,7 +117,7 @@ class Step:
     def run(self) -> None:
         """Update the index, then fill it, as ``index`` then ``embed`` do."""
         assert update_index(self.indexing(), MOMENT).counts is not None
-        assert fill_and_prune(self.indexing()) is not None
+        assert fill_and_prune(self.indexing()).counts is not None
 
     def whole(self) -> Path:
         """Build the mirror whole, by ``build_index``, with the same aliases, model and cut."""
@@ -311,7 +311,7 @@ def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data:
     assert updated is not None
     assert (updated.counts.copied, updated.counts.added) == (len(held["documents"]), 0)
     assert updated.counts.persons.count < len(held["persons"])
-    filled = fill_and_prune(step.indexing())
+    filled = fill_and_prune(step.indexing()).counts
     assert filled is not None
     assert filled.unchanged
     assert rows(data / "index.sqlite") == rows(step.whole())
@@ -320,6 +320,6 @@ def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data:
     (data / "aliases.toml").write_text("not = [toml\n", encoding="utf-8")
     assert update_index(step.indexing(), MOMENT).counts is None
     assert (data / "index.sqlite").read_bytes() == before
-    filled = fill_and_prune(step.indexing())
+    filled = fill_and_prune(step.indexing()).counts
     assert filled is not None
     assert filled.unchanged

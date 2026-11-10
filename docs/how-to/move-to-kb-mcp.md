@@ -265,17 +265,17 @@ What reads a run's output follows:
   `windows` and `dry_run`. A prepare's `mirrored` is the row's `counts`, but for its
   `problems`, `warnings` and `elsewhere`, now the row's `problems` and `warnings`; the
   work log's `held_back`, once each problem's, is `counts.held_back`, by each problem's
-  place. `index`'s `report` gives
-  the documents held by type, their sections and the files skipped, then the documents
-  `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
-  when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,
-  why the index was rebuilt whole, if it was; its `model` and `pruned` are null; its
-  `chunks` was `pieces` before schema 7. `embed`'s result by meaning gives `index`,
-  `model`, `chunks` (formerly `pieces`) and `documents`, those that the index holds,
-  `skipped`, the files that it lacks, `added` and `removed`, the chunks, `embedded`,
-  `found` and `refused`, `unchanged`, and `pruned`. `eval`'s result and results file
-  give each evaluated index under `indexes`, formerly `runs`, with its `costs.chunks`,
-  formerly `costs.pieces`; results files already written keep `runs`.
+  place. `index` and `embed` write one outcome each, its `ending`, `counts`, `problems`
+  and `warnings`. `index`'s `report` is its `counts`, with `index`, its path, and
+  `persons`, how many the join made; its `skipped` files are its `problems`, and what
+  `persons` left apart, each ambiguous name and each unused alias, its `warnings`; its
+  `model` and `pruned` are gone; its `chunks` was `pieces` before schema 7. `embed`'s
+  result is its `counts`, `chunks` formerly `pieces`; its `refused` documents are its
+  `problems`, and a mirror changed since the index and each file that the index lacks
+  are its `warnings`, which leave it done, exit 0, where a file lacking failed it.
+  `eval`'s result and results file give each evaluated index under `indexes`, formerly
+  `runs`, with its `costs.chunks`, formerly `costs.pieces`; results files already
+  written keep `runs`.
 - **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
   cache", where they said "vector store".
 - **Endings.** A row says `sign in again` where it said `sign in`. The events

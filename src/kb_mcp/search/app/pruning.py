@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
     from opentelemetry.trace import Span
 
+    from kb_mcp.kernel.output import Detail
+
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
 VECTORS = METER.create_counter(
@@ -86,6 +88,17 @@ class Written(Record):
     keys: frozenset[str] = frozenset()
 
 
+# Bytes in a megabyte, as the text says the vector cache's size.
+MB = 1_000_000
+# A vector cache made by an earlier version, converted to give freed space back.
+CONVERTED = "; converted, as made by an earlier version, so that it gives freed space back"
+# One whose conversion failed, its reason given, which the next prune tries again.
+SHRINKS_NOT = (
+    "; made by an earlier version, it is not yet converted to give freed space back ({}):"
+    " the next prune tries again, given about the vector cache's size free on disk"
+)
+
+
 class Pruned(Record):
     """What a prune did: its outcome, the vectors kept and deleted, and the store's size.
 
@@ -108,6 +121,34 @@ class Pruned(Record):
     reclaimed: bool = False
     reason: str = ""
     file: str | None = None
+
+    def text(self, detail: Detail) -> str:
+        """Say what the prune that followed the build did.
+
+        Short gives the vectors deleted and the vector cache's size. Detailed gives the
+        vectors kept, of which for the evaluation alone, those deleted, the vector cache's
+        size before and after, and whether it gives space back; or why it did not prune.
+        """
+        if detail == "short":
+            if self.outcome != "pruned":
+                return f"vectors pruned: none, {self.outcome}\n"
+            return f"vectors pruned: {self.deleted}\nvector cache: {self.bytes_after / MB:.1f} MB\n"
+        if self.outcome != "pruned":
+            place = f" ({self.file})" if self.file else ""
+            return f"vector cache not pruned, {self.outcome}: {self.reason}{place}\n"
+        written = (
+            f"kept {self.kept} vectors ({self.kept_for_evaluation} for the evaluation"
+            f" alone), pruned {self.deleted}; the vector cache from"
+            f" {self.bytes_before / MB:.1f} to {self.bytes_after / MB:.1f} MB in"
+            f" {self.seconds:.1f} s"
+        )
+        if self.converted:
+            written += CONVERTED
+        if not self.shrinks:
+            written += SHRINKS_NOT.format(self.reason)
+        elif not self.reclaimed:
+            written += f"; space not reclaimed: {self.reason}"
+        return f"{written}\n"
 
 
 def shown(path: Path | str) -> str:

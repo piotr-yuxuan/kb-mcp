@@ -27,6 +27,7 @@ from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
+from kb_mcp.search.app import pruning
 from kb_mcp.search.app.indexing import (
     Embedding,
     Indexing,
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.outcome import Outcome
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.app.indexing import Filled
     from tests.conftest import InMemory
@@ -427,7 +429,7 @@ def indexing(data: Path) -> Indexing:
     )
 
 
-def refreshed(indexing: Indexing) -> Filled | None:
+def index_then_embed(indexing: Indexing) -> Outcome[Filled]:
     """Update the index, as ``kb-mcp index`` does; then fill and prune, as ``embed`` does."""
     update_index(indexing, MOMENT)
     return fill_and_prune(indexing)
@@ -453,11 +455,11 @@ def read_by(index: Path) -> set[str]:
         return reader.keys()
 
 
-def pruned(indexed: Filled | None) -> Pruned:
+def pruned(indexed: Outcome[Filled]) -> Pruned:
     """Give what the prune that followed a fill did; there must have been a fill."""
-    assert indexed is not None
-    assert indexed.pruned is not None
-    return indexed.pruned
+    assert indexed.counts is not None
+    assert indexed.counts.pruned is not None
+    return indexed.counts.pruned
 
 
 # Two pages of two sections, whose second the test writes, under a page that only the
@@ -487,7 +489,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     )
     write(data / "docs", page("200", "Edited", breadcrumb=HOME), f"{EDITED}The text before.\n")
     store, fresh = data / "vectors.sqlite", data.parent / "fresh.db"
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     for each in (store, fresh):
         evaluated(data, each, "windows")
         evaluated(data, each, "section-paths")
@@ -501,7 +503,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     before = stored(store)
     telemetry.spans.clear()
     telemetry.measured()
-    indexed = refreshed(indexing(data))
+    indexed = index_then_embed(indexing(data))
     done = pruned(indexed)
     assert stored(store) == stored(fresh)
     alone = stored(fresh) - read_by(data / "index.sqlite")
@@ -530,7 +532,7 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     assert counts == {"kept": len(stored(fresh)), "pruned": deleted}
     [size] = measured["kb_mcp.vectors.bytes"].data.data_points
     assert size.value == done.bytes_after
-    assert json.loads(to_json(indexed))["pruned"] == done.model_dump()
+    assert json.loads(to_json(indexed))["counts"]["pruned"] == done.model_dump()
     assert f"vectors pruned: {deleted}\nvector cache: " in embed_command.text(indexed, "short")
     detailed = embed_command.text(indexed, "detailed")
     assert f"kept {len(stored(fresh))} vectors ({len(alone)} for the evaluation alone)" in detailed
@@ -539,15 +541,15 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
 
 def test_a_second_index_with_nothing_changed_embeds_and_deletes_nothing(data: Path) -> None:
     """Then, an evaluation's index deleted, the next deletes the vectors that it alone read."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
-    again = refreshed(indexing(data))
+    again = index_then_embed(indexing(data))
     assert again is not None
-    assert (again.embedded, again.unchanged) == (0, True)
+    assert (again.counts.embedded, again.counts.unchanged) == (0, True)
     assert pruned(again).deleted == 0
     alone = read_by(windows) - read_by(data / "index.sqlite")
     windows.unlink()
-    assert pruned(refreshed(indexing(data))).deleted == len(alone) > 0
+    assert pruned(index_then_embed(indexing(data))).deleted == len(alone) > 0
 
 
 def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> None:
@@ -558,7 +560,7 @@ def test_a_real_evaluation_s_vectors_outlive_the_next_index(tmp_path: Path) -> N
     chunkings: tuple[Chunking, ...] = ("windows", "section-paths")
     targets = [EvaluatedIndex(tiny(), chunking) for chunking in chunkings]
     evaluate(settings, golden(data), targets, ticking(), MOMENT)
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     for chunking in chunkings:
         assert read_by(settings.evaluation_indexes / chunking / "tiny.sqlite") <= stored(
             settings.vectors
@@ -574,7 +576,7 @@ def held_back(data: Path, capsys: CaptureFixture[str]) -> tuple[int, dict[str, A
         opened.put({vector_cache.vector_key("another model", "a text"): bytes(64)})
     status, result, err = command(data, capsys)
     assert vector_cache.vector_key("another model", "a text") in stored(data / "vectors.sqlite")
-    return status, result["pruned"], err
+    return status, result["counts"]["pruned"], err
 
 
 def command(
@@ -630,12 +632,12 @@ def test_a_file_that_is_no_index_holds_the_prune_back(
 def test_a_build_that_skipped_a_file_holds_the_prune_back(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Its index lacks a document of the mirror, whose vectors stay; exit 1, as without it."""
+    """Its index lacks a document of the mirror, whose vectors stay; a warning, exit 0."""
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
     status, result, err = held_back(data, capsys)
     assert (status, result["outcome"], result["file"], result["reason"]) == (
-        1,
+        0,
         "held back",
         None,
         SKIPPED,
@@ -671,7 +673,7 @@ def test_the_summary_says_the_prune_before_the_question_by_meaning(
     """By meaning, a line of the summary says that the store is then pruned."""
     _, result, err = command(data, capsys)
     assert "then: the vector cache keeps only the vectors that the index and eval's read" in err
-    assert result["pruned"]["outcome"] == "pruned"
+    assert result["counts"]["pruned"]["outcome"] == "pruned"
 
 
 @dataclass
@@ -690,7 +692,7 @@ class Paused(Counting):
 
 def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> None:
     """While an evaluation's build embeds, nothing is deleted; once it is in, its vectors stay."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     other = vector_cache.vector_key("another model", "a text")
     with vector_cache.opened(data / "vectors.sqlite") as opened:
         opened.put({other: bytes(64)})
@@ -700,7 +702,7 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     build = threading.Thread(target=build_index, args=(data / "docs", windows, MOMENT, embedding))
     build.start()
     assert paused.inside.wait(PATIENCE_S)
-    indexed = refreshed(indexing(data))
+    indexed = index_then_embed(indexing(data))
     paused.resume.set()
     build.join(PATIENCE_S)
     deferred = pruned(indexed)
@@ -710,7 +712,7 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     said_fully = embed_command.text(indexed, "detailed")
     assert said_fully.endswith(f"vector cache not pruned, deferred: {DEFERRED}\n")
     assert other in stored(data / "vectors.sqlite")
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert (done.outcome, done.deleted) == ("pruned", 1)
     assert read_by(windows) <= stored(data / "vectors.sqlite")
 
@@ -725,9 +727,9 @@ def test_a_store_that_cannot_delete_fails_the_prune_not_the_index(
         raise sqlite3.OperationalError(message)
 
     monkeypatch.setattr(vector_cache.VectorCache, "prune", locked)
-    indexed = refreshed(indexing(data))
+    indexed = index_then_embed(indexing(data))
     assert indexed is not None
-    assert indexed.whole
+    assert indexed.ending == "done"
     assert pruned(indexed) == Pruned(
         outcome="failed", seconds=pruned(indexed).seconds, reason="database is locked"
     )
@@ -737,7 +739,7 @@ def test_an_index_interrupted_while_it_prunes_is_in_place(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Ctrl-C during the prune: the filled index stays, as it was renamed in before."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     write(data / "docs", page("200", "Edited", breadcrumb=HOME), f"{EDITED}The text after.\n")
     update_index(indexing(data), MOMENT)
     with reading(data / "index.sqlite") as reader:
@@ -764,7 +766,7 @@ def kept_whole(data: Path) -> str:
 
 def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
     """A page of its chunks overwritten: the file is named, and nothing is deleted."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
         root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 'chunks'")
@@ -774,21 +776,21 @@ def test_a_damaged_evaluation_index_holds_the_prune_back(data: Path) -> None:
         file.seek((page_number - 1) * size)
         file.write(b"\xff" * size)
     other = kept_whole(data)
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert (done.outcome, done.file, done.reason) == ("held back", str(windows), UNREADABLE)
     assert other in stored(data / "vectors.sqlite")
 
 
 def test_a_link_among_the_evaluation_s_indexes_holds_the_prune_back(data: Path) -> None:
     """Not followed, lest a cycle of links never end: it is named, and nothing is deleted."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     elsewhere = data.parent / "elsewhere"
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     elsewhere.mkdir()
     windows.parent.rename(elsewhere / "windows")
     windows.parent.symlink_to(elsewhere / "windows")
     other = kept_whole(data)
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert (done.outcome, done.file, done.reason) == ("held back", str(windows.parent), UNLISTED)
     assert other in stored(data / "vectors.sqlite")
 
@@ -797,26 +799,26 @@ def test_a_dangling_link_among_the_evaluation_s_indexes_holds_the_prune_back(
     data: Path,
 ) -> None:
     """Its target gone, as an unmounted disk's: it is named, and nothing is deleted."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     folder = data / "eval" / "indexes"
     folder.mkdir(parents=True)
     (folder / "windows").symlink_to(data.parent / "unmounted" / "windows")
     other = kept_whole(data)
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert (done.outcome, done.file) == ("held back", str(folder / "windows"))
     assert other in stored(data / "vectors.sqlite")
 
 
 def test_an_evaluation_folder_on_a_disk_away_holds_the_prune_back(data: Path) -> None:
     """<data>/eval a link whose target is gone: its indexes unseen, nothing is deleted."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     evaluated(data, data / "vectors.sqlite", "windows")
     (data / "eval").rename(data.parent / "disk")
     (data / "eval").symlink_to(data.parent / "disk")
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     (data.parent / "disk").rename(data.parent / "away")
     other = kept_whole(data)
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert (done.outcome, done.file, done.reason) == (
         "held back",
         str(data / "eval" / "indexes"),
@@ -829,12 +831,12 @@ def test_an_evaluation_folder_on_a_disk_away_holds_the_prune_back(data: Path) ->
 @pytest.mark.parametrize("closed", ["eval", "eval/indexes/windows"])
 def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path, closed: str) -> None:
     """An index there would go unseen, and its vectors deleted: nothing is."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     evaluated(data, data / "vectors.sqlite", "windows")
     other = kept_whole(data)
     (data / closed).chmod(0)
     try:
-        done = pruned(refreshed(indexing(data)))
+        done = pruned(index_then_embed(indexing(data)))
     finally:
         (data / closed).chmod(0o700)
     unseen = data / "eval" / "indexes" if closed == "eval" else data / closed
@@ -844,13 +846,13 @@ def test_a_folder_that_cannot_be_listed_holds_the_prune_back(data: Path, closed:
 
 def test_an_evaluation_index_without_a_model_holds_the_prune_back(data: Path) -> None:
     """Its meta lacks the model: it cannot say what it reads, and the prune does not fail."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
         connection.execute("DELETE FROM meta WHERE name IN ('model', 'fingerprint')")
         connection.commit()
     other = kept_whole(data)
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert (done.outcome, done.file, done.reason) == ("held back", str(windows), UNREADABLE)
     assert other in stored(data / "vectors.sqlite")
 
@@ -866,14 +868,13 @@ def test_each_outcome_is_said_short_and_in_detail() -> None:
         Pruned(outcome="failed", reason="database is locked"): "failed: database is locked",
     }
     for done, why in cases.items():
-        assert embed_command.prune_text(done, "short") == f"vectors pruned: none, {done.outcome}\n"
-        assert embed_command.prune_text(done, "detailed") == f"vector cache not pruned, {why}\n"
-    assert embed_command.prune_text(None, "short") == ""
+        assert done.text("short") == f"vectors pruned: none, {done.outcome}\n"
+        assert done.text("detailed") == f"vector cache not pruned, {why}\n"
 
 
 def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> None:
     """Renamed in by a lexical build since: it names no vector, so none is deleted."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     other = kept_whole(data)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     evaluation = data / "eval" / "indexes"
@@ -888,7 +889,7 @@ def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> Non
 
     They come back once the index is rebuilt whole, which holds none of them.
     """
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     evaluated(data, data / "vectors.sqlite", "windows")
     (data / "vectors.sqlite").unlink()
     update_index(indexing(data), MOMENT, rebuild=True)
@@ -900,7 +901,7 @@ def test_the_vectors_counted_kept_are_those_left_in_the_store(data: Path) -> Non
 def test_a_store_made_before_023_is_converted_and_said_so_once(data: Path) -> None:
     """The first prune converts it and says so; the next one has nothing to convert."""
     made_before_023(data / "vectors.sqlite")
-    indexed = refreshed(indexing(data))
+    indexed = index_then_embed(indexing(data))
     done = pruned(indexed)
     assert (done.outcome, done.converted, done.shrinks, done.reclaimed) == (
         "pruned",
@@ -909,15 +910,15 @@ def test_a_store_made_before_023_is_converted_and_said_so_once(data: Path) -> No
         True,
     )
     assert indexed is not None
-    assert embed_command.text(indexed, "detailed").endswith(f"{embed_command.CONVERTED}\n")
-    assert not pruned(refreshed(indexing(data))).converted
+    assert embed_command.text(indexed, "detailed").endswith(f"{pruning.CONVERTED}\n")
+    assert not pruned(index_then_embed(indexing(data))).converted
 
 
 def test_a_store_not_yet_converted_is_said_so_with_the_reason(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Its conversion failed for want of space: the summary says why, and that it is retried."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     swept = vector_cache.Swept(
         deleted=1,
         kept=10,
@@ -927,15 +928,15 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
         unreclaimed="disk is full",
     )
     monkeypatch.setattr(vector_cache.VectorCache, "prune", lambda *_: swept)
-    indexed = refreshed(indexing(data))
+    indexed = index_then_embed(indexing(data))
     assert indexed is not None
     said_fully = embed_command.text(indexed, "detailed")
-    assert said_fully.endswith(f"{embed_command.SHRINKS_NOT.format('disk is full')}\n")
+    assert said_fully.endswith(f"{pruning.SHRINKS_NOT.format('disk is full')}\n")
 
 
 def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Pruned, the space not reclaimed: the outcome holds why, and so does the summary."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     swept = vector_cache.Swept(
         deleted=1,
         kept=10,
@@ -945,7 +946,7 @@ def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: Mo
         unreclaimed="disk is full",
     )
     monkeypatch.setattr(vector_cache.VectorCache, "prune", lambda *_: swept)
-    indexed = refreshed(indexing(data))
+    indexed = index_then_embed(indexing(data))
     done = pruned(indexed)
     assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
     assert indexed is not None
@@ -956,17 +957,17 @@ def test_chunks_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path)
     """They have no vector to keep: the build is whole enough, and the prune runs."""
     path = write(data / "docs", page("196845", "Rollback"), BODY)
     refused = Scripted(refused={"Rollback\nRelease\nThe deploy of the seller service."})
-    indexed = refreshed(replace(indexing(data), endpoint=lambda: scripted(refused)))
+    indexed = index_then_embed(replace(indexing(data), endpoint=lambda: scripted(refused)))
     assert indexed is not None
-    assert indexed.refused == [path]
+    assert [each.where for each in indexed.problems] == [path]
     assert pruned(indexed).outcome == "pruned"
 
 
 def test_a_prune_gives_the_space_of_what_it_deleted_back(data: Path) -> None:
     """2,000 vectors the size of 1,024 float32 that no index reads: the store shrinks."""
-    pruned(refreshed(indexing(data)))
+    pruned(index_then_embed(indexing(data)))
     orphans = seeded(data / "vectors.sqlite", 2000)
-    done = pruned(refreshed(indexing(data)))
+    done = pruned(index_then_embed(indexing(data)))
     assert done.deleted == len(orphans)
     assert done.bytes_after < done.bytes_before
     assert (done.shrinks, done.reclaimed) == (True, True)
