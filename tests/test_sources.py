@@ -672,6 +672,20 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     assert not gone.exists()
 
 
+def test_a_dry_run_of_a_work_log_with_a_file_not_read_fails_and_exits_1(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """A dry run that finds a problem ends failed, not not run, so that its exit says so."""
+    where = "transcripts/current/2026-10-27 Tue/1.org"
+    (worklog / where).write_bytes(b"* Caf\xe9\n")
+    config = settings_file(home, worklog)
+    given = command(home, config, "prepare", "worklog", "--dry-run", "--format", "json")
+    assert main(given) == ExitStatus.FAILED
+    (row,) = json.loads(capsys.readouterr().out)["sources"]
+    assert (row["source"], row["ending"]) == ("worklog", "failed")
+    assert row["problems"] == [{"where": where, "reason": "not UTF-8"}]
+
+
 def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:

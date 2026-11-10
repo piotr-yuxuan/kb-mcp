@@ -344,6 +344,21 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
+def test_a_dry_run_whose_space_finds_nothing_fails_and_exits_1(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A dry run that finds a problem ends failed, not not run, so that its exit says so."""
+    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
+    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    monkeypatch.setattr(http, "client", lambda *_: FakeSite(spaces=[]).client())
+    options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--dry-run", "--format", "json")
+    assert main(command(home, *options)) == SOME_FAILED
+    (row,) = json.loads(capsys.readouterr().out)["sources"]
+    assert (row["source"], row["ending"]) == ("confluence", "failed")
+    assert row["problems"] == [{"where": "space NOPE", "reason": "not found"}]
+    assert not chosen.runs.exists()
+
+
 def test_ctrl_c_exits_130_and_says_which_source_it_stopped(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
