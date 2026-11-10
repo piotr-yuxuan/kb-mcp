@@ -19,7 +19,7 @@ import structlog
 from kb_mcp.kernel.fields import Fields
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Iterable, Mapping
+    from collections.abc import Iterable, Mapping
 
 COOKIES = "cookies.json"
 # The browser profile of the sign-in window, beside the cookies.
@@ -31,26 +31,35 @@ def folder_of(root: Path, site: str) -> Path:
     return root / (urlsplit(site).hostname or "")
 
 
-def kept_why(former: Path, folder: Path, sites: Collection[str]) -> str | None:
-    """Say why the session kept before stays, or None when this site's folder takes it.
+def kept_why(root: Path, source: str, sites: Mapping[str, str]) -> str | None:
+    """Say why the session kept before stays, or None when this source's site takes it.
 
-    ``folder`` is the site's, ``sites`` every site that the settings name. It is this
-    site's when every cookie is of its host, as ``login`` saved them filtered to one host,
-    and of no other site's, and this site has no cookies of its own yet. An empty reason
-    is one that another site's run says, or that it moves the session: one run says each.
+    ``sites`` gives the site of every source that names one, ``source``'s among them, in
+    their order. The session is a site's when every cookie is of its host, as ``login``
+    saved them filtered to one host, and of no other site's, and the site has no cookies
+    of its own yet. Only the first source of the host that it is of, or of the first host
+    when it is of none, says why it stays: an empty reason is another's to say.
     """
     try:
-        cookies = read_cookies(former)
+        cookies = read_cookies(root / COOKIES)
     except OSError, ValueError:
         cookies = []
-    host = folder.name
-    hosts = sorted({urlsplit(each).hostname or "" for each in sites} | {host})
-    matching = [each for each in hosts if cookies and len(for_site(cookies, each)) == len(cookies)]
-    if matching == [host]:
-        own = (folder / COOKIES).exists()
-        return "this site has a session of its own; remove the former one" if own else None
-    if host != (matching or hosts)[0]:
+    hosts = {name: urlsplit(site).hostname or "" for name, site in sites.items()}
+    host = hosts[source]
+    matching = sorted(
+        {
+            each
+            for each in hosts.values()
+            if cookies and len(for_site(cookies, each)) == len(cookies)
+        }
+    )
+    speaking = (matching or sorted(hosts.values()))[0]
+    if matching == [host] and not (root / host / COOKIES).exists():
+        return None
+    if source != next(name for name, each in hosts.items() if each == speaking):
         return ""
+    if matching == [host]:
+        return "this site has a session of its own; remove the former one"
     if not matching:
         return "its cookies are of no site that the settings name; remove it"
     return (
@@ -58,23 +67,25 @@ def kept_why(former: Path, folder: Path, sites: Collection[str]) -> str | None:
     )
 
 
-def adopt_former_session(root: Path, site: str, sites: Collection[str]) -> None:
-    """Move the session kept before sessions were a site's into this site's folder, once.
+def adopt_former_session(root: Path, source: str, sites: Mapping[str, str]) -> None:
+    """Move the session kept before sessions were a site's into a source's site's folder, once.
 
     That is ``root/cookies.json`` and the profile beside it, as ``kept_why`` judges,
     under a lock of ``root``, which another run holding skips the move: it makes it. The
     profile goes first, unless the site has one, then the cookies, whose place says that
-    the move is done: ``session.moved``, at INFO. Else, or when a move fails, they stay,
-    with a warning, ``session.not_moved``, saying why. With none, nothing is said.
+    the move is done: ``session.moved``, at INFO. Else, or when the lock or a move fails,
+    they stay, with a warning, ``session.not_moved``, saying why. With none, nothing is
+    said.
     """
-    former, folder = root / COOKIES, folder_of(root, site)
+    former, folder = root / COOKIES, folder_of(root, sites[source])
     if not former.exists():
         return
     log = structlog.get_logger()
-    handle = os.open(root / ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+    handle = -1
     try:
+        handle = os.open(root / ".lock", os.O_RDWR | os.O_CREAT, 0o600)
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        why = kept_why(former, folder, sites)
+        why = kept_why(root, source, sites)
         if why is None:
             folder.mkdir(mode=0o700, exist_ok=True)
             if (root / PROFILE).exists() and not (folder / PROFILE).exists():
@@ -89,7 +100,8 @@ def adopt_former_session(root: Path, site: str, sites: Collection[str]) -> None:
         why = f"not moved: {type(error).__name__}"
         log.warning("session.not_moved", host=folder.name, session=str(former), reason=why)
     finally:
-        os.close(handle)
+        if handle >= 0:
+            os.close(handle)
 
 
 def read_cookies(path: Path) -> list[dict[str, str]]:

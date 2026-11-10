@@ -8,6 +8,7 @@ kept, and a run signed in by one reads and writes nothing of the session.
 from __future__ import annotations
 
 import base64
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlsplit
@@ -58,14 +59,16 @@ class SignIn(Protocol):
 class SavedSession(Record):
     """The site's cookies, which ``login`` saved under the site's folder of the session.
 
-    ``sites`` are every site that the settings name, among which the session kept before
-    sessions were a site's finds its own.
+    ``source`` is the source that signs in, and ``sites`` the site of every source that
+    names one, its own among them, as ``kept_why`` takes them for the session kept before
+    sessions were a site's.
     """
 
     site: str
     folder: Path
     again: str
-    sites: tuple[str, ...] = ()
+    source: str
+    sites: Mapping[str, str]
     name: str = "the session saved by login"
 
     def client(self) -> httpx.Client:
@@ -76,7 +79,7 @@ class SavedSession(Record):
         or ``doctor`` before it needs no login; never another site.
         """
         own, former = self.folder / COOKIES, self.folder.parent / COOKIES
-        if not own.exists() and kept_why(former, self.folder, self.sites) is None:
+        if not own.exists() and kept_why(former.parent, self.source, self.sites) is None:
             own = former
         try:
             cookies = read_cookies(own)
@@ -91,7 +94,7 @@ class SavedSession(Record):
 
     def adopt_former(self) -> None:
         """Move the session kept before sessions were a site's into this site's folder."""
-        adopt_former_session(self.folder.parent, self.site, self.sites)
+        adopt_former_session(self.folder.parent, self.source, self.sites)
 
 
 class ApiToken(Record):
@@ -124,9 +127,11 @@ class ApiToken(Record):
         """Take nothing: a token reads and writes nothing of a session."""
 
 
-def sites_of(settings: Settings) -> tuple[str, ...]:
-    """Give every site that the settings name, of any source whose table holds one."""
-    return tuple(str(table.site) for _, table in settings.sources if getattr(table, "site", None))
+def sites_of(settings: Settings) -> dict[str, str]:
+    """Give the site of every source whose table holds one, by its name, in name order."""
+    return {
+        name: str(table.site) for name, table in settings.sources if getattr(table, "site", None)
+    }
 
 
 def choose_sign_in(settings: Settings, source: str) -> SignIn:
@@ -142,7 +147,8 @@ def choose_sign_in(settings: Settings, source: str) -> SignIn:
         again = f"run kb-mcp login {source}"
         site = str(table.site)
         folder = folder_of(settings.session, site)
-        return SavedSession(site=site, folder=folder, again=again, sites=sites_of(settings))
+        sites = {**sites_of(settings), source: site}
+        return SavedSession(site=site, folder=folder, again=again, source=source, sites=sites)
     pair = f"{table.email or ''}:{token.get_secret_value()}"
     return ApiToken(
         site=str(table.site),

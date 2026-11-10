@@ -43,11 +43,13 @@ def save_session(settings: Settings, site: str, chrome: Path | None, *, extensio
 
     The browser profile and the cookies stay in the site's folder of ``Settings.session``,
     readable by the user alone, where a session kept before sessions were a site's first
-    moves, its profile signed in. Raises SignInFailedError when the user does not finish
-    in time.
+    moves, its profile signed in, as the first source of the site takes it. Raises
+    SignInFailedError when the user does not finish in time.
     """
     folder = folder_of(settings.session, site)
-    adopt_former_session(settings.session, site, sites_of(settings))
+    sites = sites_of(settings)
+    source = next(name for name, each in sites.items() if each == site)
+    adopt_former_session(settings.session, source, sites)
     profile = folder / PROFILE
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)
