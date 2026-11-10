@@ -16,7 +16,7 @@ question in each arm, each by its id, as the README says of tasks.
 | `eval.refused` | error | `reason` | The golden file is refused, by the field at fault: exit 2 |
 | `eval.not_evaluated` | error | `reason` | A model fails, the reranking server does not answer, or a search falls back, by words or not reranked, which would measure another arm: exit 1 |
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed for the model |
-| `index.built` | info | `documents`, `sections`, `skipped`, `chunks`, `embedded`, `people` | The model's index is complete, its people joined without aliases |
+| `index.built` | info | `documents`, `sections`, `skipped`, `chunks`, `embedded`, `persons` | The model's index is complete, its people joined into persons without aliases |
 | `rerank.request` | debug | `model`, `texts`, `characters`, `tokens` | A reranking: how many texts, how long in all, the tokens that the server counted; never their text |
 | `rerank.fallback` | warning | `kind`, `reason` | A reranking fails, of kind `unanswered`, `refused` or `bad_answer`: the search keeps its order, which stops the evaluation |
 | `http.get` | debug | `url`, `status`, `error`, `seconds` | Each request for a list of models: the embedding endpoint's, the reranking server's |

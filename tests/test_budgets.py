@@ -244,7 +244,7 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
     header = parts(answer)[1].partition("\n\n")[0]
     assert len(header.splitlines()) == len(["person", "names", *range(NAMES)])
     assert header.splitlines()[1].count("Wörd") == NAMES
-    assert f" by its account; {len(SPELLINGS) - NAMES} more.\n" in header
+    assert f" by its identity; {len(SPELLINGS) - NAMES} more.\n" in header
     answers = [
         answer,
         library.search("gamma", filters=person),

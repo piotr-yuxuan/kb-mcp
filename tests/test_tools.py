@@ -979,8 +979,8 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
             " worklog 4, jira 2, confluence 1; last updated 2026-10-21."
         ),
         (
-            "Names: Robin Example, Robin Sample by its account; Robin Example, robin EXAMPLE"
-            " by name; Robin as a speaker, by the meeting of each transcript."
+            "Names: Robin Example, Robin Sample by its identity; Robin Example, robin EXAMPLE"
+            " by name; Robin by attendance."
         ),
         (
             f"Perhaps the same, not joined: {ROBIN_ALONE};"
@@ -1351,15 +1351,15 @@ def test_status_says_what_the_index_holds(varied: Library) -> None:
         (
             {},
             (
-                "people: 8, 1 in more than one source, 5 by name alone;"
-                ' names of several accounts: "Sam Sample" (3)'
+                "persons: 8, 1 in more than one source, 5 by name alone;"
+                ' names of several identities: "Sam Sample" (3)'
             ),
         ),
         (
             {"Sam Sample": SAM_3},
             (
-                "people: 7, 2 in more than one source, 4 by name alone;"
-                ' names of several accounts: "Sam Sample" (2)'
+                "persons: 7, 2 in more than one source, 4 by name alone;"
+                ' names of several identities: "Sam Sample" (2)'
             ),
         ),
     ],
@@ -1403,7 +1403,7 @@ def test_status_names_five_names_of_several_accounts_then_how_many_more(
     library = built(tmp_path, [(front, None) for front in fronts])
     shown = ", ".join(f'"Person {number}" (2)' for number in range(1, 6))
     assert (
-        f"\npeople: 14, 0 in more than one source, 1 by name alone; names of several accounts:"
+        f"\npersons: 14, 0 in more than one source, 1 by name alone; names of several identities:"
         f" {shown}, and 1 more\n"
     ) in parts(library.status())[1]
 

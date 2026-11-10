@@ -1082,7 +1082,7 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
-            people=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
+            persons=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
             chunks=chunks,
             chunking=embedded.chunking if embedded else None,

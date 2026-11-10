@@ -309,12 +309,12 @@ class Passage(Record):
 
 
 class PersonCounts(Record):
-    """The persons that an index joined, and the names that several accounts hold."""
+    """The persons that an index joined, and the names that several identities hold."""
 
     count: int
     across: int  # persons with documents in more than one source
-    alone: int  # persons by name alone, of no account
-    # Each name whose key two accounts or more hold, as one of them writes it, with the
+    alone: int  # persons by name alone, of no identity
+    # Each name whose key two identities or more hold, as one of them writes it, with the
     # persons holding that key, the most first, ties by name.
     shared: tuple[tuple[str, int], ...]
 
@@ -329,7 +329,7 @@ class IndexStatus(Record):
     projects: dict[str, int]
     sections: int
     newest_fetch: datetime | None
-    people: PersonCounts
+    persons: PersonCounts
     model: str | None = None  # the model of the vectors, if any
     chunks: int = 0
     chunking: Chunking | None = None  # how the chunks were cut, if there are vectors

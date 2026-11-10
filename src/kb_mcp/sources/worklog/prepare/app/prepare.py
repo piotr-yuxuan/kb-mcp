@@ -273,7 +273,7 @@ def prepare_worklog(
         task("work-log documents", len(read.documents)) as built,
     ):
         for document in built.each(read.documents, lambda one: one.title):
-            typed = {"kb_mcp.kind": document.type}
+            typed = {"kb_mcp.type": document.type}
             name = revision(converter, document.text)
             old, body = kept.get(document.id, (None, ""))
             began = time.perf_counter()
@@ -333,7 +333,7 @@ def prepare_worklog(
                 path=str(path),
                 id=document.id,
                 title=document.title,
-                kind=document.type,
+                type=document.type,
                 outcome=outcome,
             )
     ends = {matter.id for matter, _ in ready.values()} | kept.keys()

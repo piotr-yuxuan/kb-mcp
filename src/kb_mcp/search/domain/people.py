@@ -59,9 +59,9 @@ BY_NAME = "name"
 IDENTITY_ANCHOR = "account"
 NAME_ANCHOR = "name"
 # Why an alias changes nothing.
-UNHELD = "no name without an account has its key"
+UNHELD = "no name without an identity has its key"
 NOBODY = "its value names nobody"
-SEVERAL = "its value names several people"
+SEVERAL = "its value names several persons"
 
 
 def written_key(name: str) -> str:

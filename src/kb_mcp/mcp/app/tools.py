@@ -397,7 +397,7 @@ def who(reader: SearchReader, name: str, value: str | None) -> str | None:
     that id, else those holding a name of the value's key (``people.name_key``): one is
     taken, as is, of several, for a value with an annotation, the one alone holding a
     name written as the value is, annotation included (``people.written_key``), such as
-    an account named "Robin (Ops)" beside one named "Robin (Sales)"; a bare "Robin"
+    an identity named "Robin (Ops)" beside one named "Robin (Sales)"; a bare "Robin"
     beside them could be either, though a person by name alone writes it so. Refuse a
     value that none holds there, listing the role's names: those whose key holds the
     value's first, the most used first; and one that several hold, listing
@@ -443,7 +443,7 @@ def about(
     The person as ``responses.person`` writes them, then a blank line, with those perhaps
     the same: of each ``people.first_word`` of their names, the one other person whose
     names of that key joined by name, whom an alias of the word, written as their name
-    of that key, would join to them; none where an account is named by the word, from
+    of that key, would join to them; none where an identity is named by the word, from
     which the alias would take the name, or where those names are several persons, which
     annotations keep apart and the alias would join too. Then their roles by path, as
     ``responses.roles`` says them. Nothing without that filter.

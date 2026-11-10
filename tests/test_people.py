@@ -1161,7 +1161,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     ]
     home = data.parent / "home"
     (ambiguous,) = logged_as(home, "index.person_ambiguous")
-    assert (ambiguous["spelling"], ambiguous["people"]) == ("Sam Sample", 2)
+    assert (ambiguous["spelling"], ambiguous["persons"]) == ("Sam Sample", 2)
     (unused,) = logged_as(home, "index.alias_unused")
     assert (unused["alias"], unused["key"], unused["reason"]) == (
         "Jo Placeholder",
@@ -1171,7 +1171,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     (built,) = logged_as(home, "index.built")
     # Robin by name alone is gone; the other seven persons stay.
     persons = {ROBIN, SAM_2, SAM_3, SAM_ALONE, ALEX_EXAMPLE, ALEX, ROBIN_OTHER}
-    assert built["people"] == len(persons)
+    assert built["persons"] == len(persons)
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         robins = connection.execute("SELECT DISTINCT person FROM people WHERE name = 'Robin'")
         assert robins.fetchall() == [(ROBIN,)]

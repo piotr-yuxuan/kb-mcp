@@ -31,7 +31,7 @@ FIELD = 200  # characters of a one-line field or a heading, as shown
 LABEL = 60
 LABELS = 10
 NAMES = 10  # names of one role that a read shows, then how many more
-SHARED = 5  # names of several accounts that status shows, then how many more
+SHARED = 5  # names of several identities that status shows, then how many more
 SNIPPET = 300
 DEPTH = 10  # levels of indentation, at most
 # Estimated tokens kept for an answer's header and the markers of its block.
@@ -39,10 +39,10 @@ RESERVE = 100
 SPACES = re.compile(r"\s+")
 # How each name of a person joined them, as a person's answer says it.
 JOINED = {
-    people.BY_IDENTITY: "by its account",
+    people.BY_IDENTITY: "by its identity",
     people.BY_ALIAS: "by an alias",
     people.BY_NAME: "by name",
-    people.BY_ATTENDANCE: "as a speaker, by the meeting of each transcript",
+    people.BY_ATTENDANCE: "by attendance",
 }
 
 
@@ -348,14 +348,14 @@ def status(state: IndexStatus, docs: Path) -> str:
     """Say what the index holds, and when it was built.
 
     Its persons on one line: how many, in more than one source, and by name alone; then
-    SHARED at most of the names of several accounts, each with the persons holding it,
+    SHARED at most of the names of several identities, each with the persons holding it,
     and how many more, so that the agent knows which names to ask about by id.
     """
 
     def counts(values: dict[str, int]) -> str:
         return ", ".join(f"{name} {count}" for name, count in values.items()) or "none"
 
-    persons = state.people
+    persons = state.persons
     shared = ", ".join(
         f"{json.dumps(short(name, LABEL), ensure_ascii=False)} ({count})"
         for name, count in persons.shared[:SHARED]
@@ -373,9 +373,9 @@ def status(state: IndexStatus, docs: Path) -> str:
         f"spaces: {counts(state.spaces)}",
         f"projects: {counts(state.projects)}",
         (
-            f"people: {persons.count}, {persons.across} in more than one source,"
+            f"persons: {persons.count}, {persons.across} in more than one source,"
             f" {persons.alone} by name alone"
-            + (f"; names of several accounts: {shared}" if shared else "")
+            + (f"; names of several identities: {shared}" if shared else "")
             + (f", and {rest} more" if rest > 0 else "")
         ),
         f"files skipped at build: {state.skipped}",

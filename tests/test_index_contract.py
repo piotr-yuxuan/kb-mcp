@@ -282,7 +282,7 @@ def test_the_summary_says_what_the_index_holds(written: Written) -> None:
     assert summary.projects == {"PROJ": 1}
     assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
     assert summary.newest_fetch == MOMENT
-    assert summary.people.count == 1  # one author of both
+    assert summary.persons.count == 1  # one author of both
     assert (summary.model, summary.chunks, summary.chunking) == (None, 0, None)
 
 

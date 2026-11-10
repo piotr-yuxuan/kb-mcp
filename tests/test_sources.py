@@ -1170,9 +1170,9 @@ def missing() -> Pandoc:
 def by_type_and_outcome(measured: dict[str, Metric]) -> dict[tuple[object, object], object]:
     """Give the work log's documents counted, by type and outcome."""
     return {
-        (point.attributes["kb_mcp.kind"], point.attributes["kb_mcp.outcome"]): point.value
+        (point.attributes["kb_mcp.type"], point.attributes["kb_mcp.outcome"]): point.value
         for point in measured["kb_mcp.prepare.documents"].data.data_points
-        if point.attributes and "kb_mcp.kind" in point.attributes
+        if point.attributes and "kb_mcp.type" in point.attributes
     }
 
 
@@ -1199,7 +1199,7 @@ def test_the_work_log_is_counted_by_type_and_its_spans_are_in_its_row(
         (document_type, "kept"): count for document_type, count in WORKLOG_BY_TYPE.items()
     }
     timed = first["kb_mcp.prepare.conversion.duration"].data.data_points
-    assert {point.attributes["kb_mcp.kind"]: point.count for point in timed} == WORKLOG_BY_TYPE
+    assert {point.attributes["kb_mcp.type"]: point.count for point in timed} == WORKLOG_BY_TYPE
     assert "kb_mcp.prepare.conversion.duration" not in second
     (row,) = [span for span in spans if span.name == "prepare.source"]
     assert (row.attributes["kb_mcp.source"], row.attributes["kb_mcp.outcome"]) == (
@@ -1256,7 +1256,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
     assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
     documents = logged_as(fresh, "worklog.document")
-    assert Counter(each["kind"] for each in documents) == WORKLOG_BY_TYPE
+    assert Counter(each["type"] for each in documents) == WORKLOG_BY_TYPE
     assert {each["outcome"] for each in documents} == {"mirrored"}
     folders = {
         "entry": "worklog/entries/",
@@ -1264,7 +1264,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
         "meeting": "worklog/meetings/",
         "transcript": "worklog/transcripts/",
     }
-    assert all(str(each["path"]).startswith(folders[str(each["kind"])]) for each in documents)
+    assert all(str(each["path"]).startswith(folders[str(each["type"])]) for each in documents)
     fields = ("documents", "written", "unchanged", "removed", "problems")
     every = WORKLOG_DOCUMENTS
     assert ended_with(fresh, *fields) == (every, every, 0, 0, 0)
