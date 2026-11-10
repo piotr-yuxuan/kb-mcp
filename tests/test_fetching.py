@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.kernel.outcome import Problem
@@ -31,7 +32,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     write_cookies,
 )
 from kb_mcp.sources.atlassian.fetch.app import fetching as fetching_module
-from kb_mcp.sources.atlassian.fetch.app.fetching import Fetching, Targets, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Fetching, Targets, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import FetchWindow, Target
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
@@ -569,6 +570,19 @@ def test_a_run_that_something_stops_records_how(
         run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     assert json.loads(report.read_text("utf-8"))["ending"] == ending
+
+
+def test_a_count_is_named_with_a_colon_so_that_none_meets_the_windows() -> None:
+    """The counts are written beside ``windows`` and ``dry_run``: a name without one is refused."""
+    counts = FetchCounts()
+    counts.add("confluence pages: fetched")
+    with pytest.raises(ValueError, match="holds a colon"):
+        counts.add("windows")
+    assert to_jsonable_python(counts) == {
+        "confluence pages: fetched": 1,
+        "windows": [],
+        "dry_run": False,
+    }
 
 
 def test_only_the_site_cookies_with_a_value_are_saved_back(

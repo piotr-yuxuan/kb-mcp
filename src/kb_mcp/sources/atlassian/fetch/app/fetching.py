@@ -142,7 +142,14 @@ class FetchCounts(Record):
         return {**written.pop("counts"), **written}
 
     def add(self, what: str, number: int = 1) -> None:
-        """Count something that happened."""
+        """Count something that happened, by a name that holds a colon.
+
+        Raises ValueError for a name without one, which could meet ``windows`` or
+        ``dry_run`` once the counts are written beside them.
+        """
+        if ":" not in what:
+            message = f"a count's name holds a colon: {what!r}"
+            raise ValueError(message)
         self.counts[what] += number
 
     def text(self, detail: Detail) -> str:
@@ -243,8 +250,8 @@ class Fetching:
         if spaces and not self.plan:
             self.users()
 
-    def failed(self, what: str, where: str, error: Exception | str) -> None:
-        """Count a failure by its kind and reason, and keep it as a problem by its place.
+    def failed(self, what: str, where: str, error: Exception | str) -> Problem:
+        """Count a failure by its kind and reason, and keep it as a problem by its place; give it.
 
         The reason is the one given, the refused field's path or the failed GET's status:
         the messages of these two errors hold paths and statuses only; any other error is
@@ -253,15 +260,16 @@ class Fetching:
         known = isinstance(error, (str, RepresentationError, SiteError))
         reason = str(error) if known else type(error).__name__
         self.counts.add(f"{what} failed: {reason}")
-        self.problems.append(Problem(where=where, reason=reason))
+        problem = Problem(where=where, reason=reason)
+        self.problems.append(problem)
+        return problem
 
     def target_failed(self, what: str, target: str, error: Exception | str) -> None:
         """Fail a space or a project named, as ``failed`` does; a warning says it.
 
         The warning, ``fetch.target_failed``, names the target and the reason.
         """
-        self.failed(what, target, error)
-        failed = self.problems[-1]
+        failed = self.failed(what, target, error)
         structlog.get_logger().warning(
             "fetch.target_failed", target=f"{failed.where}: {failed.reason}"
         )
