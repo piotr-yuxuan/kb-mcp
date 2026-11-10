@@ -136,26 +136,12 @@ class FetchCounts(Record):
         """Count something that happened."""
         self.counts[what] += number
 
-    def failed(self, what: str, error: Exception) -> None:
-        """Count a failure by the refused field's path, or by the failed GET's status.
-
-        The messages of these two errors hold paths and statuses only; any other error is
-        counted by its class, since its message could hold content.
-        """
-        known = isinstance(error, (RepresentationError, SiteError))
-        self.add(f"{what} failed: {error if known else type(error).__name__}")
-
-    @property
-    def failures(self) -> int:
-        """Count what failed."""
-        return sum(number for what, number in self.counts.items() if " failed: " in what)
-
     def text(self, detail: Detail) -> str:
-        """Write the documents fetched by type and the files, or a dry run's; then failures.
+        """Write the documents fetched by type and the files, or a dry run's.
 
         Detailed, and a dry run, begin with each target's window, why it starts there, and
         what became of its coverage. Short also says how a run stopped, if it did; detailed
-        gives every count of what the run did, or would do. The failures come last.
+        gives every count of what the run did, or would do, failures by kind included.
         """
         windows = self.windows if detail == "detailed" or self.dry_run else ()
         said = [
@@ -173,10 +159,8 @@ class FetchCounts(Record):
             for what, number in sorted(self.counts.items())
             if detail == "detailed" or what.endswith(SHORT_COUNTS) or what.startswith(STOPPED)
         ]
-        return (
-            "".join(f"{line}\n" for line in said)
-            + "".join(f"{what}: {number}\n" for what, number in shown)
-            + f"failures: {self.failures}\n"
+        return "".join(f"{line}\n" for line in said) + "".join(
+            f"{what}: {number}\n" for what, number in shown
         )
 
 
@@ -194,8 +178,8 @@ class Fetching:
     names the targets whose listing was read whole, with the period fetched, so that
     their coverage can grow, and ``first_failed`` the update time of each one's earliest
     document found and not stored whole; ``held``, the targets skipped and those read
-    whole whose coverage stays as it was, and why. ``problems`` names the user's own
-    keys that failed, and why, for the command to show; they never enter the counts.
+    whole whose coverage stays as it was, and why. ``problems`` holds each failure by its
+    place, a target, a document or a file, and its reason, as ``failed`` keeps it.
     """
 
     site: SiteClient
@@ -250,6 +234,29 @@ class Fetching:
         if spaces and not self.plan:
             self.users()
 
+    def failed(self, what: str, where: str, error: Exception | str) -> None:
+        """Count a failure by its kind and reason, and keep it as a problem by its place.
+
+        The reason is the one given, the refused field's path or the failed GET's status:
+        the messages of these two errors hold paths and statuses only; any other error is
+        named by its class, since its message could hold content.
+        """
+        known = isinstance(error, (str, RepresentationError, SiteError))
+        reason = str(error) if known else type(error).__name__
+        self.counts.add(f"{what} failed: {reason}")
+        self.problems.append(Problem(where=where, reason=reason))
+
+    def target_failed(self, what: str, target: str, error: Exception | str) -> None:
+        """Fail a space or a project named, as ``failed`` does; a warning says it.
+
+        The warning, ``fetch.target_failed``, names the target and the reason.
+        """
+        self.failed(what, target, error)
+        failed = self.problems[-1]
+        structlog.get_logger().warning(
+            "fetch.target_failed", target=f"{failed.where}: {failed.reason}"
+        )
+
     def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
         """GET the signed-in site user of a source; say whether the source answers.
 
@@ -258,7 +265,7 @@ class Fetching:
         try:
             user = Fields(self.site.json(request), "user")
         except (RepresentationError, SiteError) as error:
-            self.counts.failed(source, error)
+            self.failed(source, source, error)
             return False
         if not signed_in(user):
             raise SignInNeededError
@@ -291,7 +298,8 @@ class Fetching:
             try:
                 found.append(LISTED[document_class](Fields(entry, document_class.resource_type)))
             except RepresentationError as error:
-                self.counts.failed(f"{label(document_class)} listed", error)
+                what = f"{label(document_class)} listed"
+                self.failed(what, f"{label(document_class)} listing", error)
         self.counts.add(f"{label(document_class)}: listed", len(found))
         return found
 
@@ -308,8 +316,7 @@ class Fetching:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
                 if space is None:
-                    self.problems.append(Problem(where=f"space {key}", reason="not found"))
-                    self.counts.add("confluence spaces failed: not found")
+                    self.target_failed("confluence spaces", f"space {key}", "not found")
                     span.set_status(StatusCode.ERROR, "not found")
                     return False
                 page_listing = confluence_v2.listing_request(space.id, Page)
@@ -318,8 +325,7 @@ class Fetching:
                     pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
                     posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.problems.append(Problem(where=f"space {key}", reason=str(error)))
-                self.counts.failed("confluence spaces", error)
+                self.target_failed("confluence spaces", f"space {key}", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
@@ -407,10 +413,10 @@ class Fetching:
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
                 return ProbeAnswer.GONE
-            self.counts.failed("confluence probes", error)
+            self.failed("confluence probes", " ".join(key), error)
             return None
         except RepresentationError as error:
-            self.counts.failed("confluence probes", error)
+            self.failed("confluence probes", " ".join(key), error)
             return None
         document_class = Page if key[0] == Page.resource_type else BlogPost
         named = found_space in kept and key[1] in self.store.listed_ids(found_space, document_class)
@@ -427,7 +433,7 @@ class Fetching:
             try:
                 page = confluence_v2.document(Fields(entry, PAGES), Page)
             except RepresentationError as error:
-                self.counts.failed("confluence pages in the tree", error)
+                self.failed("confluence pages in the tree", "confluence pages listing", error)
                 continue
             if isinstance(page, Page) and page.parent_type == "folder":
                 wanted.append(page.parent_id)
@@ -443,7 +449,7 @@ class Fetching:
                 response = self.site.json(confluence_v2.folder_request(folder_id))
                 folder = confluence_v2.folder(Fields(response, "folder"))
             except (RepresentationError, SiteError) as error:
-                self.counts.failed("confluence folders", error)
+                self.failed("confluence folders", f"folder {folder_id}", error)
                 found[folder_id] = None
                 continue
             found[folder_id] = response
@@ -470,8 +476,7 @@ class Fetching:
                     search = jira_v3.search_request(key, start, end)
                     entries = self.collect(search, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.problems.append(Problem(where=f"project {key}", reason=str(error)))
-                self.counts.failed("jira projects", error)
+                self.target_failed("jira projects", f"project {key}", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             if self.plan:
@@ -581,7 +586,7 @@ class Fetching:
                 }
                 whole = self.keep(document.document_class, responses)
             except (RepresentationError, SiteError) as error:
-                self.counts.failed(what, error)
+                self.failed(what, f"{what} {document.id}", error)
                 DOCUMENTS.add(1, {"kb_mcp.outcome": "failed"})
                 span.set_status(StatusCode.ERROR, str(error))
                 structlog.get_logger().warning(
@@ -609,7 +614,7 @@ class Fetching:
                 "fetch.document", id=document.id, kind=label(document_class), title=document.title
             )
         except RepresentationError as error:
-            self.counts.failed(f"{label(document_class)} read", error)
+            self.failed(f"{label(document_class)} read", label(document_class), error)
             structlog.get_logger().warning(
                 "fetch.document_unread", kind=label(document_class), reason=str(error)
             )
@@ -628,7 +633,8 @@ class Fetching:
         try:
             stored = self.store.read(document)
         except (RepresentationError, ValueError, OSError) as error:
-            self.counts.failed(f"{label(document.document_class)} read", error)
+            what = label(document.document_class)
+            self.failed(f"{what} read", f"{what} {document.id}", error)
             return False
         missing = [
             attachment
@@ -662,13 +668,13 @@ class Fetching:
             try:
                 data = self.site.file(attachment.download, self.max_file_bytes)
             except SiteError as error:
-                self.counts.failed("files", error)
+                self.failed("files", f"file {attachment.id}", error)
                 FILES.add(1, {"kb_mcp.outcome": "failed"})
                 log.warning("fetch.file_failed", **named, reason=str(error))
                 whole = False
                 continue
             if len(data) != attachment.size:  # a proxy's page, say, in the file's place
-                self.counts.add("files failed: not the size listed")
+                self.failed("files", f"file {attachment.id}", "not the size listed")
                 FILES.add(1, {"kb_mcp.outcome": "failed"})
                 log.warning("fetch.file_failed", **named, reason="not the size listed")
                 whole = False
@@ -692,12 +698,12 @@ class Fetching:
                 try:
                     users += self.collect(request, confluence_v2.users_page)
                 except (RepresentationError, SiteError) as error:
-                    self.counts.failed("confluence users", error)
+                    self.failed("confluence users", "confluence users", error)
             try:
                 if users:
                     self.store.put_users(users)
             except RepresentationError as error:
-                self.counts.failed("confluence users", error)
+                self.failed("confluence users", "confluence users", error)
                 return
             self.counts.add("confluence users: named", len(users))
 
@@ -845,8 +851,7 @@ def plan_fetch(
         except TooManyFailuresError:
             counts.add("runs: stopped, too many failures in a row")
             return Outcome(ending="failed", counts=counts, problems=tuple(run.problems))
-    failed = counts.failures or run.problems
-    ending = "failed" if failed else "not run"
+    ending = "failed" if run.problems else "not run"
     return Outcome(ending=ending, counts=counts, problems=tuple(run.problems))
 
 
@@ -894,7 +899,7 @@ def run_fetch(
                 problems = run.problems
                 try:
                     run.run(targets.spaces, targets.projects)
-                    ending = "failed" if counts.failures or problems else "done"
+                    ending = "failed" if problems else "done"
                 except SignInNeededError:
                     ending = "sign in again"
                 except TooManyFailuresError:

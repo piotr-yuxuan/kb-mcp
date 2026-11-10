@@ -332,7 +332,7 @@ def test_a_space_and_a_project_are_downloaded_with_their_files(tmp_path: Path) -
     assert isinstance(issue, StoredSnapshot)
     assert [comment.id for comment in issue.snapshot.comments] == ["10100", "10101"]
     assert store.blob(issue.blobs["10000"]).read_bytes() == PICTURE
-    assert done.counts.failures == 0
+    assert done.problems == []
 
 
 def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) -> None:
@@ -547,7 +547,7 @@ def test_a_run_with_a_failure_says_so_in_its_status(
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
     outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "failed"
-    assert outcome.counts.failures == 1
+    assert [each.where for each in outcome.problems] == ["confluence pages"]  # read refused
     [report] = chosen.runs.iterdir()
     assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
@@ -603,7 +603,6 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
         done.run(["ENG"], [])
     assert done.problems == [Problem(where="space ENG", reason="not found")]
     assert done.counts.counts["confluence spaces failed: not found"] == 1
-    assert done.counts.failures == 1
 
 
 def test_a_site_without_jira_still_downloads_its_spaces(tmp_path: Path) -> None:

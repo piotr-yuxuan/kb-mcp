@@ -105,9 +105,8 @@ def fetch_targets(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
         return Outcome(ending="failed")
-    log = structlog.get_logger()
-    for problem in outcome.problems:
-        log.warning("fetch.target_failed", target=f"{problem.where}: {problem.reason}")
     if outcome.ending == "sign in again":
-        log.error("fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again)
+        structlog.get_logger().error(
+            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again
+        )
     return outcome

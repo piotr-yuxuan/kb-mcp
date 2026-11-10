@@ -960,7 +960,10 @@ def test_each_command_s_text_gives_each_source_s_counts_under_its_row(
     assert main(given) == ExitStatus.FAILED
     out = capsys.readouterr().out
     assert out.startswith("confluence: failed\n  confluence blogposts: fetched: 1\n")
-    assert "  failures: 1\njira: done\n  files: downloaded: 1\n" in out
+    assert (
+        "  problem: file att3: status 404\n  problems: 1\njira: done\n  files: downloaded: 1\n"
+        in out
+    )
     assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
     out = capsys.readouterr().out
     assert out.startswith("confluence: done\n  documents: ")

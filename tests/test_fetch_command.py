@@ -15,7 +15,7 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.outcome import Outcome
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
@@ -89,26 +89,26 @@ def test_a_fetch_shows_what_it_fetched_by_kind_its_files_and_failures(
         "  confluence blogposts: fetched: 1\n"
         "  confluence pages: fetched: 2\n"
         "  files: downloaded: 1\n"
-        "  failures: 1\n"
+        "  problem: file att3: status 404\n"
+        "  problems: 1\n"
         "jira: done\n"
         "  files: downloaded: 1\n"
         "  jira issues: fetched: 1\n"
-        "  failures: 0\n"
     )
 
 
 def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
     signed_in: list[str], capsys: CaptureFixture[str]
 ) -> None:
-    """Under each source's row, its target's window, then each count, in order, then failures.
+    """Under each source's row, its target's window, then each count, in order, then problems.
 
     With what short leaves out: listings, files skipped or failed. Each window starts at
     --since, and the coverage of each target grew.
     """
     assert main([*signed_in, "--detail", "detailed"]) == SOME_FAILED
     confluence, jira = capsys.readouterr().out.split("jira: done\n")
-    row, space, *counts, failures = confluence.splitlines()
-    project, *issues, none_failed = jira.splitlines()
+    row, space, *counts, problem, total = confluence.splitlines()
+    project, *issues = jira.splitlines()
     since = "from 2026-10-02T00:00:00+00:00 to "
     assert row == "confluence: failed"
     assert space.startswith(f"  space MFS: {since}")
@@ -125,7 +125,7 @@ def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
         "  files failed: status 404: 1",
     } <= set(counts)
     assert {"  jira issues: listed: 2", "  files: downloaded: 1"} <= set(issues)
-    assert (failures, none_failed) == ("  failures: 1", "  failures: 0")
+    assert (problem, total) == ("  problem: file att3: status 404", "  problems: 1")
 
 
 def test_each_source_is_fetched_alone_into_a_report_of_its_own(
@@ -196,14 +196,16 @@ def test_a_stopped_fetch_says_why_in_short(
         "confluence pages failed: status 503": 5,
         "runs: stopped, too many failures in a row": 1,
     }
-    stopped = Outcome(ending="failed", counts=FetchCounts(counts=Counter(counts)))
+    failed = tuple(Problem(where=f"confluence pages {n}", reason="status 503") for n in range(5))
+    stopped = Outcome(ending="failed", counts=FetchCounts(counts=Counter(counts)), problems=failed)
     monkeypatch.setattr(fetcher, "run_fetch", lambda *_: stopped)
     assert main(command(home, "--site", SITE, "--space", "MFS")) == SOME_FAILED
     assert capsys.readouterr().out == (
         "confluence: failed\n"
         "  confluence pages: fetched: 3\n"
         "  runs: stopped, too many failures in a row: 1\n"
-        "  failures: 5\n"
+        + "".join(f"  problem: confluence pages {n}: status 503\n" for n in range(5))
+        + "  problems: 5\n"
     )
 
 
@@ -224,11 +226,9 @@ def test_a_dry_run_shows_what_it_would_fetch(
     assert space.endswith(", given\n")
     assert project.startswith("  project PRB: from 2026-10-02T00:00:00+00:00 to ")
     assert "".join(pages) == (
-        "  confluence blogposts: to fetch: 1\n  confluence pages: to fetch: 2\n  failures: 0\n"
+        "  confluence blogposts: to fetch: 1\n  confluence pages: to fetch: 2\n"
     )
-    assert "".join(issues) == (
-        "  files: to download: 1\n  jira issues: to fetch: 1\n  failures: 0\n"
-    )
+    assert "".join(issues) == ("  files: to download: 1\n  jira issues: to fetch: 1\n")
 
 
 def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
@@ -252,7 +252,10 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
     confluence, jira = (row["counts"] for row in rows)
     assert confluence["counts"]["confluence pages: fetched"] == len(["1001", "1002"])
     assert jira["counts"]["jira issues: fetched"] == 1
-    assert [row["problems"] for row in rows] == [[], []]
+    assert [row["problems"] for row in rows] == [
+        [{"where": "file att3", "reason": "status 404"}],
+        [],
+    ]
     assert [
         (each["target"], each["start"], each["reason"], each["coverage"])
         for result in (confluence, jira)
@@ -444,7 +447,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     ] == [(50, 7, 4, 3, reason)]
     tasks = [(each["done"], each["total"]) for each in events if each.get("task") == "documents"]
     assert tasks[-1] == (3, 3)
-    assert outcome.counts.text("short") == "confluence pages: fetched: 3\nfailures: 0\n"
+    assert outcome.counts.text("short") == "confluence pages: fetched: 3\n"
     [window] = to_jsonable_python(outcome)["counts"]["windows"]
     assert (window["target"], window["end"], window["reason"], window["coverage"]) == (
         {"source": "confluence", "key": "MFS"},
