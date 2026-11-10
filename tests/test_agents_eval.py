@@ -316,7 +316,8 @@ def test_a_call_of_runs_off_this_machine_needs_its_own_consent(
     capsys.readouterr()
     flag = ["--allow-remote-embeddings"] if consented else []
     refused = off_this_machine and not consented
-    status = main([*bridged(out, run["id"], "search", {"query": "kafka"}), *flag])
+    command = bridged(out, run["id"], "search", {"query": "kafka"})
+    status = main([*command[:2], *flag, *command[2:]])  # right after call, as the how-to says
     assert status == (REFUSED if refused else 0)
     server = json.loads((out / "runs.json").read_text("utf-8"))["server"]
     if refused:

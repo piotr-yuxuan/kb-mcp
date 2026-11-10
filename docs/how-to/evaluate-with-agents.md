@@ -32,10 +32,10 @@ that it starts itself to list the tools; it writes the consent into no file, and
 `runs.json` says, by `remote_embeddings`, that the calls need it. Each call is then
 refused, exit 2, unless given `--allow-remote-embeddings` on its own command line, which
 the prompts' bridge command does not hold. The person running the evaluation, and only
-they, adds the flag to the bridge command in the instructions that they give each
-subagent, batch by batch; else keep the endpoint on this machine. A call refused for
-want of it names no flag: it tells the agent to stop and answer with `"found": false`,
-so that no model gives the consent.
+they, gives it, in the instructions to each subagent, batch by batch, as the next step
+says; else keep the endpoint on this machine. A call refused for want of it names no
+flag: it tells the agent to stop and answer with `"found": false`, and leaves its run
+without a result.
 
 ## Prepare the runs
 
@@ -61,6 +61,13 @@ the model that `runs.json` names (`haiku` or `sonnet`), by the Agent tool or a
 workflow's agent, allowed no tool but Bash, and told only:
 
 > Read `<the run's prompt file>` and do exactly what it says.
+
+For runs whose `runs.json` says `"remote_embeddings": true`, and only once the person
+running the evaluation has chosen to send the mirror's text off this machine, each
+subagent is told instead, these two sentences replacing the one above:
+
+> Read `<the run's prompt file>` and do exactly what it says. Add
+> `--allow-remote-embeddings` right after `call` in every bridge command.
 
 The prompt tells the subagent to answer from the tools alone, through the bridge, at
 most twelve calls, and to end with the answer command. The bridge,
