@@ -207,12 +207,13 @@ keeps has changed since the former name:
   embedding only what it lacks. `embed` before that `index` stops, exit 1, naming
   `kb-mcp index`, and leaves the index as it was. From then on, `index` reads only the
   files that changed, and writes nothing when none did.
-- **An index of schema 6 is rebuilt whole by the first `index`,** at schema 7, whose tables
-  are `chunks` and `section_words`. `kb-mcp index`, then `kb-mcp embed`, suffice, as the
-  server says of the index of 6: the mirror's files did not change, so no `prepare` is
-  needed, and `embed` takes every chunk's vector back from `<data>/vectors.sqlite`, as no
-  text embedded changed. Keep that file in place: a deleted one costs a full embedding of
-  the mirror. Each evaluated index under `<data>/eval/indexes/` built at schema 6 holds
+- **An index of schema 6 or 7 is rebuilt whole by the first `index`,** at schema 8,
+  whose tables are `chunks` and `section_words` and whose people hold identities. `kb-mcp
+  index`, then `kb-mcp embed`, suffice, as the server says of such an index: the mirror's
+  files are read as they are, so no `prepare` is needed first, and `embed` takes every
+  chunk's vector back from `<data>/vectors.sqlite`, as no text embedded changed. Keep
+  that file in place: a deleted one costs a full embedding of the mirror. Each evaluated
+  index under `<data>/eval/indexes/` built at schema 6 or 7 holds
   every prune of the vector cache back, `index.prune_skipped` saying so, until `eval`
   builds it again. For each `<data>/eval/indexes/<chunking>/<model>.sqlite`, run
   `kb-mcp eval <golden file> --model <model> --chunking <chunking>`, the model's name
