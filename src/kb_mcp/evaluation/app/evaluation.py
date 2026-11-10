@@ -180,8 +180,8 @@ class IndexMeasures(Record):
     fingerprint: str
     embedded: int  # texts that the model embedded for this index
     seconds: float  # how long the index took to build, embedding included
-    chunking: str = CONTROL
-    costs: Costs = Costs(chunks=0, characters=0, tokens=None, bytes=0)
+    chunking: str
+    costs: Costs
     per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
     groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
     ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question

@@ -144,12 +144,12 @@ class GradeVerdict(Record):
     differences: dict[str, Difference]
 
 
-def interval(differences: Sequence[float], seed: int = SEED) -> tuple[float, float]:
+def interval(differences: Sequence[float]) -> tuple[float, float]:
     """Give the seeded bootstrap interval of a mean difference, at COVERAGE."""
     if not differences:
         return 0.0, 0.0
     values = np.array(differences, dtype=float)
-    chosen = np.random.default_rng(seed).integers(0, len(values), (RESAMPLES, len(values)))
+    chosen = np.random.default_rng(SEED).integers(0, len(values), (RESAMPLES, len(values)))
     means = values[chosen].mean(axis=1)
     tail = (1 - COVERAGE) / 2
     return float(np.quantile(means, tail)), float(np.quantile(means, 1 - tail))
