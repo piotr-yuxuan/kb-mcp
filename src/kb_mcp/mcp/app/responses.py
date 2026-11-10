@@ -211,6 +211,7 @@ def facts(front: FrontMatter) -> str:
     with a key, an issue, with none), its author, its creator when named otherwise than its
     author, and its created day, leaving out what it lacks.
     """
+    # A stopgap: plan 057 decides it by the roles that the document's type takes.
     unassigned = "unassigned" if front.key is not None else ""
     creator = front.creator
     shown = (
