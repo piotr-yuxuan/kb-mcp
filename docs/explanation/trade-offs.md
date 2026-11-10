@@ -677,9 +677,11 @@ as a page or the reranker reads it
 - **Cost.** One rebuild, at schema 7
   ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
   embeds nothing new: no text embedded changed, so `embed` finds every vector that
-  `vectors.sqlite` still holds. Until then the server refuses the index of 6; each
-  evaluation's index built before then holds every prune back, the vector cache growing
-  meanwhile, until `eval` rebuilds it or its folder is deleted. The results of `embed`
+  `vectors.sqlite` still holds. Until then the server refuses the index of 6, naming
+  `index`, then `embed`. Each evaluation's index built before then holds every prune
+  back, the vector cache growing meanwhile, until `eval` rebuilds it, model by model,
+  from the vectors that the cache holds; deleting their folder instead lets the next
+  prune delete the vectors that they alone read, which the next `eval` embeds again. The results of `embed`
   and `eval`, the event `index.chunk_refused`, the counter `kb_mcp.index.chunks` and
   eval's `indexes` break the scripts and dashboards that read the former names
   ([move to kb-mcp](../how-to/move-to-kb-mcp.md#8-what-runs-do-differently)). A search

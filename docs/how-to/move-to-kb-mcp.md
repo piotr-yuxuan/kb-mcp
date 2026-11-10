@@ -204,13 +204,16 @@ the former name:
   `kb-mcp index`, and leaves the index as it was. From then on, `index` reads only the
   files that changed, and writes nothing when none did.
 - **An index of schema 6 is rebuilt whole by the first `index`,** at schema 7, whose tables
-  are `chunks` and `section_words`. `kb-mcp index`, then `kb-mcp embed`, suffice:
-  the mirror's files did not change, so no `prepare` is needed, and `embed` takes every
-  chunk's vector back from `<data>/vectors.sqlite`, as no text embedded changed. Keep that
-  file in place: a deleted one costs a full embedding of the mirror. Each evaluated index
-  under `<data>/eval/indexes/` built at schema 6 holds every prune of the vector cache
-  back, `index.prune_skipped` saying so, until `eval` builds it again; or delete
-  `<data>/eval/indexes/`, which the next `eval` builds again.
+  are `chunks` and `section_words`. `kb-mcp index`, then `kb-mcp embed`, suffice, as the
+  server says of the index of 6: the mirror's files did not change, so no `prepare` is
+  needed, and `embed` takes every chunk's vector back from `<data>/vectors.sqlite`, as no
+  text embedded changed. Keep that file in place: a deleted one costs a full embedding of
+  the mirror. Each evaluated index under `<data>/eval/indexes/` built at schema 6 holds
+  every prune of the vector cache back, `index.prune_skipped` saying so, until `eval`
+  builds it again: run `kb-mcp eval --model <model>` for each model evaluated before,
+  which takes its vectors from the cache. Deleting `<data>/eval/indexes/` instead is not
+  free: the next prune deletes the vectors that only those indexes read, and the next
+  `eval` embeds them again.
 
 ## 9. The commands that moved
 
@@ -249,6 +252,8 @@ What reads a run's output follows:
   `found` and `refused`, `unchanged`, and `pruned`. `eval`'s result and results file
   give each evaluated index under `indexes`, formerly `runs`, with its `costs.chunks`,
   formerly `costs.pieces`; results files already written keep `runs`.
+- **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
+  cache", where they said "vector store".
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
   `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,
