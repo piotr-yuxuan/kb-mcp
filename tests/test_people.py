@@ -739,6 +739,22 @@ def test_two_identities_are_one_person_only_when_an_alias_says_so() -> None:
     assert (one.ambiguous, one.unused) == ((), ())
 
 
+def test_an_alias_of_a_name_sees_two_identities_that_an_alias_makes_one() -> None:
+    """Sam, by the name of the two Sam Sample identities that an alias makes one.
+
+    By rule 3, the name of their key names one person once they are one, as rule 3
+    joins a name without an identity: Sam joins it too, where without the alias of the
+    identity, Sam's alias names several persons.
+    """
+    sam = named(UNLINKED, "Sam")
+    rows = (SAM_2_ROW, SAM_3_ROW, sam)
+    one = joined(rows, {}, {"atlassian:acct-0003": "atlassian:acct-0002", "Sam": "Sam Sample"})
+    assert one.of[sam] == SAM_2
+    assert one.unused == ()
+    apart = joined(rows, {}, {"Sam": "Sam Sample"})
+    assert [(alias.key, alias.reason) for alias in apart.unused] == [("sam", SEVERAL)]
+
+
 @pytest.mark.parametrize("value", [SAM_2, "Robin Sample"], ids=["a person's id", "a spelling"])
 def test_an_alias_of_an_identity_names_a_person_by_an_id_or_a_spelling(value: str) -> None:
     """acct-0003 joins Robin's identity by its person's id, or by Robin Sample, its name."""

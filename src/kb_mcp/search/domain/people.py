@@ -216,14 +216,12 @@ class Joining:
     ) -> None:
         """Read the rows, the summaries of each document, by number, and the aliases.
 
-        An alias holds a name's key, or an identity that a mention holds. Its value is a
-        person's id; an identity that a mention holds, which means that identity's own
-        person; or a name, which means the one identity of its key, as rule 3 finds it,
-        else the person by name alone of a key that a name without an identity holds.
-        ``joined`` keeps any of them when an identity or a name makes that person:
-        aliases are not chained. Raise ValueError, naming them, for documents that are
-        summaries and have summaries themselves, as one that is its own would: rule 4
-        needs each summary joined before.
+        The aliases of identities are read first, by ``alias``, so that the values of
+        the aliases of names see the identities that they make one. ``joined`` keeps an
+        alias when an identity or a name makes the person that it means: aliases are not
+        chained. Raise ValueError, naming them, for documents that are summaries and
+        have summaries themselves, as one that is its own would: rule 4 needs each
+        summary joined before.
         """
         if chained := sorted(set(summaries).intersection(chain.from_iterable(summaries.values()))):
             message = f"documents {chained} have summaries and are summaries"
@@ -240,7 +238,7 @@ class Joining:
             own = None if row.identity is None else person_id(IDENTITY_ANCHOR, row.identity)
             spelt.setdefault(ANNOTATION.sub("", written), set()).add((written, own))
         # Each identity that a mention holds, with its own person.
-        owned = {
+        self.owned = {
             row.identity: person_id(IDENTITY_ANCHOR, row.identity)
             for each in self.rows.values()
             for row in each
@@ -264,29 +262,48 @@ class Joining:
                 else:
                     for each in {key, compared}:
                         self.identities.setdefault(each, set()).add(own)
+        # The name keys of the names without an identity.
+        self.alone = {key for key, names in spelt.items() if any(own is None for _, own in names)}
         # Each identity's own person that an alias names another, with that other: none
-        # while the aliases are read, so that their values name persons as the mentions
-        # alone make them.
+        # while the aliases of identities are read, whose values name persons as the
+        # mentions alone make them.
         self.moved: dict[str, str] = {}
-        self.aliases: dict[str, Alias] = {}
-        for name, value in aliases.items():
-            if PERSON_ID.fullmatch(value):
-                means: Meant = value
-            else:
-                key = self.compared_key(value)
-                means = (
-                    owned.get(value)
-                    or self.identified(value)
-                    or (person_id(NAME_ANCHOR, key) if key in self.held else None)
-                )
-            key = name if name in owned else name_key(name)
-            held = name in owned or any(own is None for _, own in spelt.get(key, ()))
-            self.aliases[key] = Alias(name=name, key=key, value=value, means=means, held=held)
-        self.moved = {
-            owned[alias.key]: alias.means
-            for alias in self.aliases.values()
-            if alias.key in owned and isinstance(alias.means, str) and alias.reason is None
+        read = {
+            name: self.alias(name, value) for name, value in aliases.items() if name in self.owned
         }
+        self.moved = {
+            self.owned[alias.key]: alias.means
+            for alias in read.values()
+            if isinstance(alias.means, str) and alias.reason is None
+        }
+        read |= {
+            name: self.alias(name, value)
+            for name, value in aliases.items()
+            if name not in self.owned
+        }
+        self.aliases = {read[name].key: read[name] for name in aliases}
+
+    def alias(self, name: str, value: str) -> Alias:
+        """Read a line of the alias file: what it holds, and the person its value means.
+
+        It holds a name's key, or an identity that a mention holds. Its value is a
+        person's id; an identity that a mention holds, which means that identity's own
+        person; or a name, which means the one identity's person of its key, as rule 3
+        finds it, else the person by name alone of a key that a name without an identity
+        holds.
+        """
+        if PERSON_ID.fullmatch(value):
+            means: Meant = value
+        else:
+            compared = self.compared_key(value)
+            means = (
+                self.owned.get(value)
+                or self.identified(value)
+                or (person_id(NAME_ANCHOR, compared) if compared in self.held else None)
+            )
+        key = name if name in self.owned else name_key(name)
+        held = name in self.owned or key in self.alone
+        return Alias(name=name, key=key, value=value, means=means, held=held)
 
     def compared_key(self, name: str) -> str:
         """Give the key by which the join compares a name, and a name alone's id hashes.
