@@ -487,7 +487,7 @@ def update_index(
             "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
         )
     for alias in report.persons.unused:
-        log.warning("index.alias_unused", alias=alias.name, key=alias.name_key, reason=alias.reason)
+        log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
     return Indexed(report=report, index=indexing.index, model=None)
 
 

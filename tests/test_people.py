@@ -708,6 +708,78 @@ def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
     assert replace(result, unused=()) == joined(ROWS, LINKS, {})
 
 
+SAM_2_ROW, SAM_3_ROW = ACCOUNTS[2:]
+
+
+def test_two_identities_are_one_person_only_when_an_alias_says_so() -> None:
+    """Plan 058, criterion 3, by rule 1: the two Sam Sample identities are two persons.
+
+    An alias of acct-0003 naming acct-0002 by its identity makes them one, which keeps
+    the id of acct-0002, the one named; a name without an identity of their key then
+    joins that one person by rule 3, no longer ambiguous.
+    """
+    rows = (SAM_2_ROW, SAM_3_ROW, named(UNLINKED, "Sam Sample"))
+    apart = joined(rows, {}, {})
+    assert [apart.of[row] for row in rows] == [SAM_2, SAM_3, SAM_ALONE]
+    assert apart.ambiguous == (Ambiguity(name="Sam Sample", persons=frozenset({SAM_2, SAM_3})),)
+    one = joined(rows, {}, {"atlassian:acct-0003": "atlassian:acct-0002"})
+    assert [one.of[row] for row in rows] == [SAM_2, SAM_2, SAM_2]
+    assert one.persons == (
+        Person(
+            id=SAM_2,
+            name="Sam Sample",
+            spellings=(
+                Spelling(name="Sam Sample", name_key="sam sample", how="alias"),
+                Spelling(name="Sam Sample", name_key="sam sample", how="identity"),
+                Spelling(name="Sam Sample", name_key="sam sample", how="name"),
+            ),
+        ),
+    )
+    assert (one.ambiguous, one.unused) == ((), ())
+
+
+@pytest.mark.parametrize("value", [SAM_2, "Robin Sample"], ids=["a person's id", "a spelling"])
+def test_an_alias_of_an_identity_names_a_person_by_an_id_or_a_spelling(value: str) -> None:
+    """acct-0003 joins Robin's identity by its person's id, or by Robin Sample, its name."""
+    person = ROBIN if value == "Robin Sample" else SAM_2
+    result = joined(ACCOUNTS, {}, {"atlassian:acct-0003": value})
+    assert result.of[SAM_3_ROW] == person
+    assert result.unused == ()
+
+
+def test_an_alias_of_a_name_names_a_person_by_an_identity() -> None:
+    """Sam, without an identity, joins acct-0003 by its identity (rule 2)."""
+    result = joined((*ACCOUNTS, named(UNLINKED, "Sam")), {}, {"Sam": "atlassian:acct-0003"})
+    assert result.of[named(UNLINKED, "Sam")] == SAM_3
+    assert result.unused == ()
+
+
+def test_aliases_of_identities_are_not_chained() -> None:
+    """acct-0003 names acct-0002, which an alias of its own moves to acct-0001.
+
+    acct-0002's own person is then made by nothing: the alias naming it names nobody,
+    and acct-0003 stays its own person.
+    """
+    aliases = {
+        "atlassian:acct-0003": "atlassian:acct-0002",
+        "atlassian:acct-0002": "atlassian:acct-0001",
+    }
+    result = joined(ACCOUNTS, {}, aliases)
+    assert (result.of[SAM_2_ROW], result.of[SAM_3_ROW]) == (ROBIN, SAM_3)
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0003", NOBODY)
+    ]
+
+
+def test_an_alias_of_an_identity_that_no_mention_holds_is_reported() -> None:
+    """Taken for a name, which no mention without an identity has: it changes nothing."""
+    result = joined(ACCOUNTS, {}, {"atlassian:acct-0009": "Robin Example"})
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0009", UNHELD)
+    ]
+    assert replace(result, unused=()) == joined(ACCOUNTS, {}, {})
+
+
 def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
     """A value of nobody, by name or id, or of several; a key held by no name alone.
 
@@ -721,7 +793,7 @@ def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
         "Robin Sample": "Alex Example",
     }
     result = joined(ROWS, LINKS, aliases)
-    assert [(alias.name, alias.name_key, alias.reason) for alias in result.unused] == [
+    assert [(alias.name, alias.key, alias.reason) for alias in result.unused] == [
         ("Alex", "alex", NOBODY),
         ("Robin Other", "robin other", NOBODY),
         ("Sam", "sam", SEVERAL),
@@ -928,6 +1000,7 @@ def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path)
         '"Sam" = "Sam Sample"\n'
         f'"Robin" = "{SAM_3}"\n'
         '"Hélène" = "helene  EXAMPLE"\n'
+        '"atlassian:acct-0003" = "atlassian:acct-0002"\n'
         f'"{long}" = "{long}"\n',
         encoding="utf-8",
     )
@@ -935,6 +1008,7 @@ def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path)
         ("Sam", "Sam Sample"),
         ("Robin", SAM_3),
         ("Hélène", "helene  EXAMPLE"),
+        ("atlassian:acct-0003", "atlassian:acct-0002"),
         (long, long),
     ]
 
@@ -1101,6 +1175,21 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         robins = connection.execute("SELECT DISTINCT person FROM people WHERE name = 'Robin'")
         assert robins.fetchall() == [(ROBIN,)]
+
+
+def test_index_joins_two_identities_by_a_quoted_key_of_the_alias_file(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """An identity is a TOML key in quotes: the two Sam Sample identities are one person."""
+    alias = '"atlassian:acct-0003" = "atlassian:acct-0002"\n'
+    (data / "aliases.toml").write_text(alias, encoding="utf-8")
+    assert index(data, capsys)[0] == 0
+    assert logged_as(data.parent / "home", "index.alias_unused") == []
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        sams = connection.execute(
+            "SELECT DISTINCT person FROM people WHERE identity IS NOT NULL AND name = 'Sam Sample'"
+        )
+        assert sams.fetchall() == [(SAM_2,)]
 
 
 @pytest.mark.parametrize(

@@ -1,9 +1,10 @@
-"""The alias file: names as some source writes them, each with the person it means.
+"""The alias file: names as some source writes them, or identities, and whom each means.
 
-The user may write ``<data>/aliases.toml``, each line a name, then a name or a person's
-id; the program never writes it. Each build of the index reads it again, so a change
-takes effect at the next. Only this module reads the file, and only to check it:
-``people.joined`` decides what each alias joins, and which change nothing.
+The user may write ``<data>/aliases.toml``, each line a name or an identity, then a
+name, an identity or a person's id; the program never writes it. Each build of the
+index reads it again, so a change takes effect at the next. Only this module reads the
+file, and only to check it: ``people.joined`` decides what each alias joins, and which
+change nothing.
 """
 
 from __future__ import annotations
