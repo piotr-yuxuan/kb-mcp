@@ -258,8 +258,14 @@ goes on, with the exit status it would have had.
 What reads a run's output follows:
 
 - **JSON.** A result's `steps`, each with its `step`, are `sources`, each with its `source`,
-  `ending`, `problems`, `warnings` and `counts`, which holds what `downloaded` and
-  `mirrored` held. `index`'s `report` gives
+  `ending`, `counts`, `problems` and `warnings`, in place of its `outcome` and `result`. A
+  fetch's `downloaded` is gone: its `failed_targets` are among the row's `problems`, each
+  with its `where` and `reason`, beside each document or file that failed; its `status` is
+  the row's `ending`; the counts of its `report` are keys of `counts`, beside its
+  `windows` and `dry_run`. A prepare's `mirrored` is the row's `counts`, but for its
+  `problems`, `warnings` and `elsewhere`, now the row's `problems` and `warnings`; the
+  work log's `held_back`, once each problem's, is `counts.held_back`, by each problem's
+  place. `index`'s `report` gives
   the documents held by type, their sections and the files skipped, then the documents
   `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
   when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,
@@ -275,7 +281,10 @@ What reads a run's output follows:
 - **Endings.** A row says `sign in again` where it said `sign in`. The events
   `fetch.source` and `prepare.source` give `ending` where they gave `outcome`, their spans
   `kb_mcp.ending` where they had `kb_mcp.outcome`, and a run report `ending` where it held
-  `status`, the exit status; the dashboards read the new attribute.
+  `status`, the exit status; the dashboards read the new attribute. `prepare.not_mirrored`
+  names the source whose prepare found the problem, and what one source could not read of
+  the other's is a warning of its row, its reason beginning with that source's name, as
+  `jira's, read here:`.
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
   `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,
