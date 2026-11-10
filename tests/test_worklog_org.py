@@ -26,7 +26,7 @@ from pathlib import PurePosixPath
 import pytest
 
 from kb_mcp.kernel.names import WORKLOG_ID, RefusedError
-from kb_mcp.mirror.domain.mirror import RELATIONS, PersonRole
+from kb_mcp.mirror.domain.mirror import RELATIONS, Mention
 from kb_mcp.sources.worklog.prepare.domain import org
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     SUMMARY,
@@ -1014,7 +1014,7 @@ ENTRY_MATTER = WorklogFrontMatter(
         {"type": "day", "id": "d-20261028"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up--2"},
-        {"people": (PersonRole(role="participant", name="A Person"),)},
+        {"people": (Mention(role="participant", name="A Person"),)},
     ],
 )
 def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, object]) -> None:
@@ -1038,7 +1038,7 @@ def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, ob
         ({"type": "meeting", "id": "m-20261027-"}, r"^id: does not match"),
         ({"type": "meeting", "id": "m-20261027-" + "a" * 65}, r"^id: does not match"),
         ({"type": "meeting", "id": "m-2026-10-27-stand-up"}, r"^id: does not match"),
-        ({"people": (PersonRole(role="author", name="A Person"),)}, r"^people: a role of another"),
+        ({"people": (Mention(role="author", name="A Person"),)}, r"^people: a role of another"),
         ({"revision": "000003"}, r"^revision: does not match"),
         ({"space": "MFS"}, r"^space: never the work log's$"),
         ({"version": 3}, r"^version: never the work log's$"),

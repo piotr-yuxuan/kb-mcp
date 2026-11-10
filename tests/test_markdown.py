@@ -11,7 +11,7 @@ import pytest
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,7 +50,7 @@ PAGE = FrontMatter(
     status="current",
     issue_type=None,
     labels=("probe", "2026"),
-    people=(PersonRole(role="author", name="A Person"),),
+    people=(Mention(role="author", name="A Person"),),
     links=(),
     created=MOMENT,
     updated=MOMENT,
@@ -99,11 +99,11 @@ ISSUE = FrontMatter(
     issue_type="Idea",
     labels=(),
     people=(
-        PersonRole(role="author", name="A Person", account="account-1"),
-        PersonRole(role="creator", name="Another Person", account="account-2"),
-        PersonRole(role="assignee", name="A Person", account="account-1"),
-        PersonRole(role="commenter", name="Another Person", account="account-2", at=(EARLY, LATE)),
-        PersonRole(role="commenter", name="A Person", account="account-1", at=(LATE,)),
+        Mention(role="author", name="A Person", account="account-1"),
+        Mention(role="creator", name="Another Person", account="account-2"),
+        Mention(role="assignee", name="A Person", account="account-1"),
+        Mention(role="commenter", name="Another Person", account="account-2", at=(EARLY, LATE)),
+        Mention(role="commenter", name="A Person", account="account-1", at=(LATE,)),
     ),
     links=(),
     created=MOMENT,
@@ -255,7 +255,7 @@ MEETING = replace(
     title="Payments stand-up",
     labels=(),
     people=tuple(
-        PersonRole(role="participant", name=name)
+        Mention(role="participant", name=name)
         for name in ("Alex Example", "Sam Sample", "Kim (not in the header)")
     ),
     links=(Link(relation="transcript", ref="t-20261027-meeting-1"),),
@@ -266,9 +266,7 @@ TRANSCRIPT = replace(
     id="t-20261027-meeting-1",
     title="Meeting 1",
     labels=(),
-    people=tuple(
-        PersonRole(role="participant", name=name) for name in ("Alex Example", "Sam Sample")
-    ),
+    people=tuple(Mention(role="participant", name=name) for name in ("Alex Example", "Sam Sample")),
     links=(
         Link(relation="summary", ref="m-20261027-payments-stand-up"),
         Link(relation="summary", ref="m-20261027-payments-stand-up-2"),
@@ -433,7 +431,7 @@ def test_front_matter_with_other_keys_is_refused(old: str, new: str, lacking: st
         {"type": "transcript", "id": "t-20261020-1"},
         {"type": "transcript", "id": "t-0123456789abcdef"},
         {"id": "e-0123456789abcdef"},
-        {"people": (PersonRole(role="participant", name="A Person"),)},
+        {"people": (Mention(role="participant", name="A Person"),)},
         {"type": "day", "id": "d-20261028"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up-2"},
@@ -479,7 +477,7 @@ def test_a_file_without_front_matter_is_refused() -> None:
         ({"labels": ("one\x85two",)}, r"^a text holds a line break$"),
         ({"created": MOMENT.astimezone(timezone(timedelta(hours=1)))}, r"^a time not in UTC$"),
         (
-            {"people": (*PAGE.people, PersonRole(role="participant", name="Sam Sample"))},
+            {"people": (*PAGE.people, Mention(role="participant", name="Sam Sample"))},
             r"^people: .* a participant beside another role",
         ),
     ],

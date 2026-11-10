@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.mirror.domain.mirror import PersonRole
+from kb_mcp.mirror.domain.mirror import Mention
 from kb_mcp.search.adapters.aliases import read_aliases
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import (
@@ -231,7 +231,7 @@ SYNC = worklog_document("meeting", "m-20261020-sync", "Sync", (SAM,))
 
 def authored(key: str, name: str, account: str | None) -> tuple[FrontMatter, str]:
     """Give the front matter and body of an issue authored by a name, with its account."""
-    author = PersonRole(role="author", name=name, account=account)
+    author = Mention(role="author", name=name, account=account)
     return issue(key, f"Issue {key}", people=(author,)), f"# Issue {key}\n"
 
 
@@ -267,7 +267,7 @@ def test_a_speaker_follows_its_meeting_s_participant_as_a_whole_build(data: Path
     step.equal()
     write(
         docs,
-        replace(meeting, people=(PersonRole(role="participant", name="Alex Other"),)),
+        replace(meeting, people=(Mention(role="participant", name="Alex Other"),)),
         "# Review\n",
     )
     step.equal()

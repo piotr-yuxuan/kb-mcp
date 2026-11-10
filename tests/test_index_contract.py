@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
@@ -300,10 +300,10 @@ INSIDE = page(
     created=MOMENT - timedelta(days=9),
     updated=MOMENT - timedelta(days=2),
     people=(
-        PersonRole(role="author", name=ADA, account=ACCOUNT),
-        PersonRole(role="creator", name=ADA, account=ACCOUNT),
-        PersonRole(role="assignee", name=ADA, account=ACCOUNT),
-        PersonRole(
+        Mention(role="author", name=ADA, account=ACCOUNT),
+        Mention(role="creator", name=ADA, account=ACCOUNT),
+        Mention(role="assignee", name=ADA, account=ACCOUNT),
+        Mention(
             role="commenter",
             name=ADA,
             account=ACCOUNT,
@@ -318,7 +318,7 @@ OUTSIDE = issue(
     issue_type="Bug",
     created=MOMENT,
     updated=MOMENT,
-    people=(PersonRole(role="commenter", name=BO, at=(COMMENTED - timedelta(days=1),)),),
+    people=(Mention(role="commenter", name=BO, at=(COMMENTED - timedelta(days=1),)),),
 )
 ALIKE_BODY = "# Alike\n\nThe same words here.\n"
 SAME_CHUNK = (chunk_of(ALIKE_BODY, "same words", "k", NORTH),)
@@ -583,7 +583,7 @@ LONE = page(
     "Lone page",
     space="OPS",
     labels=("alone",),
-    people=(PersonRole(role="author", name=BO),),
+    people=(Mention(role="author", name=BO),),
 )
 LONE_BODY = "# Lone page\n\nA solitary word.\n"
 
@@ -709,9 +709,7 @@ SYNC_PATH = location(SYNC)
 
 def sam_of(account: str, key: str) -> FilledDocument:
     """Give an issue authored by an account of Sam Sample's name."""
-    front = issue(
-        key, f"Issue {key}", people=(PersonRole(role="author", name=SAM, account=account),)
-    )
+    front = issue(key, f"Issue {key}", people=(Mention(role="author", name=SAM, account=account),))
     return FilledDocument(front=front, body=f"# Issue {key}\n")
 
 

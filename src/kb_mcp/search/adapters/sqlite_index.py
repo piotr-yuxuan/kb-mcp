@@ -30,7 +30,7 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
@@ -736,7 +736,7 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         issue_type=row["issue_type"],
         labels=tuple(json.loads(row["labels"])),
         people=tuple(
-            PersonRole(
+            Mention(
                 role=person["role"],
                 name=person["name"],
                 account=person["account"],

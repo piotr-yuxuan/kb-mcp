@@ -13,14 +13,14 @@ import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import ASSETS
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
 FRONT_MATTER_KEYS = list(FrontMatter.model_fields)
-PERSON = list(PersonRole.model_fields)
+PERSON = list(Mention.model_fields)
 LINK = list(Link.model_fields)
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
@@ -34,8 +34,8 @@ DOCUMENT_GLOBS = ("**/*.md",)
 class Dumper(yaml.SafeDumper):
     """YAML's safe dumper, which writes each person and link of the front matter on one line."""
 
-    def represent_person(self, person: PersonRole) -> yaml.MappingNode:
-        """Write a person in flow style, its fields in ``PersonRole``'s order, as ``load`` asks.
+    def represent_person(self, person: Mention) -> yaml.MappingNode:
+        """Write a person in flow style, its fields in ``Mention``'s order, as ``load`` asks.
 
         A field without a value, an account of None or no times, is left out, as ``load``
         reads its absence.
@@ -55,7 +55,7 @@ class Dumper(yaml.SafeDumper):
         return self.represent_mapping("tag:yaml.org,2002:map", values, flow_style=True)
 
 
-Dumper.add_representer(PersonRole, Dumper.represent_person)
+Dumper.add_representer(Mention, Dumper.represent_person)
 Dumper.add_representer(Link, Dumper.represent_link)
 
 
@@ -90,7 +90,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     """Read a document written by ``dump``: its front matter and its body.
 
     Any other key, order or type is refused, naming ``path`` and the key, as is a
-    person's field other than ``PersonRole``'s, out of their order, or an empty ``at``,
+    person's field other than ``Mention``'s, out of their order, or an empty ``at``,
     and a link's field other than ``Link``'s, or out of their order.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
@@ -123,7 +123,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         times = Fields({f"at[{index}]": text for index, text in enumerate(at or ())}, person.path)
         with person.refusals():
             people.append(
-                PersonRole(
+                Mention(
                     role=person.text("role"),
                     name=person.text("name"),
                     account=person.text("account") if "account" in person.value else None,

@@ -260,7 +260,7 @@ person and role, in place of the keys `author` and `assignee` that Atlassian sha
 entry gives the role, one of a closed set
 ([`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py)), the name as the
 source gives it, the account id when the source has one, and a commenter's comment
-times ([`PersonRole`](../../src/kb_mcp/mirror/domain/mirror.py)). Each
+times ([`Mention`](../../src/kb_mcp/mirror/domain/mirror.py)). Each
 entry is one line of the file
 ([`Dumper`](../../src/kb_mcp/mirror/adapters/markdown.py)), read
 strictly ([`load`](../../src/kb_mcp/mirror/adapters/markdown.py)), as

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 from kb_mcp.sources.atlassian.fetch.domain.content import time_revision
 from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED, prepare_atlassian
 
@@ -42,10 +42,10 @@ WORKLOG_FOLDERS = {
 }
 
 
-def named(author: str | None, assignee: str | None = None) -> tuple[PersonRole, ...]:
+def named(author: str | None, assignee: str | None = None) -> tuple[Mention, ...]:
     """Give the people of a document by its author and its assignee, each when named."""
     return tuple(
-        PersonRole(role=role, name=name)
+        Mention(role=role, name=name)
         for role, name in (("author", author), ("assignee", assignee))
         if name is not None
     )
@@ -240,7 +240,7 @@ def worklog_document(
         space=None,
         version=None,
         revision="0123456789abcdef",
-        people=tuple(PersonRole(role="participant", name=name) for name in names),
+        people=tuple(Mention(role="participant", name=name) for name in names),
         links=() if linked is None else (Link(relation=relation, ref=linked),),
     )
 
@@ -255,23 +255,23 @@ PERSONS = (
     page(
         "300001",
         "Ledger runbook",
-        people=(PersonRole(role="author", name="Robin Example", account="acct-0001"),),
+        people=(Mention(role="author", name="Robin Example", account="acct-0001"),),
     ),
     issue(
         "PAY-1",
         "Ledger export",
         updated=MOMENT + timedelta(days=1),
         people=(
-            PersonRole(role="author", name="Sam Sample", account="acct-0002"),
-            PersonRole(role="creator", name="Robin Sample", account="acct-0001"),
+            Mention(role="author", name="Sam Sample", account="acct-0002"),
+            Mention(role="creator", name="Robin Sample", account="acct-0001"),
         ),
     ),
     issue(
         "PAY-2",
         "Ledger rounding",
         people=(
-            PersonRole(role="author", name="Sam Sample", account="acct-0003"),
-            PersonRole(
+            Mention(role="author", name="Sam Sample", account="acct-0003"),
+            Mention(
                 role="commenter",
                 name="Robin Example",
                 account="acct-0001",

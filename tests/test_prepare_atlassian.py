@@ -24,7 +24,7 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
-from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
@@ -277,7 +277,7 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         status="archived",
         issue_type=None,
         labels=("probe",),
-        people=(PersonRole(role="author", name="A Person", account="account-1"),),
+        people=(Mention(role="author", name="A Person", account="account-1"),),
         links=(),
         created=datetime(2026, 10, 20, 21, 27, 34, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC),
@@ -303,9 +303,9 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         labels=("probe",),
         # The comment without an author names nobody.
         people=(
-            PersonRole(role="author", name="A Person", account="account-1"),
-            PersonRole(role="creator", name="Another Person", account="account-2"),
-            PersonRole(
+            Mention(role="author", name="A Person", account="account-1"),
+            Mention(role="creator", name="Another Person", account="account-2"),
+            Mention(
                 role="commenter",
                 name="Another Person",
                 account="account-2",

@@ -19,7 +19,7 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Mention
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
@@ -200,7 +200,7 @@ def front_matter(
             commenter = (catalogue.name(comment.author), comment.author.account_id)
             said.setdefault(commenter, []).append(comment.created.astimezone(UTC))
     sole = [
-        PersonRole(role=role, name=catalogue.name(person), account=person.account_id)
+        Mention(role=role, name=catalogue.name(person), account=person.account_id)
         for role, person in (
             ("author", document.author),
             ("creator", None if issue is None else issue.creator),
@@ -209,7 +209,7 @@ def front_matter(
         if person is not None
     ]
     commenters = [
-        PersonRole(role="commenter", name=name, account=account, at=tuple(at))
+        Mention(role="commenter", name=name, account=account, at=tuple(at))
         for (name, account), at in said.items()
     ]
     return AtlassianFrontMatter(

@@ -22,7 +22,7 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
@@ -525,15 +525,15 @@ COMMENTED = issue(
     "PROJ-9",
     "Broker rebalance",
     people=(
-        PersonRole(role="author", name="A Person", account="account-1"),
-        PersonRole(role="creator", name="Another Person", account="account-2"),
-        PersonRole(
+        Mention(role="author", name="A Person", account="account-1"),
+        Mention(role="creator", name="Another Person", account="account-2"),
+        Mention(
             role="commenter",
             name="Another Person",
             account="account-2",
             at=(CREATED, CREATED + timedelta(hours=1)),
         ),
-        PersonRole(
+        Mention(
             role="commenter",
             name="A Person",
             account="account-1",
@@ -586,8 +586,8 @@ MEETING = replace(
     version=None,
     revision="0123456789abcdef",
     people=(
-        PersonRole(role="participant", name="Alex Example"),
-        PersonRole(role="participant", name="Kim (not in the header)"),
+        Mention(role="participant", name="Alex Example"),
+        Mention(role="participant", name="Kim (not in the header)"),
     ),
     links=(Link(relation="transcript", ref="t-20261027-meeting-1"),),
 )
@@ -597,8 +597,8 @@ TRANSCRIPT = replace(
     id="t-20261027-meeting-1",
     title="Meeting 1",
     people=(
-        PersonRole(role="participant", name="Alex Example"),
-        PersonRole(role="participant", name="Sam Sample"),
+        Mention(role="participant", name="Alex Example"),
+        Mention(role="participant", name="Sam Sample"),
     ),
     links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
 )
@@ -780,7 +780,7 @@ def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
     namesake = page(
         "m-20261020-review",
         "Review",
-        people=(PersonRole(role="author", name="Robin Third", account="acct-0004"),),
+        people=(Mention(role="author", name="Robin Third", account="acct-0004"),),
     )
     write(data / "docs", namesake)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -1177,7 +1177,7 @@ def test_two_names_tied_serve_the_first_by_path_whatever_the_rowids(
 ) -> None:
     """On documents of one update time, as an edit leaves them, the person keeps its name."""
     fronts = [
-        page(number, "Tied", people=(PersonRole(role="author", name=name, account=account),))
+        page(number, "Tied", people=(Mention(role="author", name=name, account=account),))
         for number, name in (("1", first), ("2", second))
     ]
     written_backwards(data / "index.sqlite", fronts)
@@ -1193,9 +1193,7 @@ def test_an_ambiguous_name_is_said_by_its_first_spelling_by_path(data: Path) -> 
         page("1", "Tied", author="Sam SAMPLE"),
         page("2", "Tied", author="sam sample"),
         *(
-            page(
-                number, "Tied", people=(PersonRole(role="author", name="Sam Sample", account=who),)
-            )
+            page(number, "Tied", people=(Mention(role="author", name="Sam Sample", account=who),))
             for number, who in (("3", "acct-0002"), ("4", "acct-0003"))
         ),
     ]
@@ -1252,8 +1250,8 @@ HANDBOOK = page(
     fetched_at=MOMENT + timedelta(hours=1),
     url="https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
     people=(
-        PersonRole(role="author", name="A Person", account="acct-0001"),
-        PersonRole(
+        Mention(role="author", name="A Person", account="acct-0001"),
+        Mention(
             role="commenter",
             name="Kim Doé",
             at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
@@ -1466,16 +1464,16 @@ PINNED_MIRROR = (
     page(
         "1",
         "One",
-        people=(PersonRole(role="author", name="Robin Example", account="acct-0001"),),
+        people=(Mention(role="author", name="Robin Example", account="acct-0001"),),
     ),
     issue(
         "PROJ-1",
         "Two",
         updated=MOMENT + timedelta(days=1),
-        people=(PersonRole(role="creator", name="Robin Sample", account="acct-0001"),),
+        people=(Mention(role="creator", name="Robin Sample", account="acct-0001"),),
     ),
     *(
-        issue(key, "Same", people=(PersonRole(role="author", name="Jo Two", account=account),))
+        issue(key, "Same", people=(Mention(role="author", name="Jo Two", account=account),))
         for key, account in (("PROJ-2", "acct-0002"), ("PROJ-3", "acct-0003"))
     ),
     worklog_document(

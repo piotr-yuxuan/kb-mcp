@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.mcp.app.tools import PERSON_FILTERS, Library, SearchFilters, UnanswerableError
-from kb_mcp.mirror.domain.mirror import ROLES, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
@@ -460,9 +460,9 @@ ACCOUNTS = {"A Person": "account-1", "Another Person": "account-2"}
 EARLIER = CREATED - timedelta(days=7)
 
 
-def held(role: str, name: str, *at: datetime) -> PersonRole:
+def held(role: str, name: str, *at: datetime) -> Mention:
     """Give one of ACCOUNTS's people in a role, with their account and comment times."""
-    return PersonRole(role=role, name=name, account=ACCOUNTS[name], at=at)
+    return Mention(role=role, name=name, account=ACCOUNTS[name], at=at)
 
 
 # Four issues, each person in every role. A Person comments three times on PROJ-1 and
@@ -608,8 +608,8 @@ def test_read_names_ten_people_of_a_role_whole_then_how_many_more(tmp_path: Path
     """A name that a hit cuts at 60 characters comes whole; the line, though long, too."""
     names = [f"Person {number:02} {'x' * 60}" for number in range(12)]
     people = (
-        PersonRole(role="author", name=names[0]),
-        *(PersonRole(role="commenter", name=each, at=(CREATED,)) for each in names),
+        Mention(role="author", name=names[0]),
+        *(Mention(role="commenter", name=each, at=(CREATED,)) for each in names),
     )
     library = built(tmp_path, [(issue("PROJ-1", "Broker", people=people), None)])
     assert f"| author {names[0][:59]}… |" in library.search("broker")
@@ -644,7 +644,7 @@ def worklog(document_type: str, id_: str, title: str, *names: str) -> FrontMatte
         source="worklog",
         type=document_type,
         space=None,
-        people=tuple(PersonRole(role="participant", name=name) for name in names),
+        people=tuple(Mention(role="participant", name=name) for name in names),
         version=None,
         revision="0123456789abcdef",
     )
@@ -905,8 +905,8 @@ def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
     The name as one of them is written, its annotation's spaces aside, keeps its issue,
     as in plan 042; Robin alone, which could be either, is refused naming both.
     """
-    ops = PersonRole(role="creator", name="Robin (Ops)", account="acct-0005")
-    sales = PersonRole(role="creator", name="Robin (Sales)", account="acct-0006")
+    ops = Mention(role="creator", name="Robin (Ops)", account="acct-0005")
+    sales = Mention(role="creator", name="Robin (Sales)", account="acct-0006")
     library = built(
         tmp_path,
         [
@@ -928,8 +928,8 @@ def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
     Alex could be any of the three, so it is refused listing each; Alex (Ops) is the
     account that alone writes it so.
     """
-    ops = PersonRole(role="author", name="Alex (Ops)", account="acct-0010")
-    sales = PersonRole(role="author", name="Alex (Sales)", account="acct-0011")
+    ops = Mention(role="author", name="Alex (Ops)", account="acct-0010")
+    sales = Mention(role="author", name="Alex (Sales)", account="acct-0011")
     fronts = (
         *PERSONS,
         page("300002", "Ops runbook", people=(ops,)),
@@ -1008,7 +1008,7 @@ def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
     also take the name from that account, which the unlinked transcript's Robin joins:
     the answer narrowed to Robin Example suggests none.
     """
-    robin = PersonRole(role="author", name="Robin", account="acct-0004")
+    robin = Mention(role="author", name="Robin", account="acct-0004")
     library = built(
         tmp_path,
         [(front, None) for front in (*PERSONS, issue("PAY-3", "Ledger audit", people=(robin,)))],
@@ -1021,7 +1021,7 @@ def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
 
 
 # An account named Robin, one word, as the site may name a colleague.
-ROBIN_ACCOUNT = PersonRole(role="author", name="Robin", account="acct-0004")
+ROBIN_ACCOUNT = Mention(role="author", name="Robin", account="acct-0004")
 
 
 @pytest.mark.parametrize(
@@ -1037,7 +1037,7 @@ def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
     A person of an account is not one by name alone, and an alias of Robin would take
     the speaker from that account: Robin Example's answer offers Robin only without it.
     """
-    example = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    example = Mention(role="author", name="Robin Example", account="acct-0001")
     documents = (
         page("300001", "Ledger runbook", people=(example,)),
         worklog("transcript", "t-20261022-1", "Pairing", "Robin"),
@@ -1095,7 +1095,7 @@ def test_no_alias_is_suggested_that_would_join_persons_kept_apart(tmp_path: Path
     An alias of the unlinked transcript's Robin would join both to Robin Example too:
     the answer narrowed to Robin Example suggests none.
     """
-    robin = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    robin = Mention(role="author", name="Robin Example", account="acct-0001")
     library = built(
         tmp_path,
         [
@@ -1392,9 +1392,7 @@ def test_status_names_five_names_of_several_accounts_then_how_many_more(
         issue(
             f"PROJ-{number}",
             "Broker",
-            people=(
-                PersonRole(role="author", name=f"Person {number // 2}", account=f"a-{number}"),
-            ),
+            people=(Mention(role="author", name=f"Person {number // 2}", account=f"a-{number}"),),
         )
         for number in range(2, 15)
     ]

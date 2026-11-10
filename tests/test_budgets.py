@@ -12,7 +12,7 @@ from kb_mcp.mcp.app.responses import LABELS as REFS
 from kb_mcp.mcp.app.responses import NAMES, cut
 from kb_mcp.mcp.app.responses import page as fitted
 from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, RELATIONS, ROLES, SOLE, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, RELATIONS, ROLES, SOLE, Link, Mention
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
@@ -185,7 +185,7 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     worklog = matter.get("source") == "worklog"
     roles = [role for role in ROLES if (role == PARTICIPANT) == worklog]
     people = tuple(
-        PersonRole(
+        Mention(
             role=role,
             name=f"{role} {number:02} " + "é" * 250,
             account=None if worklog else f"account-{number}",
@@ -234,7 +234,7 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
     pages = large_documents()[1 : len(SPELLINGS) + 1]
     documents: list[tuple[FrontMatter, str | None]] = []
     for number, ((front, body), name) in enumerate(zip(pages, SPELLINGS, strict=True)):
-        author = PersonRole(role="author", name=name, account="acct-0001")
+        author = Mention(role="author", name=name, account="acct-0001")
         word = name.split()[0]
         meeting = worklog_document("meeting", f"m-20261020-{number:02}", "Gamma", (word,))
         documents += [(replace(front, people=(author,)), body), (meeting, None)]
@@ -267,7 +267,7 @@ def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> 
     documents: list[tuple[FrontMatter, str | None]] = []
     for number in range(1, accounts + 2):
         account = f"acct-{number % accounts:04}"  # acct-0001 writes the first and the last
-        author = PersonRole(role="author", name="Former user", account=account)
+        author = Mention(role="author", name="Former user", account=account)
         documents.append((issue(f"PAY-{number}", "Ledger", people=(author,)), None))
     library = built(tmp_path, documents)
     with pytest.raises(UnanswerableError) as refused:

@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.mirror.domain.mirror import PersonRole
+from kb_mcp.mirror.domain.mirror import Mention
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     BlogPost,
     Comment,
@@ -130,7 +130,7 @@ def test_a_page_front_matter_follows_the_layout_table() -> None:
     assert (matter.source, matter.type, matter.id, matter.key) == ("confluence", "page", "30", None)
     assert (matter.space, matter.project, matter.issue_type) == ("MFS", None, None)
     assert (matter.status, matter.author, matter.assignee) == ("archived", "A Person", None)
-    assert matter.people == (PersonRole(role="author", name="A Person", account="account-1"),)
+    assert matter.people == (Mention(role="author", name="A Person", account="account-1"),)
     assert (matter.version, matter.revision) == (3, "000003")
     assert matter.created == datetime(2026, 10, 20, 21, 52, 41, 371000, tzinfo=UTC)
     assert matter.fetched_at == datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -179,7 +179,7 @@ def test_a_page_of_a_space_not_listed_is_refused() -> None:
         (ISSUE, {"revision": "20261020T215241Z"}, r"^revision: does not match"),
         (
             LEAF,
-            {"people": (PersonRole(role="participant", name="A Person"),)},
+            {"people": (Mention(role="participant", name="A Person"),)},
             r"^people: a role of another source$",
         ),
     ],
@@ -222,16 +222,16 @@ def test_an_issue_names_its_people_in_the_order_of_the_roles() -> None:
     """Author, creator, assignee, then each commenter once, their times in UTC, ascending."""
     matter = front_matter(FILED, COMMENTS, FETCHED, CATALOGUE, SITE)
     assert matter.people == (
-        PersonRole(role="author", name="A Person", account="account-1"),
-        PersonRole(role="creator", name="Another Person", account="account-2"),
-        PersonRole(role="assignee", name="account-3", account="account-3"),
-        PersonRole(
+        Mention(role="author", name="A Person", account="account-1"),
+        Mention(role="creator", name="Another Person", account="account-2"),
+        Mention(role="assignee", name="account-3", account="account-3"),
+        Mention(
             role="commenter",
             name="Another Person",
             account="account-2",
             at=(datetime(2026, 10, 21, 8, tzinfo=UTC), datetime(2026, 10, 22, 8, tzinfo=UTC)),
         ),
-        PersonRole(
+        Mention(
             role="commenter",
             name="A Person",
             account="account-1",

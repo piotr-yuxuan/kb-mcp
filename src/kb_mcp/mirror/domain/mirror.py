@@ -34,7 +34,7 @@ SOLE = frozenset({"author", "creator", "assignee"})
 RELATIONS = ("transcript", "summary")
 
 
-class PersonRole(Record):
+class Mention(Record):
     """One person in one role of a document, named as the source gives the name.
 
     ``account`` is the source's account id, None when it has none; ``at`` holds a
@@ -115,7 +115,7 @@ class FrontMatter(Record):
     status: str
     issue_type: str | None
     labels: tuple[str, ...]
-    people: tuple[PersonRole, ...]
+    people: tuple[Mention, ...]
     links: tuple[Link, ...]
     created: datetime
     updated: datetime
