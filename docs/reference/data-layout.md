@@ -915,7 +915,8 @@ quoted for its colon:
 - An alias of an identity moves that identity's mentions to the person that it names
   (rule 1), which keeps its id: the third line above makes the two `Sam Sample`
   identities one person, of `acct-0002`'s id. It holds an identity only where a mention
-  holds it; else it is taken for a name.
+  holds it; else it is taken for a name, and, held by no name, reported as an identity
+  that no mention holds.
 - A value that is a name means the one identity's person with a name of its key, else
   the person by name alone of its key; the aliases of identities are read first, each
   value as the mentions alone make persons, so that two identities that one makes one

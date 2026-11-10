@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.names import ATLASSIAN_ISSUER
+from kb_mcp.kernel.names import ATLASSIAN_ISSUER, IDENTITY
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT
 
@@ -50,6 +50,7 @@ LEGACY_BARE_ISSUERS = frozenset({ATLASSIAN_ISSUER})
 LEGACY_ANCHOR = "account"
 # Why an alias changes nothing.
 UNHELD = "no name without an identity has its key"
+UNOWNED = "no mention holds this identity"
 NOBODY = "its value names nobody"
 SEVERAL = "its value names several persons"
 
@@ -162,9 +163,13 @@ class Alias(Record):
 
     @property
     def reason(self) -> str | None:
-        """Say why the alias changes nothing, or None when it joins its names."""
+        """Say why the alias changes nothing, or None when it joins its names.
+
+        One written as an identity, which no mention holds, says so rather than that no
+        name has its key.
+        """
         if not self.held:
-            return UNHELD
+            return UNOWNED if IDENTITY.fullmatch(self.name) else UNHELD
         if self.means is None:
             return NOBODY
         return SEVERAL if isinstance(self.means, Ambiguity) else None

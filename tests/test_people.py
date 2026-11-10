@@ -27,6 +27,7 @@ from kb_mcp.search.domain.people import (
     NOBODY,
     SEVERAL,
     UNHELD,
+    UNOWNED,
     Ambiguity,
     Joined,
     Joining,
@@ -832,10 +833,10 @@ def test_aliases_of_identities_are_not_chained() -> None:
 
 
 def test_an_alias_of_an_identity_that_no_mention_holds_is_reported() -> None:
-    """Taken for a name, which no mention without an identity has: it changes nothing."""
+    """It changes nothing, and says that no mention holds that identity."""
     result = joined(ACCOUNTS, {}, {"atlassian:acct-0009": "Robin Example"})
     assert [(alias.key, alias.reason) for alias in result.unused] == [
-        ("atlassian:acct-0009", UNHELD)
+        ("atlassian:acct-0009", UNOWNED)
     ]
     assert replace(result, unused=()) == joined(ACCOUNTS, {}, {})
 
