@@ -144,7 +144,7 @@ def written(request: pytest.FixtureRequest, tmp_path: Path) -> Written:
 def chunk_of(body: str, text: str, key: str, vector: tuple[float, ...]) -> FilledChunk:
     """Name the chunk holding ``text``, by where the first section holding it has it."""
     section = next(each for each in sections(body) if text in each.body)
-    start = section.start + len(section.head) + section.body.index(text)
+    start = section.body_start + section.body.index(text)
     return FilledChunk(
         number=section.number, start=start, end=start + len(text), key=key, vector=vector
     )

@@ -87,7 +87,7 @@ def section_chunks(title: str, cut: Sequence[Section]) -> list[tuple[int, int, i
     found: list[tuple[int, int, int, str]] = []
     for index, section in enumerate(cut):
         heading = section.heading if section.heading != title else ""
-        offset = section.start + len(section.head)
+        offset = section.body_start
         found += [
             (index, offset + start, offset + end, "\n".join(line for line in lines if line))
             for start, end in chunks(section.body)
@@ -157,7 +157,7 @@ def section_paths(front: FrontMatter, cut: Sequence[Section], limit: int = CHUNK
         above.append((level, "" if said else section.heading))
         path = " > ".join(words for _, words in above if words)
         context = (front.title[:EMBEDDED_TITLE], place, path[:EMBEDDED_PATH])
-        offset = section.start + len(section.head)
+        offset = section.body_start
         found += [
             (index, offset + start, offset + end, "\n".join(line for line in lines if line))
             for start, end in chunks(section.body, limit)

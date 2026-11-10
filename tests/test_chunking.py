@@ -200,8 +200,8 @@ def test_small_to_big_chunks_hold_512_characters_and_cover_each_section_s_body()
         found = CHUNKERS["small-to-big"].cut(FRONT, cut)
         for index, section in enumerate(cut):
             spans = [(start, end) for each, start, end, _ in found if each == index]
-            offset = section.start + len(section.head)
-            edges = [offset, *(edge for span in spans for edge in span), bounds(section)[1]]
+            inner = (edge for span in spans for edge in span)
+            edges = [section.body_start, *inner, bounds(section)[1]]
             left = [body[start:end] for start, end in itertools.batched(edges, 2, strict=True)]
             assert all(0 < end - start <= SMALL for start, end in spans)
             assert edges == sorted(edges)

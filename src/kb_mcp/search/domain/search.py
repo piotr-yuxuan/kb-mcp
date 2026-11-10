@@ -232,6 +232,11 @@ class Section(Record):
         """Give the section as the body holds it."""
         return self.head + self.body
 
+    @property
+    def body_start(self) -> int:
+        """Give the offset in the document's body where this section's body starts."""
+        return self.start + len(self.head)
+
 
 class Chunk(Record):
     """A chunk of a document that a vector stands for, as ``search.domain.chunking`` cuts it."""
