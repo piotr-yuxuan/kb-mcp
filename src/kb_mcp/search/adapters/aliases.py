@@ -55,7 +55,10 @@ def read_aliases(path: Path) -> dict[str, str]:
     for name, value in values.items():
         if not isinstance(value, str):
             what = "a table" if isinstance(value, dict) else "not text"
-            message = f"{path}: {name!r}: its value is {what}; write a name or an id in quotes"
+            message = (
+                f"{path}: {name!r}: its value is {what};"
+                " write a name, an identity or a person's id in quotes"
+            )
             raise AliasFileError(message)
         said = [
             f"{side} {problem}"

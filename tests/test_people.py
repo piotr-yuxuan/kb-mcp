@@ -1313,6 +1313,6 @@ def test_a_refused_alias_file_stops_a_build_before_the_endpoint_is_asked(
     assert status == 1
     (failed,) = logged_as(data.parent / "home", "index.not_built")
     assert str(failed["reason"]).endswith(
-        "'Sam': its value is not text; write a name or an id in quotes"
+        "'Sam': its value is not text; write a name, an identity or a person's id in quotes"
     )
     assert "hint" not in failed
