@@ -308,14 +308,14 @@ one person, by the first of these rules that answers:
    the one that the alias names.
 2. **By alias.** A mention without an identity whose name key an alias holds belongs to
    the person that the alias names: by a person id, or by a spelling, which names the
-   person of the one identity whose mentions share its key, else the person by name of
-   that key. An alias gives way where rule 4 gives exactly one other person. An alias
+   one person among the identities whose mentions share its key, else the person by
+   name of that key. An alias gives way where rule 4 gives exactly one other person. An alias
    that no mention reaches, or that names nobody or several persons, changes nothing and
    is reported as unused. Aliases do not chain.
-3. **By name key.** A mention without an identity whose name key the mentions of exactly
-   one identity share belongs to that identity's person. It is ambiguous instead when
-   several identities share its key, or when rule 4 finds persons for it and that one is
-   not among them.
+3. **By name key.** A mention without an identity whose name key the mentions of
+   identities of exactly one person share belongs to that person. It is ambiguous
+   instead when the identities that share its key are of several persons, or when rule 4
+   finds persons for it and that one is not among them.
 4. **By attendance.** A mention without an identity, in the role `participant`, whose
    name key is one word, in a document that links by `summary` to other documents of its
    source, belongs to the one person among those documents' `participant` mentions whose
