@@ -3,7 +3,8 @@
 The most severe ending gives the status: interrupted 130, over sign in again 3, over
 failed 1, over done 0; not run, a unit that a dry run left alone, is 0 as well. A run
 that stops of its own before any unit acts exits 1 if declined, 2 if refused, 130 if
-interrupted; one failed by an error that no unit caught, 1.
+interrupted, as ``tests/test_confirmation.py`` and ``tests/test_cli.py`` show through the
+command line.
 """
 
 from __future__ import annotations
@@ -43,15 +44,6 @@ def test_not_run_alone_and_no_ending_at_all_exit_0() -> None:
     """A run whose units a dry run left alone, or that has none, exits 0."""
     assert folded(["not run"]) == ExitStatus.OK
     assert folded([]) == ExitStatus.OK
-
-
-@pytest.mark.parametrize(
-    ("ending", "status"), [("declined", 1), ("refused", 2), ("interrupted", 130), ("failed", 1)]
-)
-def test_a_run_s_own_ending_folds_into_its_status(ending: str, status: int) -> None:
-    """The run's own endings go through the same fold as its units'."""
-    assert folded([ending]) == status
-    assert folded([ending, "done"]) == status
 
 
 # A problem's place and reason, as fetch gives one.
