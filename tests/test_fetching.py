@@ -111,7 +111,8 @@ ISSUES = {
     ),
 }
 COMMENTS = [v3_comment(id="10100"), v3_comment(id="10101")]
-SERVED = ["Fresh page", "Page in a folder", "Old page", "Weekly news", "PRB-1", "MFS", "1001"]
+TITLES = ["Fresh page", "Page in a folder", "Old page", "Weekly news"]
+SERVED = [*TITLES, "PRB-1", "MFS", "1001"]
 
 
 @dataclass
@@ -431,6 +432,7 @@ def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path)
     assert set(results) == {"1001", "confluence/pages/1002/000003"}
     reason = "document.json.labels.results[0].name: missing"
     assert done.counts.counts[f"confluence pages read failed: {reason}"] == 1
+    assert done.problems == [Problem(where="confluence pages", reason=reason)]
 
 
 def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
@@ -624,6 +626,7 @@ def test_a_site_without_jira_still_downloads_its_spaces(tmp_path: Path) -> None:
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(jira=False))
     assert done.counts.counts["jira failed: status 404"] == 1
+    assert done.problems == [Problem(where="jira", reason="status 404")]
     assert [item for item in store.latest(Page) if isinstance(item, StoredSnapshot)]
     assert list(store.latest(Issue)) == []
 
@@ -640,6 +643,8 @@ def test_a_run_stops_when_the_site_stops_answering(tmp_path: Path) -> None:
         with pytest.raises(TooManyFailuresError):
             done.run(["MFS"], [])
     assert done.counts.counts["confluence pages failed: status 503"] == MAX_FAILED_IN_A_ROW
+    assert {each.reason for each in done.problems} == {"status 503"}
+    assert len({each.where for each in done.problems}) == MAX_FAILED_IN_A_ROW
 
 
 def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
@@ -649,6 +654,7 @@ def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(html_page="1002"))
     assert done.counts.counts["confluence pages failed: not JSON"] == 1
+    assert done.problems == [Problem(where="confluence pages 1002", reason="not JSON")]
     pages = [
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
     ]
@@ -672,6 +678,10 @@ def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None
     store = RawStore(tmp_path / "raw")
     first = run(store, FakeSite(media_fails=True))
     assert first.counts.counts["files failed: status 500"] >= 1
+    assert first.problems == [
+        Problem(where="file att1", reason="status 500"),
+        Problem(where="file 10000", reason="status 500"),
+    ]
     [fresh] = [
         item
         for item in store.latest(Page)
@@ -719,12 +729,39 @@ def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> N
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(failing_files=MAX_FAILED_IN_A_ROW + 2))
     assert done.counts.counts["files failed: status 404"] == MAX_FAILED_IN_A_ROW + 2
+    assert done.problems == [
+        Problem(where=f"file gone{n}", reason="status 404") for n in range(MAX_FAILED_IN_A_ROW + 2)
+    ]
     stored = {
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
     }
     assert stored == {"1001", "1002"}
     assert [item for item in store.latest(BlogPost) if isinstance(item, StoredSnapshot)]
     assert [item for item in store.latest(Issue) if isinstance(item, StoredSnapshot)]
+
+
+@pytest.mark.parametrize(
+    "switches",
+    [
+        {"changed_labels": True},
+        {"jira": False},
+        {"html_page": "1002"},
+        {"media_fails": True},
+        {"failing_files": 3},
+        {"search_status": 400},
+        {"bulk_changed": True},
+        {"listing_changed": True},
+    ],
+    ids=str,
+)
+def test_each_failure_counted_is_one_problem_by_its_place_never_by_its_content(
+    switches: dict[str, object], tmp_path: Path
+) -> None:
+    """Every count of a failure is a problem; no problem's place holds what the site served."""
+    done = run(RawStore(tmp_path / "raw"), FakeSite(**switches))
+    failed = sum(number for what, number in done.counts.counts.items() if " failed: " in what)
+    assert failed == len(done.problems) > 0
+    assert not [each for each in done.problems if any(title in each.where for title in TITLES)]
 
 
 def test_a_project_that_jira_refuses_is_named_for_the_user(tmp_path: Path) -> None:
@@ -747,6 +784,9 @@ def test_a_user_the_adapter_refuses_fails_alone(tmp_path: Path) -> None:
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(bulk_changed=True))
     assert done.counts.counts["confluence users failed: users[0].accountId: missing"] == 1
+    assert done.problems == [
+        Problem(where="confluence users", reason="users[0].accountId: missing")
+    ]
     assert store.users() == []
 
 
@@ -757,6 +797,7 @@ def test_a_listing_entry_that_only_the_tree_needs_is_reported(tmp_path: Path) ->
     assert done.counts.counts[f"confluence pages in the tree failed: {reason}"] == len(
         ["1001", "1002"]
     )
+    assert done.problems == [Problem(where="confluence pages listing", reason=reason)] * 2
 
 
 def test_folders_over_the_cap_are_counted(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -789,5 +830,6 @@ def test_a_file_not_of_its_listed_size_is_not_kept(
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite())
     assert done.counts.counts["files failed: not the size listed"] == 1
+    assert done.problems == [Problem(where="file att9", reason="not the size listed")]
     [post] = [item for item in store.latest(BlogPost) if isinstance(item, StoredSnapshot)]
     assert post.blobs == {}
