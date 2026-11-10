@@ -320,15 +320,17 @@ class Joining:
         key = ANNOTATION.sub("", written)
         return written if key in self.split else key
 
-    def identified(self, name: str, moved: Mapping[str, str]) -> Meant:
+    def identified(self, name: str, moved: Mapping[str, str] | None = None) -> Meant:
         """Find the person of the one identity with a name of this name's ``key``.
 
-        Identities that ``moved`` makes one, each own person to another's, are one. A
-        name of several identities' key is ambiguous, as is a bare name whose key's
-        identities annotations tell apart; one of none, None.
+        Identities that ``moved``, by default the aliases' ``self.moved``, makes one, each
+        own person to another's, are one. A name of several identities' key is ambiguous,
+        as is a bare name whose key's identities annotations tell apart; one of none,
+        None.
         """
         found = self.identities.get(self.compared_key(name), set())
-        persons = {moved.get(person, person) for person in found}
+        made_one = self.moved if moved is None else moved
+        persons = {made_one.get(person, person) for person in found}
         if len(persons) > 1:
             return Ambiguity(name=name, persons=frozenset(persons))
         return next(iter(persons), None)
@@ -356,7 +358,7 @@ def by_name(row: PersonRow, joining: Joining) -> Meant:
     participants then disagree. A participant of several identities' key could be any
     of them or rule 4's persons.
     """
-    found = joining.identified(row.name, joining.moved)
+    found = joining.identified(row.name)
     attended = by_attendance(row, joining)
     if attended is None or found is None:
         return found
