@@ -717,7 +717,7 @@ def sam_of(account: str, key: str) -> FilledDocument:
     return FilledDocument(front=front, body=f"# Issue {key}\n")
 
 
-def test_a_person_s_rows_follow_an_account_put_or_removed_in_another_document(
+def test_a_person_s_rows_follow_an_identity_put_or_removed_in_another_document(
     written: Written,
 ) -> None:
     """A meeting's name alone joins the one account of its name; with two, neither, said.

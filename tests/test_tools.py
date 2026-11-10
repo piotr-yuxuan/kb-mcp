@@ -999,7 +999,7 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
     ]
 
 
-def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
+def test_a_one_word_name_of_an_identity_is_never_shown_as_perhaps_the_same(
     tmp_path: Path,
 ) -> None:
     """With an account named Robin, one word, the review's speaker Robin is ambiguous.
@@ -1029,7 +1029,7 @@ ROBIN_ACCOUNT = Mention(role="author", name="Robin", identity="atlassian:acct-00
     [((), [ROBIN_ALONE]), ((issue("PAY-3", "Ledger audit", people=(ROBIN_ACCOUNT,)),), [])],
     ids=["no account named Robin", "an account named Robin"],
 )
-def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
+def test_a_speaker_whom_an_identity_holds_is_never_shown_as_perhaps_the_same(
     tmp_path: Path, extra: tuple[FrontMatter, ...], perhaps: list[str]
 ) -> None:
     """An unlinked transcript's Robin: a name alone, or the account named Robin's by name.
@@ -1391,7 +1391,7 @@ def test_status_says_what_the_index_holds(varied: Library) -> None:
         ),
     ],
 )
-def test_status_counts_the_persons_and_names_those_of_several_accounts(
+def test_status_counts_the_persons_and_names_those_of_several_identities(
     tmp_path: Path, aliases: dict[str, str], line: str
 ) -> None:
     """Plan 043, criterion 7, over the mirror of PERSONS alone.
@@ -1408,7 +1408,7 @@ def test_status_counts_the_persons_and_names_those_of_several_accounts(
     assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
 
 
-def test_status_names_five_names_of_several_accounts_then_how_many_more(
+def test_status_names_five_names_of_several_identities_then_how_many_more(
     tmp_path: Path,
 ) -> None:
     """Six names of two accounts each, the most held first, ties by name; one of one account.

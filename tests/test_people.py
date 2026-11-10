@@ -278,7 +278,7 @@ def test_by_alias_gives_a_name_the_person_its_alias_means() -> None:
     assert by_alias(named(UNLINKED, "Robin Other"), joining) is None
 
 
-def test_by_name_joins_a_name_to_the_one_account_of_its_key() -> None:
+def test_by_name_joins_a_name_to_the_one_identity_of_its_key() -> None:
     """Rule 3 alone: any name of one account joins it; the name of two is ambiguous."""
     joining = Joining(ACCOUNTS, {}, {})
     assert by_name(named(STAND_UP, "robin  EXAMPLE"), joining) == ROBIN
@@ -489,7 +489,7 @@ def test_two_notes_of_one_name_part_it_and_are_reported() -> None:
     )
 
 
-def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reported() -> None:
+def test_two_notes_of_an_identity_s_name_part_it_from_the_identity_and_are_reported() -> None:
     """Sam Sample's account, and two meetings writing Sam Sample with a note each.
 
     Each note is a person by name alone, reported; the alias of the name to the
@@ -540,7 +540,7 @@ def test_a_second_note_leaves_the_id_of_a_name_with_its_bare_spelling() -> None:
     assert [ambiguity.name for ambiguity in after.ambiguous] == ["Kim (not in the header)"]
 
 
-def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> None:
+def test_a_name_written_as_one_identity_s_annotated_name_joins_that_identity() -> None:
     """Accounts Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
 
     The site wrote the two names apart, as the user would have; a bare Robin could be
@@ -570,7 +570,7 @@ def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> 
     assert result.ambiguous == (Ambiguity(name="Robin", persons=frozenset({ops, sales})),)
 
 
-def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> None:
+def test_a_name_annotated_otherwise_than_its_one_identity_joins_no_identity() -> None:
     """The meeting's Robin Example (Ops) is not the account Robin Example (Sales).
 
     Two annotations of one name tell its persons apart, whoever wrote each: a name that
@@ -591,7 +591,7 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
     assert result.ambiguous == ()
 
 
-def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None:
+def test_an_identity_named_on_two_documents_of_one_date_takes_the_first() -> None:
     """Ties between an account's newest documents go to the first row in order."""
     rows = (
         PersonRow(
@@ -654,7 +654,7 @@ def test_an_alias_never_takes_a_speaker_its_meeting_gives_another() -> None:
     assert result.unused == ()
 
 
-def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
+def test_an_alias_to_an_identity_s_id_settles_a_name_of_two_identities() -> None:
     """The meeting's Sam Sample joins acct-0003 and is no longer reported; Sam follows it.
 
     Sam, the speaker, joins by its meeting the person that the alias gave the meeting's
@@ -676,7 +676,7 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Robin"]
 
 
-def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_accounts_share_the_key() -> None:
+def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_identities_share_the_key() -> None:
     """The stand-up's Sam Sample, of two accounts' name, is a person by name alone.
 
     Its id, which a refusal of Sam Sample lists, is a value as any person's: a meeting's
@@ -864,7 +864,7 @@ def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
     assert replace(result, unused=()) == joined(ROWS, LINKS, {})
 
 
-def test_an_alias_moves_the_names_without_an_account_alone() -> None:
+def test_an_alias_moves_the_names_without_an_identity_alone() -> None:
     """With "Robin Example" = "Alex Example", the meetings' Robins go; the issue's stays."""
     result = joined(ROWS, LINKS, {"Robin Example": "Alex Example"})
     assert result.of[ACCOUNTS[0]] == ROBIN
@@ -939,7 +939,7 @@ def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(value: str) 
     assert (result.ambiguous, result.unused) == ((), ())
 
 
-def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> None:
+def test_a_speaker_whom_its_meeting_and_an_identity_tell_apart_is_ambiguous() -> None:
     """An account named Robin, one word, beside the review's Robin Example.
 
     The site's name and the participants that the user wrote disagree: the review's
@@ -968,7 +968,7 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     )
 
 
-def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() -> None:
+def test_a_speaker_of_two_identities_name_is_reported_with_its_meeting_s_person() -> None:
     """Accounts Robin (Ops) and Robin (Sales), beside the review's Robin Example.
 
     The review's transcript's Robin could be either account, or Robin Example, whom the

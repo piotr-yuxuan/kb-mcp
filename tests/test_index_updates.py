@@ -235,7 +235,7 @@ def authored(key: str, name: str, identity: str | None) -> tuple[FrontMatter, st
     return issue(key, f"Issue {key}", people=(author,)), f"# Issue {key}\n"
 
 
-def test_a_name_alone_follows_the_accounts_of_its_name_as_a_whole_build(data: Path) -> None:
+def test_a_name_alone_follows_the_identities_of_its_name_as_a_whole_build(data: Path) -> None:
     """Criterion 15: a meeting's name joins one account's issue, then neither of two; back.
 
     The meeting's file never changes; each step's persons are a whole build's.
