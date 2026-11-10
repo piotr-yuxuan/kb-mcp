@@ -343,8 +343,13 @@ person and by role. Sources, scopes and sign-ins do not partition persons. A doc
 
 **In the code.** [`Mention`](../../src/kb_mcp/mirror/domain/mirror.py),
 with [`Mention.identity`](../../src/kb_mcp/mirror/domain/mirror.py), an identity
-written `<issuer>:<value>`, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
+written `<issuer>:<value>` by [`IDENTITY`](../../src/kb_mcp/kernel/names.py)'s rule,
+and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`SOLE`](../../src/kb_mcp/mirror/domain/mirror.py);
+[`ATLASSIAN_ISSUER`](../../src/kb_mcp/kernel/names.py), the issuer that the Atlassian
+connectors give each source, and
+[`identity`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py), which
+gives a site user's;
 [`Person`](../../src/kb_mcp/search/domain/people.py),
 [`Spelling`](../../src/kb_mcp/search/domain/people.py),
 [`joined`](../../src/kb_mcp/search/domain/people.py),
@@ -357,12 +362,15 @@ written `<issuer>:<value>`, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.
 [`by_alias`](../../src/kb_mcp/search/domain/people.py),
 [`by_name`](../../src/kb_mcp/search/domain/people.py) and
 [`by_attendance`](../../src/kb_mcp/search/domain/people.py);
-[`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py);
+[`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py), the documents
+that each document links to by `summary`;
 [`about`](../../src/kb_mcp/mcp/app/tools.py), which finds those perhaps the same; the
 column `person_names.joined` and [`JOINED`](../../src/kb_mcp/mcp/app/responses.py),
-where how a spelling joined is stored as `account`, `alias`, `meeting` or `name`;
+where how a spelling joined is stored as `identity`, `alias`, `attendance` or `name`;
 [`SiteUser.account_id`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py) and
-`users.json`.
+`users.json`. A person's id hashes the word `account` before an identity, and an
+identity of `atlassian` by its value alone, as ids were made before identities had an
+issuer ([`IDENTITY_ANCHOR`](../../src/kb_mcp/search/domain/people.py)).
 
 ### ranking
 
