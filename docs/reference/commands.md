@@ -254,20 +254,23 @@ options:
 
 ```text
 usage: kb-mcp eval-agents call [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                               [--site SITE]
+                               [--site SITE] [--allow-remote-embeddings]
                                directory run tool arguments
 
 positional arguments:
-  directory            the runs' directory
-  run                  the run's id
-  tool                 the tool's name
-  arguments            the tool's arguments, as one JSON object
+  directory             the runs' directory
+  run                   the run's id
+  tool                  the tool's name
+  arguments             the tool's arguments, as one JSON object
 
 options:
-  -h, --help           show this help message and exit
-  --config CONFIG      the settings file
-  --data-dir DATA_DIR  the data directory, overriding the settings
-  --site SITE          the site, as https://<name>.atlassian.net
+  -h, --help            show this help message and exit
+  --config CONFIG       the settings file
+  --data-dir DATA_DIR   the data directory, overriding the settings
+  --site SITE           the site, as https://<name>.atlassian.net
+  --allow-remote-embeddings
+                        let this run send the mirror's text to an embedding endpoint
+                        off this machine
 ```
 
 ## `eval-agents answer`

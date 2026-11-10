@@ -750,10 +750,18 @@ which is only the example: any such server works.
   so new weights call for new vectors; another server lists none, and vectors then
   follow the model's name alone. The text sent is the company's content: an address
   that is not a literal one of this machine needs `--allow-remote-embeddings` on every
-  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)).
+  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). Each
+  `eval-agents call` is such a run, which an agent makes: the person running the
+  evaluation, and only they, tells each subagent to add the flag right after `call` in
+  every bridge command, in a sentence that replaces the subagent's usual instruction
+  ([evaluate with agents](../how-to/evaluate-with-agents.md)). A call refused for want
+  of it names no flag, tells the agent to stop and answer `"found": false`, and leaves
+  its run without a result.
 - **Rejected.** Models in process with onnxruntime, from pinned files, as plan 011 built
   them; Ollama's own `/api/embed`, which other servers do not offer; a setting that
-  allows a remote endpoint, which would allow it on every run without a word.
+  allows a remote endpoint, which would allow it on every run without a word; the
+  consent written by `eval-agents prepare` into the runs' files, which every later call
+  inherited (plan 063); a refusal that names the flag to an agent, which could add it.
 - **Settled** by the user, in
   [plan 018](../work/changelog/018-embeddings-via-ollama.md#settled-by-the-user-not-reopened).
 

@@ -376,7 +376,11 @@ def test_a_missing_model_and_no_answer_say_what_to_run() -> None:
 
 
 OTHER = Service(
-    name="the other server", setting="other.url", flag="--allow-remote-other", start="other serve"
+    name="the other server",
+    setting="other.url",
+    sends="the mirror's text",
+    flag="--allow-remote-other",
+    start="other serve",
 )
 
 

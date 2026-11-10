@@ -45,7 +45,7 @@ from pydantic_core import PydanticCustomError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.kernel.endpoint import endpoint_host, loopback
+from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
 from kb_mcp.kernel.names import MODEL_NAME
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS
@@ -92,11 +92,6 @@ MOVED = {
 }
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
-# What telemetry's endpoint must be, since what it is sent holds titles and queries.
-TELEMETRY_ENDPOINT = (
-    "an http address of this machine, with a port and no path, such as"
-    " http://127.0.0.1:4318; write 127.0.0.1 for localhost"
-)
 # Folders that may be synchronised to a cloud, under the home directory or by name.
 SYNCED_UNDER_HOME = (
     Path("Library/Mobile Documents"),
@@ -136,31 +131,22 @@ def endpoint_address(value: str) -> str:
 
 
 def rerank_address(value: str) -> str:
-    """Give the reranking server's address without its trailing slash; refuse another.
-
-    The server is on this machine, by the user's word (plan 022): a literal address of
-    it, which no flag can widen.
-    """
-    if not loopback(value):
-        message = (
-            "an address of this machine, such as http://127.0.0.1:9931/v1, where the"
-            " mirror's text stays; write 127.0.0.1 for localhost"
-        )
-        raise PydanticCustomError(RULE, message)
+    """Give the reranking server's address without its trailing slash; refuse another."""
+    refusal = refused_endpoint(value, RERANKING, remote_allowed=False)
+    if refusal:
+        raise PydanticCustomError(RULE, refusal)
     return value.rstrip("/")
 
 
 def telemetry_address(value: str) -> str:
     """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
 
-    It is an embedding endpoint's address, over http, to a literal address of this
-    machine, with a port and no path: OTLP's own paths follow it. Raises
-    PydanticCustomError, a ValueError, saying ``TELEMETRY_ENDPOINT``.
+    Raises PydanticCustomError, a ValueError, saying why by the service's rule.
     """
-    parts = urlsplit(value) if loopback(value) else None
-    if parts is None or parts.scheme != "http" or parts.port is None or parts.path not in {"", "/"}:
-        raise PydanticCustomError(RULE, TELEMETRY_ENDPOINT)
-    return f"http://{parts.netloc}"
+    refusal = refused_endpoint(value, TELEMETRY, remote_allowed=False)
+    if refusal:
+        raise PydanticCustomError(RULE, refusal)
+    return f"http://{urlsplit(value).netloc}"
 
 
 def local_path(path: Path) -> Path:
@@ -781,7 +767,7 @@ def shared_entries(
             )
         except ValueError as error:
             ignored.append(
-                Ignored(setting=".".join(ENDPOINT), layer=SHARED_ENDPOINT, why=f"not {error}")
+                Ignored(setting=".".join(ENDPOINT), layer=SHARED_ENDPOINT, why=str(error))
             )
     disabled = environ.get(SDK_DISABLED, "").strip().lower() == "true"
     return (

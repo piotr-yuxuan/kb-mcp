@@ -29,7 +29,14 @@ from kb_mcp.config.domain.settings import (
     settings_of,
     unsafe_location,
 )
-from kb_mcp.kernel.endpoint import Service, loopback, refused_endpoint
+from kb_mcp.kernel.endpoint import (
+    EMBEDDINGS,
+    RERANKING,
+    TELEMETRY,
+    Service,
+    loopback,
+    refused_endpoint,
+)
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.settings import ConfluenceTable
 from kb_mcp.sources.worklog.settings import WorklogTable
@@ -353,35 +360,43 @@ def test_telemetry_is_off_by_default() -> None:
     assert from_file({}).telemetry.endpoint is None
 
 
+# What telemetry's endpoint off this machine, or not written as its address, is told.
+TELEMETRY_ELSEWHERE = (
+    "telemetry.endpoint (config.toml): not an address of this machine, where what a run"
+    " records would go; write 127.0.0.1 for this one"
+)
+TELEMETRY_FORM = (
+    "telemetry.endpoint (config.toml): not an http address with a port and no path, such"
+    " as http://127.0.0.1:4318"
+)
+
+
 @pytest.mark.parametrize(
-    "given",
+    ("given", "refusal"),
     [
-        "http://localhost:4318",
-        "http://192.0.2.1:4318",
-        "http://user@127.0.0.1:4318",
-        "https://127.0.0.1:4318",
-        "http://127.0.0.1",
-        "http://127.0.0.1:4318/v1/traces",
-        "http://127.0.0.1:4318?key=1",
-        "http://127.0.0.1:4318#here",
-        "http://127.0.0.1:0",
-        "http://[::1:4318",
-        "127.0.0.1:4318",
+        ("http://localhost:4318", TELEMETRY_ELSEWHERE),
+        ("http://192.0.2.1:4318", TELEMETRY_ELSEWHERE),
+        ("http://user@127.0.0.1:4318", TELEMETRY_FORM),
+        ("https://127.0.0.1:4318", TELEMETRY_FORM),
+        ("http://127.0.0.1", TELEMETRY_FORM),
+        ("http://127.0.0.1:4318/v1/traces", TELEMETRY_FORM),
+        ("http://127.0.0.1:4318?key=1", TELEMETRY_FORM),
+        ("http://127.0.0.1:4318#here", TELEMETRY_FORM),
+        ("http://127.0.0.1:0", TELEMETRY_FORM),
+        ("http://[::1:4318", TELEMETRY_FORM),
+        ("127.0.0.1:4318", TELEMETRY_FORM),
     ],
 )
 def test_telemetry_s_endpoint_elsewhere_or_with_more_than_its_address_is_refused(
-    given: str,
+    given: str, refusal: str
 ) -> None:
     """Telemetry holds titles and queries: this machine alone, written as an address.
 
-    Named, the setting and its layer, with what it must be, never its value.
+    Named, the setting and its layer, with why, never its value.
     """
     with pytest.raises(SettingsError) as refused:
         from_file({"telemetry": {"endpoint": given}})
-    assert str(refused.value) == (
-        "telemetry.endpoint (config.toml): an http address of this machine, with a port and"
-        " no path, such as http://127.0.0.1:4318; write 127.0.0.1 for localhost"
-    )
+    assert str(refused.value) == refusal
 
 
 def test_an_empty_table_of_settings_leaves_them_at_their_defaults() -> None:
@@ -657,7 +672,7 @@ def test_opentelemetry_s_endpoint_that_the_setting_would_refuse_is_ignored(
     assert loaded.layers == {}
     (ignored,) = loaded.ignored
     assert (ignored.setting, ignored.layer) == ("telemetry.endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT")
-    assert ignored.why.startswith("not an http address of this machine, with a port and no path")
+    assert ignored.why.startswith("not an ")
     assert SENTINEL not in ignored.why
     text = '[telemetry]\nendpoint = "http://127.0.0.1:4318"\n'
     assert loaded_from(tmp_path, text).settings.telemetry.endpoint == "http://127.0.0.1:4318"
@@ -1250,15 +1265,41 @@ def test_archives_false_in_the_environment_turns_archives_off(
     assert "sources.worklog.archives: False\n" in capsys.readouterr().out
 
 
-def test_a_refusal_names_its_own_service_s_setting_and_flag() -> None:
-    """Each service is refused in its own words: its setting, then the flag that allows it."""
+def test_a_refusal_offers_the_flag_that_allows_its_service() -> None:
+    """Each service is refused in its own words, ending on the flag that allows it."""
     other = Service(
-        name="the other server", setting="other.url", flag="--allow-remote-other", start="x"
+        name="the other server",
+        setting="other.url",
+        sends="x",
+        flag="--allow-remote-other",
+        start="x",
     )
     url = "http://10.0.0.1:9931/v1"
     elsewhere = refused_endpoint(url, other, remote_allowed=False) or ""
-    assert elsewhere.startswith("other.url: not an address of this machine")
+    assert elsewhere.startswith("not an address of this machine")
     assert elsewhere.endswith("or pass --allow-remote-other")
-    https_only = "other.url: an endpoint off this machine is reached over https only"
+    https_only = "an endpoint off this machine is reached over https only"
     assert refused_endpoint(url, other, remote_allowed=True) == https_only
     assert refused_endpoint("http://127.0.0.1:9931/v1", other, remote_allowed=False) is None
+
+
+@pytest.mark.parametrize("service", [RERANKING, TELEMETRY])
+def test_a_service_on_this_machine_only_is_refused_off_it_whatever_the_run_says(
+    service: Service,
+) -> None:
+    """The reranking server and the telemetry endpoint: no option widens their rule."""
+    for allowed in (False, True):
+        refusal = refused_endpoint("http://192.0.2.1:4318", service, remote_allowed=allowed)
+        assert (refusal or "").startswith("not an address of this machine")
+    assert refused_endpoint("http://127.0.0.1:4318", service, remote_allowed=False) is None
+
+
+def test_a_service_reached_off_this_machine_takes_no_form() -> None:
+    """The form asks for http; off this machine, https alone: no address meets both."""
+    with pytest.raises(ValueError, match="a form, or a flag, not both"):
+        Service(name="x", setting="x.url", sends="x", flag="--allow-x", form="an address")
+
+
+def test_only_a_service_with_a_form_needs_a_port_and_no_path() -> None:
+    """The embedding endpoint's address goes up to its API's path."""
+    assert refused_endpoint("http://127.0.0.1/v1", EMBEDDINGS, remote_allowed=False) is None

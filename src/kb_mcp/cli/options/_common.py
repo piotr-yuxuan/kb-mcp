@@ -134,9 +134,10 @@ def model_name(value: str) -> str:
 
 def endpoint_elsewhere(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse an embedding endpoint off this machine without the run's word, or over http."""
-    return refused_endpoint(
+    refusal = refused_endpoint(
         str(settings["embedding_url"]), EMBEDDINGS, remote_allowed=arguments.allow_remote_embeddings
     )
+    return refusal and f"{EMBEDDINGS.setting}: {refusal}"
 
 
 def endpoint_by_meaning(

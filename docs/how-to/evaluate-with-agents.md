@@ -25,6 +25,20 @@ answers keep their order and say "Not reranked", which the warning `rerank.fallb
 and the counter `kb_mcp.rerank.fallbacks` record: run `reranker check` before the runs
 too.
 
+An embedding endpoint off this machine takes the consent of each invocation that sends
+it the mirror's text, never of a step before ([services](../reference/concepts.md#service)).
+`prepare` refuses one without `--allow-remote-embeddings`, which reaches only the servers
+that it starts itself to list the tools; it writes the consent into no file, and
+`runs.json` says, by `remote_embeddings`, that the calls need it. Each call is then
+refused, exit 2, unless given `--allow-remote-embeddings` on its own command line, which
+the prompts' bridge command does not hold. The person running the evaluation, and only
+they, gives it, in the instructions to each subagent, batch by batch, as the next step
+says; else keep the endpoint on this machine. A call refused for want of it names no
+flag: it tells the agent to stop and answer with `"found": false`, and leaves its run
+without a result. A directory prepared with `--allow-remote-embeddings` before the
+consent was given per call holds it in its server's command: prepare it again, since
+each of its calls is refused, logged `outdated`, and gives no result.
+
 ## Prepare the runs
 
 The pilot first, of six questions, twelve runs:
@@ -50,14 +64,23 @@ workflow's agent, allowed no tool but Bash, and told only:
 
 > Read `<the run's prompt file>` and do exactly what it says.
 
+For runs whose `runs.json` says `"remote_embeddings": true`, and only once the person
+running the evaluation has chosen to send the mirror's text off this machine, each
+subagent is told instead, these two sentences replacing the one above:
+
+> Read `<the run's prompt file>` and do exactly what it says. Add
+> `--allow-remote-embeddings` right after `call` in every bridge command.
+
 The prompt tells the subagent to answer from the tools alone, through the bridge, at
 most twelve calls, and to end with the answer command. The bridge,
 `eval-agents call DIR RUN TOOL JSON`, starts the server that the run names, makes one
 call, logs it in `calls/<run>.jsonl` and prints the answer alone; it refuses a call of a
-tool that the run's surface lacks, arguments that are not one JSON object, and a call
-past the twelfth, saying to answer now. `eval-agents answer DIR RUN JSON` keeps the
-answer, read strictly; a refused answer names the field at fault and may be sent once
-more, and a second refusal is kept as the agent's failure. Neither asks anything.
+tool that the run's surface lacks, arguments that are not one JSON object, a call past
+the twelfth, saying to answer now, and a call without the consent that `runs.json` says
+its server needs, which it logs as `unconsented`. `eval-agents answer DIR RUN JSON`
+keeps the answer, read strictly; a refused answer names the field at fault and may be
+sent once more, and a second refusal is kept as the agent's failure. Neither asks
+anything.
 
 When the subagent ends, write `harness/<run>.json`, and nothing else:
 
@@ -82,8 +105,9 @@ and mark its run `invalid`, before grading again), and grades each answer: citat
 recall and precision, quotes grounded in the documents that their refs name, and
 evidence quoted. A run succeeds when its answer says the base holds it, every quote is
 grounded, and each expected document's evidence is within a quote. A run returned
-without an answer kept is a failure; one `failed`, `invalid`, or whose call timed out or
-lost its server gives no result, and its question leaves the tests, counted. It writes
+without an answer kept is a failure; one `failed`, `invalid`, or whose call timed out,
+lost its server, lacked the consent or was of runs prepared before it was given per
+call gives no result, and its question leaves the tests, counted. It writes
 `results.json`, of ids and numbers, the prompts' SHA-256 and the models reported, never
 a question's text, and says B against A on success, calls and tokens handed over, each
 with its interval, and whether `ask` stays among the default tools. `--summary detailed`
@@ -115,9 +139,9 @@ and are reported only.
 
 | Path | Written by | Holds |
 |---|---|---|
-| `runs.json` | `prepare` | the runs, their bound, the server's command, what grades each question |
+| `runs.json` | `prepare` | the runs, their bound, the server's command, whether its calls need the consent to remote embeddings, what grades each question |
 | `prompts/<run>.md` | `prepare` | the run's prompt, with its question |
-| `calls/<run>.jsonl` | `call` | each call: tool, arguments, estimated tokens answered, seconds, status |
+| `calls/<run>.jsonl` | `call` | each call: tool, arguments, estimated tokens answered, seconds, status (`answered`, `refused` by the tool, `timeout`, `failed`, or, refused before any server started, `unconsented` or `outdated`) |
 | `answers/<run>.json` | `answer` | the answer kept |
 | `harness/<run>.json` | the orchestrator | status, model and tokens as the harness reports them |
 | `results.json` | `grade` | ids and numbers, never a question's text |

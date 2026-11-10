@@ -106,7 +106,8 @@ def endpoint(
     """
     refusal = refused_endpoint(url, service, remote_allowed=remote_allowed)
     if refusal is not None:
-        raise SettingsError(refusal)
+        message = f"{service.setting}: {refusal}"
+        raise SettingsError(message)
     here = loopback(url)
     network = httpx.Client(
         verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT),

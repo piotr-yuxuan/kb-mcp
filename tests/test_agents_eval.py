@@ -220,13 +220,115 @@ def test_each_prompt_holds_what_serve_lists_for_its_surface(world: World) -> Non
         assert ("ask" in [tool["name"] for tool in tools]) is (run["surface"] == "B")
 
 
-def test_the_remote_flag_reaches_the_server_exactly_when_given(world: World) -> None:
-    """``--allow-remote-embeddings`` given to prepare is given to every server it names."""
-    given, not_given = world.root / "given", world.root / "not-given"
-    assert prepared(world, given, "--sample", "1", "--allow-remote-embeddings") == 0
-    assert prepared(world, not_given, "--sample", "1") == 0
-    servers = [json.loads((out / "runs.json").read_text())["server"] for out in (given, not_given)]
-    assert ["--allow-remote-embeddings" in server for server in servers] == [True, False]
+REMOTE = "https://embeddings.example.invalid/v1"
+
+
+def remote(world: World, url: str = REMOTE, mode: str = "hybrid") -> None:
+    """Point the world's settings at an embedding endpoint off this machine, in a mode."""
+    config = world.home / ".config" / "kb-mcp" / "config.toml"
+    text = config.read_text("utf-8").replace('search_mode = "hybrid"', f'search_mode = "{mode}"')
+    kept = [line for line in text.splitlines() if "embedding_url" not in line]
+    config.write_text("\n".join([f"embedding_url = {json.dumps(url)}", *kept]) + "\n", "utf-8")
+
+
+@pytest.mark.parametrize("off_this_machine", [False, True])
+def test_the_prepared_files_say_whether_calls_need_the_consent_and_never_hold_it(
+    world: World, *, off_this_machine: bool
+) -> None:
+    """The consent belongs to each invocation: prepare's reaches no later step."""
+    if off_this_machine:
+        remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
+    written = [each.read_text("utf-8") for each in out.rglob("*") if each.is_file()]
+    assert not [text for text in written if "--allow-remote-embeddings" in text]
+    runs = json.loads((out / "runs.json").read_text("utf-8"))
+    assert runs["remote_embeddings"] is off_this_machine
+
+
+def test_prepare_without_the_consent_to_a_remote_endpoint_is_refused(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Exit 2 before anything is written, as serve would refuse each of its servers."""
+    remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == REFUSED
+    assert "embedding_url: not an address of this machine" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_prepare_refuses_an_endpoint_off_this_machine_over_http_even_with_the_consent(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Exit 2 before anything is written: off this machine, https alone."""
+    remote(world, "http://embeddings.example.invalid/v1")
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == REFUSED
+    said = capsys.readouterr().err
+    assert "embedding_url: an endpoint off this machine is reached over https only" in said
+    assert not out.exists()
+
+
+def test_runs_by_words_need_no_consent_whatever_the_endpoint(
+    world: World, monkeypatch: MonkeyPatch
+) -> None:
+    """The lexical mode sends nothing to the endpoint: prepared and called without the flag."""
+    remote(world, mode="lexical")
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    written = json.loads((out / "runs.json").read_text("utf-8"))
+    assert written["remote_embeddings"] is False
+    started: list[list[str]] = []
+
+    def recorded(command: list[str], *_: object) -> Answered:
+        started.append(command)
+        return Answered(text="an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    run = runs_of(out)[0]
+    assert main(bridged(out, run["id"], "search", {"query": "kafka"})) == 0
+    assert started == [[*written["server"], "--tools", ",".join(run["tools"])]]
+
+
+@pytest.mark.parametrize("off_this_machine", [False, True])
+@pytest.mark.parametrize("consented", [False, True])
+def test_a_call_of_runs_off_this_machine_needs_its_own_consent(
+    world: World,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    *,
+    off_this_machine: bool,
+    consented: bool,
+) -> None:
+    """Needed and given, the flag reaches the server; needed and not given, none starts."""
+    if off_this_machine:
+        remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
+    started: list[list[str]] = []
+
+    def recorded(server: list[str], *_: object) -> Answered:
+        started.append(server)
+        return Answered(text="an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    run = runs_of(out)[0]
+    capsys.readouterr()
+    flag = ["--allow-remote-embeddings"] if consented else []
+    refused = off_this_machine and not consented
+    command = bridged(out, run["id"], "search", {"query": "kafka"})
+    status = main([*command[:2], *flag, *command[2:]])  # right after call, as the how-to says
+    assert status == (REFUSED if refused else 0)
+    server = json.loads((out / "runs.json").read_text("utf-8"))["server"]
+    if refused:
+        assert started == []
+        said = capsys.readouterr().err
+        assert "lacks the consent of the person running the evaluation" in said
+        assert 'stop, and answer with "found": false' in said
+        assert "--allow" not in said
+    else:
+        passed = flag if off_this_machine else []
+        assert started == [[*server, *passed, "--tools", ",".join(run["tools"])]]
 
 
 def test_a_call_prints_serve_s_answer_alone_and_logs_five_fields(
@@ -580,6 +682,30 @@ def test_runs_that_failed_broke_a_rule_or_lost_their_server_give_no_result(
     assert (results["pairs"], results["left_out"]) == (0, len(("q", "q")))
 
 
+def test_a_call_without_the_consent_leaves_its_run_without_a_result(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Logged, the forced "found": false is no honest failure: its question is left out."""
+    remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
+    unconsented, other = (run["id"] for run in runs_of(out))
+    assert main(bridged(out, unconsented, "search", {"query": "kafka"})) == REFUSED
+    (line,) = (out / "calls" / f"{unconsented}.jsonl").read_text("utf-8").splitlines()
+    logged = json.loads(line)
+    assert (logged["status"], logged["tokens"], logged["seconds"]) == ("unconsented", 0, 0)
+    assert answering(out, unconsented, json.dumps({"found": False, "answer": "Stopped."})) == 0
+    assert answering(out, other, json.dumps(VALID)) == 0
+    for run in (unconsented, other):
+        harness(out, run, status="returned")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    results = json.loads(capsys.readouterr().out)
+    judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
+    assert judged[unconsented] == ("no result", "a call lacked the consent")
+    assert (results["pairs"], results["left_out"]) == (0, 1)
+
+
 def test_a_run_without_a_call_says_its_seconds_as_the_integer_0(
     world: World, capsys: CaptureFixture[str]
 ) -> None:
@@ -624,11 +750,49 @@ def test_grade_exits_1_past_twice_the_estimates(world: World, capsys: CaptureFix
     assert (out / "results.json").exists()
 
 
-@pytest.mark.parametrize("given", [[], ["--data-dir", "DATA", "--allow-remote-embeddings"]])
+@pytest.mark.parametrize("consented", [False, True])
+def test_runs_prepared_with_the_consent_in_their_server_s_command_are_refused(
+    world: World, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], *, consented: bool
+) -> None:
+    """A runs.json written before plan 063: exit 2, no server, prepare it again; no result."""
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    written = json.loads((out / "runs.json").read_text("utf-8"))
+    del written["remote_embeddings"]
+    written["server"] = [*written["server"], "--allow-remote-embeddings"]
+    (out / "runs.json").write_text(json.dumps(written), "utf-8")
+    started: list[list[str]] = []
+
+    def recorded(command: list[str], *_: object) -> Answered:
+        started.append(command)
+        return Answered(text="an answer", refused=False)
+
+    monkeypatch.setattr(agents, "called", recorded)
+    outdated, other = (run["id"] for run in runs_of(out))
+    flag = ["--allow-remote-embeddings"] if consented else []
+    capsys.readouterr()
+    status = main([*bridged(out, outdated, "search", {"query": "kafka"}), *flag])
+    assert (status, started) == (REFUSED, [])
+    said = capsys.readouterr().err
+    assert "runs.json: prepared before the consent was given per call; prepare it again" in said
+    assert answering(out, outdated, json.dumps({"found": False, "answer": "Stopped."})) == 0
+    assert answering(out, other, json.dumps(VALID)) == 0
+    for each in (outdated, other):
+        harness(out, each, status="returned")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    results = json.loads(capsys.readouterr().out)
+    judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
+    reason = "prepared before the consent was given per call"
+    assert judged[outdated] == ("no result", reason)
+    assert (results["pairs"], results["left_out"]) == (0, 1)
+
+
+@pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])
 def test_each_call_starts_the_server_that_prepare_named(
     world: World, monkeypatch: MonkeyPatch, given: list[str]
 ) -> None:
-    """The settings file, the data directory and 018's flag, as prepare was given them."""
+    """The settings file and the data directory, as prepare was given them."""
     out = world.root / "runs"
     options = [str(world.data) if each == "DATA" else each for each in given]
     assert prepared(world, out, "--sample", "1", *options) == 0

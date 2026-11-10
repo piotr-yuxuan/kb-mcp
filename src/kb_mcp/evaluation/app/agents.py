@@ -42,6 +42,7 @@ from kb_mcp.evaluation.domain.grading import (
     grade,
     refusal,
 )
+from kb_mcp.kernel.endpoint import EMBEDDINGS
 from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.responses import tokens
 
@@ -151,6 +152,8 @@ class Runs(BaseModel):
     model: str  # the alias of the agents' model, such as haiku
     golden_sha256: str
     server: tuple[str, ...]  # the command that serves, its tools aside
+    # The embedding endpoint is off this machine: each call needs the consent to reach it.
+    remote_embeddings: bool = False
     calls: int  # a run's calls, at most
     call_s: float  # a call's seconds, at most
     runs: tuple[AgentRun, ...]
@@ -180,14 +183,16 @@ class Asking(Record):
     """What ``prepare`` is given besides the questions: who answers, how, and within what.
 
     ``program`` is the command line that reaches ``eval-agents``, for the prompts;
-    ``server`` the one that serves, its tools aside; ``home`` the home directory, for
-    the guard on where the runs' directory may be.
+    ``server`` the one that serves, its tools aside, and never the consent to remote
+    embeddings, which ``remote_embeddings`` says the servers need; ``home`` the home
+    directory, for the guard on where the runs' directory may be.
     """
 
     model: str
     golden_sha256: str
     program: tuple[str, ...]
     server: tuple[str, ...]
+    remote_embeddings: bool
     calls: int
     call_s: float
     home: Path
@@ -225,8 +230,10 @@ def prepare(
         message = f"--out: {problem or 'not empty'}"
         raise AgentsError(message)
     served = surfaces(tools)
+    # prepare's own consent, which its run was refused without, reaches its servers alone.
+    consent = [EMBEDDINGS.flag] if asking.remote_embeddings else []
     said = {
-        name: listed([*asking.server, "--tools", ",".join(each)], LISTING_S)
+        name: listed([*asking.server, *consent, "--tools", ",".join(each)], LISTING_S)
         for name, each in served.items()
     }
     schema = json.dumps(AgentAnswer.model_json_schema(), indent=1)
@@ -262,6 +269,7 @@ def prepare(
         model=asking.model,
         golden_sha256=asking.golden_sha256,
         server=asking.server,
+        remote_embeddings=asking.remote_embeddings,
         calls=asking.calls,
         call_s=asking.call_s,
         runs=tuple(runs),
@@ -301,7 +309,7 @@ class Logged(BaseModel):
     arguments: dict[str, object]
     tokens: int = Field(ge=0)
     seconds: float = Field(ge=0)
-    status: Literal["answered", "refused", "timeout", "failed"]
+    status: Literal["answered", "refused", "timeout", "failed", "unconsented", "outdated"]
 
 
 def logged(directory: Path, run: AgentRun) -> list[Logged]:
@@ -331,12 +339,18 @@ class Called(Record):
     text: str
 
 
-def call(directory: Path, name: str, tool: str, given: str) -> Called:
+def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) -> Called:
     """Make one call of a run: start its server, call the tool, log the call, give its answer.
 
+    ``consented`` is this call's consent to remote embeddings, which reaches its server
+    alone, and only when the runs need it.
+
     Refused, before any server starts: a run not there, arguments not one JSON object, a
-    tool not of the run's surface, a call past the run's bound. The log line holds the
-    tool, the arguments, the answer's estimated tokens, the seconds and the status.
+    tool not of the run's surface, a call past the run's bound; and, logged so that the
+    run gives no result, runs that hold the consent in their server's command,
+    ``outdated``, and runs that need the consent without it, ``unconsented``. The log
+    line holds the tool, the arguments, the answer's estimated tokens, the seconds and
+    the status.
 
     The call is the span ``eval.agent.call``, which holds the client's; it is counted by
     status in ``kb_mcp.eval.agent.calls``, its seconds and tokens measured, and
@@ -359,8 +373,31 @@ def call(directory: Path, name: str, tool: str, given: str) -> Called:
         if len(logged(directory, run)) >= runs.calls:
             message = f"calls: this run's {runs.calls} are spent; give your answer now"
             raise AgentsError(message)
+        refusal = ""
+        if EMBEDDINGS.flag in runs.server:  # written by prepare before plan 063
+            status = "outdated"
+            refusal = "runs.json: prepared before the consent was given per call; prepare it again"
+        elif runs.remote_embeddings and not consented:
+            status = "unconsented"
+            # Said to the agent, which must not give the consent itself: no flag is named.
+            refusal = (
+                "consent: this call lacks the consent of the person running the evaluation"
+                " to send the mirror's text to an embedding endpoint off this machine; stop,"
+                ' and answer with "found": false'
+            )
+        if refusal:
+            line = Logged(tool=tool, arguments=arguments, tokens=0, seconds=0, status=status)
+            with log.open("a", encoding="utf-8") as kept:
+                kept.write(line.model_dump_json() + "\n")
+            raise AgentsError(refusal)
         started = time.monotonic()
-        server = [*runs.server, "--tools", ",".join(run.tools)]
+        server = [
+            *runs.server,
+            # Runs that need the consent reach here only with it: the guard above refused.
+            *([EMBEDDINGS.flag] if runs.remote_embeddings else []),
+            "--tools",
+            ",".join(run.tools),
+        ]
         named = {"kb_mcp.surface": run.surface, "gen_ai.tool.name": tool}
         with TRACER.start_as_current_span("eval.agent.call", attributes=named) as span:
             try:
@@ -444,6 +481,15 @@ class AgentRunOutcome(Record):
     prompt_sha256: str
 
 
+# The calls' statuses that leave a run without a result, and the reason that it says.
+BROKEN = {
+    "timeout": "a call timeout",
+    "failed": "a call failed",
+    "unconsented": "a call lacked the consent",
+    "outdated": "prepared before the consent was given per call",
+}
+
+
 def judged(
     directory: Path,
     run: AgentRun,
@@ -454,9 +500,9 @@ def judged(
     """Judge a run from its harness file, its call log and its answer.
 
     Without a harness file, the run is pending. ``failed`` or ``invalid``, or a call
-    that timed out or whose server failed, gives no result. Returned without an answer
-    accepted is the agent's failure; with one, it is graded. Raises AgentsError for a
-    harness file, a call log or an answer not as written, naming the file and the field.
+    that ``BROKEN`` names, gives no result. Returned without an answer accepted is the
+    agent's failure; with one, it is graded. Raises AgentsError for a harness file, a
+    call log or an answer not as written, naming the file and the field.
     The run is counted by its outcome in ``kb_mcp.eval.agent.runs``, and ``eval.agent.run``
     says it at DEBUG.
     """
@@ -481,14 +527,14 @@ def judged(
         message = f"{named.parent.name}/{named.name}: {refusal(error)}"
         raise AgentsError(message) from None
     calls = logged(directory, run)
-    broken = next((each.status for each in calls if each.status in {"timeout", "failed"}), "")
+    broken = next((BROKEN[each.status] for each in calls if each.status in BROKEN), "")
     graded = grade(answer, question, resolve, body) if answer and not broken else None
     if harness is None:
         result, reason = "pending", ""
     elif not returned:
         result, reason = "no result", harness.status
     elif broken:
-        result, reason = "no result", f"a call {broken}"
+        result, reason = "no result", broken
     elif graded is None:
         result, reason = "failure", "no answer accepted"
     else:

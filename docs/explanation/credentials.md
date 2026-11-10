@@ -130,11 +130,14 @@ It is sent as `Authorization: Bearer`, to the endpoint alone and only when set
 [`test_the_key_is_sent_only_when_set_and_never_said`](../../tests/test_embedding.py)).
 
 The key travels with the mirror's text, so the rule that keeps the text keeps the key:
-the endpoint must be a literal address of this machine, unless the run's command line
-says `--allow-remote-embeddings`, and one elsewhere is reached over https alone
+the endpoint must be a literal address of this machine, unless the run's own command
+line says `--allow-remote-embeddings`, and one elsewhere is reached over https alone
 ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py),
-[`test_a_remote_endpoint_needs_the_flag_and_https`](../../tests/test_embedding.py)). On
-this machine the environment's proxies are ignored, since one would carry both away
+[`test_a_remote_endpoint_needs_the_flag_and_https`](../../tests/test_embedding.py)). No
+run hands its word to a later one: `eval-agents prepare` writes it into none of the
+runs' files, and each `eval-agents call` of runs that need it is given it or refused
+([`test_a_call_of_runs_off_this_machine_needs_its_own_consent`](../../tests/test_agents_eval.py)).
+On this machine the environment's proxies are ignored, since one would carry both away
 ([`test_proxies_are_ignored_on_this_machine`](../../tests/test_embedding.py)), and a
 redirect is never followed
 ([`test_a_redirect_is_not_followed`](../../tests/test_embedding.py)).
@@ -255,9 +258,9 @@ mistake. None of it stops someone who is already on the machine as you:
   nothing else
   ([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)). The
   disk's own encryption, such as FileVault or LUKS, is what keeps a lost machine's data.
-- **A tunnel.** The rules for the embedding endpoint and for telemetry's trust that a
-  loopback address is this machine
-  ([`loopback`](../../src/kb_mcp/kernel/endpoint.py)). A port of this
+- **A tunnel.** The services' rules, of the embedding endpoint, the reranking server and
+  telemetry's, trust that a loopback address is this machine
+  ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). A port of this
   machine forwarded elsewhere, by an SSH tunnel say, carries what is sent to it there:
   the mirror's text and the key, or telemetry's records. The rule cannot see it.
 - **A copy made before the end.** A session or a token copied elsewhere signs in as you
