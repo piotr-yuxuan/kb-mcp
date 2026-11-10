@@ -287,6 +287,8 @@ What reads a run's output follows:
   and says "names of several identities". The field `people` of `index.built` and
   `index.person_ambiguous` is `persons`; the field `kind` of `worklog.document` and the
   attribute `kb_mcp.kind` of the prepare's instruments are `type` and `kb_mcp.type`.
+  `index`'s JSON gives under `report.persons` `chained`, the paths of the documents
+  that `summary` links name but that have summaries themselves, as does `index.built`.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
 - **`doctor`.** A machine with neither a site nor a Confluence or Jira source gets the

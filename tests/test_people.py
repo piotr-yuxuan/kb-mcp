@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sqlite3
 from contextlib import closing
 from copy import replace
@@ -1007,20 +1006,26 @@ def test_a_transcript_before_its_meeting_joins_by_it() -> None:
 
 
 @pytest.mark.parametrize(
-    ("summaries", "refused"),
-    [({LINKED: {REVIEW}, REVIEW: {LINKED}}, [REVIEW, LINKED]), ({LINKED: {LINKED}}, [LINKED])],
-    ids=["two summarising each other", "one summarising itself"],
+    ("summaries", "chained", "kept"),
+    [
+        ({LINKED: {REVIEW}, REVIEW: {LINKED}}, (REVIEW, LINKED), {}),
+        ({LINKED: {LINKED}}, (LINKED,), {}),
+        ({LINKED: {REVIEW}, REVIEW: set()}, (), {LINKED: {REVIEW}}),
+        ({PLANNED: {LINKED}, LINKED: {REVIEW}}, (LINKED,), {LINKED: {REVIEW}}),
+    ],
+    ids=["two summarising each other", "one its own", "one whose own links none", "a chain"],
 )
-def test_a_summary_with_summaries_itself_is_refused_naming_it(
-    summaries: dict[int, set[int]], refused: list[int]
+def test_a_summary_with_summaries_itself_is_dropped_and_named(
+    summaries: dict[int, set[int]], chained: tuple[int, ...], kept: dict[int, set[int]]
 ) -> None:
-    """Each summary must be joined before the documents that it summarises, so has none.
+    """Rule 4 needs each summary joined before what it summarises: one with summaries is not.
 
-    The index reads no summary that has summaries; a caller that gives one is refused,
-    naming the documents, rather than failing within rule 4.
+    It is dropped and named, by number; the rest join as if it never were a summary, and
+    an empty set of summaries is none.
     """
-    with pytest.raises(ValueError, match=re.escape(f"documents {refused} have summaries")):
-        joined(ROWS, summaries, {})
+    result = joined(ROWS, summaries, {})
+    assert sorted(result.chained) == sorted(chained)
+    assert replace(result, chained=()) == joined(ROWS, kept, {})
 
 
 def test_a_name_is_reported_once_with_every_person_it_could_be() -> None:
@@ -1253,20 +1258,20 @@ def test_index_joins_two_identities_by_a_quoted_key_of_the_alias_file(
         assert sams.fetchall() == [(SAM_2,)]
 
 
-def test_index_warns_of_each_summary_that_summarises_another_itself(
+def test_index_names_each_summary_that_summarises_another_itself(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Two transcripts whose summaries link each other, as a hand-edited mirror may.
 
-    Neither is a summary, each warned of once by its path; the build exits 0.
+    Neither is a summary: ``index.built`` names each by its path; the build exits 0.
     """
     paths = [
         write(data / "docs", worklog_document("transcript", one, "Loop", ("Alex",), other))
         for one, other in (("t-20261022-1", "t-20261022-2"), ("t-20261022-2", "t-20261022-1"))
     ]
     assert index(data, capsys)[0] == 0
-    chained = logged_as(data.parent / "home", "index.summary_chained")
-    assert [each["path"] for each in chained] == sorted(paths)
+    (built,) = logged_as(data.parent / "home", "index.built")
+    assert built["chained"] == sorted(paths)
 
 
 @pytest.mark.parametrize(

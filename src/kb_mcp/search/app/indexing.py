@@ -476,6 +476,7 @@ def update_index(
             sections=report.sections,
             skipped=len(report.skipped),
             persons=report.persons.count,
+            chained=list(report.persons.chained),
             **counts,
         )
     for path, reason in report.skipped:
@@ -488,8 +489,6 @@ def update_index(
         )
     for alias in report.persons.unused:
         log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
-    for path in report.persons.chained:
-        log.warning("index.summary_chained", path=path)
     return Indexed(report=report, index=indexing.index, model=None)
 
 

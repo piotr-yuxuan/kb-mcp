@@ -18,7 +18,6 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import replace
 from datetime import datetime
-from itertools import chain
 from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field
@@ -198,6 +197,7 @@ class Joined(Record):
     of: Mapping[PersonRow, str]  # each row's person, by id
     ambiguous: tuple[Ambiguity, ...]  # one per key, by key
     unused: tuple[Alias, ...]  # the aliases that changed nothing, in their order
+    chained: tuple[int, ...] = ()  # the summaries that have summaries, dropped, by number
 
 
 class JoinOutcome(Record):
@@ -229,13 +229,8 @@ class Joining:
         The aliases of identities are read first, by ``alias``, so that the values of
         the aliases of names see the identities that they make one. ``joined`` keeps an
         alias when an identity or a name makes the person that it means: aliases are not
-        chained. Raise ValueError, naming them, for documents that are summaries and
-        have summaries themselves, as one that is its own would: rule 4 needs each
-        summary joined before.
+        chained. No summary may have summaries itself, as ``joined`` ensures.
         """
-        if chained := sorted(set(summaries).intersection(chain.from_iterable(summaries.values()))):
-            message = f"documents {chained} have summaries and are summaries"
-            raise ValueError(message)
         self.summaries = summaries
         self.persons: dict[PersonRow, str] = {}
         self.rows: dict[int, list[PersonRow]] = {}  # each document's
@@ -409,7 +404,8 @@ def joined(
     """Join every row into its person: by its identity, by RULES in order, or by its name.
 
     ``summaries`` gives each document's summaries, by number, as its ``summary`` links
-    name them, none of which has summaries (``Joining`` refuses one); ``aliases`` each
+    name them; one that has summaries itself, as a file edited by hand may, is dropped
+    and named in ``chained``, as rule 4 needs each summary joined before; ``aliases`` each
     alias's name and value, of distinct keys, as the alias file's reader checks. Rows go
     in order of document, role, name and identity, those of documents with summaries
     last, so that their summaries' persons are known; the same rows in any order give
@@ -420,10 +416,14 @@ def joined(
     alone, names nobody: the join is made again without it, each pass with fewer
     aliases.
     """
+    chained = {each for linked in summaries.values() for each in linked if summaries.get(each)}
+    kept = {
+        document: rest for document, linked in summaries.items() if (rest := set(linked) - chained)
+    }
     ordered = sorted(
         set(rows),
         key=lambda row: (
-            row.document in summaries,
+            row.document in kept,
             row.document,
             row.role,
             row.name,
@@ -431,7 +431,7 @@ def joined(
             row.updated,
         ),
     )
-    joining = Joining(ordered, summaries, aliases)
+    joining = Joining(ordered, kept, aliases)
     members: dict[str, list[tuple[PersonRow, str]]] = {}  # each person's rows, and how each joined
     ambiguous: dict[str, Ambiguity] = {}  # by key
     for row in ordered:
@@ -472,10 +472,10 @@ def joined(
         if alias.reason is None and alias.means not in made
     }
     if nobody:
-        kept = {
+        remaining = {
             each.name: each.value for each in joining.aliases.values() if each.key not in nobody
         }
-        again = joined(ordered, summaries, kept)
+        again = joined(ordered, summaries, remaining)
         unused = {alias.key: alias for alias in again.unused} | nobody
         return replace(again, unused=tuple(unused[key] for key in joining.aliases if key in unused))
     # Each name alone's value as an alias writes it, the first alias's in their order.
@@ -503,4 +503,5 @@ def joined(
             ambiguous[key] for key in sorted(ambiguous) if len(ambiguous[key].persons) > 1
         ),
         unused=tuple(alias for alias in joining.aliases.values() if alias.reason is not None),
+        chained=tuple(sorted(chained)),
     )

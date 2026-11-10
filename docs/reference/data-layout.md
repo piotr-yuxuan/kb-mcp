@@ -871,11 +871,10 @@ name, else its most frequent spelling; ties go to the first row in the join's or
 document, in the order of their paths' text whichever file was written last, then
 role, name and identity, the rows of documents that link by `summary` last, so that
 their summaries' persons are known. The join reads the `summary` links that name a
-document of the same source, by its id, but for one that links by `summary` to a
-document of its source itself, as a file edited by hand may
-(`search.adapters.sqlite_index.SUMMARY_LINKS`), and the build warns of each such one,
-`index.summary_chained`; it refuses such a chain from another caller, as a programming
-error.
+document of the same source, by its id (`search.adapters.sqlite_index.SUMMARY_LINKS`);
+a document so named that has summaries itself, as a file edited by hand may, is no
+summary (`search.domain.people.joined`), and `index.built` names it by its path, in
+`chained`, as does `index`'s JSON, in `report.persons.chained`.
 
 | Table or column | Holds |
 |---|---|

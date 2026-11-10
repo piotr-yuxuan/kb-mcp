@@ -930,7 +930,6 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
 ) -> None:
     """The join reads each transcript's links, then each meeting by its key.
 
-    And so each of that meeting's own links, ``o``, which keep it from being a summary.
     Its work then grows with the links, where a search of a source's documents for each
     of a source's documents grows with their square: a build of 20,000 issues took
     tens of seconds so.
@@ -940,11 +939,10 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
             f"EXPLAIN QUERY PLAN {sqlite_index.SUMMARY_LINKS}"
         ).fetchall()
     steps = [row[3] for row in plan_query]
-    for table in ("m", "o"):
-        found = [step for step in steps if step.startswith((f"SCAN {table}", f"SEARCH {table} "))]
-        assert len(found) == 1
-        assert found[0].startswith(f"SEARCH {table} USING ")
-        assert found[0].endswith("(source=? AND id=?)")
+    meeting = [step for step in steps if step.startswith(("SCAN m", "SEARCH m "))]
+    assert len(meeting) == 1
+    assert meeting[0].startswith("SEARCH m USING ")
+    assert meeting[0].endswith("(source=? AND id=?)")
 
 
 def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:
