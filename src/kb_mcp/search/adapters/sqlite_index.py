@@ -192,7 +192,7 @@ ENTRIES = """
 SELECT d.* FROM documents d
 WHERE (d.path IN (SELECT value FROM json_each(:paths))
        OR d.key IN (SELECT value FROM json_each(:keys))
-       OR (d.source IN ('confluence', 'worklog') AND d.id IN (SELECT value FROM json_each(:ids))))
+       OR (d.key IS NULL AND d.id IN (SELECT value FROM json_each(:ids))))
   AND (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
 ORDER BY d.path
 """
@@ -842,7 +842,8 @@ class Reader:
     ) -> list[IndexedDocument]:
         """Find the documents of these paths, issue keys, and page or work-log ids, by path.
 
-        An issue's id is never looked up, since a page may have the same.
+        A document with a key, as an issue, is never looked up by its id, since a page may
+        have the same.
         """
         parameters = {
             "paths": json.dumps(list(paths)),
