@@ -76,8 +76,9 @@ def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
     Each run's ``dry_run`` is what its fetcher or preparer reads, and the events follow the
     runs. Raises ``SourcesRefusedError`` for one that does not load, and for what its
     ``preflight`` refuses, after its source's name and the stage, both before the first
-    row. Ctrl-C ends the row it stops as interrupted, and each later one as not run; the
-    run is interrupted even when Ctrl-C comes once every row has ended. The status is the
+    row. A row that failed stops no other: the next reads what is on disk. Only Ctrl-C
+    stops the run: it ends the row it stops as interrupted, and each later one as not run;
+    the run is interrupted even when Ctrl-C comes once every row has ended. The status is the
     most severe of the rows' endings, as ``folded`` gives it. A stage's ``start`` and
     ``end`` say at INFO the sources planned and how each ended, its ``source`` each as it
     ends; its ``interrupted``, a warning, which source Ctrl-C stopped.
