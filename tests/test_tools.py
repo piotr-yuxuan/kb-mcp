@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.mcp.app.tools import PERSON_FILTERS, Library, SearchFilters, UnanswerableError
-from kb_mcp.mirror.domain.mirror import ROLES, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
@@ -460,9 +460,9 @@ ACCOUNTS = {"A Person": "account-1", "Another Person": "account-2"}
 EARLIER = CREATED - timedelta(days=7)
 
 
-def held(role: str, name: str, *at: datetime) -> PersonRole:
+def held(role: str, name: str, *at: datetime) -> Mention:
     """Give one of ACCOUNTS's people in a role, with their account and comment times."""
-    return PersonRole(role=role, name=name, account=ACCOUNTS[name], at=at)
+    return Mention(role=role, name=name, identity=f"atlassian:{ACCOUNTS[name]}", at=at)
 
 
 # Four issues, each person in every role. A Person comments three times on PROJ-1 and
@@ -608,8 +608,8 @@ def test_read_names_ten_people_of_a_role_whole_then_how_many_more(tmp_path: Path
     """A name that a hit cuts at 60 characters comes whole; the line, though long, too."""
     names = [f"Person {number:02} {'x' * 60}" for number in range(12)]
     people = (
-        PersonRole(role="author", name=names[0]),
-        *(PersonRole(role="commenter", name=each, at=(CREATED,)) for each in names),
+        Mention(role="author", name=names[0]),
+        *(Mention(role="commenter", name=each, at=(CREATED,)) for each in names),
     )
     library = built(tmp_path, [(issue("PROJ-1", "Broker", people=people), None)])
     assert f"| author {names[0][:59]}… |" in library.search("broker")
@@ -644,7 +644,7 @@ def worklog(document_type: str, id_: str, title: str, *names: str) -> FrontMatte
         source="worklog",
         type=document_type,
         space=None,
-        people=tuple(PersonRole(role="participant", name=name) for name in names),
+        people=tuple(Mention(role="participant", name=name) for name in names),
         version=None,
         revision="0123456789abcdef",
     )
@@ -792,7 +792,7 @@ def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: P
     assert "\ntranscript:" not in read
 
 
-# Plan 043's persons, over the mirror of tests.mirrors.PERSONS: Robin Example's account,
+# Plan 043's persons, over the mirror of tests.mirrors.PERSONS: Robin Example's identity,
 # written Robin Sample on its newest document, wrote a page, created an issue and
 # commented twice on another, and attended three meetings, the review's transcript
 # naming Robin, who speaks there.
@@ -827,7 +827,7 @@ def test_a_person_is_found_in_any_role_by_any_of_their_names_or_their_id(
 
 
 def test_a_name_of_several_persons_is_refused_listing_each_by_id(persons: Library) -> None:
-    """Without aliases, Sam Sample is two accounts and the stand-up's name alone.
+    """Without aliases, Sam Sample is two identities and the stand-up's name alone.
 
     Each by name, id, documents by role then source, and the last day one was updated,
     those of the most documents first, then by id; the id of one keeps that person's
@@ -886,7 +886,7 @@ def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
 ) -> None:
     """Only those with a document in the role: the stand-up's Sam Sample wrote nothing.
 
-    The review's Robin is Robin Example's account, the planning's a person apart; the
+    The review's Robin is Robin Example's identity, the planning's a person apart; the
     review's Alex is Alex Example, the unlinked transcripts' another. Those of
     the most documents first, then by id.
     """
@@ -900,13 +900,13 @@ def test_a_role_s_name_is_refused_when_several_persons_hold_it_there(
 def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
     tmp_path: Path,
 ) -> None:
-    """Accounts Robin (Ops) and Robin (Sales), whose names share a key, each created one.
+    """Identities Robin (Ops) and Robin (Sales), whose names share a key, each created one.
 
     The name as one of them is written, its annotation's spaces aside, keeps its issue,
     as in plan 042; Robin alone, which could be either, is refused naming both.
     """
-    ops = PersonRole(role="creator", name="Robin (Ops)", account="acct-0005")
-    sales = PersonRole(role="creator", name="Robin (Sales)", account="acct-0006")
+    ops = Mention(role="creator", name="Robin (Ops)", identity="atlassian:acct-0005")
+    sales = Mention(role="creator", name="Robin (Sales)", identity="atlassian:acct-0006")
     library = built(
         tmp_path,
         [
@@ -923,13 +923,13 @@ def test_a_name_written_as_one_of_several_persons_writes_it_keeps_that_person(
 def test_a_bare_name_of_several_persons_is_refused_though_one_writes_it_so(
     tmp_path: Path,
 ) -> None:
-    """Accounts Alex (Ops) and Alex (Sales), beside the unlinked transcripts' Alex.
+    """Identities Alex (Ops) and Alex (Sales), beside the unlinked transcripts' Alex.
 
     Alex could be any of the three, so it is refused listing each; Alex (Ops) is the
-    account that alone writes it so.
+    identity that alone writes it so.
     """
-    ops = PersonRole(role="author", name="Alex (Ops)", account="acct-0010")
-    sales = PersonRole(role="author", name="Alex (Sales)", account="acct-0011")
+    ops = Mention(role="author", name="Alex (Ops)", identity="atlassian:acct-0010")
+    sales = Mention(role="author", name="Alex (Sales)", identity="atlassian:acct-0011")
     fronts = (
         *PERSONS,
         page("300002", "Ops runbook", people=(ops,)),
@@ -965,8 +965,8 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
 ) -> None:
     """Plan 043, criterion 6, the newest first: Robin's names and how each joined.
 
-    Robin's account is named as on PAY-1, its newest document; its names are written by
-    the account, by name in the meetings, and as the review's speaker. The documents by
+    Robin's identity is named as on PAY-1, its newest document; its names are written by
+    the identity, by name in the meetings, and as the review's speaker. The documents by
     role and by source, the most first; the unlinked Robin, perhaps the same, with the
     alias that would join them. Each hit's line of who and when ends with Robin's roles
     there, a commenter's with the comments' count and the last day.
@@ -979,8 +979,8 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
             " worklog 4, jira 2, confluence 1; last updated 2026-10-21."
         ),
         (
-            "Names: Robin Example, Robin Sample by its account; Robin Example, robin EXAMPLE"
-            " by name; Robin as a speaker, by the meeting of each transcript."
+            "Names: Robin Example, Robin Sample by its identity; Robin Example, robin EXAMPLE"
+            " by name; Robin by attendance."
         ),
         (
             f"Perhaps the same, not joined: {ROBIN_ALONE};"
@@ -999,16 +999,16 @@ def test_a_person_s_answer_opens_with_who_they_are_and_each_hit_ends_with_their_
     ]
 
 
-def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
+def test_a_one_word_name_of_an_identity_is_never_shown_as_perhaps_the_same(
     tmp_path: Path,
 ) -> None:
-    """With an account named Robin, one word, the review's speaker Robin is ambiguous.
+    """With an identity named Robin, one word, the review's speaker Robin is ambiguous.
 
     It is then a person by name alone, as is the planning's; but an alias of Robin would
-    also take the name from that account, which the unlinked transcript's Robin joins:
+    also take the name from that identity, which the unlinked transcript's Robin joins:
     the answer narrowed to Robin Example suggests none.
     """
-    robin = PersonRole(role="author", name="Robin", account="acct-0004")
+    robin = Mention(role="author", name="Robin", identity="atlassian:acct-0004")
     library = built(
         tmp_path,
         [(front, None) for front in (*PERSONS, issue("PAY-3", "Ledger audit", people=(robin,)))],
@@ -1020,8 +1020,8 @@ def test_a_one_word_name_of_an_account_is_never_shown_as_perhaps_the_same(
     assert sorted(refs(alone)) == ["t-20261020-1", "t-20261020-2"]
 
 
-# An account named Robin, one word, as the site may name a colleague.
-ROBIN_ACCOUNT = PersonRole(role="author", name="Robin", account="acct-0004")
+# An identity named Robin, one word, as the site may name a colleague.
+ROBIN_ACCOUNT = Mention(role="author", name="Robin", identity="atlassian:acct-0004")
 
 
 @pytest.mark.parametrize(
@@ -1029,15 +1029,15 @@ ROBIN_ACCOUNT = PersonRole(role="author", name="Robin", account="acct-0004")
     [((), [ROBIN_ALONE]), ((issue("PAY-3", "Ledger audit", people=(ROBIN_ACCOUNT,)),), [])],
     ids=["no account named Robin", "an account named Robin"],
 )
-def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
+def test_a_speaker_whom_an_identity_holds_is_never_shown_as_perhaps_the_same(
     tmp_path: Path, extra: tuple[FrontMatter, ...], perhaps: list[str]
 ) -> None:
-    """An unlinked transcript's Robin: a name alone, or the account named Robin's by name.
+    """An unlinked transcript's Robin: a name alone, or the identity named Robin's by name.
 
-    A person of an account is not one by name alone, and an alias of Robin would take
-    the speaker from that account: Robin Example's answer offers Robin only without it.
+    A person of an identity is not one by name alone, and an alias of Robin would take
+    the speaker from that identity: Robin Example's answer offers Robin only without it.
     """
-    example = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    example = Mention(role="author", name="Robin Example", identity="atlassian:acct-0001")
     documents = (
         page("300001", "Ledger runbook", people=(example,)),
         worklog("transcript", "t-20261022-1", "Pairing", "Robin"),
@@ -1052,6 +1052,33 @@ def test_a_speaker_whom_an_account_holds_is_never_shown_as_perhaps_the_same(
         if line.startswith("Perhaps the same")
     ]
     assert offered == perhaps
+
+
+def test_a_word_that_an_identity_writes_is_never_shown_after_an_alias_moves_it(
+    tmp_path: Path,
+) -> None:
+    """The identity named Robin, which an alias moves to Sam Sample's, still names Robin.
+
+    The unlinked transcript's Robin joins that person by the identity's name: an alias of
+    Robin would take the name from it, so Robin Example's answer suggests none.
+    """
+    example = Mention(role="author", name="Robin Example", identity="atlassian:acct-0001")
+    sam = Mention(role="author", name="Sam Sample", identity="atlassian:acct-0002")
+    documents = (
+        page("300001", "Ledger runbook", people=(example,)),
+        issue("PAY-1", "Ledger export", people=(sam,)),
+        issue("PAY-3", "Ledger audit", people=(ROBIN_ACCOUNT,)),
+        worklog("transcript", "t-20261022-1", "Pairing", "Robin"),
+    )
+    for front in documents:
+        write(tmp_path / "docs", front)
+    aliases = {"atlassian:acct-0004": "atlassian:acct-0002"}
+    build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
+    library = Library(SqliteIndex(tmp_path / "index.sqlite"), tmp_path / "docs")
+    block = parts(library.search(filters={"person": "Robin Example"}, sort="updated"))[1]
+    header = block.partition("\n\n")[0]
+    assert header.startswith("Person: Robin Example, ")
+    assert not [line for line in header.splitlines() if line.startswith("Perhaps the same")]
 
 
 def test_the_alias_suggested_writes_the_word_as_its_person_does(tmp_path: Path) -> None:
@@ -1095,7 +1122,7 @@ def test_no_alias_is_suggested_that_would_join_persons_kept_apart(tmp_path: Path
     An alias of the unlinked transcript's Robin would join both to Robin Example too:
     the answer narrowed to Robin Example suggests none.
     """
-    robin = PersonRole(role="author", name="Robin Example", account="acct-0001")
+    robin = Mention(role="author", name="Robin Example", identity="atlassian:acct-0001")
     library = built(
         tmp_path,
         [
@@ -1351,28 +1378,28 @@ def test_status_says_what_the_index_holds(varied: Library) -> None:
         (
             {},
             (
-                "people: 8, 1 in more than one source, 5 by name alone;"
-                ' names of several accounts: "Sam Sample" (3)'
+                "persons: 8, 1 in more than one source, 5 by name alone;"
+                ' names of several identities: "Sam Sample" (3)'
             ),
         ),
         (
             {"Sam Sample": SAM_3},
             (
-                "people: 7, 2 in more than one source, 4 by name alone;"
-                ' names of several accounts: "Sam Sample" (2)'
+                "persons: 7, 2 in more than one source, 4 by name alone;"
+                ' names of several identities: "Sam Sample" (2)'
             ),
         ),
     ],
 )
-def test_status_counts_the_persons_and_names_those_of_several_accounts(
+def test_status_counts_the_persons_and_names_those_of_several_identities(
     tmp_path: Path, aliases: dict[str, str], line: str
 ) -> None:
     """Plan 043, criterion 7, over the mirror of PERSONS alone.
 
-    Robin's account alone is in three sources; five persons are names alone. Sam Sample
-    is two accounts and, without aliases, the stand-up's name alone; the alias to the
-    account of PAY-2 gives it the stand-up and its Sam too, in two sources. Robin and
-    Sam, a name of no account, are never listed.
+    Robin's identity alone is in three sources; five persons are names alone. Sam Sample
+    is two identities and, without aliases, the stand-up's name alone; the alias to the
+    identity of PAY-2 gives it the stand-up and its Sam too, in two sources. Robin and
+    Sam, a name of no identity, are never listed.
     """
     for front in PERSONS:
         write(tmp_path / "docs", front)
@@ -1381,10 +1408,10 @@ def test_status_counts_the_persons_and_names_those_of_several_accounts(
     assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
 
 
-def test_status_names_five_names_of_several_accounts_then_how_many_more(
+def test_status_names_five_names_of_several_identities_then_how_many_more(
     tmp_path: Path,
 ) -> None:
-    """Six names of two accounts each, the most held first, ties by name; one of one account.
+    """Six names of two identities each, the most held first, ties by name; one of one identity.
 
     Beside the fillers' A Person, a name alone.
     """
@@ -1393,7 +1420,9 @@ def test_status_names_five_names_of_several_accounts_then_how_many_more(
             f"PROJ-{number}",
             "Broker",
             people=(
-                PersonRole(role="author", name=f"Person {number // 2}", account=f"a-{number}"),
+                Mention(
+                    role="author", name=f"Person {number // 2}", identity=f"atlassian:a-{number}"
+                ),
             ),
         )
         for number in range(2, 15)
@@ -1401,7 +1430,7 @@ def test_status_names_five_names_of_several_accounts_then_how_many_more(
     library = built(tmp_path, [(front, None) for front in fronts])
     shown = ", ".join(f'"Person {number}" (2)' for number in range(1, 6))
     assert (
-        f"\npeople: 14, 0 in more than one source, 1 by name alone; names of several accounts:"
+        f"\npersons: 14, 0 in more than one source, 1 by name alone; names of several identities:"
         f" {shown}, and 1 more\n"
     ) in parts(library.status())[1]
 

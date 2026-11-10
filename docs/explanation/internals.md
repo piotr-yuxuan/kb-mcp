@@ -42,7 +42,7 @@ flowchart LR
 | `fetch` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `prepare` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
 | `prepare`, of the work log | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed but the old one of a document written again under another title's path |
-| `index` | the index; the mirror, each file digested and those changed read; the user's alias file, if any | `<data>/index.sqlite`, only when something changed | the index built aside, what did not change copied from the old, then renamed into place under the index's lock | the file is skipped and named; a name that could be several people is joined to none, and named; with an alias file refused, the old index stays |
+| `index` | the index; the mirror, each file digested and those changed read; the user's alias file, if any | `<data>/index.sqlite`, only when something changed | the index built aside, what did not change copied from the old, then renamed into place under the index's lock | the file is skipped and named; a name that could be several persons is the person by name of its key, and named; with an alias file refused, the old index stays |
 | `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its chunks or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector cache pruned under its own lock, its deletions one transaction | a chunk refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
@@ -255,10 +255,10 @@ chunk that the index lacks
   aliases of `<data>/aliases.toml`, which `index` reads first, before the mirror
   ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); the
   persons and their names go into tables of their own, which the filters by person read.
-  A transcript's meetings, which a speaker may join by, are the meetings that its
-  `summary` links name, read by their source and id; the join is a span of its own.
-  The join is whole at each write: one account indexed late can make a name of the work
-  log ambiguous
+  A document's summaries, which a participant may join by, are the documents that its
+  `summary` links name in its source, read by their source and id; the join is a span
+  of its own. The join is whole at each write: one identity indexed late can make a name
+  of the work log ambiguous
   ([sources](sources.md#one-person-across-sources) says why persons are joined so).
   `embed` joins nothing.
 - **One document's failure**, a file not UTF-8, front matter refused, or a second

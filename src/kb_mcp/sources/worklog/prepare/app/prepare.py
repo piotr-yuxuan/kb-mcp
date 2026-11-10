@@ -33,7 +33,7 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, PersonRole, Problem
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, Problem
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -273,7 +273,7 @@ def prepare_worklog(
         task("work-log documents", len(read.documents)) as built,
     ):
         for document in built.each(read.documents, lambda one: one.title):
-            typed = {"kb_mcp.kind": document.type}
+            typed = {"kb_mcp.type": document.type}
             name = revision(converter, document.text)
             old, body = kept.get(document.id, (None, ""))
             began = time.perf_counter()
@@ -313,7 +313,7 @@ def prepare_worklog(
                 issue_type=None,
                 labels=tuple(one_line(label) for label in document.labels),
                 people=tuple(
-                    PersonRole(role=PARTICIPANT, name=name)
+                    Mention(role=PARTICIPANT, name=name)
                     for name in dict.fromkeys(one_line(each) for each in document.people)
                     if name
                 ),
@@ -333,7 +333,7 @@ def prepare_worklog(
                 path=str(path),
                 id=document.id,
                 title=document.title,
-                kind=document.type,
+                type=document.type,
                 outcome=outcome,
             )
     ends = {matter.id for matter, _ in ready.values()} | kept.keys()

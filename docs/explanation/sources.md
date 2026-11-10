@@ -266,7 +266,7 @@ name beginning with `_` or `.` on their path. A mirror that the program wrote ho
 documents as under the patterns of three sources that it replaced; a stray `.md` file is
 now read, and the index reports it as a file without front matter. It yields them sorted by
 path, and search breaks its ties by path, so one thing served follows that order alone: where
-two spellings of one person tie, on one account's documents of one second or by their counts,
+two spellings of one person tie, on one identity's documents of one second or by their counts,
 the first in the order of the documents names the person
 ([`joined`](../../src/kb_mcp/search/domain/people.py)). So such a name can change at the first
 index since the rule.
@@ -520,23 +520,27 @@ when the user moves a transcript under `archive/`, and the move keeps its id.
 
 ## One person across sources
 
-Each source names people its own way. Confluence and Jira name an account, under the
-name that the site gave when the document was fetched, so that a colleague renamed
-between two fetches is two names of one account. The work log names nobody by account:
+Each source names people its own way. Confluence and Jira name an identity, the
+account id that the issuer `atlassian` gave, under the name that the site gave when the
+document was fetched, so that a colleague renamed between two fetches is two names of
+one identity. The work log names nobody by identity:
 a meeting as its `:PARTICIPANTS:` writes them, often with an annotation, and a
 transcript as its caption tool heard its speakers, often by a first name. The files keep
 every name as written, and each build of the index joins them into persons
 ([`joined`](../../src/kb_mcp/search/domain/people.py)), so that an agent
 asks about one colleague once, whichever source named them.
 
-The join takes what the sources and the user say, and guesses nothing. An account is a
-person under each of its names, and two accounts are two persons, even of one name: the
-site says they are two. A name without an account goes, by the first rule that answers
+The join takes what the sources and the user say, and guesses nothing, by the rules of
+[the concepts](../reference/concepts.md#person). An identity is a person under each of
+its names, and two identities are two persons, even of one name, unless the user's
+alias of one names the other: the origin says they are two. A name without an identity
+goes, by the first rule that answers
 ([`RULES`](../../src/kb_mcp/search/domain/people.py)), to the person
-that the user's alias names; to the one account with a name of its key; for a
-transcript's speaker, to the one participant of the meetings that the transcript links
-to whose name's first word is the speaker's, whole
-([`by_meeting`](../../src/kb_mcp/search/domain/people.py)), "Sam" to the
+that the user's alias names; to the one identity with a name of its key; for a
+participant of a document that links by `summary` to others of its source, as a
+transcript links to its meeting, to the one participant of those whose name's first
+word is its own, whole
+([`by_attendance`](../../src/kb_mcp/search/domain/people.py)), "Sam" to the
 stand-up's "Sam Sample", but "Rob" to no "Robin Example"; else it is a person by name
 alone, one for every name of its key. A key leaves out case, accents, runs of spaces
 and a trailing part in brackets
@@ -546,9 +550,10 @@ such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps the
 ([`Joining.compared_key`](../../src/kb_mcp/search/domain/people.py)), as the
 user or the site wrote them apart. It cannot tell such a part from a note, so that two
 notes of one name part it too, and the build says so. A name that could be several
-persons, the name of two accounts, a speaker whose word is two participants' first,
-or one whose meeting names another than the one account of its name, is given to none of
-them, and the build says so, for the user to settle by an alias.
+persons, the name of two identities, a participant whose word is two participants'
+first, or one whose summaries name another than the one identity of its name, goes to
+the person by name of its key, and the build says so, for the user to settle by an
+alias.
 
 A speaker is joined within its meeting alone, as the user wrote that meeting's
 participants for it: there, one "Sam" is one person, and no alias, written for a name
@@ -556,7 +561,7 @@ anywhere, takes the speaker from that person
 ([`by_alias`](../../src/kb_mcp/search/domain/people.py)). Over the
 whole mirror, a new colleague of the same first name would move the old one's meetings
 without a word. Outside it, an answer narrowed to a person shows a one-word name alone
-as perhaps the same, with the alias that would join them, unless an account is named
+as perhaps the same, with the alias that would join them, unless an identity is named
 by that word, from which the alias would take it too, or annotations keep that word's
 names apart, which the alias would join as well
 ([`about`](../../src/kb_mcp/mcp/app/tools.py)). The aliases are a file
@@ -566,17 +571,17 @@ than a setting, which holds no mapping of names and is logged by every run.
 
 Persons live in the index alone, joined whole at each build
 ([`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py)):
-one account fetched late can make a name of the work log ambiguous, so persons cannot
+one identity fetched late can make a name of the work log ambiguous, so persons cannot
 be patched one document at a time. The files, which other programs read, name people as
-their sources write them. A person's id, `p-` and a digest of its account id or its
+their sources write them. A person's id, `p-` and a digest of its identity or its
 name's key ([`person_id`](../../src/kb_mcp/search/domain/people.py)),
-lets an agent choose between two namesakes without seeing an account id; it hides
-nothing, since hashing a known account id gives it. Every filter by person then means a
+lets an agent choose between two namesakes without seeing an identity; it hides
+nothing, since hashing a known identity gives it. Every filter by person then means a
 person ([`PERSON_FILTERS`](../../src/kb_mcp/mcp/app/tools.py)): `person`
 in any role, `author`, `creator`, `assignee`, `commenter` and `participant` in theirs,
 under any of the person's names or by id
 ([`who`](../../src/kb_mcp/mcp/app/tools.py)). [The
-trade-offs](trade-offs.md#persons-joined-by-account-then-exact-name) give what this
+trade-offs](trade-offs.md#persons-joined-by-identity-then-exact-name) give what this
 costs.
 
 ## Untrusted, local

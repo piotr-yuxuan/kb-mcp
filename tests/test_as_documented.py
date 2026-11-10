@@ -42,7 +42,7 @@ from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
 from tests.collector import Collector, collecting
 from tests.composed import MODEL
 from tests.endpoint import URL, Reranks, Scripted, nothing_listening, serving, tiny
-from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, write
+from tests.mirrors import MOMENT, PERSONS, fillers, issue, page, worklog_document, write
 from tests.reference import README, Emitted, documented, operations, undocumented
 from tests.samples import v2_space
 from tests.test_evaluate import GOLDEN
@@ -308,7 +308,8 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
     """By words alone, in the hybrid mode too: a file skipped, built whole; then updated.
 
     The mirror holds a page, one with a front matter refused, and the people of PERSONS,
-    two of whose names could be several persons, with an alias whose key none holds. An
+    two of whose names could be several persons, with an alias whose key none holds, and
+    two transcripts whose summaries link each other, which neither can be. An
     address off this machine, in the settings, is never asked. The update waits for the
     index's lock, then finds the index written by another run, and starts again; a run
     with nothing changed writes nothing; then no mirror.
@@ -317,6 +318,8 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
     fillers(data / "docs", 5)
     for front in PERSONS:
         write(data / "docs", front)
+    for one, other in (("t-20261022-1", "t-20261022-2"), ("t-20261022-2", "t-20261022-1")):
+        write(data / "docs", worklog_document("transcript", one, "Loop", ("Alex",), other))
     (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")

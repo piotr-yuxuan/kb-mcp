@@ -12,7 +12,7 @@ from kb_mcp.mcp.app.responses import LABELS as REFS
 from kb_mcp.mcp.app.responses import NAMES, cut
 from kb_mcp.mcp.app.responses import page as fitted
 from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library, UnanswerableError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, RELATIONS, ROLES, SOLE, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, RELATIONS, ROLES, SOLE, Link, Mention
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
@@ -185,10 +185,10 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     worklog = matter.get("source") == "worklog"
     roles = [role for role in ROLES if (role == PARTICIPANT) == worklog]
     people = tuple(
-        PersonRole(
+        Mention(
             role=role,
             name=f"{role} {number:02} " + "é" * 250,
-            account=None if worklog else f"account-{number}",
+            identity=None if worklog else f"atlassian:account-{number}",
             at=(MOMENT,) if role == "commenter" else (),
         )
         for role in roles
@@ -219,7 +219,7 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     assert continuation(answer) is not None
 
 
-# Two more names of one account than a person's answer names, each beginning with a
+# Two more names of one identity than a person's answer names, each beginning with a
 # word of its own, longer than a name shown and not ASCII; each word alone a work-log
 # participant, a person by name alone perhaps the same.
 SPELLINGS = tuple(f"Wörd{number:02}{'é' * 60} " + "長" * 200 for number in range(NAMES + 2))
@@ -228,13 +228,13 @@ SPELLINGS = tuple(f"Wörd{number:02}{'é' * 60} " + "長" * 200 for number in ra
 def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path: Path) -> None:
     """The hits and passages make room for the person that opens the answer.
 
-    One account wrote each of the large mirror's pages under another name, so the
+    One identity wrote each of the large mirror's pages under another name, so the
     person names as many names, and as many people perhaps the same, as it shows.
     """
     pages = large_documents()[1 : len(SPELLINGS) + 1]
     documents: list[tuple[FrontMatter, str | None]] = []
     for number, ((front, body), name) in enumerate(zip(pages, SPELLINGS, strict=True)):
-        author = PersonRole(role="author", name=name, account="acct-0001")
+        author = Mention(role="author", name=name, identity="atlassian:acct-0001")
         word = name.split()[0]
         meeting = worklog_document("meeting", f"m-20261020-{number:02}", "Gamma", (word,))
         documents += [(replace(front, people=(author,)), body), (meeting, None)]
@@ -244,7 +244,7 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
     header = parts(answer)[1].partition("\n\n")[0]
     assert len(header.splitlines()) == len(["person", "names", *range(NAMES)])
     assert header.splitlines()[1].count("Wörd") == NAMES
-    assert f" by its account; {len(SPELLINGS) - NAMES} more.\n" in header
+    assert f" by its identity; {len(SPELLINGS) - NAMES} more.\n" in header
     answers = [
         answer,
         library.search("gamma", filters=person),
@@ -257,9 +257,9 @@ def test_a_person_at_their_largest_leaves_the_answer_within_the_budget(tmp_path:
 
 
 def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> None:
-    """Two hundred accounts of one name, as a site names those who left: NAMES are listed.
+    """Two hundred identities of one name, as a site names those who left: NAMES are listed.
 
-    Those of the most documents first, the account of two issues, then by id; then how
+    Those of the most documents first, the identity of two issues, then by id; then how
     many more, and the refusal stays within the budget.
     """
     accounts = 200
@@ -267,7 +267,7 @@ def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> 
     documents: list[tuple[FrontMatter, str | None]] = []
     for number in range(1, accounts + 2):
         account = f"acct-{number % accounts:04}"  # acct-0001 writes the first and the last
-        author = PersonRole(role="author", name="Former user", account=account)
+        author = Mention(role="author", name="Former user", identity=f"atlassian:{account}")
         documents.append((issue(f"PAY-{number}", "Ledger", people=(author,)), None))
     library = built(tmp_path, documents)
     with pytest.raises(UnanswerableError) as refused:

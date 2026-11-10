@@ -12,15 +12,15 @@ from typing import TYPE_CHECKING
 import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import ASSETS
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.kernel.names import ASSETS, ATLASSIAN_ISSUER
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
     from pathlib import Path
 
 FRONT_MATTER_KEYS = list(FrontMatter.model_fields)
-PERSON = list(PersonRole.model_fields)
+PERSON = list(Mention.model_fields)
 LINK = list(Link.model_fields)
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
@@ -34,10 +34,10 @@ DOCUMENT_GLOBS = ("**/*.md",)
 class Dumper(yaml.SafeDumper):
     """YAML's safe dumper, which writes each person and link of the front matter on one line."""
 
-    def represent_person(self, person: PersonRole) -> yaml.MappingNode:
-        """Write a person in flow style, its fields in ``PersonRole``'s order, as ``load`` asks.
+    def represent_person(self, person: Mention) -> yaml.MappingNode:
+        """Write a person in flow style, its fields in ``Mention``'s order, as ``load`` asks.
 
-        A field without a value, an account of None or no times, is left out, as ``load``
+        A field without a value, an identity of None or no times, is left out, as ``load``
         reads its absence.
         """
         values: dict[str, object] = {}
@@ -55,7 +55,7 @@ class Dumper(yaml.SafeDumper):
         return self.represent_mapping("tag:yaml.org,2002:map", values, flow_style=True)
 
 
-Dumper.add_representer(PersonRole, Dumper.represent_person)
+Dumper.add_representer(Mention, Dumper.represent_person)
 Dumper.add_representer(Link, Dumper.represent_link)
 
 
@@ -90,8 +90,11 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     """Read a document written by ``dump``: its front matter and its body.
 
     Any other key, order or type is refused, naming ``path`` and the key, as is a
-    person's field other than ``PersonRole``'s, out of their order, or an empty ``at``,
-    and a link's field other than ``Link``'s, or out of their order.
+    person's field other than ``Mention``'s, out of their order, or an empty ``at``,
+    and a link's field other than ``Link``'s, or out of their order. A person's
+    ``account``, which plan 041's files hold in place of ``identity`` and the Atlassian
+    connectors alone wrote, reads as an identity of ATLASSIAN_ISSUER's: until every file
+    has been prepared once after the upgrade; a later plan removes it.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
     if not text.startswith(OPENING) or end < 0:
@@ -111,7 +114,9 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     fields = Fields(values, path)
     people = []
     for person in fields.objects("people"):
-        in_order(person, PERSON)
+        held = "account" if "account" in person.value else "identity"
+        in_order(person, [held if name == "identity" else name for name in PERSON])
+        value = person.text(held) if held in person.value else None
         # The times go through a Fields of their own, keyed at[0], at[1] and so on, so
         # that Fields.time reads each strictly and a refusal names its place, as objects
         # names an entry's. An empty list, which dump never writes, would read as no
@@ -123,10 +128,10 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         times = Fields({f"at[{index}]": text for index, text in enumerate(at or ())}, person.path)
         with person.refusals():
             people.append(
-                PersonRole(
+                Mention(
                     role=person.text("role"),
                     name=person.text("name"),
-                    account=person.text("account") if "account" in person.value else None,
+                    identity=f"{ATLASSIAN_ISSUER}:{value}" if held == "account" else value,
                     at=tuple(times.time(name) for name in times.value),
                 )
             )

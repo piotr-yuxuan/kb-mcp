@@ -27,6 +27,11 @@ REVISION_NAME = re.compile(r"[A-Za-z0-9._-]+")
 SPACE_KEY = re.compile(r"~?[A-Za-z0-9]+")
 PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
 ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9_]+-[0-9]+")
+# A mention's identity: its issuer, a colon, then the value that the issuer gave, which
+# may hold colons itself.
+IDENTITY = re.compile(r"[a-z][a-z0-9-]*:.+")
+# The issuer of the identities of every Atlassian cloud site, Confluence's and Jira's.
+ATLASSIAN_ISSUER = "atlassian"
 # An embedding model's name, as the endpoint names it: the settings and the command
 # line check it alike.
 MODEL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")

@@ -172,9 +172,9 @@ What this program's MCP server adds to the files, and qmd 2.8.3 does not:
 
 - **Filters.** By source, space, project, type, status, label, dates and people: qmd
   keeps to a collection, and reads the front matter as words.
-- **Persons.** The files name each person as each source writes them: an account under
+- **Persons.** The files name each person as each source writes them: an identity under
   each name that the site gave it, a speaker by a first name. This program's index
-  joins those names into persons, by account, by exact name, a speaker by its meeting,
+  joins those names into persons, by identity, by exact name, a speaker by attendance,
   and by your `aliases.toml` ([the work log's
   how-to](work-log.md#7-join-a-speaker-to-a-colleague)), and a filter by person keeps
   their documents under any of their names. qmd meets each spelling apart, as a word.
@@ -196,6 +196,6 @@ search by meaning (MRR@10 0.674 both), and its default `query`, with embeddingge
 0.588 against 0.639 for this program's default, words and meaning together: a
 difference that the trial could not tell from chance.
 
-The names and account ids of the front matter are personal data
+The names and identities of the front matter are personal data
 ([people](../reference/data-layout.md#people)): qmd's index holds them too, so delete
 `~/.cache/qmd/index.sqlite` with the mirror.

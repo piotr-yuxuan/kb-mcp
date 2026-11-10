@@ -1,8 +1,9 @@
-"""Persons: names joined by account, alias, exact name and meeting, as plan 043 rules.
+"""Persons: mentions joined by identity, alias, name key, attendance and name.
 
-The names are made up: Robin Example, an account under two names; Sam Sample, the name
-of two accounts; Alex Example, a name alone; the work log's first names. Every expected
-person is written by hand from the plan's rules, its id from the plan's definition. The
+The rules are those of the concepts page, as plans 043 and 058 build them. The names are
+made up: Robin Example, an identity under two names; Sam Sample, the name of two
+identities; Alex Example, a name alone; the work log's first names. Every expected
+person is written by hand from the rules, its id from the plans' definition. The
 alias file is read from a scratch folder, and refused by the plan's list; ``index`` reads
 it from a scratch data directory, over the mirror of ``tests.mirrors.PERSONS``.
 """
@@ -11,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import sqlite3
 from contextlib import closing
 from copy import replace
@@ -23,9 +23,11 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from kb_mcp.search.domain.people import (
+    ITSELF,
     NOBODY,
     SEVERAL,
     UNHELD,
+    UNOWNED,
     Ambiguity,
     Joined,
     Joining,
@@ -33,14 +35,14 @@ from kb_mcp.search.domain.people import (
     PersonRow,
     Spelling,
     by_alias,
-    by_meeting,
+    by_attendance,
     by_name,
     joined,
     name_key,
     written_key,
 )
 from tests.endpoint import nothing_listening
-from tests.mirrors import PERSONS, write
+from tests.mirrors import PERSONS, worklog_document, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
 
@@ -63,9 +65,9 @@ def day(number: int) -> datetime:
 
 
 def named(document: int, name: str) -> PersonRow:
-    """Give a row of the work log's: a participant or a speaker, without an account."""
+    """Give a row of the work log's: a participant or a speaker, without an identity."""
     return PersonRow(
-        document=document, role="participant", name=name, account=None, updated=day(20)
+        document=document, role="participant", name=name, identity=None, updated=day(20)
     )
 
 
@@ -83,14 +85,32 @@ LINKED, UNLINKED, OTHER_UNLINKED, PLANNED, STOOD = 21, 22, 23, 24, 25
 LINKS = {LINKED: {REVIEW}, PLANNED: {PLANNING}, STOOD: {STAND_UP}}
 ACCOUNTS = (
     PersonRow(
-        document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)
+        document=1,
+        role="author",
+        name="Robin Example",
+        identity="atlassian:acct-0001",
+        updated=day(20),
     ),
     PersonRow(
-        document=2, role="creator", name="Robin Sample", account="acct-0001", updated=day(21)
+        document=2,
+        role="creator",
+        name="Robin Sample",
+        identity="atlassian:acct-0001",
+        updated=day(21),
     ),
-    PersonRow(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
     PersonRow(
-        document=4, role="commenter", name="Sam Sample", account="acct-0003", updated=day(19)
+        document=3,
+        role="author",
+        name="Sam Sample",
+        identity="atlassian:acct-0002",
+        updated=day(19),
+    ),
+    PersonRow(
+        document=4,
+        role="commenter",
+        name="Sam Sample",
+        identity="atlassian:acct-0003",
+        updated=day(19),
     ),
 )
 ROWS = (
@@ -116,14 +136,14 @@ PERSONS_OF_ROWS = (
     ROBIN,
     SAM_2,
     SAM_3,
-    ROBIN,  # the one account of its key
-    SAM_ALONE,  # the key of two accounts: ambiguous, a name alone
+    ROBIN,  # the one identity of its key
+    SAM_ALONE,  # the key of two identities: ambiguous, a name alone
     ALEX_EXAMPLE,
     ROBIN,
     ALEX_EXAMPLE,
     ROBIN,
     ROBIN_OTHER,
-    ROBIN,  # by its meeting, whose Robin Example is Robin's account
+    ROBIN,  # by its meeting, whose Robin Example is Robin's identity
     ALEX_EXAMPLE,  # by its meeting, a name alone
     ROBIN_ALONE,  # no meeting
     ALEX,
@@ -134,14 +154,56 @@ PERSONS_OF_ROWS = (
 
 
 def account(person: str, *names: str) -> Person:
-    """Give an account's person: its spellings are its account's names alone."""
+    """Give an identity's person: its spellings are its identity's names alone."""
     return Person(
         id=person,
         name=names[0],
         spellings=tuple(
-            Spelling(name=name, name_key=name_key(name), how="account") for name in names
+            Spelling(name=name, name_key=name_key(name), how="identity") for name in names
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("identity", "former"),
+    [
+        ("atlassian:acct-0001", "p-32fd96c11bada084"),
+        ("atlassian:557058:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", "p-73e4d5e8d3110c05"),
+    ],
+    ids=["an account id", "an account id with a colon"],
+)
+def test_an_atlassian_identity_keeps_the_id_that_its_account_had(
+    identity: str, former: str
+) -> None:
+    """Plan 058, criterion 2: each literal is the id that the former code gave the account.
+
+    Computed by ``person_id("account", value)`` before identities had an issuer.
+    """
+    row = PersonRow(document=1, role="author", name="Robin", identity=identity, updated=day(20))
+    assert joined((row,), {}, {}).of[row] == former
+
+
+@pytest.mark.parametrize(
+    "identities",
+    [("atlassian:acct-0001", "elsewhere:acct-0001"), ("atlassian:qm:5f1a", "qm:5f1a")],
+    ids=["an equal value", "an Atlassian value that writes the other's issuer"],
+)
+def test_another_issuer_s_identity_is_another_person(identities: tuple[str, str]) -> None:
+    """Two issuers' identities never collide: the other's hashes under its own anchor.
+
+    An Atlassian account id may hold a colon, so that ``atlassian:qm:5f1a`` holds the
+    text of the issuer ``qm``'s ``5f1a``; the former hashes as an account id did.
+    """
+    rows = tuple(
+        PersonRow(document=1, role="commenter", name="Robin", identity=identity, updated=day(20))
+        for identity in identities
+    )
+    result = joined(rows, {}, {})
+    atlassian, other = identities
+    assert [result.of[row] for row in rows] == [
+        anchored(f"account\n{atlassian.removeprefix('atlassian:')}"),
+        anchored(f"identity\n{other}"),
+    ]
 
 
 def test_a_key_ignores_case_accents_and_spaces() -> None:
@@ -216,8 +278,8 @@ def test_by_alias_gives_a_name_the_person_its_alias_means() -> None:
     assert by_alias(named(UNLINKED, "Robin Other"), joining) is None
 
 
-def test_by_name_joins_a_name_to_the_one_account_of_its_key() -> None:
-    """Rule 3 alone: any name of one account joins it; the name of two is ambiguous."""
+def test_by_name_joins_a_name_to_the_one_identity_of_its_key() -> None:
+    """Rule 3 alone: any name of one identity joins it; the name of two is ambiguous."""
     joining = Joining(ACCOUNTS, {}, {})
     assert by_name(named(STAND_UP, "robin  EXAMPLE"), joining) == ROBIN
     assert by_name(named(STAND_UP, "Robin Sample"), joining) == ROBIN
@@ -227,7 +289,7 @@ def test_by_name_joins_a_name_to_the_one_account_of_its_key() -> None:
     assert by_name(named(STAND_UP, "Alex Example"), joining) is None
 
 
-def test_by_meeting_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -> None:
+def test_by_attendance_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -> None:
     """Rule 4 alone: a one-word speaker, the whole first word of its meetings' participants.
 
     The participants' persons are given, as the other rules would have joined them: two
@@ -246,15 +308,36 @@ def test_by_meeting_joins_a_speaker_to_the_one_person_whose_first_word_it_is() -
     joining = Joining(meetings, links, {})
     persons = (ROBIN, ALEX_EXAMPLE, ROBIN, ROBIN_OTHER, ROBIN, ROBIN)
     joining.persons |= dict(zip(meetings, persons, strict=True))
-    assert by_meeting(named(LINKED, "robin"), joining) == ROBIN
-    assert by_meeting(named(linked_to_offsite, "Robin"), joining) == ROBIN
-    assert by_meeting(named(PLANNED, "Robin"), joining) == Ambiguity(
+    assert by_attendance(named(LINKED, "robin"), joining) == ROBIN
+    assert by_attendance(named(linked_to_offsite, "Robin"), joining) == ROBIN
+    assert by_attendance(named(PLANNED, "Robin"), joining) == Ambiguity(
         name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})
     )
-    assert by_meeting(named(UNLINKED, "Robin"), joining) is None
-    assert by_meeting(named(LINKED, "Example"), joining) is None  # not a first word
-    assert by_meeting(named(LINKED, "Rob"), joining) is None  # a first word's start alone
-    assert by_meeting(named(LINKED, "Alex Example"), joining) is None  # not one word
+    assert by_attendance(named(UNLINKED, "Robin"), joining) is None
+    assert by_attendance(named(LINKED, "Example"), joining) is None  # not a first word
+    assert by_attendance(named(LINKED, "Rob"), joining) is None  # a first word's start alone
+    assert by_attendance(named(LINKED, "Alex Example"), joining) is None  # not one word
+
+
+def test_attendance_joins_participants_to_participants_alone() -> None:
+    """Rule 4 reads the role participant, never a document's type or another role.
+
+    A one-word author of a document whose summary names Robin Example as a participant
+    joins no one by attendance, nor does a one-word participant whose summary names
+    Robin Example as its author alone.
+    """
+    summary, summarised, authored, by_author = 31, 32, 33, 34
+    rows = (
+        named(summary, "Robin Example"),
+        replace(named(summarised, "Robin"), role="author"),
+        replace(named(authored, "Robin Example"), role="author"),
+        named(by_author, "Robin"),
+    )
+    joining = Joining(rows, {summarised: {summary}, by_author: {authored}}, {})
+    robin_example = anchored("name\nrobin example")
+    joining.persons |= {rows[0]: robin_example, rows[2]: robin_example}
+    assert by_attendance(rows[1], joining) is None
+    assert by_attendance(rows[3], joining) is None
 
 
 def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> None:
@@ -272,10 +355,10 @@ def test_a_speaker_whose_word_only_begins_a_participant_s_is_a_name_alone() -> N
 
 
 def test_every_name_joins_its_person_as_the_rules_say() -> None:
-    """Accounts, exact names, meetings and names alone, without aliases.
+    """Identities, exact names, meetings and names alone, without aliases.
 
-    Robin's account is one person under both names, named as on its newest document;
-    the two Sam Sample accounts are two, and the meeting's Sam Sample neither, reported;
+    Robin's identity is one person under both names, named as on its newest document;
+    the two Sam Sample identities are two, and the meeting's Sam Sample neither, reported;
     a meeting's Robin and Sam join by their meetings, as their participants joined;
     Alex is one person by name alone across two transcripts, as is Alex Example with or
     without its annotation, whose spellings tie, so the first document names it.
@@ -288,10 +371,12 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                         id=ROBIN,
                         name="Robin Sample",
                         spellings=(
-                            Spelling(name="Robin", name_key="robin", how="meeting"),
-                            Spelling(name="Robin Example", name_key="robin example", how="account"),
+                            Spelling(name="Robin", name_key="robin", how="attendance"),
+                            Spelling(
+                                name="Robin Example", name_key="robin example", how="identity"
+                            ),
                             Spelling(name="Robin Example", name_key="robin example", how="name"),
-                            Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+                            Spelling(name="Robin Sample", name_key="robin sample", how="identity"),
                             Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
                         ),
                     ),
@@ -301,7 +386,7 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                         id=SAM_ALONE,
                         name="Sam Sample",
                         spellings=(
-                            Spelling(name="Sam", name_key="sam", how="meeting"),
+                            Spelling(name="Sam", name_key="sam", how="attendance"),
                             Spelling(name="Sam Sample", name_key="sam sample", how="name"),
                         ),
                     ),
@@ -309,7 +394,7 @@ def test_every_name_joins_its_person_as_the_rules_say() -> None:
                         id=ALEX_EXAMPLE,
                         name="Alex Example (not in the header)",
                         spellings=(
-                            Spelling(name="Alex", name_key="alex", how="meeting"),
+                            Spelling(name="Alex", name_key="alex", how="attendance"),
                             Spelling(name="Alex Example", name_key="alex example", how="name"),
                             Spelling(
                                 name="Alex Example (not in the header)",
@@ -404,15 +489,19 @@ def test_two_notes_of_one_name_part_it_and_are_reported() -> None:
     )
 
 
-def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reported() -> None:
-    """Sam Sample's account, and two meetings writing Sam Sample with a note each.
+def test_two_notes_of_an_identity_s_name_part_it_from_the_identity_and_are_reported() -> None:
+    """Sam Sample's identity, and two meetings writing Sam Sample with a note each.
 
     Each note is a person by name alone, reported; the alias of the name to the
-    account's joins both to it, and nothing is reported then.
+    identity's joins both to it, and nothing is reported then.
     """
     rows = (
         PersonRow(
-            document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)
+            document=3,
+            role="author",
+            name="Sam Sample",
+            identity="atlassian:acct-0002",
+            updated=day(19),
         ),
         named(STAND_UP, "Sam Sample (not in the header)"),
         named(REVIEW, "Sam Sample (late)"),
@@ -451,8 +540,8 @@ def test_a_second_note_leaves_the_id_of_a_name_with_its_bare_spelling() -> None:
     assert [ambiguity.name for ambiguity in after.ambiguous] == ["Kim (not in the header)"]
 
 
-def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> None:
-    """Accounts Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
+def test_a_name_written_as_one_identity_s_annotated_name_joins_that_identity() -> None:
+    """Identities Robin (Ops) and Robin (Sales): the meeting's Robin (Ops) is the first.
 
     The site wrote the two names apart, as the user would have; a bare Robin could be
     either, is reported, and joins neither.
@@ -460,10 +549,18 @@ def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> 
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
         PersonRow(
-            document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)
+            document=5,
+            role="creator",
+            name="Robin (Ops)",
+            identity="atlassian:acct-0005",
+            updated=day(20),
         ),
         PersonRow(
-            document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)
+            document=6,
+            role="creator",
+            name="Robin (Sales)",
+            identity="atlassian:acct-0006",
+            updated=day(20),
         ),
         named(STAND_UP, "robin  (OPS)"),
         named(REVIEW, "Robin"),
@@ -473,8 +570,8 @@ def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> 
     assert result.ambiguous == (Ambiguity(name="Robin", persons=frozenset({ops, sales})),)
 
 
-def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> None:
-    """The meeting's Robin Example (Ops) is not the account Robin Example (Sales).
+def test_a_name_annotated_otherwise_than_its_one_identity_joins_no_identity() -> None:
+    """The meeting's Robin Example (Ops) is not the identity Robin Example (Sales).
 
     Two annotations of one name tell its persons apart, whoever wrote each: a name that
     could be two people is not joined by a guess.
@@ -484,7 +581,7 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
             document=5,
             role="creator",
             name="Robin Example (Sales)",
-            account="acct-0007",
+            identity="atlassian:acct-0007",
             updated=day(20),
         ),
         named(STAND_UP, "Robin Example (Ops)"),
@@ -494,14 +591,22 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
     assert result.ambiguous == ()
 
 
-def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None:
-    """Ties between an account's newest documents go to the first row in order."""
+def test_an_identity_named_on_two_documents_of_one_date_takes_the_first() -> None:
+    """Ties between an identity's newest documents go to the first row in order."""
     rows = (
         PersonRow(
-            document=2, role="author", name="Robin Sample", account="acct-0001", updated=day(20)
+            document=2,
+            role="author",
+            name="Robin Sample",
+            identity="atlassian:acct-0001",
+            updated=day(20),
         ),
         PersonRow(
-            document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)
+            document=1,
+            role="author",
+            name="Robin Example",
+            identity="atlassian:acct-0001",
+            updated=day(20),
         ),
     )
     assert joined(rows, {}, {}).persons[0].name == "Robin Example"
@@ -516,9 +621,9 @@ def test_a_name_alone_is_named_by_its_most_frequent_spelling_ties_to_the_first()
 
 
 def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
-    """With "Robin" = "Robin Example", every Robin without an account is Robin's account.
+    """With "Robin" = "Robin Example", every Robin without an identity is Robin's identity.
 
-    The review's transcript's Robin, whom its meeting gives Robin's account too, joins by
+    The review's transcript's Robin, whom its meeting gives Robin's identity too, joins by
     the alias, and the planning's, of two Robins, is no longer ambiguous.
     """
     result = joined(ROWS, LINKS, {"Robin": "Robin Example"})
@@ -526,7 +631,7 @@ def test_an_alias_joins_a_name_without_a_meeting_to_its_target() -> None:
     assert result.of[named(PLANNED, "Robin")] == ROBIN
     robin = next(person for person in result.persons if person.id == ROBIN)
     assert Spelling(name="Robin", name_key="robin", how="alias") in robin.spellings
-    assert Spelling(name="Robin", name_key="robin", how="meeting") not in robin.spellings
+    assert Spelling(name="Robin", name_key="robin", how="attendance") not in robin.spellings
     assert ROBIN_ALONE not in {person.id for person in result.persons}
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Sam Sample"]
     assert result.unused == ()
@@ -545,11 +650,11 @@ def test_an_alias_never_takes_a_speaker_its_meeting_gives_another() -> None:
     assert result.of[named(linked_to_retro, "Robin")] == ROBIN_OTHER
     assert result.of[named(UNLINKED, "Robin")] == ROBIN
     robin_other = next(person for person in result.persons if person.id == ROBIN_OTHER)
-    assert Spelling(name="Robin", name_key="robin", how="meeting") in robin_other.spellings
+    assert Spelling(name="Robin", name_key="robin", how="attendance") in robin_other.spellings
     assert result.unused == ()
 
 
-def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
+def test_an_alias_to_an_identity_s_id_settles_a_name_of_two_identities() -> None:
     """The meeting's Sam Sample joins acct-0003 and is no longer reported; Sam follows it.
 
     Sam, the speaker, joins by its meeting the person that the alias gave the meeting's
@@ -562,17 +667,17 @@ def test_an_alias_to_an_account_s_id_settles_a_name_of_two_accounts() -> None:
         id=SAM_3,
         name="Sam Sample",
         spellings=(
-            Spelling(name="Sam", name_key="sam", how="meeting"),
-            Spelling(name="Sam Sample", name_key="sam sample", how="account"),
+            Spelling(name="Sam", name_key="sam", how="attendance"),
             Spelling(name="Sam Sample", name_key="sam sample", how="alias"),
+            Spelling(name="Sam Sample", name_key="sam sample", how="identity"),
         ),
     )
     assert SAM_ALONE not in {person.id for person in result.persons}
     assert [ambiguity.name for ambiguity in result.ambiguous] == ["Robin"]
 
 
-def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_accounts_share_the_key() -> None:
-    """The stand-up's Sam Sample, of two accounts' name, is a person by name alone.
+def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_identities_share_the_key() -> None:
+    """The stand-up's Sam Sample, of two identities' name, is a person by name alone.
 
     Its id, which a refusal of Sam Sample lists, is a value as any person's: a meeting's
     S. Sample and an unlinked transcript's Sam join it, and no alias is unused.
@@ -585,14 +690,16 @@ def test_an_alias_to_a_name_alone_s_id_joins_it_even_where_accounts_share_the_ke
 
 
 def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
-    """Robin by name alone, the review's speaker, whom its meeting and an account dispute.
+    """Robin by name alone, the review's speaker, whom its meeting and an identity dispute.
 
-    One account is named Robin, yet the disputed speaker is a person by name alone: an
+    One identity is named Robin, yet the disputed speaker is a person by name alone: an
     alias of R. to its id joins it there.
     """
     rows = (
         *ROWS,
-        PersonRow(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        PersonRow(
+            document=5, role="author", name="Robin", identity="atlassian:acct-0004", updated=day(20)
+        ),
         named(UNLINKED, "R."),
     )
     result = joined(rows, LINKS, {"R.": ROBIN_ALONE})
@@ -602,9 +709,9 @@ def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
 
 
 def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
-    """Robin Example by name alone: every one of its names joins Robin's account.
+    """Robin Example by name alone: every one of its names joins Robin's identity.
 
-    As after an account fetched late, the id that its names had alone names nobody now;
+    As after an identity fetched late, the id that its names had alone names nobody now;
     the alias to it is unused, and changes nothing, as one to an id of none.
     """
     gone = anchored("name\nrobin example")
@@ -616,10 +723,172 @@ def test_an_alias_to_the_id_of_no_person_the_rows_make_names_nobody() -> None:
     assert replace(result, unused=()) == joined(ROWS, LINKS, {})
 
 
+SAM_2_ROW, SAM_3_ROW = ACCOUNTS[2:]
+
+
+def test_two_identities_are_one_person_only_when_an_alias_says_so() -> None:
+    """Plan 058, criterion 3, by rule 1: the two Sam Sample identities are two persons.
+
+    An alias of acct-0003 naming acct-0002 by its identity makes them one, which keeps
+    the id of acct-0002, the one named; a name without an identity of their key then
+    joins that one person by rule 3, no longer ambiguous.
+    """
+    rows = (SAM_2_ROW, SAM_3_ROW, named(UNLINKED, "Sam Sample"))
+    apart = joined(rows, {}, {})
+    assert [apart.of[row] for row in rows] == [SAM_2, SAM_3, SAM_ALONE]
+    assert apart.ambiguous == (Ambiguity(name="Sam Sample", persons=frozenset({SAM_2, SAM_3})),)
+    one = joined(rows, {}, {"atlassian:acct-0003": "atlassian:acct-0002"})
+    assert [one.of[row] for row in rows] == [SAM_2, SAM_2, SAM_2]
+    assert one.persons == (
+        Person(
+            id=SAM_2,
+            name="Sam Sample",
+            spellings=(
+                Spelling(name="Sam Sample", name_key="sam sample", how="alias"),
+                Spelling(name="Sam Sample", name_key="sam sample", how="identity"),
+                Spelling(name="Sam Sample", name_key="sam sample", how="name"),
+            ),
+        ),
+    )
+    assert (one.ambiguous, one.unused) == ((), ())
+
+
+def test_an_alias_of_a_name_sees_two_identities_that_an_alias_makes_one() -> None:
+    """Sam, by the name of the two Sam Sample identities that an alias makes one.
+
+    By rule 3, the name of their key names one person once they are one, as rule 3
+    joins a name without an identity: Sam joins it too, where without the alias of the
+    identity, Sam's alias names several persons.
+    """
+    sam = named(UNLINKED, "Sam")
+    rows = (SAM_2_ROW, SAM_3_ROW, sam)
+    one = joined(rows, {}, {"atlassian:acct-0003": "atlassian:acct-0002", "Sam": "Sam Sample"})
+    assert one.of[sam] == SAM_2
+    assert one.unused == ()
+    apart = joined(rows, {}, {"Sam": "Sam Sample"})
+    assert [(alias.key, alias.reason) for alias in apart.unused] == [("sam", SEVERAL)]
+
+
+def test_an_alias_of_an_identity_names_persons_as_the_mentions_alone_make_them() -> None:
+    """Aliases of identities do not chain: each value is read before any is applied.
+
+    acct-0009's alias to Sam Sample finds the two Sam Sample identities, though another
+    alias makes them one: it names several persons, and changes nothing.
+    """
+    sammy = PersonRow(
+        document=7, role="author", name="Sammy", identity="atlassian:acct-0009", updated=day(19)
+    )
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002", "atlassian:acct-0009": "Sam Sample"}
+    result = joined((SAM_2_ROW, SAM_3_ROW, sammy), {}, aliases)
+    assert result.of[sammy] == anchored("account\nacct-0009")
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0009", SEVERAL)
+    ]
+
+
+@pytest.mark.parametrize("value", [SAM_2, "Robin Sample"], ids=["a person's id", "a spelling"])
+def test_an_alias_of_an_identity_names_a_person_by_an_id_or_a_spelling(value: str) -> None:
+    """acct-0003 joins Robin's identity by its person's id, or by Robin Sample, its name."""
+    person = ROBIN if value == "Robin Sample" else SAM_2
+    result = joined(ACCOUNTS, {}, {"atlassian:acct-0003": value})
+    assert result.of[SAM_3_ROW] == person
+    assert result.unused == ()
+
+
+def test_an_alias_of_a_name_names_a_person_by_an_identity() -> None:
+    """Sam, without an identity, joins acct-0003 by its identity (rule 2)."""
+    result = joined((*ACCOUNTS, named(UNLINKED, "Sam")), {}, {"Sam": "atlassian:acct-0003"})
+    assert result.of[named(UNLINKED, "Sam")] == SAM_3
+    assert result.unused == ()
+
+
+def test_an_alias_of_a_name_to_an_identity_follows_where_an_alias_moved_it() -> None:
+    """Sam names acct-0003, which an alias of its own makes acct-0002's person: Sam joins it.
+
+    The identity's own person is made by nothing then, but the value names the identity,
+    which is that person's, as rule 1 says.
+    """
+    sam = named(UNLINKED, "Sam")
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002", "Sam": "atlassian:acct-0003"}
+    result = joined((SAM_2_ROW, SAM_3_ROW, sam), {}, aliases)
+    assert result.of[sam] == SAM_2
+    assert result.unused == ()
+
+
+def test_an_alias_of_a_name_to_an_identity_s_person_id_follows_where_an_alias_moved_it() -> None:
+    """Sam names acct-0003's own person by id, which an alias makes acct-0002's: Sam joins it."""
+    sam = named(UNLINKED, "Sam")
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002", "Sam": SAM_3}
+    result = joined((SAM_2_ROW, SAM_3_ROW, sam), {}, aliases)
+    assert result.of[sam] == SAM_2
+    assert result.unused == ()
+
+
+def test_an_alias_of_an_identity_moves_no_name_written_as_it() -> None:
+    """A name without an identity that writes acct-0003's identity is a name by rule 5.
+
+    The alias of that identity moves its mentions alone (rule 1), not a name (rule 2).
+    """
+    written = named(UNLINKED, "atlassian:acct-0003")
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002"}
+    result = joined((SAM_2_ROW, SAM_3_ROW, written), {}, aliases)
+    assert result.of[SAM_3_ROW] == SAM_2
+    assert result.of[written] == anchored("name\natlassian:acct-0003")
+
+
+@pytest.mark.parametrize("value", ["atlassian:acct-0003", SAM_3], ids=["identity", "id"])
+def test_an_alias_of_an_identity_to_its_own_person_is_reported(value: str) -> None:
+    """acct-0003 named by its own identity, or its own person's id: it changes nothing."""
+    result = joined(ACCOUNTS, {}, {"atlassian:acct-0003": value})
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0003", ITSELF)
+    ]
+    assert replace(result, unused=()) == joined(ACCOUNTS, {}, {})
+
+
+def test_aliases_of_identities_are_not_chained() -> None:
+    """acct-0003 names acct-0002, which an alias of its own moves to acct-0001.
+
+    acct-0002's own person is then made by nothing: the alias naming it names nobody,
+    and acct-0003 stays its own person.
+    """
+    aliases = {
+        "atlassian:acct-0003": "atlassian:acct-0002",
+        "atlassian:acct-0002": "atlassian:acct-0001",
+    }
+    result = joined(ACCOUNTS, {}, aliases)
+    assert (result.of[SAM_2_ROW], result.of[SAM_3_ROW]) == (ROBIN, SAM_3)
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0003", NOBODY)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("written", "key", "reason"),
+    [
+        ("atlassian:acct-0009", "atlassian:acct-0009", UNOWNED),
+        ("team:ops", "team:ops", UNHELD),
+        ("Team: Ops", "team: ops", UNHELD),
+    ],
+    ids=["a known issuer's", "no issuer's", "a name with a colon"],
+)
+def test_an_alias_of_an_identity_that_no_mention_holds_is_reported(
+    written: str, key: str, reason: str
+) -> None:
+    """It changes nothing, saying that no mention holds that identity when its issuer is one.
+
+    The known issuers are those of the mentions' identities and the Atlassian
+    connectors'; any other line is a name that no name without an identity has.
+    """
+    result = joined(ACCOUNTS, {}, {written: "Robin Example"})
+    assert [(alias.key, alias.reason) for alias in result.unused] == [(key, reason)]
+    assert replace(result, unused=()) == joined(ACCOUNTS, {}, {})
+
+
 def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
     """A value of nobody, by name or id, or of several; a key held by no name alone.
 
-    An account's name is the site's: an alias of it alone joins nothing.
+    An identity's name is the site's: an alias of it alone joins nothing.
     """
     aliases = {
         "Alex": "Nobody",
@@ -629,7 +898,7 @@ def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
         "Robin Sample": "Alex Example",
     }
     result = joined(ROWS, LINKS, aliases)
-    assert [(alias.name, alias.name_key, alias.reason) for alias in result.unused] == [
+    assert [(alias.name, alias.key, alias.reason) for alias in result.unused] == [
         ("Alex", "alex", NOBODY),
         ("Robin Other", "robin other", NOBODY),
         ("Sam", "sam", SEVERAL),
@@ -639,7 +908,7 @@ def test_an_alias_that_cannot_join_is_reported_and_changes_nothing() -> None:
     assert replace(result, unused=()) == joined(ROWS, LINKS, {})
 
 
-def test_an_alias_moves_the_names_without_an_account_alone() -> None:
+def test_an_alias_moves_the_names_without_an_identity_alone() -> None:
     """With "Robin Example" = "Alex Example", the meetings' Robins go; the issue's stays."""
     result = joined(ROWS, LINKS, {"Robin Example": "Alex Example"})
     assert result.of[ACCOUNTS[0]] == ROBIN
@@ -673,7 +942,7 @@ def test_of_two_aliases_naming_one_person_the_first_names_it() -> None:
 def test_aliases_are_not_chained() -> None:
     """An alias's value must be a person that names make, as without the aliases.
 
-    Robin Other's own alias, written first, takes every Robin Other to Robin's account:
+    Robin Other's own alias, written first, takes every Robin Other to Robin's identity:
     the name makes no person, so Alex's alias to it names nobody, and changes nothing.
     """
     first = {"Robin Other": "Robin Example"}
@@ -714,19 +983,21 @@ def test_an_alias_of_a_name_to_itself_joins_its_annotated_spellings(value: str) 
     assert (result.ambiguous, result.unused) == ((), ())
 
 
-def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> None:
-    """An account named Robin, one word, beside the review's Robin Example.
+def test_a_speaker_whom_its_meeting_and_an_identity_tell_apart_is_ambiguous() -> None:
+    """An identity named Robin, one word, beside the review's Robin Example.
 
     The site's name and the participants that the user wrote disagree: the review's
     transcript's Robin joins neither, nor the planning's, and both are reported; Robin
-    without a meeting joins the account by its name; and where a meeting's participants
-    hold the account, the retro's Robin and Robin Other, its speaker is the account's.
+    without a meeting joins the identity by its name; and where a meeting's participants
+    hold the identity, the retro's Robin and Robin Other, its speaker is the identity's.
     """
     one_word = anchored("account\nacct-0004")
     retro, linked_to_retro = 14, 26
     rows = (
         *ROWS,
-        PersonRow(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        PersonRow(
+            document=5, role="author", name="Robin", identity="atlassian:acct-0004", updated=day(20)
+        ),
         named(retro, "Robin"),
         named(retro, "Robin Other"),
         named(linked_to_retro, "Robin"),
@@ -741,20 +1012,28 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     )
 
 
-def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() -> None:
-    """Accounts Robin (Ops) and Robin (Sales), beside the review's Robin Example.
+def test_a_speaker_of_two_identities_name_is_reported_with_its_meeting_s_person() -> None:
+    """Identities Robin (Ops) and Robin (Sales), beside the review's Robin Example.
 
-    The review's transcript's Robin could be either account, or Robin Example, whom the
+    The review's transcript's Robin could be either identity, or Robin Example, whom the
     user wrote for that meeting: it joins none, and is reported with all three.
     """
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
         *ACCOUNTS,
         PersonRow(
-            document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)
+            document=5,
+            role="creator",
+            name="Robin (Ops)",
+            identity="atlassian:acct-0005",
+            updated=day(20),
         ),
         PersonRow(
-            document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)
+            document=6,
+            role="creator",
+            name="Robin (Sales)",
+            identity="atlassian:acct-0006",
+            updated=day(20),
         ),
         named(REVIEW, "Robin Example"),
         named(LINKED, "Robin"),
@@ -772,20 +1051,26 @@ def test_a_transcript_before_its_meeting_joins_by_it() -> None:
 
 
 @pytest.mark.parametrize(
-    ("meetings", "refused"),
-    [({LINKED: {REVIEW}, REVIEW: {LINKED}}, [REVIEW, LINKED]), ({LINKED: {LINKED}}, [LINKED])],
-    ids=["two linking each other", "one linking itself"],
+    ("summaries", "chained", "kept"),
+    [
+        ({LINKED: {REVIEW}, REVIEW: {LINKED}}, (REVIEW, LINKED), {}),
+        ({LINKED: {LINKED}}, (LINKED,), {}),
+        ({LINKED: {REVIEW}, REVIEW: set()}, (), {LINKED: {REVIEW}}),
+        ({PLANNED: {LINKED}, LINKED: {REVIEW}}, (LINKED,), {LINKED: {REVIEW}}),
+    ],
+    ids=["two summarising each other", "one its own", "one whose own links none", "a chain"],
 )
-def test_a_meeting_that_links_to_meetings_itself_is_refused_naming_it(
-    meetings: dict[int, set[int]], refused: list[int]
+def test_a_summary_with_summaries_itself_is_dropped_and_named(
+    summaries: dict[int, set[int]], chained: tuple[int, ...], kept: dict[int, set[int]]
 ) -> None:
-    """Each meeting must be joined before the transcripts that link it, so links no meeting.
+    """Rule 4 needs each summary joined before what it summarises: one with summaries is not.
 
-    The index reads the links of transcripts to meetings alone; a caller that gives
-    others is refused, naming the documents, rather than failing within rule 4.
+    It is dropped and named, by number; the rest join as if it never were a summary, and
+    an empty set of summaries is none.
     """
-    with pytest.raises(ValueError, match=re.escape(f"documents {refused} link to meetings")):
-        joined(ROWS, meetings, {})
+    result = joined(ROWS, summaries, {})
+    assert sorted(result.chained) == sorted(chained)
+    assert replace(result, chained=()) == joined(ROWS, kept, {})
 
 
 def test_a_name_is_reported_once_with_every_person_it_could_be() -> None:
@@ -826,6 +1111,7 @@ def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path)
         '"Sam" = "Sam Sample"\n'
         f'"Robin" = "{SAM_3}"\n'
         '"Hélène" = "helene  EXAMPLE"\n'
+        '"atlassian:acct-0003" = "atlassian:acct-0002"\n'
         f'"{long}" = "{long}"\n',
         encoding="utf-8",
     )
@@ -833,6 +1119,7 @@ def test_an_alias_file_gives_each_name_and_its_target_as_written(tmp_path: Path)
         ("Sam", "Sam Sample"),
         ("Robin", SAM_3),
         ("Hélène", "helene  EXAMPLE"),
+        ("atlassian:acct-0003", "atlassian:acct-0002"),
         (long, long),
     ]
 
@@ -971,7 +1258,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
 ) -> None:
     """Plan 043, criteria 3 and 5, by the command: a build with both warnings exits 0.
 
-    The alias of Robin settles the planning's Robin, so that Sam Sample, of two accounts,
+    The alias of Robin settles the planning's Robin, so that Sam Sample, of two identities,
     is the one name warned of, with how many persons it could be; the alias whose key no
     name holds is warned of by its name, its key and why. Robin by name alone is gone.
     """
@@ -985,7 +1272,7 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     ]
     home = data.parent / "home"
     (ambiguous,) = logged_as(home, "index.person_ambiguous")
-    assert (ambiguous["spelling"], ambiguous["people"]) == ("Sam Sample", 2)
+    assert (ambiguous["spelling"], ambiguous["persons"]) == ("Sam Sample", 2)
     (unused,) = logged_as(home, "index.alias_unused")
     assert (unused["alias"], unused["key"], unused["reason"]) == (
         "Jo Placeholder",
@@ -995,10 +1282,41 @@ def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(
     (built,) = logged_as(home, "index.built")
     # Robin by name alone is gone; the other seven persons stay.
     persons = {ROBIN, SAM_2, SAM_3, SAM_ALONE, ALEX_EXAMPLE, ALEX, ROBIN_OTHER}
-    assert built["people"] == len(persons)
+    assert built["persons"] == len(persons)
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         robins = connection.execute("SELECT DISTINCT person FROM people WHERE name = 'Robin'")
         assert robins.fetchall() == [(ROBIN,)]
+
+
+def test_index_joins_two_identities_by_a_quoted_key_of_the_alias_file(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """An identity is a TOML key in quotes: the two Sam Sample identities are one person."""
+    alias = '"atlassian:acct-0003" = "atlassian:acct-0002"\n'
+    (data / "aliases.toml").write_text(alias, encoding="utf-8")
+    assert index(data, capsys)[0] == 0
+    assert logged_as(data.parent / "home", "index.alias_unused") == []
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        sams = connection.execute(
+            "SELECT DISTINCT person FROM people WHERE identity IS NOT NULL AND name = 'Sam Sample'"
+        )
+        assert sams.fetchall() == [(SAM_2,)]
+
+
+def test_index_names_each_summary_that_summarises_another_itself(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Two transcripts whose summaries link each other, as a hand-edited mirror may.
+
+    Neither is a summary: ``index.built`` names each by its path; the build exits 0.
+    """
+    paths = [
+        write(data / "docs", worklog_document("transcript", one, "Loop", ("Alex",), other))
+        for one, other in (("t-20261022-1", "t-20261022-2"), ("t-20261022-2", "t-20261022-1"))
+    ]
+    assert index(data, capsys)[0] == 0
+    (built,) = logged_as(data.parent / "home", "index.built")
+    assert built["chained"] == sorted(paths)
 
 
 @pytest.mark.parametrize(
@@ -1045,6 +1363,6 @@ def test_a_refused_alias_file_stops_a_build_before_the_endpoint_is_asked(
     assert status == 1
     (failed,) = logged_as(data.parent / "home", "index.not_built")
     assert str(failed["reason"]).endswith(
-        "'Sam': its value is not text; write a name or an id in quotes"
+        "'Sam': its value is not text; write a name, an identity or a person's id in quotes"
     )
     assert "hint" not in failed

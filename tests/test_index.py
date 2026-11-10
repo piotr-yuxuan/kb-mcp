@@ -22,7 +22,7 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
@@ -41,7 +41,7 @@ from kb_mcp.search.domain.people import (
     Person,
     Spelling,
 )
-from kb_mcp.search.domain.search import WORDS, Filters, sections
+from kb_mcp.search.domain.search import WORDS, Filters, PersonCounts, sections
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
     CREATED,
@@ -525,22 +525,38 @@ COMMENTED = issue(
     "PROJ-9",
     "Broker rebalance",
     people=(
-        PersonRole(role="author", name="A Person", account="account-1"),
-        PersonRole(role="creator", name="Another Person", account="account-2"),
-        PersonRole(
+        Mention(role="author", name="A Person", identity="atlassian:account-1"),
+        Mention(role="creator", name="Another Person", identity="atlassian:account-2"),
+        Mention(
             role="commenter",
             name="Another Person",
-            account="account-2",
+            identity="atlassian:account-2",
             at=(CREATED, CREATED + timedelta(hours=1)),
         ),
-        PersonRole(
+        Mention(
             role="commenter",
             name="A Person",
-            account="account-1",
+            identity="atlassian:account-1",
             at=(CREATED + timedelta(hours=2),),
         ),
     ),
 )
+
+
+def test_a_file_of_plan_041_s_people_is_indexed_with_atlassian_identities(data: Path) -> None:
+    """A file that the former prepare wrote, ``account: <id>``, before the next prepare.
+
+    ``index`` takes it, each mention with the identity of the Atlassian issuer.
+    """
+    path = write(data / "docs", COMMENTED)
+    file = data / "docs" / path
+    text = file.read_text(encoding="utf-8")
+    file.write_text(text.replace("identity: 'atlassian:", "account: '"), encoding="utf-8")
+    report = build_index(data / "docs", data / "index.sqlite", MOMENT)
+    assert report.skipped == []
+    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
+        held = connection.execute("SELECT DISTINCT identity FROM people ORDER BY 1").fetchall()
+    assert held == [("atlassian:account-1",), ("atlassian:account-2",)]
 
 
 def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data: Path) -> None:
@@ -548,15 +564,15 @@ def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data
     path = write(data / "docs", COMMENTED)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
-        rows = connection.execute("SELECT role, name, account, at FROM people ORDER BY rowid")
+        rows = connection.execute("SELECT role, name, identity, at FROM people ORDER BY rowid")
         people = rows.fetchall()
         columns = {row[1] for row in connection.execute("PRAGMA table_info(documents)")}
     assert people == [
-        ("author", "A Person", "account-1", None),
-        ("creator", "Another Person", "account-2", None),
-        ("commenter", "Another Person", "account-2", "2026-10-25T00:00:00+00:00"),
-        ("commenter", "Another Person", "account-2", "2026-10-25T01:00:00+00:00"),
-        ("commenter", "A Person", "account-1", "2026-10-25T02:00:00+00:00"),
+        ("author", "A Person", "atlassian:account-1", None),
+        ("creator", "Another Person", "atlassian:account-2", None),
+        ("commenter", "Another Person", "atlassian:account-2", "2026-10-25T00:00:00+00:00"),
+        ("commenter", "Another Person", "atlassian:account-2", "2026-10-25T01:00:00+00:00"),
+        ("commenter", "A Person", "atlassian:account-1", "2026-10-25T02:00:00+00:00"),
     ]
     assert "people" in columns
     assert not {"author", "assignee"} & columns
@@ -586,8 +602,8 @@ MEETING = replace(
     version=None,
     revision="0123456789abcdef",
     people=(
-        PersonRole(role="participant", name="Alex Example"),
-        PersonRole(role="participant", name="Kim (not in the header)"),
+        Mention(role="participant", name="Alex Example"),
+        Mention(role="participant", name="Kim (not in the header)"),
     ),
     links=(Link(relation="transcript", ref="t-20261027-meeting-1"),),
 )
@@ -597,8 +613,8 @@ TRANSCRIPT = replace(
     id="t-20261027-meeting-1",
     title="Meeting 1",
     people=(
-        PersonRole(role="participant", name="Alex Example"),
-        PersonRole(role="participant", name="Sam Sample"),
+        Mention(role="participant", name="Alex Example"),
+        Mention(role="participant", name="Sam Sample"),
     ),
     links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
 )
@@ -612,7 +628,7 @@ def test_links_and_participants_read_back_and_participants_are_rows_of_people(
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         rows = connection.execute(
-            "SELECT d.id, p.role, p.name, p.account, p.at"
+            "SELECT d.id, p.role, p.name, p.identity, p.at"
             " FROM people p JOIN documents d ON d.rowid = p.document ORDER BY p.rowid"
         )
         people = rows.fetchall()
@@ -637,31 +653,31 @@ def persons(data: Path) -> Path:
 
 
 # The persons of PERSONS, by id, each named and spelt as plan 043's rules give them by
-# hand. Robin's account is named as on PAY-1, its newest document; a name alone, by its
+# hand. Robin's identity is named as on PAY-1, its newest document; a name alone, by its
 # spellings' first in the order of the files, all being as frequent: the review's Alex
 # Example, the stand-up's Sam Sample.
 ROBIN_SPELT = (
-    Spelling(name="Robin", name_key="robin", how="meeting"),
-    Spelling(name="Robin Example", name_key="robin example", how="account"),
+    Spelling(name="Robin", name_key="robin", how="attendance"),
+    Spelling(name="Robin Example", name_key="robin example", how="identity"),
     Spelling(name="Robin Example", name_key="robin example", how="name"),
-    Spelling(name="Robin Sample", name_key="robin sample", how="account"),
+    Spelling(name="Robin Sample", name_key="robin sample", how="identity"),
     Spelling(name="robin  EXAMPLE", name_key="robin example", how="name"),
 )
 JOINED = {
     ROBIN: ("Robin Sample", ROBIN_SPELT),
-    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
-    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="account"),)),
+    SAM_2: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="identity"),)),
+    SAM_3: ("Sam Sample", (Spelling(name="Sam Sample", name_key="sam sample", how="identity"),)),
     SAM_ALONE: (
         "Sam Sample",
         (
-            Spelling(name="Sam", name_key="sam", how="meeting"),
+            Spelling(name="Sam", name_key="sam", how="attendance"),
             Spelling(name="Sam Sample", name_key="sam sample", how="name"),
         ),
     ),
     ALEX_EXAMPLE: (
         "Alex Example",
         (
-            Spelling(name="Alex", name_key="alex", how="meeting"),
+            Spelling(name="Alex", name_key="alex", how="attendance"),
             Spelling(name="Alex Example", name_key="alex example", how="name"),
             Spelling(name="Alex Example (not in the header)", name_key="alex example", how="name"),
         ),
@@ -750,7 +766,7 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
 
 
 def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data: Path) -> None:
-    """With the alias of Robin to Robin Example, every Robin without an account is Robin's.
+    """With the alias of Robin to Robin Example, every Robin without an identity is Robin's.
 
     The planning's Robin is no longer ambiguous, and Robin by name alone is gone; an
     alias whose key no name holds changes nothing, and is given back.
@@ -774,13 +790,16 @@ def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data:
 
 
 def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
-    """A page whose id is the review's is not the review: its Robin Third makes no Robin."""
+    """A page whose id is the review's is not the review: its Robin Third makes no Robin.
+
+    A summary link names a document of its own source.
+    """
     for front in PERSONS:
         write(data / "docs", front)
     namesake = page(
         "m-20261020-review",
         "Review",
-        people=(PersonRole(role="author", name="Robin Third", account="acct-0004"),),
+        people=(Mention(role="author", name="Robin Third", identity="atlassian:acct-0004"),),
     )
     write(data / "docs", namesake)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -790,8 +809,8 @@ def test_a_transcript_s_meeting_is_of_the_work_log_alone(data: Path) -> None:
 def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> None:
     """Two transcripts whose summaries link each other, as a hand-edited mirror may.
 
-    Neither link names a meeting: the build completes, and their speakers are persons by
-    name alone, as in a transcript that links nothing.
+    Neither is a summary, as each links by summary itself: the build completes, and their
+    speakers are persons by name alone, as in a transcript that links nothing.
     """
     for front in PERSONS:
         write(data / "docs", front)
@@ -809,6 +828,101 @@ def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> No
         ("t-20261022-1", "Alex"): ALEX,
         ("t-20261022-2", "Alex"): ALEX,
     }
+
+
+def test_attendance_joins_by_summary_links_in_any_source(data: Path) -> None:
+    """Plan 058, criterion 4: rule 4 over two pages, neither a meeting nor a transcript.
+
+    A page names Robin Example as a participant; another, which links to it by
+    ``summary``, names Robin: Robin joins Robin Example's person, by attendance.
+    """
+    summary = page(
+        "400001", "Retro notes", people=(Mention(role="participant", name="Robin Example"),)
+    )
+    summarised = page(
+        "400002",
+        "Retro recording",
+        people=(Mention(role="participant", name="Robin"),),
+        links=(Link(relation="summary", ref="400001"),),
+    )
+    for front in (summary, summarised):
+        write(data / "docs", front)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with reading(data / "index.sqlite") as reader:
+        activity = reader.person(anchored("name\nrobin example"))
+    assert activity is not None
+    assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
+
+
+@pytest.mark.parametrize(
+    "elsewhere", [(), (issue("PROJ-1", "Same id"),)], ids=["not mirrored", "of another source"]
+)
+def test_a_summary_whose_own_summary_is_not_mirrored_still_joins_by_attendance(
+    data: Path, elsewhere: tuple[FrontMatter, ...]
+) -> None:
+    """A summary link to no document of its source makes no chain: rule 4 still joins.
+
+    The notes page links by ``summary`` to an id of no Confluence page, which names
+    nothing, though a Jira issue may have that id: the recording's Robin joins the
+    notes' Robin Example, as without that link.
+    """
+    summary = page(
+        "400001",
+        "Retro notes",
+        people=(Mention(role="participant", name="Robin Example"),),
+        links=(Link(relation="summary", ref="10001"),),
+    )
+    summarised = page(
+        "400002",
+        "Retro recording",
+        people=(Mention(role="participant", name="Robin"),),
+        links=(Link(relation="summary", ref="400001"),),
+    )
+    for front in (summary, summarised, *elsewhere):
+        write(data / "docs", front)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with reading(data / "index.sqlite") as reader:
+        activity = reader.person(anchored("name\nrobin example"))
+    assert activity is not None
+    assert Spelling(name="Robin", name_key="robin", how="attendance") in activity.person.spellings
+
+
+def test_a_person_by_name_that_an_identity_joins_is_no_longer_by_name_alone(
+    data: Path,
+) -> None:
+    """The persons by name alone hold no identity: Robin's, joined to Alex, takes Alex out.
+
+    The alias moves Robin's identity, under its two names, to Alex's person by name; it
+    then holds an identity, and Robin's own person is gone.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+
+    def counted(aliases: dict[str, str]) -> PersonCounts:
+        build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
+        with reading(data / "index.sqlite") as reader:
+            return reader.index_status().persons
+
+    before, after = counted({}), counted({"atlassian:acct-0001": "Alex"})
+    assert (after.count, after.alone) == (before.count - 1, before.alone - 1)
+
+
+def test_a_name_of_two_identities_is_shared_after_an_alias_moves_one(data: Path) -> None:
+    """The status lists a name that several persons' identities write, however they joined.
+
+    The alias moves acct-0003, a Sam Sample, to Robin's person: Sam Sample is still the
+    name of two persons' identities, and of the stand-up's person by name alone.
+    """
+    for front in PERSONS:
+        write(data / "docs", front)
+
+    def shared(aliases: dict[str, str]) -> tuple[tuple[str, int], ...]:
+        build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
+        with reading(data / "index.sqlite") as reader:
+            return reader.index_status().persons.shared
+
+    moved = shared({"atlassian:acct-0003": "atlassian:acct-0001"})
+    assert moved == shared({}) == (("Sam Sample", 3),)
 
 
 def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
@@ -842,8 +956,10 @@ def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None
         assert reader.persons("robin example") == [ROBIN]  # of three spellings, once
         assert reader.persons("Robin Sample") == []  # a name, not its key
         assert reader.persons("nobody") == []
-        assert reader.persons("sam sample", "account") == sorted([SAM_2, SAM_3])
-        assert reader.persons("robin", "account") == []  # by meeting and by name alone
+        assert reader.persons("sam sample", "identity") == sorted([SAM_2, SAM_3])
+        assert reader.persons("robin", "identity") == []  # by attendance and by name alone
+        assert reader.persons("robin example", identified=True) == [ROBIN]
+        assert reader.persons("robin", identified=True) == []
 
 
 def test_a_person_s_documents_are_counted_by_role_and_by_source(persons: Path) -> None:
@@ -908,12 +1024,16 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         pass
 
 
-def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path) -> None:
-    """Plan 054: the mirror's files of schema 6 are read as they are, so no prepare first."""
+@pytest.mark.parametrize("schema", ["6", "7"])
+def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path, schema: str) -> None:
+    """Plans 054 and 058: the mirror's files of 6 and 7 are read as they are: no prepare.
+
+    Plan 058 reads their people's former ``account``.
+    """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with sqlite3.connect(data / "index.sqlite") as connection:
-        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
+        connection.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (schema,))
     connection.close()
     with pytest.raises(UnavailableIndexError) as refused, reading(data / "index.sqlite"):
         pass
@@ -1165,19 +1285,19 @@ def written_backwards(index: Path, fronts: Iterable[FrontMatter]) -> JoinOutcome
 
 
 @pytest.mark.parametrize(
-    ("account", "first", "second", "person"),
+    ("identity", "first", "second", "person"),
     [
-        ("acct-0001", "Robin Example", "Robin Sample", ROBIN),
+        ("atlassian:acct-0001", "Robin Example", "Robin Sample", ROBIN),
         (None, "Sam SAMPLE", "sam sample", SAM_ALONE),
     ],
     ids=["an account's", "a name alone's"],
 )
 def test_two_names_tied_serve_the_first_by_path_whatever_the_rowids(
-    data: Path, account: str | None, first: str, second: str, person: str
+    data: Path, identity: str | None, first: str, second: str, person: str
 ) -> None:
     """On documents of one update time, as an edit leaves them, the person keeps its name."""
     fronts = [
-        page(number, "Tied", people=(PersonRole(role="author", name=name, account=account),))
+        page(number, "Tied", people=(Mention(role="author", name=name, identity=identity),))
         for number, name in (("1", first), ("2", second))
     ]
     written_backwards(data / "index.sqlite", fronts)
@@ -1193,10 +1313,8 @@ def test_an_ambiguous_name_is_said_by_its_first_spelling_by_path(data: Path) -> 
         page("1", "Tied", author="Sam SAMPLE"),
         page("2", "Tied", author="sam sample"),
         *(
-            page(
-                number, "Tied", people=(PersonRole(role="author", name="Sam Sample", account=who),)
-            )
-            for number, who in (("3", "acct-0002"), ("4", "acct-0003"))
+            page(number, "Tied", people=(Mention(role="author", name="Sam Sample", identity=who),))
+            for number, who in (("3", "atlassian:acct-0002"), ("4", "atlassian:acct-0003"))
         ),
     ]
     outcome = written_backwards(data / "index.sqlite", fronts)
@@ -1252,8 +1370,8 @@ HANDBOOK = page(
     fetched_at=MOMENT + timedelta(hours=1),
     url="https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
     people=(
-        PersonRole(role="author", name="A Person", account="acct-0001"),
-        PersonRole(
+        Mention(role="author", name="A Person", identity="atlassian:acct-0001"),
+        Mention(
             role="commenter",
             name="Kim Doé",
             at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
@@ -1346,8 +1464,8 @@ PINNED_DOCUMENTS = [
         None,
         '["ops", "été"]',
         (
-            '[{"role": "author", "name": "A Person", "account": "acct-0001", "at": []},'
-            ' {"role": "commenter", "name": "Kim Doé", "account": null,'
+            '[{"role": "author", "name": "A Person", "identity": "atlassian:acct-0001", "at": []},'
+            ' {"role": "commenter", "name": "Kim Doé", "identity": null,'
             ' "at": ["2026-10-20T19:52:41+00:00", "2026-10-20T20:52:41+00:00"]}]'
         ),
         '[{"relation": "summary", "ref": "m-20261020-review"}]',
@@ -1390,7 +1508,7 @@ PINNED_DOCUMENTS = [
 ]
 # Each row of people, a commenter's one per comment, and the file refused with why.
 PINNED_ROWS = [
-    ("confluence/ENG/1001-deploy.md", "author", "A Person", "acct-0001", None),
+    ("confluence/ENG/1001-deploy.md", "author", "A Person", "atlassian:acct-0001", None),
     ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doé", None, "2026-10-20T19:52:41+00:00"),
     ("confluence/ENG/1001-deploy.md", "commenter", "Kim Doé", None, "2026-10-20T20:52:41+00:00"),
 ]
@@ -1434,7 +1552,7 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     assert (
         rows_of(
             index,
-            "SELECT d.path, p.role, p.name, p.account, p.at FROM people p"
+            "SELECT d.path, p.role, p.name, p.identity, p.at FROM people p"
             " JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3, 5",
         )
         == PINNED_ROWS
@@ -1458,25 +1576,25 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     assert terms == PINNED_TERMS, WORDS_CHANGED
 
 
-# One account under two names; a name that joins it, an alias and a meeting's speaker that
-# join a name alone; a name of two accounts, which joins neither.
+# One identity under two names; a name that joins it, an alias and a meeting's speaker that
+# join a name alone; a name of two identities, which joins neither.
 JO_2, JO_3 = anchored("account\nacct-0002"), anchored("account\nacct-0003")
 JO_ALONE = anchored("name\njo two")
 PINNED_MIRROR = (
     page(
         "1",
         "One",
-        people=(PersonRole(role="author", name="Robin Example", account="acct-0001"),),
+        people=(Mention(role="author", name="Robin Example", identity="atlassian:acct-0001"),),
     ),
     issue(
         "PROJ-1",
         "Two",
         updated=MOMENT + timedelta(days=1),
-        people=(PersonRole(role="creator", name="Robin Sample", account="acct-0001"),),
+        people=(Mention(role="creator", name="Robin Sample", identity="atlassian:acct-0001"),),
     ),
     *(
-        issue(key, "Same", people=(PersonRole(role="author", name="Jo Two", account=account),))
-        for key, account in (("PROJ-2", "acct-0002"), ("PROJ-3", "acct-0003"))
+        issue(key, "Same", people=(Mention(role="author", name="Jo Two", identity=identity),))
+        for key, identity in (("PROJ-2", "atlassian:acct-0002"), ("PROJ-3", "atlassian:acct-0003"))
     ),
     worklog_document(
         "meeting", "m-20261020-review", "Review", ("robin  EXAMPLE", "Sam Sample", "Kim", "Jo Two")
@@ -1495,24 +1613,24 @@ PINNED_PERSONS = sorted(
 )
 PINNED_SPELLINGS = sorted(
     [
-        (ROBIN, "Robin Example", "robin example", "account"),
-        (ROBIN, "Robin Sample", "robin sample", "account"),
+        (ROBIN, "Robin Example", "robin example", "identity"),
+        (ROBIN, "Robin Sample", "robin sample", "identity"),
         (ROBIN, "robin  EXAMPLE", "robin example", "name"),
         (SAM_ALONE, "Sam Sample", "sam sample", "name"),
         (SAM_ALONE, "Kim", "kim", "alias"),
-        (SAM_ALONE, "Sam", "sam", "meeting"),
+        (SAM_ALONE, "Sam", "sam", "attendance"),
         (ALEX, "Alex", "alex", "name"),
-        (JO_2, "Jo Two", "jo two", "account"),
-        (JO_3, "Jo Two", "jo two", "account"),
+        (JO_2, "Jo Two", "jo two", "identity"),
+        (JO_3, "Jo Two", "jo two", "identity"),
         (JO_ALONE, "Jo Two", "jo two", "name"),
     ]
 )
 PINNED_PEOPLE = sorted(
     [
-        ("confluence/ENG/1-one.md", "author", "Robin Example", "acct-0001", ROBIN),
-        ("jira/PROJ/PROJ-1.md", "creator", "Robin Sample", "acct-0001", ROBIN),
-        ("jira/PROJ/PROJ-2.md", "author", "Jo Two", "acct-0002", JO_2),
-        ("jira/PROJ/PROJ-3.md", "author", "Jo Two", "acct-0003", JO_3),
+        ("confluence/ENG/1-one.md", "author", "Robin Example", "atlassian:acct-0001", ROBIN),
+        ("jira/PROJ/PROJ-1.md", "creator", "Robin Sample", "atlassian:acct-0001", ROBIN),
+        ("jira/PROJ/PROJ-2.md", "author", "Jo Two", "atlassian:acct-0002", JO_2),
+        ("jira/PROJ/PROJ-3.md", "author", "Jo Two", "atlassian:acct-0003", JO_3),
         ("worklog/meetings/m-20261020-review.md", "participant", "robin  EXAMPLE", None, ROBIN),
         ("worklog/meetings/m-20261020-review.md", "participant", "Sam Sample", None, SAM_ALONE),
         ("worklog/meetings/m-20261020-review.md", "participant", "Kim", None, SAM_ALONE),
@@ -1541,7 +1659,7 @@ def test_what_a_whole_build_joins_of_a_small_mirror_is_pinned_under_words(data: 
     assert (
         rows_of(
             index,
-            "SELECT d.path, p.role, p.name, p.account, p.person"
+            "SELECT d.path, p.role, p.name, p.identity, p.person"
             " FROM people p JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3",
         )
         == PINNED_PEOPLE
@@ -1578,7 +1696,7 @@ KEPT_ROWS = (
     WHERE d.path <> :path ORDER BY l.document, l.label
     """,
     """
-    SELECT p.document, p.role, p.name, p.account, p.at FROM people p
+    SELECT p.document, p.role, p.name, p.identity, p.at FROM people p
     JOIN documents d ON d.rowid = p.document WHERE d.path <> :path
     ORDER BY p.document, p.role, p.name
     """,

@@ -308,14 +308,14 @@ one person, by the first of these rules that answers:
    the one that the alias names.
 2. **By alias.** A mention without an identity whose name key an alias holds belongs to
    the person that the alias names: by a person id, or by a spelling, which names the
-   person of the one identity whose mentions share its key, else the person by name of
-   that key. An alias gives way where rule 4 gives exactly one other person. An alias
+   one person among the identities whose mentions share its key, else the person by
+   name of that key. An alias gives way where rule 4 gives exactly one other person. An alias
    that no mention reaches, or that names nobody or several persons, changes nothing and
    is reported as unused. Aliases do not chain.
-3. **By name key.** A mention without an identity whose name key the mentions of exactly
-   one identity share belongs to that identity's person. It is ambiguous instead when
-   several identities share its key, or when rule 4 finds persons for it and that one is
-   not among them.
+3. **By name key.** A mention without an identity whose name key the mentions of
+   identities of exactly one person share belongs to that person. It is ambiguous
+   instead when the identities that share its key are of several persons, or when rule 4
+   finds persons for it and that one is not among them.
 4. **By attendance.** A mention without an identity, in the role `participant`, whose
    name key is one word, in a document that links by `summary` to other documents of its
    source, belongs to the one person among those documents' `participant` mentions whose
@@ -341,10 +341,15 @@ spelling alone.
 person and by role. Sources, scopes and sign-ins do not partition persons. A document's
 `people` are its mentions; a count of persons is never called "people".
 
-**In the code.** [`PersonRole`](../../src/kb_mcp/mirror/domain/mirror.py), a mention,
-with [`PersonRole.account`](../../src/kb_mcp/mirror/domain/mirror.py), an identity's
-value, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
+**In the code.** [`Mention`](../../src/kb_mcp/mirror/domain/mirror.py),
+with [`Mention.identity`](../../src/kb_mcp/mirror/domain/mirror.py), an identity
+written `<issuer>:<value>` by [`IDENTITY`](../../src/kb_mcp/kernel/names.py)'s rule,
+and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`SOLE`](../../src/kb_mcp/mirror/domain/mirror.py);
+[`ATLASSIAN_ISSUER`](../../src/kb_mcp/kernel/names.py), the issuer that the Atlassian
+connectors give each source, and
+[`identity`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py), which
+gives a site user's;
 [`Person`](../../src/kb_mcp/search/domain/people.py),
 [`Spelling`](../../src/kb_mcp/search/domain/people.py),
 [`joined`](../../src/kb_mcp/search/domain/people.py),
@@ -356,13 +361,17 @@ value, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`RULES`](../../src/kb_mcp/search/domain/people.py),
 [`by_alias`](../../src/kb_mcp/search/domain/people.py),
 [`by_name`](../../src/kb_mcp/search/domain/people.py) and
-[`by_meeting`](../../src/kb_mcp/search/domain/people.py);
-[`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py);
+[`by_attendance`](../../src/kb_mcp/search/domain/people.py);
+[`SUMMARY_LINKS`](../../src/kb_mcp/search/adapters/sqlite_index.py), the documents
+that each document links to by `summary`;
 [`about`](../../src/kb_mcp/mcp/app/tools.py), which finds those perhaps the same; the
 column `person_names.joined` and [`JOINED`](../../src/kb_mcp/mcp/app/responses.py),
-where how a spelling joined is stored as `account`, `alias`, `meeting` or `name`;
+where how a spelling joined is stored as `identity`, `alias`, `attendance` or `name`;
 [`SiteUser.account_id`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py) and
-`users.json`.
+`users.json`. A person's id hashes an identity of `atlassian` as an account id was
+hashed before identities had an issuer, the word `account` and its value alone
+([`LEGACY_BARE_ISSUERS`](../../src/kb_mcp/search/domain/people.py)), and any other
+identity under the word `identity`.
 
 ### ranking
 

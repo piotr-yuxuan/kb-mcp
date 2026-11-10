@@ -197,10 +197,13 @@ class WordsReader(Protocol):
     def values(self, name: str) -> list[tuple[str, int]]:
         """Give each value that a filter or count can take, the most used first."""
 
-    def persons(self, key: str, joined: str | None = None) -> list[str]:
+    def persons(
+        self, key: str, joined: str | None = None, *, identified: bool = False
+    ) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_IDENTITY``;
+        ``identified`` keeps those that a mention with an identity writes, however it joined.
         """
 
     def person(self, person: str) -> Activity | None:

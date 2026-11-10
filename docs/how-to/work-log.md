@@ -269,9 +269,9 @@ documents tie, and come by path.
 Each `index` that writes the index joins the names of every source into persons, so
 that one colleague is one person to an agent:
 
-- a Jira or Confluence account, under each name that the site gave it;
+- a Jira or Confluence identity, its account id, under each name that the site gave it;
 - a name written in a meeting's `:PARTICIPANTS:` or by a transcript's speaker, joined to
-  the one account of that name, or else to the same name elsewhere in the work log,
+  the one identity of that name, or else to the same name elsewhere in the work log,
   whatever its case, accents, spaces or trailing part in brackets:
   `Kim (not in the header)` is `Kim`, but `Alex (Ops)` and `Alex (Sales)`, which the
   brackets tell apart, stay two, as do two notes of one name, `Kim (not in the header)`
@@ -281,30 +281,31 @@ that one colleague is one person to an agent:
   that link its transcript.
 
 The rest stays apart: a first name in a transcript that no meeting links, a nickname,
-`You` as the caption tool writes you, and two accounts of one name. A name that could
-be two people, such as a meeting's `Sam Sample` when two accounts have that name, or a
-speaker `Sam` whose meeting names `Sam Sample` when an account is named `Sam`, is
-joined to neither. To see what stays apart:
+`You` as the caption tool writes you, and two identities of one name. A name that could
+be two people, such as a meeting's `Sam Sample` when two identities have that name, or a
+speaker `Sam` whose meeting names `Sam Sample` when an identity is named `Sam`, is
+joined to neither, but to the same name alone. To see what stays apart:
 
 - `index` warns, at each write, of each name that could be several people,
   `index.person_ambiguous`, and of each alias that changes nothing,
   `index.alias_unused` ([index's telemetry](../reference/telemetry/index.md));
 - the server's `status` counts the persons, those in more than one source and those by
-  name alone, and lists the names of several accounts;
+  name alone, and lists the names of several identities;
 - `search` with `filters={"person": "Sam Sample"}` opens with Sam Sample's names, how
   each joined, and each one-word name alone that is perhaps the same person, with the
   line that would join it.
 
 Then write `aliases.toml` in the data directory,
 `~/kb-mcp/aliases.toml` by default: a line per name as a source writes
-it, then the person it means, by a name, or by the id that an answer gives where a name
-is several people's:
+it, or per identity as the front matter writes it, then the person it means, by a name,
+an identity, or the id that an answer gives where a name is several people's:
 
 ```toml
 "Sam" = "Sam Sample"
 "You" = "Robin Example"
 "Alex" = "p-0123456789abcdef"
 "Kim" = "Kim"
+"atlassian:acct-0003" = "atlassian:acct-0002"
 ```
 
 An alias takes effect by `index`, whichever mode you search in: with the alias file
@@ -316,17 +317,21 @@ its vectors and the names joined again, and the next `embed` has nothing to writ
 kb-mcp index
 ```
 
-- An alias joins names without an account alone: an account's names are the site's.
+- An alias of a name joins names without an identity alone: an identity's names are
+  the site's. An alias of an identity, quoted for its colon, joins that identity's
+  documents to the person it names, which keeps its id: two Jira identities of one
+  colleague, the last line above, become one person.
 - It joins its name anywhere but a transcript's speaker whom its meeting's
   participants give someone else: to change that, change the meeting's
   `:PARTICIPANTS:`. Its name ignores brackets: `"Alex"` joins `Alex (Ops)` and
   `Alex (Sales)` alike, and `"Kim" = "Kim"` joins two notes of Kim to Kim.
-- Its value is a name or a person's id, never another alias: a name that another
-  alias, or the meeting of each transcript, joins to someone else names nobody.
+- Its value is a name, an identity or a person's id, never another alias: a name that
+  another alias, or the meeting of each transcript, joins to someone else names nobody.
 - A file that breaks a rule stops the build, naming the file and the alias, and the
   index in place stays: a file that is not UTF-8 TOML, a value that is not a string in
   quotes, an empty name, a name or value of several lines or longer than 200
   characters, or two names that differ by case, accents or spaces alone.
-- An alias whose name no document writes without an account, or whose value names
-  nobody or several people, changes nothing, and the build warns of it.
+- An alias whose name no document writes without an identity, an alias of an identity
+  that no document holds or whose value is that identity's own person, or one whose
+  value names nobody or several people, changes nothing, and the build warns of it.
 - To undo an alias, delete its line and run `index`. The program never writes the file.

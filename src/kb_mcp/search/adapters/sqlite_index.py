@@ -30,7 +30,7 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
@@ -78,11 +78,11 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
-# section_words.
-SCHEMA = "7"
+# section_words; 8 from plan 058, with identities.
+SCHEMA = "8"
 # The former schemas whose mirror's files this version reads as they are: rebuilding the
 # index is enough, with no prepare first.
-SAME_MIRROR = frozenset({"6"})
+SAME_MIRROR = frozenset({"6", "7"})
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -108,7 +108,7 @@ CREATE INDEX documents_key ON documents (key);
 CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
-  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT,
+  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, identity TEXT, at TEXT,
   person TEXT
 );
 CREATE INDEX people_role_name ON people (role, name);
@@ -282,8 +282,8 @@ COPY = (
     WHERE document IN (SELECT rowid FROM main.documents)
     """,
     """
-    INSERT INTO main.people (document, role, name, account, at)
-    SELECT document, role, name, account, at FROM old.people
+    INSERT INTO main.people (document, role, name, identity, at)
+    SELECT document, role, name, identity, at FROM old.people
     WHERE document IN (SELECT rowid FROM main.documents)
     """,
     """
@@ -295,23 +295,23 @@ COPY = (
     JOIN main.sections s ON s.rowid = p.section
     """,
 )
-# What the join reads: each row of people, with when its document was updated; and each
-# transcript's meetings, as its summary links name them, by rowid. A link to anything
-# but a meeting names none, as a file edited by hand may hold. CROSS JOIN keeps SQLite's
-# order, each transcript, its links, then the meeting by its source and id, so that the
-# work grows with the links, not with the square of one source's documents.
+# What the join reads: each row of people, with when its document was updated; and the
+# documents that each document's summary links name in its source, by rowid. CROSS JOIN
+# keeps SQLite's order, each document, its links, then the one linked by its source and
+# id, so that the work grows with the links, not with the square of one source's
+# documents.
 PEOPLE_ROWS = """
-SELECT p.rowid, p.document, p.role, p.name, p.account, d.updated
+SELECT p.rowid, p.document, p.role, p.name, p.identity, d.updated
 FROM people p JOIN documents d ON d.rowid = p.document
 """
 # Each document's place by its path's text, which numbers it for the join: ties go to the
 # first row, and by rowid to whichever file was not edited last.
-BY_PATH = "SELECT rowid, row_number() OVER (ORDER BY path) FROM documents"
+BY_PATH = "SELECT rowid, row_number() OVER (ORDER BY path), path FROM documents"
 SUMMARY_LINKS = """
 SELECT t.rowid, m.rowid
 FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
-WHERE t.type = 'transcript' AND json_extract(l.value, '$.relation') = 'summary'
-  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref') AND m.type = 'meeting'
+WHERE json_extract(l.value, '$.relation') = 'summary'
+  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref')
 """
 # A person's documents per role, then per source with the newest update, the most first.
 PERSON_ROLES = """
@@ -331,11 +331,12 @@ FROM people p JOIN documents d ON d.rowid = p.document
 WHERE p.person = :person AND d.path IN (SELECT value FROM json_each(:paths))
 GROUP BY 1, 2 ORDER BY 1, 2
 """
-# What status says of persons: how many, by name alone, in more than one source; and
-# each name of two accounts or more, with the persons holding its key.
+# What status says of persons: how many, by name alone, of no identity, in more than one
+# source; and each name that the identities of two persons or more write, however they
+# joined, with the persons holding its key.
 PERSON_COUNTS = """
 SELECT count(*), count(*) FILTER (WHERE id NOT IN
-  (SELECT person FROM person_names WHERE joined = 'account'))
+  (SELECT person FROM people WHERE identity IS NOT NULL))
 FROM persons
 """
 ACROSS = """
@@ -346,7 +347,11 @@ SELECT count(*) FROM (
 """
 SHARED = """
 SELECT min(n.name), (SELECT count(DISTINCT m.person) FROM person_names m WHERE m.key = n.key)
-FROM person_names n WHERE n.joined = 'account'
+FROM person_names n
+WHERE EXISTS (
+  SELECT 1 FROM people p
+  WHERE p.person = n.person AND p.name = n.name AND p.identity IS NOT NULL
+)
 GROUP BY n.key HAVING count(DISTINCT n.person) > 1
 ORDER BY 2 DESC, 1
 """
@@ -463,13 +468,13 @@ class Writer:
         )
         # One row per person and role, and a commenter's one per comment.
         self._connection.executemany(
-            "INSERT INTO people (document, role, name, account, at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO people (document, role, name, identity, at) VALUES (?, ?, ?, ?, ?)",
             [
                 (
                     document,
                     person.role,
                     person.name,
-                    person.account,
+                    person.identity,
                     None if at is None else moment(at),
                 )
                 for person in front.people
@@ -529,8 +534,8 @@ class Writer:
 
         Once the last document is added: every row of ``people`` is given its person, and
         ``persons`` and ``person_names`` hold each person and each of its spellings, with
-        how it joined. A transcript's meetings are the meetings that its ``summary`` links
-        name: no other document, so that each is joined before the transcript.
+        how it joined. A document's summaries are the documents of its source that its
+        ``summary`` links name; the outcome names by path those that the join drops.
         ``aliases`` gives each alias's name and value, as the alias file's reader checks
         them, and the build records their digest. Documents go to the join by the order
         of their paths, so that its ties go as in a whole build, whichever file was edited
@@ -539,23 +544,24 @@ class Writer:
         row's person stays here. The span ``index.join`` holds it.
         """
         self.aliases = people.aliases_digest(aliases)
-        places = dict(self._connection.execute(BY_PATH))
+        numbered = self._connection.execute(BY_PATH).fetchall()
+        places = {rowid: place for rowid, place, _ in numbered}
         rows = {
             rowid: people.PersonRow(
                 document=places[document],
                 role=role,
                 name=name,
-                account=account,
+                identity=identity,
                 updated=datetime.fromisoformat(updated),
             )
-            for rowid, document, role, name, account, updated in self._connection.execute(
+            for rowid, document, role, name, identity, updated in self._connection.execute(
                 PEOPLE_ROWS
             )
         }
-        meetings: dict[int, set[int]] = {}
-        for transcript, meeting in self._connection.execute(SUMMARY_LINKS):
-            meetings.setdefault(places[transcript], set()).add(places[meeting])
-        found = people.joined(rows.values(), meetings, aliases)
+        summaries: dict[int, set[int]] = {}
+        for document, summary in self._connection.execute(SUMMARY_LINKS):
+            summaries.setdefault(places[document], set()).add(places[summary])
+        found = people.joined(rows.values(), summaries, aliases)
         self._connection.executemany(
             "UPDATE people SET person = ? WHERE rowid = ?",
             [(found.of[row], rowid) for rowid, row in rows.items()],
@@ -573,7 +579,10 @@ class Writer:
             ],
         )
         return people.JoinOutcome(
-            count=len(found.persons), ambiguous=found.ambiguous, unused=found.unused
+            count=len(found.persons),
+            ambiguous=found.ambiguous,
+            unused=found.unused,
+            chained=tuple(sorted(path for _, place, path in numbered if place in found.chained)),
         )
 
     def update(self, change: Change, old: Path | None) -> Updated:
@@ -736,10 +745,10 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         issue_type=row["issue_type"],
         labels=tuple(json.loads(row["labels"])),
         people=tuple(
-            PersonRole(
+            Mention(
                 role=person["role"],
                 name=person["name"],
-                account=person["account"],
+                identity=person["identity"],
                 at=tuple(datetime.fromisoformat(at) for at in person["at"]),
             )
             for person in json.loads(row["people"])
@@ -882,15 +891,20 @@ class Reader:
         """Give each value that a filter or count can take, the most used first."""
         return [(row[0], row[1]) for row in self._connection.execute(VALUES[name])]
 
-    def persons(self, key: str, joined: str | None = None) -> list[str]:
+    def persons(
+        self, key: str, joined: str | None = None, *, identified: bool = False
+    ) -> list[str]:
         """Give the ids of the persons with a name of this key, as ``name_key`` gives it, sorted.
 
-        ``joined``, if given, keeps the names that joined so, such as ``people.BY_ACCOUNT``.
+        ``joined``, if given, keeps the names that joined so, such as ``people.BY_IDENTITY``;
+        ``identified`` keeps those that a mention with an identity writes, however it joined.
         """
         rows = self._connection.execute(
-            "SELECT DISTINCT person FROM person_names"
-            " WHERE key = :key AND (:joined IS NULL OR joined = :joined) ORDER BY person",
-            {"key": key, "joined": joined},
+            "SELECT DISTINCT person FROM person_names n"
+            " WHERE key = :key AND (:joined IS NULL OR joined = :joined)"
+            " AND (NOT :identified OR EXISTS (SELECT 1 FROM people p WHERE p.person = n.person"
+            " AND p.name = n.name AND p.identity IS NOT NULL)) ORDER BY person",
+            {"key": key, "joined": joined, "identified": identified},
         )
         return [row[0] for row in rows]
 
@@ -1075,7 +1089,7 @@ class Reader:
             projects=dict(self.values("project")),
             sections=sections,
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
-            people=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
+            persons=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
             chunks=chunks,
             chunking=embedded.chunking if embedded else None,

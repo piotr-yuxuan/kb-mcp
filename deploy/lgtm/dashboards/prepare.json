@@ -346,7 +346,7 @@
         "h": 8
       },
       "type": "bargauge",
-      "title": "Work-log documents by kind and outcome",
+      "title": "Work-log documents by type and outcome",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -358,7 +358,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (kb_mcp_kind, kb_mcp_outcome) (last_over_time(kb_mcp_prepare_documents_total{job=\"kb-mcp\", kb_mcp_kind!=\"\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"prepare\"}[$__range]))",
+          "expr": "sum by (kb_mcp_type, kb_mcp_outcome) (last_over_time(kb_mcp_prepare_documents_total{job=\"kb-mcp\", kb_mcp_type!=\"\"}[$__range]) and on (instance) last_over_time(kb_mcp_run_duration_seconds_count{job=\"kb-mcp\", kb_mcp_command=\"prepare\"}[$__range]))",
           "instant": true,
           "range": false,
           "legendFormat": "{{kb_mcp_outcome}}"

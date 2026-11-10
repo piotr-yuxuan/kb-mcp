@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter, PersonRole
+from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.indexes import (
@@ -282,7 +282,7 @@ def test_the_summary_says_what_the_index_holds(written: Written) -> None:
     assert summary.projects == {"PROJ": 1}
     assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
     assert summary.newest_fetch == MOMENT
-    assert summary.people.count == 1  # one author of both
+    assert summary.persons.count == 1  # one author of both
     assert (summary.model, summary.chunks, summary.chunking) == (None, 0, None)
 
 
@@ -300,13 +300,13 @@ INSIDE = page(
     created=MOMENT - timedelta(days=9),
     updated=MOMENT - timedelta(days=2),
     people=(
-        PersonRole(role="author", name=ADA, account=ACCOUNT),
-        PersonRole(role="creator", name=ADA, account=ACCOUNT),
-        PersonRole(role="assignee", name=ADA, account=ACCOUNT),
-        PersonRole(
+        Mention(role="author", name=ADA, identity=f"atlassian:{ACCOUNT}"),
+        Mention(role="creator", name=ADA, identity=f"atlassian:{ACCOUNT}"),
+        Mention(role="assignee", name=ADA, identity=f"atlassian:{ACCOUNT}"),
+        Mention(
             role="commenter",
             name=ADA,
-            account=ACCOUNT,
+            identity=f"atlassian:{ACCOUNT}",
             at=(COMMENTED, COMMENTED + timedelta(hours=1)),
         ),
     ),
@@ -318,7 +318,7 @@ OUTSIDE = issue(
     issue_type="Bug",
     created=MOMENT,
     updated=MOMENT,
-    people=(PersonRole(role="commenter", name=BO, at=(COMMENTED - timedelta(days=1),)),),
+    people=(Mention(role="commenter", name=BO, at=(COMMENTED - timedelta(days=1),)),),
 )
 ALIKE_BODY = "# Alike\n\nThe same words here.\n"
 SAME_CHUNK = (chunk_of(ALIKE_BODY, "same words", "k", NORTH),)
@@ -404,7 +404,7 @@ def test_a_person_is_read_back(written: Written) -> None:
     with written(ATTENDED).reading() as reader:
         key = people.name_key(ADA)
         (ada,) = reader.persons(key)
-        assert reader.persons(key, people.BY_ACCOUNT) == [ada]
+        assert reader.persons(key, people.BY_IDENTITY) == [ada]
         assert reader.persons(key, people.BY_NAME) == [ada]  # the meeting's, by her name alone
         assert reader.persons("nobody") == []
         activity = reader.person(ada)
@@ -583,7 +583,7 @@ LONE = page(
     "Lone page",
     space="OPS",
     labels=("alone",),
-    people=(PersonRole(role="author", name=BO),),
+    people=(Mention(role="author", name=BO),),
 )
 LONE_BODY = "# Lone page\n\nA solitary word.\n"
 
@@ -708,17 +708,19 @@ SYNC_PATH = location(SYNC)
 
 
 def sam_of(account: str, key: str) -> FilledDocument:
-    """Give an issue authored by an account of Sam Sample's name."""
+    """Give an issue authored by an identity of Sam Sample's name."""
     front = issue(
-        key, f"Issue {key}", people=(PersonRole(role="author", name=SAM, account=account),)
+        key,
+        f"Issue {key}",
+        people=(Mention(role="author", name=SAM, identity=f"atlassian:{account}"),),
     )
     return FilledDocument(front=front, body=f"# Issue {key}\n")
 
 
-def test_a_person_s_rows_follow_an_account_put_or_removed_in_another_document(
+def test_a_person_s_rows_follow_an_identity_put_or_removed_in_another_document(
     written: Written,
 ) -> None:
-    """A meeting's name alone joins the one account of its name; with two, neither, said.
+    """A meeting's name alone joins the one identity of its name; with two, neither, said.
 
     The meeting's file is never put again: each update joins every document whole.
     """
@@ -736,7 +738,7 @@ def test_a_person_s_rows_follow_an_account_put_or_removed_in_another_document(
     assert done.persons.ambiguous == ()
     (joined,) = participant()
     with index.reading() as reader:
-        assert reader.persons(key) == reader.persons(key, people.BY_ACCOUNT) == [joined]
+        assert reader.persons(key) == reader.persons(key, people.BY_IDENTITY) == [joined]
     done = index.update(change(put=[second]), done.build)
     assert done is not None
     assert [each.name for each in done.persons.ambiguous] == [SAM]

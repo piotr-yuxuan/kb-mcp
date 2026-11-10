@@ -57,8 +57,8 @@ The site's responses and its HTML change without notice. So that a change stays 
   which module holds which record. `sources.atlassian.fetch.domain.content` holds what
   the fetch of Confluence and Jira stores and their prepare reads: `Space`, `Folder`,
   `Page` and `BlogPost` (both `ConfluenceDocument`), `Issue`, `Attachment` (an
-  [attachment](concepts.md#document)), `Comment`, `SiteUser` (a site user, of an
-  [account](concepts.md#person)), and `Snapshot` (a [snapshot](concepts.md#snapshot),
+  [attachment](concepts.md#document)), `Comment`, `SiteUser` (a site user, whose account id is a
+  mention's [identity](concepts.md#person)), and `Snapshot` (a [snapshot](concepts.md#snapshot),
   with its rendered body). `Listed` is what a [listing](concepts.md#scope) says of a
   document (its type, id, revision, update time and Confluence version), read apart from
   the rest of the entry, so that an entry whose other fields have changed still lets the
@@ -390,16 +390,16 @@ style, so that forty comments by three commenters make three lines:
 
 ```yaml
 people:
-- {role: author, name: Robin Example, account: acct-0001}
-- {role: creator, name: Sam Sample, account: acct-0002}
-- {role: commenter, name: Sam Sample, account: acct-0002, at: ['2026-10-20T09:12:00Z']}
+- {role: author, name: Robin Example, identity: 'atlassian:acct-0001'}
+- {role: creator, name: Sam Sample, identity: 'atlassian:acct-0002'}
+- {role: commenter, name: Sam Sample, identity: 'atlassian:acct-0002', at: ['2026-10-20T09:12:00Z']}
 ```
 
 | Field | Value |
 |---|---|
 | `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter`, `participant` |
 | `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
-| `account` | the account id, when the source has one (Confluence and Jira); absent otherwise |
+| `identity` | the issuer, a colon, then the value that the issuer gave, when the source gives one: `atlassian:` and the account id for Confluence and Jira, whose sites share the issuer `atlassian` (058); absent otherwise. Plan 041's `account`, the account id alone, which the Atlassian connectors alone wrote, reads as `atlassian:` and that id (`mirror.adapters.markdown.load`), until every file has been prepared once after the upgrade; a later plan removes that reader |
 | `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
 
 | Role | Who |
@@ -411,7 +411,7 @@ people:
 | `participant` | someone at a work-log meeting, as its `:PARTICIPANTS:` names them, or a speaker of a transcript (042) |
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
-commenter and each participant once by name and account. `participant` is the work
+commenter and each participant once by name and identity. `participant` is the work
 log's one role
 (`sources.worklog.prepare.domain.worklog.WORKLOG_ROLES`), which no other source's
 documents hold, so that no document names people of both kinds. `load` refuses any
@@ -420,25 +420,25 @@ any other broken rule of one entry, naming the entry, such as `people[1]`; and a
 author, creator or assignee, a commenter or a participant twice, a role of another
 source, or people out of the order of the roles, naming `people`. Names are
 kept as written, never normalised, merged or masked: a colleague renamed between two
-fetches appears under two names, with one account id, which the index alone joins into
+fetches appears under two names, with one identity, which the index alone joins into
 one person ([persons](#persons)). `FrontMatter.author`,
 `FrontMatter.creator` and `FrontMatter.assignee` name the one person of that role, or
 nobody.
 
-Names, and the account ids beside them, are personal data, kept wherever the content
+Names, and the identities beside them, are personal data, kept wherever the content
 is:
 
 - `<data>/raw/`, the responses as the site gave them: an issue's reporter, creator,
   assignee and comments' authors, by name and account id, in `issue.json` and
   `comments.json`; Confluence's authors by account id, named in `users.json`; and a
   person's email address wherever the site gives one, which the adapters leave behind;
-- `<data>/docs/`: `people`, by name and account id; each comment's heading, by name;
+- `<data>/docs/`: `people`, by name and identity; each comment's heading, by name;
   and whatever a body says;
 - `<data>/conversions.sqlite`: the bodies' Markdown, the comments' headings in it;
 - `<data>/index.sqlite`, and each index under `<data>/eval/indexes/`: the column and
-  the table `people`, by name and account id, and the bodies' words; the tables
+  the table `people`, by name and identity, and the bodies' words; the tables
   `persons` and `person_names`, each person's names and their keys, and its id, a digest
-  of an account id or of a name's key ([persons](#persons));
+  of an identity or of a name's key ([persons](#persons));
 - `<data>/aliases.toml`, the user's own: names as the sources write them, and the
   persons they mean;
 - the texts sent to the embedding endpoint, on this machine unless a run is given
@@ -453,9 +453,9 @@ is:
 - the folder given to `eval-agents` by `--out`, whose calls and answers hold what the
   server answered.
 
-The MCP server serves no entry's `account` (`mcp.app.responses.metadata`); the files
-that agents may read hold it. It serves a person by name and id, never by account id,
-although hashing a known account id gives its person's id. Deleting `<data>/docs/` and
+The MCP server serves no entry's `identity` (`mcp.app.responses.metadata`); the files
+that agents may read hold it. It serves a person by name and id, never by identity,
+although hashing a known identity gives its person's id. Deleting `<data>/docs/` and
 `<data>/index.sqlite` removes the people from all that agents and the server read,
 until the next `prepare` and `index` write them again from the raw store.
 Persons live in the index alone: deleting `<data>/index.sqlite` removes them, until the
@@ -682,7 +682,7 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
   roadmap](../work/README.md) lists the plans. The front matter holds no version of its
   format.
 - **What the files hold** is content from the site and the work log, untrusted
-  reference data, never instructions, and the names and account ids of
+  reference data, never instructions, and the names and identities of
   [people](#people), personal data.
 - **No person** is in the files: each names its people as their source writes them,
   and only this program's index joins those names into [persons](#persons) (043), so
@@ -716,7 +716,7 @@ index twice, as each label is. No chunk's text holds the front matter's people
 (`search.domain.chunking`), so a build over files of which only `people` changed embeds
 nothing new. Schema 5 (042) adds the column `links` to `documents`, the front matter's
 links as JSON, as `labels` is, so that a row still gives its front matter back whole; a
-participant is a row of the table `people`, without account or time. No chunk's text
+participant is a row of the table `people`, without identity or time. No chunk's text
 holds the links either. Schema 6 (043) joins the people into persons
 ([below](#persons)): the column `person` of `people`, and the tables `persons` and
 `person_names`; no chunk's text holds a person. Plan 035 adds, at the same schema, as
@@ -730,11 +730,17 @@ built before them is served, rebuilt whole by the next `index`, and refused by `
 until then. Schema 7 (054) gives the tables their names now: `chunks` was `pieces`, its
 column `end` was `stop`, and `section_words` was `chunks`; an index of 6 is rebuilt whole
 by the next `index`, and `embed` then finds in the vector cache every vector that
-`vectors.sqlite` still holds, no text embedded having changed. An index of another schema
-is refused, naming `prepare`, then `index`, then `embed`: `prepare` writes the mirror
-again before `index` rebuilds the index, as a new schema can come with a new format of
-the files; one of schema 6, whose files this version reads as they are, naming `index`,
-then `embed`; one cut by a chunking that this version
+`vectors.sqlite` still holds, no text embedded having changed. Schema 8 (058) names
+identities: the column `account` of `people` becomes `identity`, written
+`<issuer>:<value>` as the front matter writes it, and `person_names.joined` says
+`identity` and `attendance` where it said `account` and `meeting`; an index of 7 is
+rebuilt whole by the next `index`, which reads a file's former `account` as an
+identity, and `embed` then finds every vector in the vector cache, no chunk's text
+holding a person. An index of another schema is refused, naming `prepare`, then
+`index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
+index, as a new schema can come with a new format of the files; one of schema 6 or 7,
+whose files this version reads as they are, naming `index`, then `embed`; one cut by a
+chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the
 index names, and only while the endpoint's fingerprint for it is the index's.
@@ -808,21 +814,24 @@ removed.
 ### Persons
 
 Once the files are read, each write of `index` joins the rows of `people` of every
-document, copied or read, into persons (043,
-`search.adapters.sqlite_index.Writer.join`), by the first of these rules that answers
-(`search.domain.people.joined`, rules 2 to 4 its `RULES`):
+document, copied or read, into persons (043, 058,
+`search.adapters.sqlite_index.Writer.join`), by the first of the rules of [the
+concepts](concepts.md#person) that answers (`search.domain.people.joined`, rules 2 to
+4 its `RULES`):
 
-1. a row with an account is the account's person, under each of its names; two
-   accounts are never one person, even of one name;
-2. a name without an account whose key an alias holds goes to the person that the alias
-   means ([below](#the-alias-file)), but for a transcript's speaker whom rule 4 gives
-   one other person;
-3. one whose key is the key of a name of exactly one account joins that account's
-   person, but for a transcript's speaker to whom rule 4 gives persons that do not
-   hold that account, which is ambiguous;
-4. a transcript's speaker whose key is the first word of the keys of participants of
-   the meetings that its `summary` links name joins their person, when they are one;
-5. else, a person by name alone, shared by every name without an account of its key.
+1. a row with an identity is the identity's person, under each of its names, unless an
+   alias of that identity names another person; two identities are one person only
+   when an alias says so, even of one name;
+2. a name without an identity whose key an alias holds goes to the person that the
+   alias means ([below](#the-alias-file)), but for a participant whom rule 4 gives one
+   other person;
+3. one whose key is the key of a name of exactly one identity's person joins that
+   person, but for a participant to whom rule 4 gives persons that do not hold that
+   identity, which is ambiguous;
+4. a participant whose key is the first word of the keys of the participants of the
+   documents that its document's `summary` links name in its source joins their
+   person, when they are one;
+5. else, a person by name alone, shared by every name without an identity of its key.
 
 A name's key (`search.domain.people.name_key`) is the name casefolded, decomposed by
 Unicode NFKD without the combining marks of U+0300 to U+036F, casefolded again, its
@@ -832,43 +841,51 @@ when a name comes before it: `Hélène  Example` and `helene example` share one,
 (`search.domain.people.Joining.compared_key`), however it is spaced, for the names of a
 key that two parts or more tell apart, as a site or the user wrote them: `Alex (Ops)` and
 `Alex (Sales)` are two persons, and a bare `Alex` is neither; a meeting's `Robin (Ops)`
-is the account named `Robin (Ops)`, not one named `Robin (Sales)`, and a bare `Robin`
-could be either, so that rule 3 finds it among several accounts. A name that rule 3
-finds among several accounts, or among persons other than its meeting's, or rule 4 among
-several persons, is ambiguous: it joins none of them, goes by rule 5, and the build
-warns of it, as `index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two
-accounts of one name are no warning, as no alias changes them. The join cannot tell a
+is the identity named `Robin (Ops)`, not one named `Robin (Sales)`, and a bare `Robin`
+could be either, so that rule 3 finds it among several identities. A name that rule 3
+finds among several identities' persons, or among persons other than its summaries',
+or rule 4 among several persons, is ambiguous: it goes by rule 5 to the person by name
+of its key, which may be one of them, and the build warns of it, as
+`index.person_ambiguous` ([index's telemetry](telemetry/index.md)); two identities of
+one name are no warning. The join cannot tell a
 note in brackets from a part that tells names apart: two notes of one name,
 `Kim (not in the header)` and `Kim (late)`, part it too, each a person by name alone,
 and the build warns of that name, under the first of them, when they are two persons
 or more; an alias of the name to one of its spellings, such as `"Kim" = "Kim"`, joins
 them. The same rows in any order give the same persons.
 
-A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
-feed and the account id, or of `name`, a line feed and the key by which the join
-compares the name (`search.domain.people.person_id`): stable while what anchors the
-person stays. A second note on a name, which parts its annotated spellings, anchors
+A person's id is `p-` and the first 16 hex digits of the SHA-256 of `identity`, a line
+feed and the identity, or of `name`, a line feed and the key by which the join compares
+the name (`search.domain.people.person_id`): stable while what anchors the person
+stays. An identity of the issuer `atlassian` hashes as its account id did before
+identities had an issuer, `account`, a line feed and its value alone
+(`search.domain.people.LEGACY_BARE_ISSUERS`), so that every id made then stays; any
+other issuer's, under `identity`, whole, so that no two issuers' identities are one
+person. Two identities that an
+alias makes one keep the id of the one that it names. A second note on a name, which parts its annotated spellings, anchors
 each of them anew: the bare name keeps the id, and an alias to it, or an id that an
 agent kept, names fewer documents, as the build warns of that name. A person is served
-by a name: an account's, the name on its most recently updated document; a person by
-name alone's, the value of the first alias that made it, when that is a name, else
-its most frequent spelling; ties go to the first row in the join's order, by document,
-in the order of their paths' text whichever file was written last, then role, name and
-account, the rows of transcripts that link meetings last, so that their
-meetings' persons are known. The join reads the links of transcripts to meetings
-alone, and refuses a document that links to meetings and is a transcript's meeting
-itself, as a programming error.
+by a name: an identity's, the name on its identities' most recently updated document;
+a person by name alone's, the value of the first alias that made it, when that is a
+name, else its most frequent spelling; ties go to the first row in the join's order, by
+document, in the order of their paths' text whichever file was written last, then
+role, name and identity, the rows of documents that link by `summary` last, so that
+their summaries' persons are known. The join reads the `summary` links that name a
+document of the same source, by its id (`search.adapters.sqlite_index.SUMMARY_LINKS`);
+a document so named that has summaries itself, as a file edited by hand may, is no
+summary (`search.domain.people.joined`), and `index.built` names it by its path, in
+`chained`, as does `index`'s JSON, in `report.persons.chained`.
 
 | Table or column | Holds |
 |---|---|
 | `people.person` | each row's person, by id, filled before the build commits; indexed with the role, `(person, role)` |
 | `persons` | each person: `id`, the primary key, and `name`, as served |
-| `person_names` | each spelling of each person: `person`, `name` as the source writes it, `key`, and `joined`, how it joined, `account`, `alias`, `meeting` or `name`; indexed by `key` |
+| `person_names` | each spelling of each person: `person`, `name` as the source writes it, `key`, and `joined`, how it joined, `identity`, `alias`, `attendance` or `name`; indexed by `key` |
 
 The filters by person read them (`mcp.app.tools.who`): a value is a person's id, or a
 name whose key one person holds in the filter's role, and `KEPT` keeps that person's
 rows of `people` ([the tools](mcp-tools.md#search)). The join is whole at each write of
-`index`, a copied document's rows joined again with the others: one account fetched late
+`index`, a copied document's rows joined again with the others: one identity fetched late
 can make a work-log name ambiguous, so no person is patched document by document.
 `embed` joins nothing.
 
@@ -879,30 +896,44 @@ can make a work-log name ambiguous, so no person is patched document by document
 (`search.adapters.aliases.read_aliases`, through `search.app.indexing.update_index`),
 and the index records the digest of what it means, its meta row `aliases`; `embed` and
 `serve` never do, and `eval` builds its indexes without aliases. Each line is a name
-as some source writes it, then the person it means, by a name or by a person's id, both
-TOML strings:
+as some source writes it, or an identity as the front matter writes it, then the
+person it means, by a name, an identity or a person's id, all TOML strings, an identity
+quoted for its colon:
 
 ```toml
 "Sam" = "Sam Sample"
 "Robin" = "p-0123456789abcdef"
+"atlassian:acct-0003" = "atlassian:acct-0002"
 ```
 
 - No file is no alias.
-- An alias moves names without an account alone (rule 2): an account's names are the
-  site's. It means its name anywhere but in a transcript whose meetings give the
-  speaker one other person: the participants that the user wrote for a meeting tell
-  more. Its name compares by its key, without annotation, so that `"Alex"` moves
-  `Alex (Ops)` and `Alex (Sales)` alike. A value that is a name means the one account
-  with a name of its key, else the person by name alone of its key; one that is a
-  person's id, that person. Either must be a person that an account or a name makes,
-  not aliases or meetings alone: aliases are not chained, and an alias whose value's
-  every name another alias or a meeting joins elsewhere names nobody.
+- An alias of a name moves names without an identity alone (rule 2): an identity's
+  names are its origin's. It means its name anywhere but for a participant whose
+  document's summaries give it one other person: the participants that the user wrote
+  for a meeting tell more. Its name compares by its key, without annotation, so that
+  `"Alex"` moves `Alex (Ops)` and `Alex (Sales)` alike.
+- An alias of an identity moves that identity's mentions to the person that it names
+  (rule 1), which keeps its id: the third line above makes the two `Sam Sample`
+  identities one person, of `acct-0002`'s id. It holds an identity only where a mention
+  holds it; else it is taken for a name, and, held by no name, reported as an identity
+  that no mention holds when its issuer is one of the mentions' or `atlassian`. One whose
+  value names the identity's own person changes nothing, and is reported so.
+- A value that is a name means the one identity's person with a name of its key, else
+  the person by name alone of its key; the aliases of identities are read first, each
+  value as the mentions alone make persons, so that two identities that one makes one
+  are one person to an alias of a name, as to rule 3, but not to another alias of an
+  identity; one that is an identity, that identity's own person, or, for an alias of a
+  name, the person that an alias of that identity names; one that is a person's id,
+  that person, or, for an alias of a name, the person that an alias of the identity of
+  that id names. Each must be a person that an identity or a name makes, not aliases or attendance alone: aliases are not chained,
+  and an alias whose value's every mention another alias or attendance joins elsewhere
+  names nobody.
 - A file that is not UTF-8 TOML; a value that is a table or not a string; a name or
   a value of an empty key, such as white space or accents alone, holding a line break
   or longer than 200 characters; or two names of one key: the build stops before it
   reads the mirror, `index.not_built` naming the file and, but for a file that is not
   TOML, the alias; the index in place stays, and the run exits 1.
-- An alias whose key no name without an account holds, or whose value names nobody
+- An alias whose key no name without an identity holds, or whose value names nobody
   or several persons, changes nothing, and the build warns of it, as
   `index.alias_unused`. Neither warning changes the exit status.
 - A change takes effect at the next `index`, which writes a new build for it alone,

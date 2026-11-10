@@ -316,7 +316,7 @@ def build_index(
         skipped=len(report.skipped),
         chunks=report.chunks,
         embedded=report.embedded,
-        people=report.persons.count,
+        persons=report.persons.count,
     )
     return report
 
@@ -399,7 +399,7 @@ def updated(
                 types=Counter(state.types),
                 sections=state.sections,
                 skipped=[(path, held.skipped[path].reason) for path in sorted(held.skipped)],
-                persons=JoinOutcome(count=state.people.count),
+                persons=JoinOutcome(count=state.persons.count),
                 awaiting=state.awaiting if state.model else None,
                 unchanged=True,
             )
@@ -475,7 +475,8 @@ def update_index(
             documents=report.types.total(),
             sections=report.sections,
             skipped=len(report.skipped),
-            people=report.persons.count,
+            persons=report.persons.count,
+            chained=list(report.persons.chained),
             **counts,
         )
     for path, reason in report.skipped:
@@ -484,10 +485,10 @@ def update_index(
         log.warning("index.lacks_files", count=len(report.skipped))
     for ambiguity in report.persons.ambiguous:
         log.warning(
-            "index.person_ambiguous", spelling=ambiguity.name, people=len(ambiguity.persons)
+            "index.person_ambiguous", spelling=ambiguity.name, persons=len(ambiguity.persons)
         )
     for alias in report.persons.unused:
-        log.warning("index.alias_unused", alias=alias.name, key=alias.name_key, reason=alias.reason)
+        log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
     return Indexed(report=report, index=indexing.index, model=None)
 
 

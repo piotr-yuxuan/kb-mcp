@@ -9,6 +9,7 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import (
     IDENTIFIER,
+    IDENTITY,
     ISSUE_KEY,
     PROJECT_KEY,
     REVISION_NAME,
@@ -34,31 +35,35 @@ SOLE = frozenset({"author", "creator", "assignee"})
 RELATIONS = ("transcript", "summary")
 
 
-class PersonRole(Record):
-    """One person in one role of a document, named as the source gives the name.
+class Mention(Record):
+    """One role that one document gives to one name, as its source writes the name.
 
-    ``account`` is the source's account id, None when it has none; ``at`` holds a
-    commenter's comment times, and no other role has it.
+    ``identity`` is the issuer, a colon and the value, such as ``atlassian:5f1a``, None
+    where the source gives none; ``at`` holds a commenter's comment times, and no other
+    role has it.
     """
 
     role: str
     name: str
-    account: str | None = None
+    identity: str | None = None
     at: tuple[datetime, ...] = ()
 
     @model_validator(mode="after")
-    def check_person_role(self) -> Self:
-        """Refuse a role not in ROLES, an empty text or a line break, ``at`` off its rule.
+    def check_mention(self) -> Self:
+        """Refuse a role not in ROLES, an empty text or a line break, a field off its rule.
 
-        ``at`` is a commenter's alone, never empty there, its times in UTC and ascending.
+        An identity follows IDENTITY; ``at`` is a commenter's alone, never empty there, its
+        times in UTC and ascending.
         """
         if self.role not in ROLES:
             message = "role: not one of the roles"
             raise RefusedError(message)
-        texts = [self.name] if self.account is None else [self.name, self.account]
+        texts = [self.name] if self.identity is None else [self.name, self.identity]
         if any(text.splitlines() != [text] for text in texts):
-            message = "name, account: empty, or with a line break"
+            message = "name, identity: empty, or with a line break"
             raise RefusedError(message)
+        if self.identity is not None:
+            require(IDENTITY, self.identity, "identity")
         if bool(self.at) != (self.role == "commenter"):
             message = "at: only and always for a commenter"
             raise RefusedError(message)
@@ -115,7 +120,7 @@ class FrontMatter(Record):
     status: str
     issue_type: str | None
     labels: tuple[str, ...]
-    people: tuple[PersonRole, ...]
+    people: tuple[Mention, ...]
     links: tuple[Link, ...]
     created: datetime
     updated: datetime
@@ -131,7 +136,7 @@ class FrontMatter(Record):
 
         A source, type, id or revision off its rule, a key off its rule, a text with a
         line break of any kind, a time not in UTC, a second author, creator or assignee,
-        a commenter or a participant twice by name and account, a participant beside
+        a commenter or a participant twice by name and identity, a participant beside
         another role, people out of the order of the roles, a link to the document
         itself, by its id or key, and a link given twice. Which source fills which key,
         and its types, ids and revisions, are the rules of the code that builds its front
@@ -162,7 +167,7 @@ class FrontMatter(Record):
             message = "a time not in UTC"
             raise RefusedError(message)
         held = [
-            (person.role,) if person.role in SOLE else (person.role, person.name, person.account)
+            (person.role,) if person.role in SOLE else (person.role, person.name, person.identity)
             for person in self.people
         ]
         order = [ROLES.index(person.role) for person in self.people]

@@ -259,8 +259,8 @@ person and role, in place of the keys `author` and `assignee` that Atlassian sha
 ([`FrontMatter.people`](../../src/kb_mcp/mirror/domain/mirror.py)). An
 entry gives the role, one of a closed set
 ([`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py)), the name as the
-source gives it, the account id when the source has one, and a commenter's comment
-times ([`PersonRole`](../../src/kb_mcp/mirror/domain/mirror.py)). Each
+source gives it, its identity when the source gives one, and a commenter's comment
+times ([`Mention`](../../src/kb_mcp/mirror/domain/mirror.py)). Each
 entry is one line of the file
 ([`Dumper`](../../src/kb_mcp/mirror/adapters/markdown.py)), read
 strictly ([`load`](../../src/kb_mcp/mirror/adapters/markdown.py)), as
@@ -306,8 +306,8 @@ that what read the two keys, a hit's line among them
   tests](../../tests/test_surface.py) measure it over stdio. The names of `people` are
   not words of the index: a filter finds them, and words only where a body holds them,
   as a comment's heading does. A colleague renamed between two fetches appears under two
-  names in the files, which the index alone joins by the account id ([persons joined by
-  account, then exact name](#persons-joined-by-account-then-exact-name)).
+  names in the files, which the index alone joins by the identity ([persons joined by
+  identity, then exact name](#persons-joined-by-identity-then-exact-name)).
 - **Rejected.** `author` and `assignee` kept beside `people`, tied by an invariant: each
   name twice in each file, for agents and other programs to read twice. A person as a
   string, such as `author: Robin Example`: shorter, and plain text to another engine,
@@ -397,8 +397,8 @@ afresh at each run
   a transcript without quote blocks, a line of prose such as `Decision: we wait` reads
   as a speaker. A meeting's names and its transcript's
   speakers stay apart in the files, as written: the index joins them into persons,
-  `Kim` and `Kim (not in the header)` among them ([persons joined by account, then exact
-  name](#persons-joined-by-account-then-exact-name)). The dates and links of
+  `Kim` and `Kim (not in the header)` among them ([persons joined by identity, then exact
+  name](#persons-joined-by-identity-then-exact-name)). The dates and links of
   every day, meeting and dated transcript are found again at each run, and a file
   whose own changed is written again, unconverted. One rebuild, with plan 041's: the
   index at schema 5
@@ -478,32 +478,35 @@ again under another title's path, and `prepare` exits 1.
   user's answers, its questions answered by their defaults when the user
   approved it.
 
-## Persons joined by account, then exact name
+## Persons joined by identity, then exact name
 
 Each build of the index joins the names of every source into persons
-([`joined`](../../src/kb_mcp/search/domain/people.py)). An account is a
-person under each of its names, and two accounts are never one. A name without an
-account goes, by the first rule that answers
+([`joined`](../../src/kb_mcp/search/domain/people.py)), by the rules of [the
+concepts](../reference/concepts.md#person). An identity is a person under each of its
+names, and two identities are one only when an alias of one names the other (058). A
+name without an identity goes, by the first rule that answers
 ([`RULES`](../../src/kb_mcp/search/domain/people.py)), to the person
 that the user's alias names
 ([`by_alias`](../../src/kb_mcp/search/domain/people.py)); to the one
-account with a name of its key
+identity with a name of its key
 ([`by_name`](../../src/kb_mcp/search/domain/people.py)); for a
-transcript's speaker, to the one participant of the meetings that the transcript links
-to whose name's first word is the speaker's, whole
-([`by_meeting`](../../src/kb_mcp/search/domain/people.py)); else it is
+participant of a document that links by `summary` to others of its source, such as a
+transcript to its meeting, to the one participant of those whose name's first word is
+its own, whole
+([`by_attendance`](../../src/kb_mcp/search/domain/people.py)); else it is
 a person by name alone, shared by every name of its key. Names compare by a key, without
 case, accents, runs of spaces or a trailing part in brackets
 ([`name_key`](../../src/kb_mcp/search/domain/people.py)), but for the
 parts that tell two names of one key apart
 ([`Joining.compared_key`](../../src/kb_mcp/search/domain/people.py)). A name that
-could be several persons joins none of them, a speaker whose meeting names another
-than the one account of its name among them, and the build warns of it, as of an alias
+could be several persons, a participant whose summaries name another than the one
+identity of its name among them, goes to the person by name of its key, and the build
+warns of it, as of an alias
 that changes nothing
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)). The
 aliases are a file of the data directory, `aliases.toml`, read by each `index`
 ([`read_aliases`](../../src/kb_mcp/search/adapters/aliases.py)). The
-index holds the persons, each with an id, `p-` and a digest of its account id or its
+index holds the persons, each with an id, `p-` and a digest of its identity or its
 name's key ([`person_id`](../../src/kb_mcp/search/domain/people.py)),
 in tables rebuilt with it
 ([`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py)).
@@ -515,9 +518,12 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
 - **Why.** The user's feedback asked for one person across sources, their Jira
   account, their transcript speaker name and `:PARTICIPANTS:`, and for one query giving
   the issues they created, were assigned and commented on, and the meetings they
-  attended. An account id is the site's identity, so it joins a renamed colleague's
-  names without doubt. An equal key joins what differs only in how it was typed, as most
-  of the work log's names do. A speaker's first name is joined within its meeting
+  attended. An identity is the origin's, so it joins a renamed colleague's names without
+  doubt; its issuer keeps equal values of two origins apart, and the Atlassian issuer's
+  identities hash by their value alone, so that no person's id changed when identities
+  replaced account ids (058). Two identities are one only by the user's alias, never by
+  a program's guess, as the user settled. An equal key joins what differs only in how
+  it was typed, as most of the work log's names do. A speaker's first name is joined within its meeting
   alone, whose participants the user wrote for it: there, one "Sam" is one person, and
   an alias, which the user wrote for the name anywhere, does not take the speaker from
   them. Each join that could be wrong is reported instead of made, since an agent that
@@ -525,19 +531,21 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   does not. A filter rather than a tool, since tools follow kinds of question, and
   "what has this person done" is a search narrowed, which combines with words, sources
   and dates ([the MCP surface](mcp-surface.md)). Persons are joined whole at each
-  build, since one account fetched late can make a work-log name ambiguous. The aliases
-  are a file, since a setting cannot hold a free mapping of names
+  build, since one identity fetched late can make a work-log name ambiguous. Rule 4 is
+  keyed on the relation `summary` and the role `participant`, never on the work log's
+  types, so that any connector that links a record to its summary joins by attendance
+  (058). The aliases are a file, since a setting cannot hold a free mapping of names
   ([`kind_of`](../../src/kb_mcp/config/domain/settings.py)), and a file
   adds no setting to log, layer or document.
 - **Cost.** A first name outside a linked meeting, a nickname, a caption tool's `You`,
   or a colleague written two ways in the work log alone stays apart until the user
   writes an alias; an answer by `person` shows a one-word name alone as perhaps the
   same, with the alias's line that would join it
-  ([`about`](../../src/kb_mcp/mcp/app/tools.py)). Two accounts of one
-  name stay two, and a name without an account that matches both is a person by name
-  alone, until an alias names one by id. An alias compares names by their key, so it
+  ([`about`](../../src/kb_mcp/mcp/app/tools.py)). Two identities of one
+  name stay two, and a name without an identity that matches both is a person by name
+  alone, until an alias names one by id, or an alias of one identity names the other. An alias compares names by their key, so it
   joins `Alex (Ops)` and `Alex (Sales)` alike and can tell them apart from nobody; one
-  of a word that an account is named by takes that name from the account too, and no
+  of a word that an identity is named by takes that name from the identity too, and no
   answer suggests it, nor one of a word whose names annotations keep apart. The join is
   whole at each build: on a synthetic index of 20,000 issues of 40 accounts and 2,000
   meetings with their transcripts, 148,000 rows of people and 2,000 links, it took 1.4 s
@@ -546,7 +554,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   where a search of a source's documents for each of them took 28 s. The files hold no
   person, so another engine sees names
   ([the how-to](../how-to/other-search-engines.md#what-another-engine-does-not-get)).
-  A person's id is an opaque handle that protects nothing: hashing a known account id
+  A person's id is an opaque handle that protects nothing: hashing a known identity
   finds it again. One rebuild, at schema 6
   ([`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py)), which
   embeds nothing new, no chunk's text holding a person. Every request carries 58 more
@@ -559,7 +567,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
 - **Rejected.** Fuzzy matching, initials, and a first-name rule over the whole mirror:
   each joins two people now and then, and a new colleague of an old one's first name
   would move the old one's meetings without a word. Joining by email, which no source
-  keeps. Merging two accounts; chained aliases. A tool `person(name, since)`, about 250
+  keeps. Merging two identities by a guess, such as one name; chained aliases. A tool `person(name, since)`, about 250
   estimated tokens on every request, which takes neither words nor other filters. The
   aliases as a setting, a new kind of setting through the layers and the generated
   reference, logged by every run. Person documents under `<data>/docs/`, which other
@@ -620,9 +628,9 @@ build, row for row, and ranks the golden questions alike
   index, and no triggers. The digest, not the file's time, as copying or restoring the
   folder changes times, not bytes. Copying the chunks keeps the vectors of the documents
   that did not change across `index`, which until then dropped every vector until the
-  next `embed`. Persons are joined whole at each write, as one account fetched late can
+  next `embed`. Persons are joined whole at each write, as one identity fetched late can
   make a work-log name ambiguous
-  ([persons joined by account](#persons-joined-by-account-then-exact-name)). `embed`
+  ([persons joined by identity](#persons-joined-by-identity-then-exact-name)). `embed`
   digests the mirror too, by the user's answer, so that a chain that leaves out
   `index` does not pass in silence.
 - **Cost.** The copy grows with the index, not with the change: on 20,000 made-up
@@ -708,7 +716,7 @@ outside that list. A sort by a date scores every match.
   a table of their own, for another reason
   ([people, a generic key](#people-a-generic-key)), indexed as their filters read it,
   and schema 6 gave each row its person
-  ([persons joined by account, then exact name](#persons-joined-by-account-then-exact-name)).
+  ([persons joined by identity, then exact name](#persons-joined-by-identity-then-exact-name)).
 - **Cost.** The scan reads every row, about 2 ms for 20,000 documents. A filter by
   person first finds the persons of the name's key, then counts their documents by
   role and by source ([`who`](../../src/kb_mcp/mcp/app/tools.py)):

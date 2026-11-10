@@ -181,8 +181,12 @@ was.
 
 ## 8. What runs do differently
 
-The mirror stays the same, byte for byte, but what a run says and keeps has changed since
-the former name:
+The mirror stays the same, byte for byte, but for its people, and what a run says and
+keeps has changed since the former name:
+
+- **The first prepare rewrites every Confluence and Jira file's `people`.** Each entry's
+  `account: <id>` becomes `identity: 'atlassian:<id>'`; until then `index` reads the
+  former entries as those identities, and no person's id changes.
 
 - **The first prepare converts everything once.** The cache of conversions holds its rows
   by source now, so a file of the former columns is replaced, `prepare.cache_replaced`
@@ -203,12 +207,13 @@ the former name:
   embedding only what it lacks. `embed` before that `index` stops, exit 1, naming
   `kb-mcp index`, and leaves the index as it was. From then on, `index` reads only the
   files that changed, and writes nothing when none did.
-- **An index of schema 6 is rebuilt whole by the first `index`,** at schema 7, whose tables
-  are `chunks` and `section_words`. `kb-mcp index`, then `kb-mcp embed`, suffice, as the
-  server says of the index of 6: the mirror's files did not change, so no `prepare` is
-  needed, and `embed` takes every chunk's vector back from `<data>/vectors.sqlite`, as no
-  text embedded changed. Keep that file in place: a deleted one costs a full embedding of
-  the mirror. Each evaluated index under `<data>/eval/indexes/` built at schema 6 holds
+- **An index of schema 6 or 7 is rebuilt whole by the first `index`,** at schema 8,
+  whose tables are `chunks` and `section_words` and whose people hold identities. `kb-mcp
+  index`, then `kb-mcp embed`, suffice, as the server says of such an index: the mirror's
+  files are read as they are, so no `prepare` is needed first, and `embed` takes every
+  chunk's vector back from `<data>/vectors.sqlite`, as no text embedded changed. Keep
+  that file in place: a deleted one costs a full embedding of the mirror. Each evaluated
+  index under `<data>/eval/indexes/` built at schema 6 or 7 holds
   every prune of the vector cache back, `index.prune_skipped` saying so, until `eval`
   builds it again. For each `<data>/eval/indexes/<chunking>/<model>.sqlite`, run
   `kb-mcp eval <golden file> --model <model> --chunking <chunking>`, the model's name
@@ -278,6 +283,13 @@ What reads a run's output follows:
   adds its own events, `embed.`, as
   [its telemetry](../reference/telemetry/embed.md) lists them. Log files of the retired
   commands go after their 30 days, as every command's.
+- **Persons.** The front matter's `people[].account` is `people[].identity`, valued
+  `atlassian:<id>`. `status` counts them on a line `persons:`, where it said `people:`,
+  and says "names of several identities". The field `people` of `index.built` and
+  `index.person_ambiguous` is `persons`; the field `kind` of `worklog.document` and the
+  attribute `kb_mcp.kind` of the prepare's instruments are `type` and `kb_mcp.type`.
+  `index`'s JSON gives under `report.persons` `chained`, the paths of the documents
+  that `summary` links name but that have summaries themselves, as does `index.built`.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
 - **`doctor`.** A machine with neither a site nor a Confluence or Jira source gets the

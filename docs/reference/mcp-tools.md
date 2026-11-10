@@ -51,10 +51,10 @@ otherwise than its author, and `created <day>`, such as
 With the filter `person`, the block opens with the person, then a blank line: a line
 of who they are and what they did, such as `Person: Sam Sample, p-0123456789abcdef:
 creator 3, commenter 2; jira 4; last updated 2026-10-21.`; a line of their names as the
-sources write them, by how each joined (by its account, by an alias, by name, or as a
-speaker, by the meeting of each transcript), ten at most, then how many more; and a
+sources write them, by how each joined (by its identity, by an alias, by name, or by
+attendance), ten at most, then how many more; and a
 line for each person by name alone who is perhaps the same, not joined, a one-word
-name that is the first word of one of theirs, that no account is named by and whose
+name that is the first word of one of theirs, that no identity is named by and whose
 names are that one person, which no annotation parts, by id, with the line of
 `aliases.toml` that would join them, the word as that person writes it, ten at most.
 Each name is cut at 60 characters. Each hit's second line then ends with that person's
@@ -83,20 +83,20 @@ Other filters of people add neither.
   record.
 
   The six filters of people each mean a person, as the index joins the names of every
-  source into persons: by account, by the user's aliases, by name, and a speaker by
-  the meeting of its transcript. A name matches one of a person's names whole, without
+  source into persons: by identity, by the user's aliases, by name, and a participant
+  by attendance, through the summaries of its document. A name matches one of a person's names whole, without
   regard to case, accents, runs of spaces or a trailing part in brackets, so that `Kim`
   is `Kim (not in the header)`, unless a second note, `Kim (late)`, parts them; of
   several persons, a name in brackets that one alone holds as written is taken, such
   as `Robin (Ops)` beside `Robin (Sales)`. It keeps the documents where that person
-  holds the filter's role, under any of their names: when one account wrote both names,
+  holds the filter's role, under any of their names: when one identity wrote both names,
   `{"creator": "Robin Sample"}` keeps the issues created as Robin Example too; a name
   that a hit cuts at 60 characters, `read` gives whole. A name or id that no person
   holds in that role is refused with the role's names, by `person` every role's, those
   that hold it first, the most used first, by documents; participants, and those of
   `person`, by meetings or documents other than transcripts first, so that the speakers
   that a caption tool writes, `You` and `Unverified`, never lead. A name that several
-  persons hold there, such as two accounts of one name, or `Alex` beside `Alex (Ops)`
+  persons hold there, such as two identities of one name, or `Alex` beside `Alex (Ops)`
   and `Alex (Sales)`, which brackets tell apart, even where another person is written
   `Alex`, is refused listing ten of them at most, those of the most documents first,
   then in order of id, then how many more, each by name, id, documents by role then by
@@ -122,8 +122,8 @@ start with its front matter, a `key: value` line each, of what it has: its ref, 
 space, project, issue type, status, labels, breadcrumb, people, links, created and updated
 days and address. People come there one line
 per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
-without the account id that the mirror keeps beside it, which stands for the name only
-where the source gives none: ten names at most, then how many more, each commenter with
+without the identity that the mirror keeps beside it, an account id standing for the
+name only where the source gives none: ten names at most, then how many more, each commenter with
 their count of comments and the day of the last, such as
 `commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`. Links
 come after them, one line per relation, by the ref that `read` takes: a meeting's
@@ -150,14 +150,14 @@ Lists the documents of a space or a project in tree order, or those under a pare
 
 Says what the mirror holds, when its index was built, and whether it searches by
 meaning: the model, the chunks, and the chunking that cut them. A line counts the
-persons, those in more than one source and those by name alone, of no account, then
-names the keys that names of several accounts share, five at most, then how many more,
-each with the persons holding it, such as `people: 42, 12 in more than one source, 9 by
-name alone; names of several accounts: "Sam Sample" (3)`. A key leaves out a trailing
-part in brackets, and shows as the first of its accounts' names, so that accounts
-`Robin (Ops)` and `Robin (Sales)` show as `"Robin (Ops)"`, the key of a bare `Robin`,
-which could be either: an alias settles a name that a source writes without an
-account, and a filter takes a person's id where the name is not enough. It takes no
+persons, those in more than one source and those by name alone, of no identity, then
+names the keys that names of several identities share, five at most, then how many
+more, each with the persons holding it, such as `persons: 42, 12 in more than one
+source, 9 by name alone; names of several identities: "Sam Sample" (3)`. A key leaves
+out a trailing part in brackets, and shows as the first of its identities' names, so
+that identities named `Robin (Ops)` and `Robin (Sales)` show as `"Robin (Ops)"`, the
+key of a bare `Robin`, which could be either: an alias settles a name that a source
+writes without an identity, and two identities that are one person, and a filter takes a person's id where the name is not enough. It takes no
 argument.
 
 ## Prompts
