@@ -10,12 +10,17 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.mcp.app.tools import PERSON_FILTERS, Library, SearchFilters, UnanswerableError
+from kb_mcp.mcp.app.tools import (
+    PERSON_FILTERS,
+    Library,
+    SearchFilters,
+    UnanswerableError,
+    search_filters,
+)
 from kb_mcp.mirror.domain.mirror import ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import build_index
-from kb_mcp.sources.registry import SOURCES
 from tests.answers import built, continuation, follow, parts
 from tests.mirrors import (
     CREATED,
@@ -1550,13 +1555,15 @@ def test_a_document_shows_ten_labels_at_most(tmp_path: Path) -> None:
     assert f"\nlabels: {', '.join(labels[:10])}\n" in shown
 
 
-def test_the_search_filters_spell_each_source_and_each_role_as_the_registry_and_mirror_do() -> None:
-    """Plan 052: the filters' schema, which agents read, names the sources and the roles.
+def test_the_search_filters_offer_the_sources_given_and_each_role_as_the_mirror_does() -> None:
+    """Plan 056: ``source`` takes the sources that the server is given, in their order.
 
-    Contract E keeps the server from importing the registry, so the Literal of ``source``
-    copies the sources' names, held here to ``SOURCES``. Each person filter, each role
-    of ``ROLES`` among them, is a filter of the schema.
+    Contract E keeps the server from importing the registry, so the server gives the
+    sources that its settings name. Each person filter, each role of ``ROLES`` among them,
+    is a filter of the schema, and the other filters are ``SearchFilters``' own.
     """
+    offered = typing.get_type_hints(search_filters(["wiki", "tracker"]))
     hints = typing.get_type_hints(SearchFilters)
-    assert typing.get_args(hints["source"]) == tuple(each.name for each in SOURCES)
+    assert typing.get_args(offered["source"]) == ("wiki", "tracker")
+    assert {**offered, "source": str} == hints
     assert [name for name in [*ROLES, *PERSON_FILTERS] if name not in hints] == []

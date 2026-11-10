@@ -58,14 +58,24 @@ def home(tmp_path: Path) -> Path:
 type Seen = tuple[str, ListToolsResult, ListPromptsResult]
 
 
-def seen(home: Path, *options: str) -> Seen:
-    """Start ``serve`` with these options as an agent would; give what it lists."""
+def seen(home: Path, *options: str, registry: str | None = None) -> Seen:
+    """Start ``serve`` with these options as an agent would; give what it lists.
+
+    ``registry``, if given, is code that names a registry of the tests' own ``REGISTRY``,
+    which the server is given in place of ``SOURCES``.
+    """
     found: list[Seen] = []
+    entry = "import sys; from kb_mcp.cli.main import main"
+    started = (
+        ["-m", "kb_mcp"]
+        if registry is None
+        else ["-c", f"{entry}; {registry}; sys.exit(main(None, REGISTRY))"]
+    )
 
     async def session() -> None:
         command = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "kb_mcp", "serve", *options],
+            args=[*started, "serve", *options],
             env={"HOME": str(home)},
         )
         async with Client(command) as client:
@@ -126,6 +136,30 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
     for filters in listed.values():
         assert list(filters["properties"]) == names
         assert [name for name, each in filters["properties"].items() if "title" in each] == []
+
+
+def test_the_filter_source_takes_the_sources_that_the_server_s_settings_name(home: Path) -> None:
+    """Plan 056: a deployment of two sources offers those two, in the registry's order.
+
+    The default offers the registry's three; a server of Jira and the work log alone,
+    whose index is not yet built, offers theirs.
+    """
+    registry = (
+        "from kb_mcp.sources.atlassian.declared import JIRA;"
+        " from kb_mcp.sources.worklog.declared import WORKLOG;"
+        " from tests.composed import sourced; REGISTRY = sourced(JIRA, WORKLOG)"
+    )
+    offered = {
+        name: [
+            tool.input_schema["$defs"]["SearchFilters"]["properties"]["source"]["enum"]
+            for tool in seen(home, registry=chosen)[1].tools[:2]
+        ]
+        for name, chosen in (("default", None), ("two", registry))
+    }
+    assert offered == {
+        "default": [["confluence", "jira", "worklog"]] * 2,
+        "two": [["jira", "worklog"]] * 2,
+    }
 
 
 def test_without_ask_nothing_names_it_and_descriptions_are_the_docstrings(home: Path) -> None:

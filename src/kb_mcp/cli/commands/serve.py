@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import inspect
 import time
 from typing import TYPE_CHECKING
 
@@ -28,7 +29,7 @@ from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.mcp.app.surface import surface
-from kb_mcp.mcp.app.tools import FALLBACKS, Library, UnanswerableError
+from kb_mcp.mcp.app.tools import FALLBACKS, Library, UnanswerableError, search_filters
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import endpoint
 from kb_mcp.search.adapters.reranking import SEARCH, rerank
@@ -64,10 +65,11 @@ ANSWER_SIZE = METER.create_histogram(
 )
 
 
-def served(method: Callable[..., str]) -> Callable[..., str]:
+def served(method: Callable[..., str], filters: type) -> Callable[..., str]:
     """Wrap a tool so that an unanswerable call reaches the agent with its message, measured.
 
-    The SDK shows the agent the message of a ``ToolError`` alone; any other exception
+    Its parameter ``filters``, if it has one, takes ``filters``, which the SDK writes in
+    its schema. The SDK shows the agent the message of a ``ToolError`` alone; any other exception
     becomes a bare "Error executing tool". Each call's duration goes in
     ``mcp.server.operation.duration``, an unanswerable one's with the ``error.type``
     ``tool_error``, as the MCP conventions have it, and one that raises any other
@@ -107,6 +109,13 @@ def served(method: Callable[..., str]) -> Callable[..., str]:
         ANSWER_SIZE.record(len(answer.encode()), {"gen_ai.tool.name": name})
         return answer
 
+    signature = inspect.signature(method, eval_str=True)
+    tool.__signature__ = signature.replace(
+        parameters=[
+            each.replace(annotation=filters | None) if each.name == "filters" else each
+            for each in signature.parameters.values()
+        ]
+    )
     return tool
 
 
@@ -126,7 +135,8 @@ def checking(render: Callable[..., str]) -> Callable[..., str]:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None]:
     """Serve the tools named, and the prompts that they allow, until the client closes stdin.
 
-    The lexical mode never opens the embedding endpoint, nor does a server not reranking
+    Their filter ``source`` takes the sources that the settings name. The lexical mode
+    never opens the embedding endpoint, nor does a server not reranking
     open the reranking server's. The protocol is the output:
     no result is given. ``kb_mcp.serve.fallbacks`` is 0 from the start, so that a chart of
     it has data before any search falls back.
@@ -147,9 +157,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             SqliteIndex(settings.index), settings.docs, meaning, settings.search_mode, reranking
         )
         offered = surface(library, arguments.tools)
+        filters = search_filters(tuple(type(settings.sources).model_fields))
         tools = [
             Tool.from_function(
-                served(getattr(library, name)),
+                served(getattr(library, name), filters),
                 description=offered.descriptions[name],
                 annotations=READ_ONLY,
                 structured_output=False,

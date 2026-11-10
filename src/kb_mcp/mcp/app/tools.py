@@ -14,6 +14,7 @@ import bisect
 import json
 import math
 import re
+import typing
 import unicodedata
 from contextlib import contextmanager
 from copy import replace
@@ -104,7 +105,7 @@ class SearchFilters(TypedDict, total=False):
     participant: a meeting's, or a transcript's speaker.
     """
 
-    source: Literal["confluence", "jira", "worklog"]
+    source: str  # one of the sources that the server's settings name: search_filters
     space: str
     project: str
     status: str
@@ -133,6 +134,18 @@ def untitled(schema: dict[str, Any]) -> None:
 # Pydantic, which the SDK validates arguments with, then refuses a misspelt filter
 # rather than drop it, and writes the schema without titles.
 SearchFilters.__pydantic_config__ = {"extra": "forbid", "json_schema_extra": untitled}
+
+
+def search_filters(sources: Sequence[str]) -> type[SearchFilters]:
+    """Give ``SearchFilters`` as a server of these sources offers them: ``source`` one of them.
+
+    Each other filter, its description and its configuration are ``SearchFilters``' own.
+    """
+    hints = typing.get_type_hints(SearchFilters)
+    offered = TypedDict("SearchFilters", {**hints, "source": Literal[*sources]}, total=False)
+    offered.__doc__ = SearchFilters.__doc__
+    offered.__pydantic_config__ = SearchFilters.__pydantic_config__
+    return offered
 
 
 NOT_SET_UP = "this server searches by words alone"
