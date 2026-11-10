@@ -181,8 +181,12 @@ was.
 
 ## 8. What runs do differently
 
-The mirror stays the same, byte for byte, but what a run says and keeps has changed since
-the former name:
+The mirror stays the same, byte for byte, but for its people, and what a run says and
+keeps has changed since the former name:
+
+- **The first prepare rewrites every Confluence and Jira file's `people`.** Each entry's
+  `account: <id>` becomes `identity: 'atlassian:<id>'`; until then `index` reads the
+  former entries as those identities, and no person's id changes.
 
 - **The first prepare converts everything once.** The cache of conversions holds its rows
   by source now, so a file of the former columns is replaced, `prepare.cache_replaced`
@@ -278,6 +282,11 @@ What reads a run's output follows:
   adds its own events, `embed.`, as
   [its telemetry](../reference/telemetry/embed.md) lists them. Log files of the retired
   commands go after their 30 days, as every command's.
+- **Persons.** The front matter's `people[].account` is `people[].identity`, valued
+  `atlassian:<id>`. `status` counts them on a line `persons:`, where it said `people:`,
+  and says "names of several identities". The field `people` of `index.built` and
+  `index.person_ambiguous` is `persons`; the field `kind` of `worklog.document` and the
+  attribute `kb_mcp.kind` of the prepare's instruments are `type` and `kb_mcp.type`.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
 - **`doctor`.** A machine with neither a site nor a Confluence or Jira source gets the
