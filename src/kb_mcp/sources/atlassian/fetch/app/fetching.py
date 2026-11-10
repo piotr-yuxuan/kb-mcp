@@ -206,9 +206,13 @@ class Fetching:
         default_factory=dict
     )
 
-    def label(self, document_class: type[FetchedDocument]) -> str:
-        """Name a document type of the source in the counts, by its plural: ``confluence pages``."""
-        return f"{self.store.source} {document_class.document_type.plural}"
+    def label(self, what: str | type[FetchedDocument]) -> str:
+        """Name something of the source in the counts, a document type by its plural.
+
+        As ``confluence pages`` or ``confluence spaces``.
+        """
+        named = what if isinstance(what, str) else what.document_type.plural
+        return f"{self.store.source} {named}"
 
     def run(self, scopes: Sequence[Scope]) -> None:
         """Fetch every space and project named, after checking that the session holds.
@@ -336,7 +340,7 @@ class Fetching:
                 found = self.collect(confluence_v2.space_request(key), confluence_v2.listing_page)
                 space = confluence_v2.space(Fields(found[0], "space")) if found else None
                 if space is None:
-                    self.scope_failed(f"{self.store.source} spaces", f"space {key}", "not found")
+                    self.scope_failed(self.label("spaces"), f"space {key}", "not found")
                     span.set_status(StatusCode.ERROR, "not found")
                     return False
                 page_listing = confluence_v2.listing_request(space.id, Page)
@@ -345,7 +349,7 @@ class Fetching:
                     pages = self.collect(page_listing, confluence_v2.listing_page, listing.advance)
                     posts = self.collect(post_listing, confluence_v2.listing_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.scope_failed(f"{self.store.source} spaces", f"space {key}", error)
+                self.scope_failed(self.label("spaces"), f"space {key}", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
@@ -435,10 +439,10 @@ class Fetching:
                 others = {k: s for k, s in self.tombstones.items() if s.scope != scope}
                 self.tombstones = {**others, **now}
                 self.store.put_tombstones(self.tombstones.values())
-                probed = f"{scope.source} documents: probed, absent from their listing"
+                probed = f"{self.label('documents')}: probed, absent from their listing"
                 self.counts.add(probed, len(answers))
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
-                self.counts.add(f"{scope.source} documents: absent, waiting for a probe", waiting)
+                self.counts.add(f"{self.label('documents')}: absent, waiting for a probe", waiting)
 
     def probe(self, key: DocumentKey, kept: set[str]) -> ProbeAnswer | None:
         """GET a document absent from its listing, and say what became of it.
@@ -454,10 +458,10 @@ class Fetching:
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
                 return ProbeAnswer.GONE
-            self.failed(f"{key[0]} probes", where, error)
+            self.failed(self.label("probes"), where, error)
             return None
         except RepresentationError as error:
-            self.failed(f"{key[0]} probes", where, error)
+            self.failed(self.label("probes"), where, error)
             return None
         named = found_space in kept and key[2] in self.store.listed_ids(found_space, document_class)
         return answer_of(found_space, status, kept, named=named)
@@ -474,8 +478,8 @@ class Fetching:
                 page = confluence_v2.document(Fields(entry, PAGE.plural), Page)
             except RepresentationError as error:
                 self.failed(
-                    f"{self.store.source} pages in the tree",
-                    f"{self.store.source} pages listing",
+                    f"{self.label('pages')} in the tree",
+                    f"{self.label('pages')} listing",
                     error,
                 )
                 continue
@@ -488,13 +492,13 @@ class Fetching:
                 continue
             if len(found) >= MAX_FOLDERS:
                 left = len(wanted) + 1
-                self.counts.add(f"{self.store.source} folders: over the cap, left out", left)
+                self.counts.add(f"{self.label('folders')}: over the cap, left out", left)
                 break
             try:
                 response = self.site.json(confluence_v2.folder_request(folder_id))
                 folder = confluence_v2.folder(Fields(response, "folder"))
             except (RepresentationError, SiteError) as error:
-                self.failed(f"{self.store.source} folders", f"folder {folder_id}", error)
+                self.failed(self.label("folders"), f"folder {folder_id}", error)
                 found[folder_id] = None
                 continue
             found[folder_id] = response
@@ -521,7 +525,7 @@ class Fetching:
                     search = jira_v3.search_request(key, start, end)
                     entries = self.collect(search, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
-                self.scope_failed(f"{self.store.source} projects", f"project {key}", error)
+                self.scope_failed(self.label("projects"), f"project {key}", error)
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             if self.plan:
@@ -757,14 +761,14 @@ class Fetching:
                 try:
                     users += self.collect(request, confluence_v2.users_page)
                 except (RepresentationError, SiteError) as error:
-                    self.failed(f"{self.store.source} users", f"{self.store.source} users", error)
+                    self.failed(self.label("users"), self.label("users"), error)
             try:
                 if users:
                     self.store.put_users(users)
             except RepresentationError as error:
-                self.failed(f"{self.store.source} users", f"{self.store.source} users", error)
+                self.failed(self.label("users"), self.label("users"), error)
                 return
-            self.counts.add(f"{self.store.source} users: named", len(users))
+            self.counts.add(f"{self.label('users')}: named", len(users))
 
 
 class Purview(Record):
