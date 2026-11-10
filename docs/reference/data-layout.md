@@ -266,8 +266,10 @@ Two more of the store's own records, each replaced whole:
 Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, one for each source fetched,
 `confluence` or `jira`, since two fetches can start within a second (030), in the format
-004's plan defines. A run report holds counts and refused fields' paths, never content,
-and names no target. No code reads one back. Its counts of documents depend on whether
+004's plan defines: `ending`, how the fetch ended (`done`, `failed`, `sign in again`, or
+`interrupted` by Ctrl-C), and `counts`, each count by its name; reports written before
+held `status`, the exit status, in place of `ending`. A run report holds counts and
+refused fields' paths, never content, and names no target. No code reads one back. Its counts of documents depend on whether
 `--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
 stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
 

@@ -552,6 +552,25 @@ def test_a_run_with_a_failure_says_so_in_its_status(
     assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
+@pytest.mark.parametrize(
+    ("stop", "ending"), [(KeyboardInterrupt, "interrupted"), (OSError, "failed")]
+)
+def test_a_run_that_something_stops_records_how(
+    stop: type[BaseException], ending: str, tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Ctrl-C leaves its record interrupted; any other error that stops it, failed."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
+
+    def stopped(*_: object) -> None:
+        raise stop
+
+    monkeypatch.setattr(Fetching, "run", stopped)
+    with pytest.raises(stop):
+        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    [report] = chosen.runs.iterdir()
+    assert json.loads(report.read_text("utf-8"))["ending"] == ending
+
+
 def test_only_the_site_cookies_with_a_value_are_saved_back(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

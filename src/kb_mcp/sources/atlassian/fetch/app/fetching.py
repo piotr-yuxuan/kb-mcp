@@ -867,7 +867,8 @@ def run_fetch(
     ``fetch.coverage`` says at INFO what became of each finished target's coverage,
     and why it was held, if it was. It ends done when nothing failed, failed when
     something did, and sign in again when the sign-in no longer holds or no session was
-    saved. Raises PeriodError when --since
+    saved; its record says interrupted for Ctrl-C, failed for any other error that stops
+    it. Raises PeriodError when --since
     does not come before the windows' end, StoreBusyError when another run writes, and
     ValueError for targets of no source or of both, all before anything is written.
     """
@@ -916,18 +917,21 @@ def run_fetch(
                     store.put_coverage(coverage)
         except SignInNeededError:  # from the client: no session was saved
             ending = "sign in again"
+        except KeyboardInterrupt:
+            ending = "interrupted"
+            counts.add("runs: interrupted")
+            raise
         finally:
-            if ending is None:
-                counts.add("runs: interrupted")
-            elif ending == "sign in again":
+            if ending == "sign in again":
                 counts.add("runs: stopped, sign-in needed")
             settings.runs.mkdir(parents=True, exist_ok=True)
-            stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
             saved = {
-                "ending": ending or "interrupted",
+                "ending": ending or "failed",  # none: an error stopped it
                 "counts": dict(sorted(counts.counts.items())),
             }
-            path = settings.runs / f"{stamp}-{source}.json"
-            path.write_text(json.dumps(saved, indent=1), "utf-8")
+            stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+            (settings.runs / f"{stamp}-{source}.json").write_text(
+                json.dumps(saved, indent=1), "utf-8"
+            )
     counts.windows = windows_of(windows, extensions)
     return Outcome(ending=ending, counts=counts, problems=tuple(problems))
