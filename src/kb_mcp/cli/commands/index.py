@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.commands._embedding import indexing_of
 from kb_mcp.kernel.exit_status import ENDED, ExitStatus
+from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.search.app.indexing import update_index
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.outcome import Outcome
-    from kb_mcp.kernel.output import Detail
     from kb_mcp.search.app.indexing import IndexCounts
 
 
@@ -30,6 +29,5 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     return ENDED[outcome.ending], outcome
 
 
-def text(outcome: Outcome[IndexCounts], detail: Detail) -> str:
-    """Write the outcome: its counts, then its problems and warnings."""
-    return outcome.text(detail)
+# The outcome writes itself: its counts, then its problems and warnings.
+text = Outcome.text
