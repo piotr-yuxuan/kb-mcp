@@ -6,12 +6,12 @@ A release is two writes, in this order, and a run makes only those that are miss
 that a second run finishes a run cut short:
 
     commit   the version commit on main, made through GitHub's API so that GitHub signs
-             it: `.version` and the `;; Version:` header of each package's main file
+             it: the version of `pyproject.toml` and of the package's entry in `uv.lock`
     release  the release X.Y.Z with its tag, on that commit
 
 The version and the notes are pure functions, and so is the choice of the writes; the rest
-reads git and calls `gh api`.  It needs Python 3.11 or later, git and gh, and runs at the
-root of a checkout with every tag.  docs/reference/release-pipeline.md describes it.
+reads git and calls `gh api`.  It needs Python 3.12 or later, git and gh, and runs at the
+root of a checkout with every tag.
 
 The environment: GH_TOKEN, for gh; GITHUB_REPOSITORY, GITHUB_SERVER_URL and
 GITHUB_EVENT_NAME, from the runner; RELEASE_COMMIT and RELEASE_BUMP, from the workflow.
@@ -21,25 +21,33 @@ error: an input is malformed, or git or GitHub refused a call, did not answer in
 answered something else.  No write follows the failure.
 """
 
+from __future__ import annotations
+
 import base64
 import json
 import os
 import re
 import subprocess
 import sys
-from collections.abc import Collection, Mapping, Sequence
+import tomllib
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-VERSION_FILE = ".version"
+if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping, Sequence
+
+PROJECT_FILE = "pyproject.toml"
 BRANCH = "main"
 NUMBERS = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-VERSION_TEXT = re.compile(NUMBERS + r"\n")
-VERSION_TAG = re.compile(NUMBERS)
+VERSION = re.compile(NUMBERS)
 # The whole message of a version commit.
 VERSION_MESSAGE = re.compile(rf"Version ({NUMBERS})\n\n\[skip ci\]")
-PACKAGE = re.compile(r"sommaire|imprimeur|imprimeur-skin-[^/]+")
-MAIN_FILE = re.compile(rf"({PACKAGE.pattern})/\1\.el")
-HEADER = re.compile(rb"^;; Version: [^\n]*$", re.MULTILINE)
+# The files that a version commit writes, each with the one line that holds the version:
+# the project's, and the package's own entry in the lock, which `uv lock --check` compares.
+VERSION_LINES = {
+    PROJECT_FILE: re.compile(rb'^version = "[^"\n]*"$', re.MULTILINE),
+    "uv.lock": re.compile(rb'(?<=^name = "kb-mcp"\n)version = "[^"\n]*"$', re.MULTILINE),
+}
 # The parts of a version, in the order of its numbers.
 BUMPS = ("major", "minor", "patch")
 COMMIT = re.compile(r"[0-9a-f]{40}")
@@ -87,9 +95,9 @@ class Found:
 
     commit: Commit  # the commit that this run is about
     head: Commit  # main on origin
-    pending: Commit | None  # a version commit that an earlier run may have left without its release
+    pending: Commit | None  # a version commit that an earlier run may have left unreleased
     released: bool  # whether GitHub holds the release of `pending`
-    version: str | None  # the text of `.version` at `commit`
+    version: str  # the version of `pyproject.toml` at `commit`
     tags: Mapping[str, str]  # the commit of each tag of origin, by name
 
 
@@ -103,22 +111,28 @@ class Decision:
     note: str = ""
 
 
-def next_version(text: str | None, tags: Collection[str], bump: str) -> str:
-    """The version to release, from the text of `.version` and the bump asked.
+def project_version(text: bytes) -> str:
+    """Return the version of a `pyproject.toml`, refused unless it is MAJOR.MINOR.PATCH."""
+    try:
+        version = tomllib.loads(text.decode())["project"]["version"]
+    except (UnicodeError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
+        message = f"{PROJECT_FILE} has no readable project.version: {error}"
+        raise ReleaseError(message) from error
+    if not (isinstance(version, str) and VERSION.fullmatch(version)):
+        message = f"{PROJECT_FILE} has the version {version!r}, not MAJOR.MINOR.PATCH"
+        raise ReleaseError(message)
+    return version
 
-    Without a file this is the first release, 0.0.0 whatever the bump.  Otherwise the part
-    that `bump` names is raised and the parts after it go back to zero.  A version that has
-    its tag already is never given twice.
+
+def next_version(current: str, tags: Collection[str], bump: str) -> str:
+    """Return the version to release, from the project's version and the bump asked.
+
+    The part that `bump` names is raised and the parts after it go back to zero.  A version
+    that has its tag already is never given twice.
     """
-    numbers = [0, 0, 0]
-    if text is not None:
-        current = VERSION_TEXT.fullmatch(text)
-        if current is None:
-            message = f"{VERSION_FILE} holds {text!r}, not MAJOR.MINOR.PATCH and a line break"
-            raise ReleaseError(message)
-        raised = BUMPS.index(bump)
-        numbers = [int(number) for number in current.groups()]
-        numbers = [*numbers[:raised], numbers[raised] + 1, *[0] * (2 - raised)]
+    raised = BUMPS.index(bump)
+    numbers = [int(number) for number in current.split(".")]
+    numbers = [*numbers[:raised], numbers[raised] + 1, *[0] * (2 - raised)]
     version = ".".join(str(number) for number in numbers)
     if version in tags:
         message = f"the tag {version} exists already"
@@ -127,7 +141,7 @@ def next_version(text: str | None, tags: Collection[str], bump: str) -> str:
 
 
 def release_notes(changes: Sequence[tuple[str, str]], compare: str | None) -> str:
-    """The notes of a release in Markdown, from the diff since the release before.
+    """Write the notes of a release in Markdown, from the diff since the release before.
 
     `changes` holds what `git diff --name-status` says: a status letter and a path.
     `compare` is the link to that comparison, and None for a first release.
@@ -140,33 +154,30 @@ def release_notes(changes: Sequence[tuple[str, str]], compare: str | None) -> st
         "| {} | `{}` |".format(CHANGES.get(status, "Changed"), path.replace("|", "\\|"))
         for status, path in changes
     ]
-    return "\n".join(["| Change | File |", "|---|---|", *rows, "", f"Full difference: {compare}", ""])
+    return "\n".join(
+        ["| Change | File |", "|---|---|", *rows, "", f"Full difference: {compare}", ""]
+    )
 
 
 def with_version(path: str, text: bytes, version: str) -> bytes:
-    """The text of a package's main file with its header at `version`, every other byte kept."""
-    written, count = HEADER.subn(f";; Version: {version}".encode(), text)
+    """Set the version line of a file that a version commit writes, every other byte kept."""
+    written, count = VERSION_LINES[path].subn(f'version = "{version}"'.encode(), text)
     if count != 1:
-        message = f"{path} has {count} `;; Version:` headers, not one"
+        message = f"{path} has {count} version lines where one is expected"
         raise ReleaseError(message)
     return written
 
 
 def written_version(commit: Commit) -> str | None:
-    """The version that `commit` writes, or None when it is no version commit."""
+    """Return the version that `commit` writes, or None when it is no version commit."""
     message = VERSION_MESSAGE.fullmatch(commit.message)
-    if (
-        message is None
-        or len(commit.parents) != 1
-        or VERSION_FILE not in commit.changed
-        or not all(path == VERSION_FILE or MAIN_FILE.fullmatch(path) for path in commit.changed)
-    ):
+    if message is None or len(commit.parents) != 1 or commit.changed != frozenset(VERSION_LINES):
         return None
     return message[1]
 
 
 def decide(found: Found, bump: str) -> Decision:
-    """The writes that are missing."""
+    """Choose the writes that are missing."""
     moved = found.head.hash != found.commit.hash
     made = found.pending
     if made is None and moved:
@@ -191,8 +202,8 @@ def decide(found: Found, bump: str) -> Decision:
 
 
 def run(*command: str, stdin: bytes = b"") -> bytes:
-    """What a command prints; any failure stops the release."""
-    result = subprocess.run(
+    """Return what a command prints; any failure stops the release."""
+    result = subprocess.run(  # noqa: S603 git and gh, with arguments this script builds
         command,
         input=stdin,
         capture_output=True,
@@ -231,7 +242,7 @@ def dig(reply: object, *keys: str) -> object:
 
 
 def has_release(repository: str, version: str) -> bool:
-    """Whether GitHub holds the release of `version`."""
+    """Tell whether GitHub holds the release of `version`."""
     owner, name = repository.split("/")
     variables = {"owner": owner, "name": name, "tag": version}
     reply = api("POST", "graphql", {"query": RELEASE_OF_TAG, "variables": variables})
@@ -265,7 +276,7 @@ def confirm_ci(repository: str, head: Commit) -> None:
 
 
 def read_commit(name: str) -> Commit:
-    """What git says of one commit, as far as a version commit is told by it."""
+    """Read what git says of one commit, as far as a version commit is told by it."""
     commit, *parents = run("git", "rev-list", "-n", "1", "--parents", name).decode().split()
     changed = run("git", "diff-tree", "-r", "-z", "--name-only", "--no-commit-id", "--root", commit)
     return Commit(
@@ -277,98 +288,111 @@ def read_commit(name: str) -> Commit:
 
 
 def read(repository: str, name: str) -> Found:
-    """What origin and GitHub hold, once fetched, around the commit `name`."""
-    run("git", "fetch", "--quiet", "--tags", "origin", f"+refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}")
-    head = read_commit(f"refs/remotes/origin/{BRANCH}")
+    """Read what origin and GitHub hold, once fetched, around the commit `name`."""
+    origin = f"refs/remotes/origin/{BRANCH}"
+    run("git", "fetch", "--quiet", "--tags", "origin", f"+refs/heads/{BRANCH}:{origin}")
+    head = read_commit(origin)
     commit = read_commit(name)
     tags = {}
-    listed = run("git", "for-each-ref", "--format=%(refname:lstrip=2) %(objectname) %(*objectname)", "refs/tags")
+    listed = run(
+        "git",
+        "for-each-ref",
+        "--format=%(refname:lstrip=2) %(objectname) %(*objectname)",
+        "refs/tags",
+    )
     for line in listed.decode().splitlines():
         # An annotated tag has two objects, and its commit is the second.
         tag, *objects = line.split()
         tags[tag] = objects[-1]
-    # A version commit left without its release is the commit itself, or what comes next on main.
+    # A version commit left without its release is the commit itself, or what comes next.
     candidate = commit
     if head.hash != commit.hash:
-        following = run("git", "rev-list", "--first-parent", "--reverse", f"{commit.hash}..{head.hash}").decode().split()
+        span = f"{commit.hash}..{head.hash}"
+        following = run("git", "rev-list", "--first-parent", "--reverse", span).decode().split()
         candidate = read_commit(following[0]) if following else None
         if candidate is not None and candidate.parents != (commit.hash,):
             candidate = None
     version = written_version(candidate) if candidate is not None else None
-    has_version = run("git", "ls-tree", commit.hash, "--", VERSION_FILE)
     return Found(
         commit=commit,
         head=head,
         pending=candidate if version is not None else None,
         released=version is not None and has_release(repository, version),
-        version=run("git", "show", f"{commit.hash}:{VERSION_FILE}").decode() if has_version else None,
+        version=project_version(run("git", "show", f"{commit.hash}:{PROJECT_FILE}")),
         tags=tags,
     )
+
+
+def release(environment: Mapping[str, str]) -> str:
+    """Make the writes that are missing, and return what was done."""
+    malformed = [
+        name for name, shape in SETTINGS.items() if not shape.fullmatch(environment.get(name, ""))
+    ]
+    if malformed:
+        message = f"missing or malformed in the environment: {', '.join(malformed)}"
+        raise ReleaseError(message)
+    repository, server, event, commit, bump = (environment[name] for name in SETTINGS)
+    found = read(repository, commit)
+    if event == MANUAL:
+        confirm_ci(repository, found.head)
+    decision = decide(found, bump)
+    if decision.version is None:
+        return decision.note
+    # Everything that may fail to read is read before the first write.
+    version, base, target = decision.version, decision.base, decision.made
+    numbers = tuple(map(int, version.split(".")))
+    earlier = [
+        parsed
+        for tag in found.tags
+        if (match := VERSION.fullmatch(tag))
+        and (parsed := tuple(map(int, match.groups()))) < numbers
+    ]
+    changes, compare = [], None
+    if earlier:
+        previous = ".".join(map(str, max(earlier)))
+        difference = ("diff", "--name-status", "--no-renames", "-z", previous, base)
+        fields = run("git", *difference).decode().split("\0")[:-1]
+        changes = list(zip(fields[::2], fields[1::2], strict=True))
+        compare = f"{server}/{repository}/compare/{previous}...{version}"
+    notes = release_notes(changes, compare)
+    if target is None:
+        additions = [
+            {
+                "path": path,
+                "contents": base64.b64encode(
+                    with_version(path, run("git", "show", f"{base}:{path}"), version)
+                ).decode(),
+            }
+            for path in VERSION_LINES
+        ]
+        change = {
+            "branch": {"repositoryNameWithOwner": repository, "branchName": BRANCH},
+            # GitHub refuses the commit on a branch that has moved since this run's read.
+            "expectedHeadOid": base,
+            "message": {"headline": f"Version {version}", "body": "[skip ci]"},
+            "fileChanges": {"additions": additions},
+        }
+        made = api("POST", "graphql", {"query": VERSION_COMMIT, "variables": {"input": change}})
+        target = dig(made, "data", "createCommitOnBranch", "commit", "oid")
+        if not (isinstance(target, str) and COMMIT.fullmatch(target)):
+            message = f"unexpected reply: the version commit is {target!r}"
+            raise ReleaseError(message)
+    api(
+        "POST",
+        f"repos/{repository}/releases",
+        {"tag_name": version, "target_commitish": target, "name": version, "body": notes},
+    )
+    return f"released {version} on {target}"
 
 
 def main() -> int:
     """Run one release: 0 when released or when there is nothing to do, 2 otherwise."""
     try:
-        malformed = [
-            name
-            for name, shape in SETTINGS.items()
-            if not shape.fullmatch(os.environ.get(name, ""))
-        ]
-        if malformed:
-            message = f"missing or malformed in the environment: {', '.join(malformed)}"
-            raise ReleaseError(message)
-        repository, server, event, commit, bump = (os.environ[name] for name in SETTINGS)
-        found = read(repository, commit)
-        if event == MANUAL:
-            confirm_ci(repository, found.head)
-        decision = decide(found, bump)
-        if decision.version is None:
-            print(f"release: {decision.note}")
-            return 0
-        # Everything that may fail to read is read before the first write.
-        version, base, target = decision.version, decision.base, decision.made
-        numbers = tuple(map(int, version.split(".")))
-        earlier = [
-            parsed
-            for tag in found.tags
-            if (match := VERSION_TAG.fullmatch(tag)) and (parsed := tuple(map(int, match.groups()))) < numbers
-        ]
-        changes, compare = [], None
-        if earlier:
-            previous = ".".join(map(str, max(earlier)))
-            difference = ("diff", "--name-status", "--no-renames", "-z", previous, base)
-            fields = run("git", *difference).decode().split("\0")[:-1]
-            changes = list(zip(fields[::2], fields[1::2], strict=True))
-            compare = f"{server}/{repository}/compare/{previous}...{version}"
-        notes = release_notes(changes, compare)
-        if target is None:
-            additions = [{"path": VERSION_FILE, "contents": base64.b64encode(f"{version}\n".encode()).decode()}]
-            for name in run("git", "ls-tree", "-d", "--name-only", base).decode().split("\n"):
-                if PACKAGE.fullmatch(name):
-                    path = f"{name}/{name}.el"
-                    text = with_version(path, run("git", "show", f"{base}:{path}"), version)
-                    additions.append({"path": path, "contents": base64.b64encode(text).decode()})
-            change = {
-                "branch": {"repositoryNameWithOwner": repository, "branchName": BRANCH},
-                # GitHub refuses the commit on a branch that has moved since this run's read.
-                "expectedHeadOid": base,
-                "message": {"headline": f"Version {version}", "body": "[skip ci]"},
-                "fileChanges": {"additions": additions},
-            }
-            made = api("POST", "graphql", {"query": VERSION_COMMIT, "variables": {"input": change}})
-            target = dig(made, "data", "createCommitOnBranch", "commit", "oid")
-            if not (isinstance(target, str) and COMMIT.fullmatch(target)):
-                message = f"unexpected reply: the version commit is {target!r}"
-                raise ReleaseError(message)
-        api(
-            "POST",
-            f"repos/{repository}/releases",
-            {"tag_name": version, "target_commitish": target, "name": version, "body": notes},
-        )
+        done = release(os.environ)
     except (ReleaseError, subprocess.TimeoutExpired, OSError, UnicodeError) as error:
-        print(f"release: {error}", file=sys.stderr)
+        sys.stderr.write(f"release: {error}\n")
         return 2
-    print(f"release: released {version} on {target}")
+    sys.stdout.write(f"release: {done}\n")
     return 0
 
 

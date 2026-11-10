@@ -1,8 +1,9 @@
 line-length = 100
 target-version = "py314"
 # The spikes and the sandbox seeding are standalone scripts that declare Python 3.12
-# inline; they stay as they were written.
-per-file-target-version = { "spikes/**" = "py312", "sandbox/**" = "py312" }
+# inline; they stay as they were written. The release script runs on the runner's own
+# Python 3.12.
+per-file-target-version = { "spikes/**" = "py312", "sandbox/**" = "py312", "scripts/**" = "py312" }
 
 [lint]
 select = ["ALL"]
