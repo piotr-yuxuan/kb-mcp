@@ -239,17 +239,21 @@ Two more of the store's own records, each replaced whole:
   when a run last left it exact, and `whole_read_at`, when a run last listed it whole; each
   time only once known. An entry without `type`, as plan 056 found them, is of its
   source's scope type, its source being its connector's name. A run that listed a
-  scope whole joins its fetch window to that period when the two overlap or touch. A space's
-  period ends at the fetch window's end whatever failed, since a run without `--since` starts
-  at its covered start and asks again for whatever failed inside. A project's ends at
+  scope whole joins its fetch window to that period when the two overlap or touch, or
+  replaces an inexact period that the window starts at or before. Without a failure, such a
+  run leaves the period exact. A space's period ends at the fetch window's end whatever
+  failed, and a failure leaves it inexact, so that a run without `--since` starts at its
+  covered start and asks again for whatever failed inside; each run of a space also
+  fetches what its listing names that its stored listing did not, whatever its update
+  time, as a page moved in keeps its own. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
   snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
   even below the old end, else at the fetch window's end; a search entry that the adapter
   refuses leaves it as it was, and a failure at its very start makes it inexact. A run
-  without `--since` searches an exact project from a day before its covered end, and an
-  entry without `exact` from its covered start, which replaces it with an exact one.
-  `exact` on a space's entry is read as false. Versions before plan 034 read the record,
-  and ignore `exact`; those before plan 056 ignore `type` and the times.
+  without `--since` reads an exact scope from a day before its covered end, and an entry
+  without `exact` from its covered start. Versions before plan 034 read the record, and
+  ignore `exact`; those before plan 056 ignore `type` and the times, and read a space's
+  `exact` as false.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each Confluence document absent from its space's listing
   (`sources.atlassian.fetch.domain.deletions.Tombstone`), pending until a probe answers,

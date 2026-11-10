@@ -450,14 +450,14 @@ def test_a_coverage_record_written_at_pre_kb_mcp_reads_as_it_was_written(
     )
 
 
-def test_a_space_s_entry_marked_exact_is_read_as_inexact(store: RawStore) -> None:
-    """A space is listed whole: a hand-edited or later record does not change its catch-up."""
+def test_a_space_s_entry_marked_exact_is_read_as_exact(store: RawStore) -> None:
+    """Plan 056: a space read whole without failure is exact, as a project can be."""
     (store.root / "coverage.json").write_text(
         '[{"source": "confluence", "key": "MFS", "start": "2026-10-15T09:00:00+00:00",'
         ' "end": "2026-10-16T09:00:00+00:00", "exact": true}]',
         "utf-8",
     )
-    assert store.coverage().exact == frozenset()
+    assert store.coverage().exact == {Scope(source="confluence", type=names.SPACE, key="MFS")}
 
 
 def test_records_never_written_read_as_empty(tmp_path: Path) -> None:

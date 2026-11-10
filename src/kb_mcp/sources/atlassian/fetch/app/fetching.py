@@ -67,7 +67,7 @@ from kb_mcp.sources.atlassian.fetch.domain.period import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping
+    from collections.abc import Callable, Collection, Iterable, Mapping
 
     from pydantic import SerializerFunctionWrapHandler
 
@@ -325,8 +325,10 @@ class Fetching:
     def space(self, scope: Scope, window: FetchWindow) -> bool:
         """List a space whole, store its listings, and fetch what changed in its window.
 
-        The task ``listing`` reports the pages of its listings read, and ``fetch_listed``
-        the documents. Return whether the space was listed whole. All is the span
+        And what joined it since its stored listing, whatever its update time, as a page
+        moved in keeps its own; a space never listed before has none. The task
+        ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
+        documents. Return whether the space was listed whole. All is the span
         ``fetch.space``, an error when the space could not be listed.
         """
         key = scope.key
@@ -348,6 +350,12 @@ class Fetching:
                 span.set_status(StatusCode.ERROR, str(error))
                 return False
             documents = [*self.documents(Page, pages), *self.documents(BlogPost, posts)]
+            joined: set[str] = set()
+            if self.store.was_listed(space.id):
+                named = {
+                    i for each in CONFLUENCE_CLASSES for i in self.store.listed_ids(space.id, each)
+                }
+                joined = {document.id for document in documents} - named
             if not self.plan:
                 # By id alone, as the last listing is read: an entry refused for its other
                 # fields still names its document, which is then not absent.
@@ -358,7 +366,7 @@ class Fetching:
                 self.track(space.id, listed)
                 folders = self.folders(pages)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
-            self.fetch_listed(scope, documents, window)
+            self.fetch_listed(scope, documents, window, joined)
             return True
 
     def track(self, space_id: str, listed: Mapping[type[FetchedDocument], set[str]]) -> None:
@@ -511,9 +519,16 @@ class Fetching:
                 return False
             return True
 
-    def fetch_listed(self, scope: Scope, documents: Sequence[Listed], window: FetchWindow) -> None:
+    def fetch_listed(
+        self,
+        scope: Scope,
+        documents: Sequence[Listed],
+        window: FetchWindow,
+        joined: Collection[str] = frozenset(),
+    ) -> None:
         """Fetch what a scope lists in its window and the raw store lacks; complete what it has.
 
+        A document that ``joined`` names, by id, is taken as if in the window.
         ``fetch.listed`` says at INFO how many documents the scope lists, how many are
         in its window, stored already and to fetch, with the window's start and reason.
         The counts hold, by type, those in the window and those stored when --since gave
@@ -524,7 +539,11 @@ class Fetching:
         search pages through can shift another into the next page, is taken once.
         """
         in_window = list(
-            dict.fromkeys(document for document in documents if document.updated in window.period)
+            dict.fromkeys(
+                document
+                for document in documents
+                if document.updated in window.period or document.id in joined
+            )
         )
         stored: list[Listed] = []
         to_fetch: list[Listed] = []

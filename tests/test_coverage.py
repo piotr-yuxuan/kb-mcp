@@ -88,12 +88,31 @@ def test_a_catch_up_that_would_start_at_or_after_the_end_skips_the_target() -> N
     assert fetch_window(covered(), SPACE, None, COVERED) is None
 
 
-def test_a_first_run_covers_its_period() -> None:
-    """--since 7d on a new target covers the last seven days; a project's, exactly."""
+@pytest.mark.parametrize("scope", [SPACE, PROJECT], ids=["a space", "a project"])
+def test_a_first_run_covers_its_period_exactly(scope: Scope) -> None:
+    """--since 7d on a new scope with no failure covers the last seven days, exactly."""
     fetched = Period(NOW - timedelta(days=7), NOW)
-    exact = Coverage(periods={PROJECT: fetched}, exact=frozenset({PROJECT}), as_of={PROJECT: NOW})
-    assert Coverage().extended(PROJECT, fetched) == (exact, "extended")
-    assert Coverage().extended(SPACE, fetched) == (Coverage(periods={SPACE: fetched}), "extended")
+    exact = Coverage(periods={scope: fetched}, exact=frozenset({scope}), as_of={scope: NOW})
+    assert Coverage().extended(scope, fetched) == (exact, "extended")
+
+
+def test_a_space_read_whole_without_failure_is_exact_and_catches_up_from_its_end() -> None:
+    """Plan 056: a whole read that met no failure leaves the coverage exact, as the concepts say.
+
+    So the next run without --since starts a day before its covered end, not at its start.
+    """
+    after, change = covered().extended(SPACE, Period(COVERED, NOW + DAY))
+    assert (after, change) == (
+        Coverage(
+            periods={SPACE: Period(COVERED, NOW + DAY)},
+            exact=frozenset({SPACE}),
+            as_of={SPACE: NOW + DAY},
+        ),
+        "extended",
+    )
+    assert fetch_window(after, SPACE, None, NOW + 2 * DAY) == FetchWindow(
+        period=Period(NOW, NOW + 2 * DAY), reason="since the last fetch"
+    )
 
 
 def test_a_run_apart_from_the_covered_period_leaves_it() -> None:
@@ -114,9 +133,10 @@ def test_a_later_short_run_does_not_claim_the_days_between() -> None:
 
 
 def test_a_run_that_reaches_the_covered_start_joins_it() -> None:
-    """A period ending at the covered start makes one period with it."""
+    """A period ending at the covered start of an exact entry makes one period with it."""
     fetched = Period(datetime(2026, 6, 1, tzinfo=UTC), COVERED)
-    assert covered().extended(SPACE, fetched)[0].periods[SPACE] == Period(fetched.start, NOW)
+    exact = replace(covered(), exact=frozenset({SPACE}))
+    assert exact.extended(SPACE, fetched)[0].periods[SPACE] == Period(fetched.start, NOW)
 
 
 def test_a_run_that_leaves_a_coverage_exact_sets_its_as_of_time_to_its_end() -> None:
@@ -158,7 +178,7 @@ def before_034(start: datetime, end: datetime) -> Coverage:
 
 
 def test_a_failure_does_not_end_a_space_s_period() -> None:
-    """A space is listed whole: the next catch-up asks for its whole period again."""
+    """A space is listed whole: inexact, the next catch-up asks for its whole period again."""
     fetched = Period(COVERED, NOW + DAY)
     after = covered().extended(SPACE, fetched, NOW)
     assert after == (Coverage(periods={SPACE: fetched}), "extended")

@@ -96,7 +96,6 @@ TELLING_HISTORY = (
     "docs/reference/data-layout.md",
     "docs/reference/mcp-tools.md",
     "docs/reference/telemetry/embed.md",
-    "docs/reference/telemetry/fetch.md",
     "docs/reference/telemetry/index.md",
     "docs/reference/telemetry/prepare.md",
     "docs/tutorials/first-mirror.md",

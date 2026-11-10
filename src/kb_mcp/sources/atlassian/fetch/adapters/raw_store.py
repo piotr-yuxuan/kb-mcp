@@ -392,6 +392,10 @@ class RawStore:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
             _replace_synced(space_folder / LISTED_AT, _encode(moment))
 
+    def was_listed(self, space_id: str) -> bool:
+        """Say whether a space's listings are stored, by an earlier run."""
+        return (self._space(space_id) / f"{PAGE.plural}.json").exists()
+
     def listed_at(self, space_id: str) -> datetime | None:
         """Say when a space was last listed, or None when no run said so."""
         path = self._space(space_id) / LISTED_AT
@@ -480,9 +484,8 @@ class RawStore:
 
         Whether it is exact, its as-of time and the time of its last whole read. An entry
         without ``type``, as every entry was before plan 056, is of its connector's one
-        scope type; one without ``exact``, as before plan 034, is not exact, nor is a
-        space's, whatever it says, since a space is listed whole; one without a time has
-        none.
+        scope type; one without ``exact``, as before plan 034, is not exact; one without a
+        time has none.
         """
         path = self.root / COVERAGE
         if not path.exists():
@@ -503,8 +506,7 @@ class RawStore:
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
-            searched = scope.type.enumeration == "searched"
-            if searched and "exact" in item.value and item.flag("exact"):
+            if "exact" in item.value and item.flag("exact"):
                 exact.add(scope)
             for name in COVERAGE_TIMES:
                 if item.optional_text(name, absent=True):

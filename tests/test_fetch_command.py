@@ -419,16 +419,22 @@ def counted(
 ) -> tuple[Outcome[FetchCounts], list[dict[str, object]], Settings]:
     """Run over a space of 50 pages: 7 changed in the window, of which 4 were stored first.
 
-    The 4 changed on the 21st, stored by a run --since the 20th; 3 more on the 23rd; 43 on
-    the 1st. ``first_fetch`` forgets the coverage before the run counted, on the 27th.
-    Give its outcome, the events it logged, and its settings.
+    The 4 changed on the 21st, stored by a run --since the 20th on the 22nd, which lists
+    all 50; 3 more on the 23rd, edited since that run; 43 on the 1st. ``first_fetch``
+    forgets the coverage before the run counted, on the 27th. Give its outcome, the
+    events it logged, and its settings.
     """
-    days = [21] * 4 + [23] * 3 + [1] * 43
+    edited = 23
+    days = [21] * 4 + [edited] * 3 + [1] * 43
     pages = {
         str(6000 + n): v2_page(id=str(6000 + n), version=stamp(day)) for n, day in enumerate(days)
     }
+    before = {
+        identifier: v2_page(id=identifier, version=stamp(1, number=2)) if day == edited else page
+        for (identifier, page), day in zip(pages.items(), days, strict=True)
+    }
     chosen = settings(tmp_path)
-    first = RefreshSite(listing=dict(list(pages.items())[:4]), posts={})
+    first = RefreshSite(listing=before, posts={})
     assert (
         run(
             chosen,
@@ -450,7 +456,7 @@ def counted(
 
 @pytest.mark.parametrize(
     ("since", "first_fetch", "reason"),
-    [(SINCE, False, "given"), (None, False, "covered start"), (None, True, "first fetch")],
+    [(SINCE, False, "given"), (None, False, "since the last fetch"), (None, True, "first fetch")],
 )
 def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     tmp_path: Path,
@@ -463,7 +469,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     """50 listed, 7 in the window of which 4 stored: the task, short and its JSON say 3.
 
     fetch.listed says each number, and the window's reason; the window goes to the
-    JSON, and the run report names no target.
+    JSON, and the run report names no scope.
     """
     outcome, events, chosen = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
     listed = [event for event in events if event["event"] == "fetch.listed"]

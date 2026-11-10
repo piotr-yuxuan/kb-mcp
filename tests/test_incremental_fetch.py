@@ -187,6 +187,26 @@ def test_a_later_run_catches_up_on_an_old_page_edited_since(
     assert RawStore(chosen.raw).coverage().periods[MFS] == Period(FIRST - WEEK, SECOND)
 
 
+def test_a_page_that_joined_a_space_since_its_listing_comes_whatever_its_update_time(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 056: moved in with an old update time, it is fetched, so the coverage stays exact.
+
+    The first run met no failure and left the space exact: the next starts a day before
+    its covered end, long after the page's update time.
+    """
+    chosen = settings(tmp_path)
+    first = RefreshSite(listing=without("1003"))
+    assert run(chosen, monkeypatch, first, first_week(["MFS"], []), FIRST) == "done"
+    assert RawStore(chosen.raw).coverage().exact == {MFS}
+    with capture_logs() as events:
+        assert run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND) == "done"
+    [listed] = [each for each in events if each["event"] == "fetch.listed"]
+    assert listed["reason"] == "since the last fetch"
+    assert stored_pages(chosen)["1003"] == "000003"
+    assert RawStore(chosen.raw).coverage().exact == {MFS}
+
+
 def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
