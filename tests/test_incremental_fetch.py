@@ -456,6 +456,29 @@ def test_a_listed_entry_that_the_reader_refuses_is_not_absent(
     assert RawStore(chosen.raw, "confluence").tombstones() == {}
 
 
+def test_a_listed_entry_that_the_reader_refuses_leaves_the_space_inexact_until_it_reads(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """It has no update time to stop at: the next catch-up asks from the covered start.
+
+    Edited on the 21st, the page is refused on the 23rd; on the 26th, read again, it
+    comes, though a day before the covered end is after its edit.
+    """
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    edited = {**PAGES["1002"], "version": stamp(21, number=4)}
+    versionless = {key: value for key, value in edited.items() if key != "version"}
+    refused = RefreshSite(listing={**PAGES, "1002": versionless})
+    assert run(chosen, monkeypatch, refused, catch_up(["MFS"], []), SECOND) == "failed"
+    assert RawStore(chosen.raw, "confluence").coverage().exact == frozenset()
+    with capture_logs() as events:
+        later = RefreshSite(listing={**PAGES, "1002": edited})
+        run(chosen, monkeypatch, later, catch_up(["MFS"], []), SECOND + timedelta(days=3))
+    [listed] = [each for each in events if each["event"] == "fetch.listed"]
+    assert listed["reason"] == "covered start"
+    assert stored_pages(chosen)["1002"] == "000004"
+
+
 def test_a_page_moved_out_of_the_kept_spaces_is_gone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

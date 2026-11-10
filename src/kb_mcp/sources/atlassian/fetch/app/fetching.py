@@ -323,7 +323,9 @@ class Fetching:
         And what joined it since its stored listing, whatever its update time, as a page
         moved in keeps its own, with what joined before and is not stored yet; a space
         never listed before has none. The listing is stored once its documents are
-        fetched, with the joined that are still not stored, which the next run takes. The task
+        fetched, with the joined that are still not stored, which the next run takes. An
+        entry that the adapter refuses has no update time: it leaves the space's coverage
+        inexact, so that the next run asks for its whole period again. The task
         ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
         documents. Return whether the space was listed whole. All is the span
         ``fetch.space``, an error when the space could not be listed.
@@ -363,6 +365,8 @@ class Fetching:
                 self.track(scope, space.id, listed)
                 folders = self.folders(pages)
             self.fetch_listed(scope, documents, window, joined)
+            if len(documents) < len(pages) + len(posts):
+                self.first_failed.setdefault(scope, window.period.start)
             if not self.plan:
                 pending = {each.id for each in documents if each.id in joined} - {
                     each.id for each in documents if self.store.has(each)

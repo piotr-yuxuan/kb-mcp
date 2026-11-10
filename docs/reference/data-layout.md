@@ -250,7 +250,8 @@ Two more of the store's own records, each replaced whole:
   scope whole joins its fetch window to that period when the two overlap or touch, or
   replaces an inexact period that the window starts at or before. Without a failure, such a
   run leaves the period exact. A space's period ends at the fetch window's end whatever
-  failed, and a failure leaves it inexact, so that a run without `--since` starts at its covered start and
+  failed, and a failure leaves it inexact, an entry of its listing that the adapter
+  refuses among them, so that a run without `--since` starts at its covered start and
   asks again for whatever failed inside; each run of a space also fetches what its
   listing names that its stored listing did not, and what `pending.json` holds, whatever
   its update time, as a page moved in keeps its own. A project's ends at
