@@ -16,9 +16,11 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import sys
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -150,7 +152,7 @@ def test_fetch_records_as_documented(
     with emitted.gathering(telemetry, "fetch"):
         backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
         assert main(fetch_arguments(data, "--space", "MFS", *backwards)) == ExitStatus.REFUSED
-    with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw).writing():
+    with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw, "confluence").writing():
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.FAILED
 
     def interrupted(_: float) -> None:
@@ -196,7 +198,7 @@ def a_store_with_a_page_of_each_ending(data: Path) -> None:
 
     The cache of conversions is random bytes, which the first run replaces.
     """
-    store = RawStore(data / "raw")
+    store = RawStore(data / "raw", "confluence")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Broken", None, None)]
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), listed, [], [])
@@ -210,11 +212,11 @@ def a_store_with_a_page_of_each_ending(data: Path) -> None:
 def test_prepare_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Built, failed, unplaced, with a damaged cache; then pandoc gone once the run began.
+    """Built, failed, unplaced, with a damaged cache, then a former one; then pandoc gone.
 
-    The pandoc on PATH passes its input through, unless it holds BREAK. Then the work log,
-    by the real pandoc: whole; a dry run; a problem and two transcripts of one id; a pandoc
-    that gives no version; Ctrl-C; a folder that is none.
+    Gone once the run began. The pandoc on PATH passes its input through, unless it holds
+    BREAK. Then the work log, by the real pandoc: whole; a dry run; a problem and two
+    transcripts of one id; a pandoc that gives no version; Ctrl-C; a folder that is none.
     """
     data = tmp_path / "data"
     a_store_with_a_page_of_each_ending(data)
@@ -231,6 +233,13 @@ def test_prepare_records_as_documented(
     emitted = Emitted()
     with monkeypatch.context() as patch:
         patch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(arguments) == ExitStatus.FAILED
+        with closing(sqlite3.connect(data / "conversions.sqlite")) as connection:
+            connection.executescript(
+                "DROP TABLE conversions;"
+                " CREATE TABLE conversions (key TEXT PRIMARY KEY, markdown TEXT NOT NULL);"
+            )
         with emitted.gathering(telemetry, "prepare"):
             assert main(arguments) == ExitStatus.FAILED
 

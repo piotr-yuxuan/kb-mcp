@@ -1,34 +1,26 @@
-"""The work log's declaration: what it reads in place, its table, and its preparer.
+"""The work log's connector: what it reads in place, its table, and its preparer.
 
-Each resource type is a type of its documents: entries, days and meetings split from
-``todo.org`` and its archive at their headings, transcripts read from ``transcripts/``
-and ``meetings/``. Read in place, it has no fetcher.
+Its one scope type, read in place, holds a document type for each of the work log's:
+entries, days and meetings split from ``todo.org`` and its archive at their headings,
+transcripts read from ``transcripts/`` and ``meetings/``. Read in place, it has no fetcher.
 """
 
 from __future__ import annotations
 
-from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE, TRANSCRIPT_TYPE, WORKLOG_TYPES
-from kb_mcp.sources.declaration import ResourceType, Source
+from kb_mcp.kernel.names import WORKLOG_TYPES
+from kb_mcp.sources.declaration import Connector, DocumentType, ScopeType
 
-WORKLOG = Source(
+WORKLOG = Connector(
     name="worklog",
     help="The user's work log: org files read in place, never written",
-    resource_types=(
-        ResourceType(
-            name=WORKLOG_TYPES[ENTRY_TYPE].plural, help="the entries of todo.org", read="in place"
-        ),
-        ResourceType(
-            name=WORKLOG_TYPES[DAY_TYPE].plural, help="the days of todo.org", read="in place"
-        ),
-        ResourceType(
-            name=WORKLOG_TYPES[MEETING_TYPE].plural,
-            help="the meetings of todo.org",
-            read="in place",
-        ),
-        ResourceType(
-            name=WORKLOG_TYPES[TRANSCRIPT_TYPE].plural,
-            help="the transcripts of transcripts/ and meetings/",
-            read="in place",
+    scope_types=(
+        ScopeType(
+            name="folder",
+            key=None,
+            enumeration="in place",
+            document_types=tuple(
+                DocumentType(name=name, plural=each.plural) for name, each in WORKLOG_TYPES.items()
+            ),
         ),
     ),
     settings=("path", "archives"),

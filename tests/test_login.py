@@ -19,7 +19,7 @@ from kb_mcp.sources.declaration import Account
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Check
 from kb_mcp.sources.worklog.declared import WORKLOG
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 from tests.test_cli import logged_as
 from tests.test_observed import said
 
@@ -139,7 +139,7 @@ def test_a_sign_in_no_source_declares_is_no_choice(
     """Under a registry whose sources sign in with none, nothing can be named: exit 2."""
     options = ["atlassian", "--config", str(tmp_path / "none.toml")]
     with pytest.raises(SystemExit) as stopped:
-        main(["login", *options], (WORKLOG,))
+        main(["login", *options], sourced(WORKLOG))
     assert stopped.value.code == BAD_ARGUMENTS
     assert "invalid choice: 'atlassian'" in capsys.readouterr().err
 
@@ -203,7 +203,10 @@ DRIVE = Account(
     login=f"{__name__}:drive_signed_in",
     checks=f"{__name__}:drive_checks",
 )
-TWO_ACCOUNTS = (*SOURCES[:2], replace(SOURCES[2], account=DRIVE))
+TWO_ACCOUNTS = (
+    *SOURCES[:2],
+    replace(SOURCES[2], connector=replace(SOURCES[2].connector, account=DRIVE)),
+)
 
 
 def test_a_second_account_signs_in_by_its_own_run_and_reads_none_of_the_first(

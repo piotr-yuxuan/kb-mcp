@@ -58,14 +58,24 @@ def home(tmp_path: Path) -> Path:
 type Seen = tuple[str, ListToolsResult, ListPromptsResult]
 
 
-def seen(home: Path, *options: str) -> Seen:
-    """Start ``serve`` with these options as an agent would; give what it lists."""
+def seen(home: Path, *options: str, registry: str | None = None) -> Seen:
+    """Start ``serve`` with these options as an agent would; give what it lists.
+
+    ``registry``, if given, is code that names a registry of the tests' own ``REGISTRY``,
+    which the server is given in place of ``SOURCES``.
+    """
     found: list[Seen] = []
+    entry = "import sys; from kb_mcp.cli.main import main"
+    started = (
+        ["-m", "kb_mcp"]
+        if registry is None
+        else ["-c", f"{entry}; {registry}; sys.exit(main(None, REGISTRY))"]
+    )
 
     async def session() -> None:
         command = StdioServerParameters(
             command=sys.executable,
-            args=["-m", "kb_mcp", "serve", *options],
+            args=[*started, "serve", *options],
             env={"HOME": str(home)},
         )
         async with Client(command) as client:
@@ -126,6 +136,52 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
     for filters in listed.values():
         assert list(filters["properties"]) == names
         assert [name for name, each in filters["properties"].items() if "title" in each] == []
+
+
+def test_the_filter_source_takes_the_configured_sources_then_those_of_the_index(
+    home: Path, tmp_path: Path
+) -> None:
+    """Plan 056: those configured, in the registry's order, then those of the index.
+
+    Configured: those that keep a store, and those read in place whose first setting is
+    set; then the index's, so that no document is left out of the filter. The index
+    holds Confluence's and Jira's. A server of Jira and the work log alone offers Jira,
+    then Confluence from the index, and the work log once its folder is set; before the
+    first index, Jira alone.
+    """
+    registry = (
+        "from kb_mcp.sources.atlassian.declared import JIRA;"
+        " from kb_mcp.sources.worklog.declared import WORKLOG;"
+        " from tests.composed import sourced; REGISTRY = sourced(JIRA, WORKLOG)"
+    )
+    config = home / "config.toml"
+    settings = (home / ".config" / "kb-mcp" / "config.toml").read_text("utf-8")
+    config.write_text(f"{settings}[sources.worklog]\npath = {json.dumps(str(home))}\n", "utf-8")
+    bare = tmp_path / "bare"
+    (bare / ".config" / "kb-mcp").mkdir(parents=True)
+    (bare / ".config" / "kb-mcp" / "config.toml").write_text(
+        f"data_dir = {json.dumps(str(tmp_path / 'empty'))}\n", "utf-8"
+    )
+    offered = {
+        # One source is a constant of the schema, several its enum.
+        name: [
+            source.get("enum") or [source["const"]]
+            for tool in seen(where, *options, registry=chosen)[1].tools[:2]
+            for source in [tool.input_schema["$defs"]["SearchFilters"]["properties"]["source"]]
+        ]
+        for name, where, chosen, options in (
+            ("default", home, None, ()),
+            ("two", home, registry, ()),
+            ("two configured", home, registry, ("--config", str(config))),
+            ("two, no index", bare, registry, ()),
+        )
+    }
+    assert offered == {
+        "default": [["confluence", "jira"]] * 2,
+        "two": [["jira", "confluence"]] * 2,
+        "two configured": [["jira", "worklog", "confluence"]] * 2,
+        "two, no index": [["jira"]] * 2,
+    }
 
 
 def test_without_ask_nothing_names_it_and_descriptions_are_the_docstrings(home: Path) -> None:

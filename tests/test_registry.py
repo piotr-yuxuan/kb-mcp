@@ -1,17 +1,16 @@
-"""The registry of sources: its declarations, its rules, and the settings it composes.
+"""The registry of sources: their connectors, its rules, and the settings it composes.
 
-The expectations come from plan 030: the registry lists Confluence, Jira and the work
-log in name order; any registry that the entry is given is refused, naming the
-declaration, for a name off the rule, ``assets``, a name declared twice, a name that a
-model holds, an account that two declarations name differently, no setting, neither
-fetcher nor preparer,
-settings that are not its table's, a type read in a way that the help has no words for,
-or an option that is no flag, that another source declares otherwise, or that is
-``fetch``'s own; an option's value takes no name that the program holds; each
-declaration names its table, whose settings are the declaration's; Confluence and Jira
-sign in with one account,
-``[accounts.atlassian]`` (question 1); and a source, or an account, that a registry
-leaves out has no setting (criterion 3).
+The expectations come from plan 030 and plan 056: the registry lists Confluence, Jira and
+the work log in name order, each a source of its connector, of its name; any registry
+that the entry is given is refused, naming the source, for a name off the rule,
+``assets``, a name declared twice, a second source of one connector, a name that a model
+holds, an account that two connectors name differently, no setting, neither fetcher nor
+preparer, settings that are not its table's, a scope type enumerated in a way that the
+help has no words for, or an option that is no flag, that another connector declares
+otherwise, or that is ``fetch``'s own; an option's value takes no name that the program
+holds; each connector names its table, whose settings are the connector's; Confluence
+and Jira sign in with one account, ``[accounts.atlassian]`` (question 1); and a source,
+or an account, that a registry leaves out has no setting (criterion 3).
 """
 
 from __future__ import annotations
@@ -29,11 +28,12 @@ from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import ATLASSIAN, CONFLUENCE, JIRA, SINCE
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
-from kb_mcp.sources.atlassian.prepare.app.prepare import PREPARED
-from kb_mcp.sources.declaration import Option, ResourceType
+from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, PAGE, SPACE
+from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, Source
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
+from tests.composed import sourced
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,54 +41,51 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.sources.declaration import Source
-
 # A setting of each source's table, by source, and a value of it in a settings file.
 SET = {"confluence": ("spaces", '["MFS"]'), "worklog": ("archives", "false")}
 
 
 def test_the_registry_holds_confluence_jira_and_the_work_log_in_name_order() -> None:
-    """Plan 030: a new source is its package and one line of ``SOURCES``."""
-    assert [each.name for each in SOURCES] == ["confluence", "jira", "worklog"]
+    """Plan 030: a new connector is its package and one line; each gives a source of its name."""
+    assert [(each.name, each.connector.name) for each in SOURCES] == [
+        ("confluence", "confluence"),
+        ("jira", "jira"),
+        ("worklog", "worklog"),
+    ]
 
 
 @pytest.mark.parametrize("declared", SOURCES, ids=lambda each: each.name)
-def test_each_declaration_names_a_table_that_holds_its_settings_in_order(
+def test_each_connector_names_a_table_that_holds_its_settings_in_order(
     declared: Source,
 ) -> None:
-    """The table loads by its module path, a model whose settings are the declaration's."""
-    table = pkgutil.resolve_name(declared.table_path)
+    """The table loads by its module path, a model whose settings are the connector's."""
+    table = pkgutil.resolve_name(declared.connector.table_path)
     assert isinstance(table, type)
     assert issubclass(table, BaseModel)
-    assert tuple(table.model_fields) == declared.settings
+    assert tuple(table.model_fields) == declared.connector.settings
 
 
-def test_the_resource_types_are_the_plan_s_and_the_raw_store_s_types() -> None:
-    """Each source's types and how each is read, as plan 030's table gives them.
+def test_the_scope_types_are_the_concepts_and_the_raw_store_s_types() -> None:
+    """Each connector's scope types, how each is enumerated, and the document types it holds.
 
-    Confluence's and Jira's are the types that the raw store keeps.
+    As the concepts name them; Confluence's and Jira's document types are those that the
+    raw store keeps.
     """
     assert {
         each.name: [
-            (resource_type.name, resource_type.read) for resource_type in each.resource_types
+            (scope_type.name, scope_type.enumeration, [d.name for d in scope_type.document_types])
+            for scope_type in each.connector.scope_types
         ]
         for each in SOURCES
     } == {
-        "confluence": [("pages", "listed"), ("blogposts", "listed")],
-        "jira": [("issues", "searched")],
-        "worklog": [
-            ("entries", "in place"),
-            ("days", "in place"),
-            ("meetings", "in place"),
-            ("transcripts", "in place"),
-        ],
+        "confluence": [("space", "listed", ["page", "blogpost"])],
+        "jira": [("project", "searched", ["issue"])],
+        "worklog": [("folder", "in place", ["entry", "transcript", "day", "meeting"])],
     }
-    assert [
-        resource_type.name for resource_type in (*CONFLUENCE.resource_types, *JIRA.resource_types)
-    ] == [
-        Page.resource_type,
-        BlogPost.resource_type,
-        Issue.resource_type,
+    assert [*CONFLUENCE.document_types, *JIRA.document_types] == [
+        Page.document_type,
+        BlogPost.document_type,
+        Issue.document_type,
     ]
 
 
@@ -97,44 +94,50 @@ def test_a_registry_with_a_name_off_the_rule_is_refused_naming_it(
     tmp_path: Path, name: str
 ) -> None:
     """A name is a table, a folder of the mirror and the front matter's ``source``."""
-    registry = (CONFLUENCE, JIRA, replace(WORKLOG, name=name))
+    registry = (*sourced(CONFLUENCE, JIRA), Source(name=name, connector=WORKLOG))
     with pytest.raises(ValueError, match=rf"^{re.escape(f'source {name!r}:')} a source's name"):
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
 
 
-def test_a_registry_with_two_declarations_of_one_name_is_refused_naming_it(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "second",
+    [
+        Source(name="jira", connector=replace(JIRA, name="other", table_path=WORKLOG.table_path)),
+        Source(name="tracker", connector=JIRA),
+    ],
+    ids=["a name", "a connector"],
+)
+def test_a_registry_with_a_second_source_of_one_name_or_connector_is_refused_naming_it(
+    tmp_path: Path, second: Source
 ) -> None:
-    """Each source is configured once: a second Jira, by another table, is refused."""
-    registry = (*SOURCES, replace(JIRA, table_path=WORKLOG.table_path))
-    with pytest.raises(ValueError, match=r"^source 'jira': declared twice$"):
-        main(["check", "--config", str(tmp_path / "none.toml")], registry)
+    """Each source is configured once, and a connector's options replace its one source's."""
+    with pytest.raises(
+        ValueError, match=rf"^source {second.name!r}: declared twice, or a second of its connector$"
+    ):
+        main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, second))
 
 
-def test_each_source_prepares_the_types_that_its_declaration_names() -> None:
-    """A type added to a declaration reaches its preparer, and the tests' store of each type."""
-    assert {
-        source: [each.resource_type for each in classes] for source, classes in PREPARED.items()
-    } == {
-        declared.name: [resource_type.name for resource_type in declared.resource_types]
-        for declared in (CONFLUENCE, JIRA)
-    }
+def test_each_type_that_a_connector_declares_has_a_class_that_its_preparer_builds() -> None:
+    """A type added to a connector reaches its preparer, and the tests' store of each type."""
+    assert [each.document_type for each in DOCUMENT_CLASSES] == [
+        *CONFLUENCE.document_types,
+        *JIRA.document_types,
+    ]
 
 
 @pytest.mark.parametrize(
-    ("types", "named"),
-    [(CONFLUENCE.resource_types[:1], "pages"), (CONFLUENCE.resource_types[1:], "blogposts")],
-    ids=["pages", "blog posts"],
+    ("types", "named"), [((PAGE,), "space"), ((BLOGPOST,), "space")], ids=["pages", "blog posts"]
 )
 def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
-    tmp_path: Path, capsys: CaptureFixture[str], types: tuple[ResourceType, ...], named: str
+    tmp_path: Path, capsys: CaptureFixture[str], types: tuple[DocumentType, ...], named: str
 ) -> None:
-    """Plan 030: Atlassian's preparer removes the files of all of a source's resource types.
+    """Plan 030: Atlassian's preparer removes the files of all of a source's document types.
 
-    So a registry that names the pages alone would remove every blog post: ``prepare`` is
-    refused before any row, naming the source and its types.
+    So a connector whose spaces hold the pages alone would remove every blog post:
+    ``prepare`` is refused before any row, naming the source and its types.
     """
-    registry = (replace(CONFLUENCE, resource_types=types), JIRA, WORKLOG)
+    spaces = replace(SPACE, document_types=types)
+    registry = sourced(replace(CONFLUENCE, scope_types=(spaces,)), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
         '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
@@ -149,18 +152,13 @@ def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert "prepare.refused" in err
-    assert f"source 'confluence': prepare: types {named}: not all the resource types of one" in err
+    assert f"source 'confluence': prepare: scope types {named}: not a space's or a project's" in err
     assert post.read_text("utf-8") == "kept"
 
 
-def declaring(*options: Option) -> Source:
-    """Give the work log's declaration, its entries taking these options."""
-    return replace(
-        WORKLOG,
-        resource_types=(
-            ResourceType(name="entries", help="its entries", read="in place", options=options),
-        ),
-    )
+def declaring(*options: Option) -> tuple[Source, ...]:
+    """Give the registry, the work log's connector taking these options."""
+    return sourced(CONFLUENCE, JIRA, replace(WORKLOG, options=options))
 
 
 class Required(BaseModel):
@@ -175,7 +173,7 @@ def test_a_registry_with_a_source_that_names_no_setting_is_refused_naming_it(
     tmp_path: Path,
 ) -> None:
     """Its first setting says whether it is configured: any run would have nothing to read."""
-    registry = (CONFLUENCE, JIRA, replace(WORKLOG, settings=()))
+    registry = sourced(CONFLUENCE, JIRA, replace(WORKLOG, settings=()))
     with pytest.raises(ValueError, match=r"^source 'worklog': names no setting$"):
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
 
@@ -184,19 +182,19 @@ def test_a_registry_with_a_source_that_names_no_setting_is_refused_naming_it(
     ("registry", "said"),
     [
         pytest.param(
-            (CONFLUENCE, JIRA, replace(WORKLOG, settings=("path", "archive"))),
+            sourced(CONFLUENCE, JIRA, replace(WORKLOG, settings=("path", "archive"))),
             "source 'worklog': kb_mcp.sources.worklog.settings:WorklogTable: holds"
             " ('path', 'archives'), not the settings named, ('path', 'archive')",
             id="a setting the table lacks",
         ),
         pytest.param(
-            (CONFLUENCE, JIRA, replace(WORKLOG, settings=("archives", "path"))),
+            sourced(CONFLUENCE, JIRA, replace(WORKLOG, settings=("archives", "path"))),
             "source 'worklog': kb_mcp.sources.worklog.settings:WorklogTable: holds"
             " ('path', 'archives'), not the settings named, ('archives', 'path')",
             id="the first setting another",
         ),
         pytest.param(
-            (
+            sourced(
                 replace(CONFLUENCE, account=replace(ATLASSIAN, settings=("site",))),
                 replace(JIRA, account=replace(ATLASSIAN, settings=("site",))),
                 WORKLOG,
@@ -229,7 +227,7 @@ def test_a_table_that_cannot_be_built_by_default_is_refused_naming_its_source(
         WORKLOG, name="memo", settings=("folder",), table_path=f"{__name__}:{Required.__name__}"
     )
     with pytest.raises(TypeError, match=said):
-        main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, memo))
+        main(["check", "--config", str(tmp_path / "none.toml")], (*SOURCES, *sourced(memo)))
 
 
 class Numbers(BaseModel):
@@ -300,7 +298,10 @@ def test_a_table_that_a_command_could_not_read_is_refused_naming_its_source(
         WORKLOG, name="added", settings=settings, table_path=f"{__name__}:{table.__name__}"
     )
     with pytest.raises(TypeError, match=rf"^sources\.added: {said}"):
-        main([*command, "--config", str(config), "--data-dir", str(tmp_path / "data")], (added,))
+        main(
+            [*command, "--config", str(config), "--data-dir", str(tmp_path / "data")],
+            sourced(added),
+        )
 
 
 def test_a_list_left_at_none_reads_as_no_value(tmp_path: Path, capsys: CaptureFixture[str]) -> None:
@@ -311,14 +312,14 @@ def test_a_list_left_at_none_reads_as_no_value(tmp_path: Path, capsys: CaptureFi
         WORKLOG, name="added", settings=("values", "more"), table_path=f"{__name__}:{Tags.__name__}"
     )
     given = ["check", "--detail", "detailed", "--config", str(config)]
-    assert main([*given, "--data-dir", str(tmp_path / "data")], (added,)) == ExitStatus.OK
+    assert main([*given, "--data-dir", str(tmp_path / "data")], sourced(added)) == ExitStatus.OK
     assert "sources.added.more: (none) [default]" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("name", ["json", "copy", "schema"])
 def test_a_name_that_a_model_holds_is_refused_naming_it(tmp_path: Path, name: str) -> None:
     """Its field would shadow the attribute, as Pydantic warns: no warning on every run."""
-    registry = (*SOURCES, replace(WORKLOG, name=name))
+    registry = (*sourced(CONFLUENCE, JIRA), Source(name=name, connector=WORKLOG))
     with pytest.raises(TypeError, match=rf"^sources\.{name}: a name that a model already holds$"):
         main(["check", "--config", str(tmp_path / "none.toml")], registry)
 
@@ -328,9 +329,9 @@ def test_a_source_that_names_neither_fetcher_nor_preparer_is_refused(tmp_path: P
     with pytest.raises(ValueError, match=r"^source 'worklog': names neither fetcher nor preparer"):
         main(
             ["check", "--config", str(tmp_path / "none.toml")],
-            (CONFLUENCE, JIRA, replace(WORKLOG, preparers=())),
+            sourced(CONFLUENCE, JIRA, replace(WORKLOG, preparers=())),
         )
-    refuse((replace(CONFLUENCE, preparers=()),))
+    refuse(sourced(replace(CONFLUENCE, preparers=())))
 
 
 @pytest.mark.parametrize(
@@ -345,8 +346,7 @@ def test_an_option_takes_no_name_that_the_program_holds(
     site nothing, as no session is saved.
     """
     option = Option(flag=flag, help="one of the source's own")
-    issues = ResourceType(name="more", help="more", read="searched", options=(option,))
-    registry = (CONFLUENCE, replace(JIRA, resource_types=(*JIRA.resource_types, issues)), WORKLOG)
+    registry = sourced(CONFLUENCE, replace(JIRA, options=(*JIRA.options, option)), WORKLOG)
     arguments = parser(sources=registry).parse_args(["fetch", flag, "kept"])
     assert given(arguments, (flag,)) == {flag: "kept"}
     assert arguments.sources == registry
@@ -380,7 +380,7 @@ def test_a_flag_that_two_sources_declare_otherwise_is_refused_naming_both(
     tmp_path: Path, option: Option
 ) -> None:
     """One flag of ``fetch``: one definition would change for every source."""
-    registry = (CONFLUENCE, JIRA, declaring(option))
+    registry = declaring(option)
     with pytest.raises(
         ValueError, match=r"^source 'worklog': option --since declared otherwise by 'confluence'$"
     ):
@@ -391,7 +391,7 @@ def test_a_flag_that_two_sources_declare_alike_is_one_option(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     """The work log taking ``--since`` as Confluence does: one flag, which each reads."""
-    registry = (CONFLUENCE, JIRA, declaring(SINCE))
+    registry = declaring(SINCE)
     given = ["fetch", "--since", "7d", "--dry-run", "--config", str(tmp_path / "none.toml")]
     assert main(given, registry) == ExitStatus.REFUSED
     assert "nothing to fetch" in capsys.readouterr().err
@@ -400,13 +400,9 @@ def test_a_flag_that_two_sources_declare_alike_is_one_option(
 @pytest.mark.parametrize("flag", ["--yes", "--dry-run", "--config", "--format"])
 def test_an_option_that_takes_a_flag_of_fetch_s_own_is_refused_naming_it(flag: str) -> None:
     """In every command, as the registry's other rules: ``--help`` builds every parser."""
-    issues = ResourceType(
-        name="issues",
-        help="a project's issues",
-        read="searched",
-        options=(Option(flag=flag, help="another"),),
+    registry = sourced(
+        CONFLUENCE, replace(JIRA, options=(Option(flag=flag, help="another"),)), WORKLOG
     )
-    registry = (CONFLUENCE, replace(JIRA, resource_types=(issues,)), WORKLOG)
     with pytest.raises(
         ValueError, match=rf"^source 'jira': option {flag}: a flag of the command's own"
     ):
@@ -414,14 +410,15 @@ def test_an_option_that_takes_a_flag_of_fetch_s_own_is_refused_naming_it(flag: s
 
 
 @pytest.mark.parametrize("given", [["--help"], ["serve", "--help"], ["check", "--help"]], ids=str)
-def test_a_type_read_in_a_way_of_no_known_word_is_refused_naming_its_source(
+def test_a_scope_type_enumerated_in_a_way_of_no_known_word_is_refused_naming_its_source(
     given: list[str],
 ) -> None:
-    """In every command: the groups of ``fetch`` and ``prepare`` say how each type is read."""
-    more = ResourceType(name="more", help="more", read="scanned")
-    registry = (CONFLUENCE, replace(JIRA, resource_types=(*JIRA.resource_types, more)), WORKLOG)
+    """In every command: the groups of ``fetch`` and ``prepare`` say how each is enumerated."""
+    more = ScopeType(name="more", key=None, enumeration="scanned", document_types=())
+    registry = sourced(CONFLUENCE, replace(JIRA, scope_types=(*JIRA.scope_types, more)), WORKLOG)
     with pytest.raises(
-        ValueError, match=r"^source 'jira': type 'more': read 'scanned': not one of listed,"
+        ValueError,
+        match=r"^source 'jira': scope type 'more': enumerated 'scanned': not one of listed,",
     ):
         main(given, registry)
 
@@ -429,7 +426,7 @@ def test_a_type_read_in_a_way_of_no_known_word_is_refused_naming_its_source(
 @pytest.mark.parametrize("flag", ["since2", "", "-", "--", "--two words", "-since"])
 def test_an_option_whose_flag_has_not_a_flag_s_shape_is_refused_naming_it(flag: str) -> None:
     """Argparse would take it for a positional, and every command, ``--help`` too, would die."""
-    registry = (CONFLUENCE, JIRA, declaring(Option(flag=flag, help="another")))
+    registry = declaring(Option(flag=flag, help="another"))
     with pytest.raises(ValueError, match=rf"^source 'worklog': option {flag!r}: a flag is"):
         main(["--help"], registry)
 
@@ -437,7 +434,7 @@ def test_an_option_whose_flag_has_not_a_flag_s_shape_is_refused_naming_it(flag: 
 @pytest.mark.parametrize("flag", ["-s", "--since2", "--max-size-mb"])
 def test_a_flag_of_one_dash_and_a_letter_or_of_two_and_a_word_is_a_flag(flag: str) -> None:
     """As argparse reads them, an option's value kept under its flag."""
-    refuse((CONFLUENCE, JIRA, declaring(Option(flag=flag, help="another"))))
+    refuse(declaring(Option(flag=flag, help="another")))
 
 
 def test_confluence_and_jira_sign_in_with_one_atlassian_account() -> None:
@@ -445,7 +442,7 @@ def test_confluence_and_jira_sign_in_with_one_atlassian_account() -> None:
 
     The work log, read in place, signs in with none.
     """
-    assert {each.name: each.account for each in SOURCES} == {
+    assert {each.name: each.connector.account for each in SOURCES} == {
         "confluence": ATLASSIAN,
         "jira": ATLASSIAN,
         "worklog": None,
@@ -460,7 +457,7 @@ def test_a_registry_naming_one_account_differently_is_refused_naming_the_source(
 ) -> None:
     """The sources that name an account share its table: two tables of one name are refused."""
     other = replace(ATLASSIAN, table_path=WORKLOG.table_path)
-    registry = (CONFLUENCE, replace(JIRA, account=other), WORKLOG)
+    registry = sourced(CONFLUENCE, replace(JIRA, account=other), WORKLOG)
     with pytest.raises(
         ValueError, match=r"^source 'jira': account 'atlassian' declared otherwise$"
     ):
@@ -473,7 +470,7 @@ def test_an_account_that_no_source_of_the_registry_names_has_no_setting(
     """Without Confluence and Jira, ``[accounts.atlassian]`` is refused; with them, read."""
     config = tmp_path / "config.toml"
     config.write_text('[accounts.atlassian]\nsite = "https://x.atlassian.net"\n', "utf-8")
-    assert main(["check", "--config", str(config)], (WORKLOG,)) == ExitStatus.REFUSED
+    assert main(["check", "--config", str(config)], sourced(WORKLOG)) == ExitStatus.REFUSED
     assert "accounts.atlassian.site (config.toml): not a setting" in capsys.readouterr().err
     assert main(["check", "--config", str(config)]) == ExitStatus.OK
     assert capsys.readouterr().out == "accounts.atlassian.site: https://x.atlassian.net\n"
@@ -548,7 +545,7 @@ def test_a_fetcher_or_preparer_that_does_not_load_refuses_the_run_of_its_source(
     in, no session being saved, a prepare not counted.
     """
     named = path if field == "fetcher" else (path,)
-    registry = (replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
+    registry = sourced(replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
         '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'
@@ -581,7 +578,7 @@ def test_a_role_whose_module_breaks_on_import_refuses_the_run_naming_the_path(
     """Criterion 3 and ``sources.md``: whatever its import raises, exit 2, not a traceback."""
     (tmp_path / "kb_broken.py").write_text(body, "utf-8")
     monkeypatch.syspath_prepend(tmp_path)
-    registry = (replace(CONFLUENCE, preparers=("kb_broken",)), JIRA, WORKLOG)
+    registry = sourced(replace(CONFLUENCE, preparers=("kb_broken",)), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
     config.write_text(
         '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n'

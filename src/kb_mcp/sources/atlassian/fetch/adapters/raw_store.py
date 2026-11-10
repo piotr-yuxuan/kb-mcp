@@ -16,6 +16,8 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
+
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
 from kb_mcp.kernel.outcome import Problem
@@ -32,13 +34,20 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Snapshot,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
-from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOSTS, CONFLUENCE, PAGES
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
+from kb_mcp.sources.atlassian.fetch.domain.deletions import DocumentKey, Tombstone
+from kb_mcp.sources.atlassian.fetch.domain.names import (
+    BLOGPOST,
+    CONFLUENCE,
+    JIRA,
+    PAGE,
+    PROJECT,
+    SPACE,
+)
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Collection, Iterable, Iterator
 
     from kb_mcp.sources.atlassian.fetch.domain.content import FetchedDocument
 
@@ -47,8 +56,25 @@ RECORD = "store.json"
 # The store's own records of what runs covered, and of documents that answered as gone.
 COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
-# The store's own record, beside a space's listings, of when they were listed.
+# The store's own records, beside a space's listings, of when they were listed, and of the
+# documents that joined the space and are not stored yet.
 LISTED_AT = "listed_at.json"
+PENDING = "pending.json"
+# The site's users, merged, where Confluence's one source keeps its documents: they are
+# the site's, which plan 059 keys by site.
+USERS = Path(CONFLUENCE, "users.json")
+# The scope types of the coverage's entries, by name; an entry written before plan 056
+# names none, and its source, then always its connector's name, gives it.
+SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
+FORMER_TYPES = {CONFLUENCE: SPACE.name, JIRA: PROJECT.name}
+# The scope type of each document type that a tombstone may name, by name; and the
+# document type of a tombstone written before plan 056, by the plural it named as ``kind``.
+HELD_IN = {
+    each.name: scope_type for scope_type in (SPACE, PROJECT) for each in scope_type.document_types
+}
+FORMER_KINDS = {PAGE.plural: PAGE.name, BLOGPOST.plural: BLOGPOST.name}
+# The times that a coverage's entry may hold beside its period, each a field of Coverage.
+COVERAGE_TIMES = ("as_of", "whole_read_at")
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -57,7 +83,7 @@ UNREADABLE = (ValueError, OSError)
 
 
 class Representation(Record):
-    """How the snapshots of one resource type are read.
+    """How the snapshots of one document type are read.
 
     ``files`` names the responses that a snapshot of the type must have. ``identity``
     reads only what names the folder (id and revision), so that a response whose other
@@ -135,14 +161,14 @@ def _decode(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _record_json(path: Path) -> object:
-    # A record the store wrote and cannot read back is a changed shape, named by its file,
+def _record_json(path: Path, where: str) -> object:
+    # A record the store wrote and cannot read back is a changed shape, named by ``where``,
     # as is one that no read reaches, such as a folder in its place.
     try:
         return _decode(path)
     except UNREADABLE as error:
         why = "not JSON" if isinstance(error, ValueError) else f"not read: {type(error).__name__}"
-        message = f"{path.name}: {why}"
+        message = f"{where}: {why}"
         raise RepresentationError(message) from None
 
 
@@ -170,19 +196,22 @@ def _identifier(value: str, name: str) -> str:
 
 
 class RawStore:
-    """Responses kept as received, by document and revision, and files by SHA-256.
+    """One source's view of the raw store: responses as received, and files by SHA-256.
 
-    A snapshot is the folder ``<root>/<source>/<resource type>/<id>/<revision>/``, one JSON file
-    per response plus the store's record. It is written whole into a hidden folder and
-    renamed into place, so it is either complete or absent, and its responses never
-    change. A space's listings are ``<root>/confluence/spaces/<id>/*.json``, each
-    replaced whole; site users are ``<root>/confluence/users.json``, merged. A file is
+    The sources of one site share the store under ``root``: its files, coverage, records
+    of what answered as gone, site users and lock. Its source's snapshot of a document is
+    the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file per response
+    plus the store's record. It is written whole into a hidden folder and renamed into
+    place, so it is either complete or absent, and its responses never change. A space's
+    listings are ``<root>/<source>/spaces/<id>/*.json``, each replaced whole; site users
+    are ``<root>/confluence/users.json``, merged. A file is
     ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
     """
 
-    def __init__(self, root: Path) -> None:
-        """Use ``root`` as the store, creating its folders as they are needed."""
+    def __init__(self, root: Path, source: str) -> None:
+        """Use ``root`` as the store, for ``source``, creating its folders as needed."""
         self.root = root
+        self.source = source
         self._lock: int | None = None
 
     @contextmanager
@@ -210,7 +239,11 @@ class RawStore:
     def folder(self, document: FetchedDocument | Listed) -> Path:
         """Return where the snapshot of this document at this revision is, or would be."""
         return (
-            self.root / document.source / document.resource_type / document.id / document.revision
+            self.root
+            / self.source
+            / document.document_type.plural
+            / document.id
+            / document.revision
         )
 
     def has(self, document: FetchedDocument | Listed) -> bool:
@@ -247,7 +280,7 @@ class RawStore:
             raise ValueError(message)
         self._check_blobs(blobs)
         folder = (
-            self.root / document_class.source / document_class.resource_type / identifier / revision
+            self.root / self.source / document_class.document_type.plural / identifier / revision
         )
         if not folder.is_dir():
             folder.parent.mkdir(parents=True, exist_ok=True)
@@ -318,7 +351,7 @@ class RawStore:
         others still follow.
         """
         for item in _named(
-            self.root / document_class.source / document_class.resource_type, IDENTIFIER
+            self.root / self.source / document_class.document_type.plural, IDENTIFIER
         ):
             revisions = _named(item, REVISION)
             if not revisions:
@@ -338,7 +371,7 @@ class RawStore:
         }
 
     def _space(self, space_id: str) -> Path:
-        return self.root / CONFLUENCE / "spaces" / _identifier(space_id, "space id")
+        return self.root / self.source / "spaces" / _identifier(space_id, "space id")
 
     def put_space(
         self,
@@ -357,7 +390,11 @@ class RawStore:
         """
         self._check_writing()
         space_folder = self._space(Fields(space, "space").text("id"))
-        for name, value in ((PAGES, pages), (BLOGPOSTS, blog_posts), ("folders", folders)):
+        for name, value in (
+            (PAGE.plural, pages),
+            (BLOGPOST.plural, blog_posts),
+            ("folders", folders),
+        ):
             if type(value) is not list:
                 message = f"{name}: expected a list"
                 raise ValueError(message)
@@ -366,6 +403,37 @@ class RawStore:
         if listed_at is not None:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
             _replace_synced(space_folder / LISTED_AT, _encode(moment))
+
+    def put_pending(self, space_id: str, pending: Collection[str]) -> None:
+        """Keep the ids that joined a space and are not stored yet; none removes the record."""
+        self._check_writing()
+        path = self._space(space_id) / PENDING
+        if pending:
+            _replace_synced(path, _encode(sorted(pending)))
+        else:
+            path.unlink(missing_ok=True)
+
+    def pending(self, space_id: str) -> set[str]:
+        """Give the ids that joined a space and were not stored whole when it was last listed.
+
+        None when the record is missing. A record that cannot be read is refused by name,
+        as the store's other records are, since the ids it held would otherwise be lost.
+        """
+        path = self._space(space_id) / PENDING
+        if not path.exists():
+            return set()
+        where = path.relative_to(self.root).as_posix()
+        values = _record_json(path, where)
+        if type(values) is not list or not all(
+            type(each) is str and IDENTIFIER.fullmatch(each) for each in values
+        ):
+            message = f"{where}: expected a list of ids"
+            raise RepresentationError(message)
+        return set(values)
+
+    def was_listed(self, space_id: str) -> bool:
+        """Say whether a space's listings are stored, by an earlier run."""
+        return (self._space(space_id) / f"{PAGE.plural}.json").exists()
 
     def listed_at(self, space_id: str) -> datetime | None:
         """Say when a space was last listed, or None when no run said so."""
@@ -377,7 +445,7 @@ class RawStore:
     def spaces(self) -> list[Space | Problem]:
         """Read every space ever listed."""
         spaces: list[Space | Problem] = []
-        for folder in _named(self.root / CONFLUENCE / "spaces", IDENTIFIER):
+        for folder in _named(self.root / self.source / "spaces", IDENTIFIER):
             where = str((folder / "space.json").relative_to(self.root))
             try:
                 spaces.append(confluence_v2.space(Fields(_decode(folder / "space.json"), where)))
@@ -389,7 +457,7 @@ class RawStore:
         self, space_id: str, document_class: type[Page | BlogPost]
     ) -> list[Page | BlogPost | Problem]:
         """Read the pages, or the blog posts, last listed in a space."""
-        path = self._space(space_id) / f"{document_class.resource_type}.json"
+        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
         return self._entries(path, partial(confluence_v2.document, document_class=document_class))
 
     def listed_ids(self, space_id: str, document_class: type[Page | BlogPost]) -> set[str]:
@@ -399,7 +467,7 @@ class RawStore:
         so that deletions follow every document that a fetch fetched. A listing that
         cannot be read at all names none.
         """
-        path = self._space(space_id) / f"{document_class.resource_type}.json"
+        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
         try:
             return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
         except UNREADABLE:
@@ -412,7 +480,7 @@ class RawStore:
     def put_users(self, users: list[object]) -> None:
         """Merge site users, as received, into those kept from earlier runs, by account id."""
         self._check_writing()
-        path = self.root / CONFLUENCE / "users.json"
+        path = self.root / USERS
         kept = _decode(path) if path.exists() else []
         if type(kept) is not list or type(users) is not list:
             message = "users: expected a list"
@@ -425,7 +493,7 @@ class RawStore:
 
     def users(self) -> list[SiteUser | Problem]:
         """Read every site user kept."""
-        return self._entries(self.root / CONFLUENCE / "users.json", confluence_v2.person)
+        return self._entries(self.root / USERS, confluence_v2.person)
 
     def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Problem]:
         if not path.exists():
@@ -445,75 +513,116 @@ class RawStore:
 
     def stored_ids(self, document_class: type[FetchedDocument]) -> set[str]:
         """Return the ids of the documents of a type that have a stored snapshot."""
-        folders = _named(
-            self.root / document_class.source / document_class.resource_type, IDENTIFIER
-        )
+        folders = _named(self.root / self.source / document_class.document_type.plural, IDENTIFIER)
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
-        """Read each target's covered period, none when never written, and which are exact.
+        """Read each scope's coverage, none when never written: its period, and more if given.
 
-        An entry without ``exact``, as every entry was before plan 034, is not; nor is a
-        space's, whatever it says, since a space is listed whole.
+        Whether it is exact, its as-of time and the time of its last whole read. An entry
+        without ``type``, as every entry was before plan 056, is of its connector's one
+        scope type; one without ``exact``, as before plan 034, is not exact; one without a
+        time has none.
         """
         path = self.root / COVERAGE
         if not path.exists():
             return Coverage()
-        periods: dict[Target, Period] = {}
-        exact: set[Target] = set()
-        for item in Fields.each(_record_json(path), COVERAGE):
+        periods: dict[Scope, Period] = {}
+        exact: set[Scope] = set()
+        times: dict[str, dict[Scope, datetime]] = {name: {} for name in COVERAGE_TIMES}
+        for item in Fields.each(_record_json(path, COVERAGE), COVERAGE):
             with item.refusals():
-                target = Target(source=item.text("source"), key=item.text("key"))
+                source = item.text("source")
+                named = item.optional_text("type", absent=True) or FORMER_TYPES.get(source, "")
+                if named not in SCOPE_TYPES:
+                    message = "type: not a scope type of Confluence or Jira"
+                    raise RefusedError(message)
+                scope = Scope(source=source, type=SCOPE_TYPES[named], key=item.text("key"))
             try:
-                periods[target] = Period(item.time("start"), item.time("end"))
+                periods[scope] = Period(item.time("start"), item.time("end"))
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
-            if target.searched_by_time and "exact" in item.value and item.flag("exact"):
-                exact.add(target)
-        return Coverage(periods=periods, exact=frozenset(exact))
+            if "exact" in item.value and item.flag("exact"):
+                exact.add(scope)
+            for name in COVERAGE_TIMES:
+                if item.optional_text(name, absent=True):
+                    times[name][scope] = item.time(name)
+        return Coverage(periods=periods, exact=frozenset(exact), **times)
 
     def put_coverage(self, coverage: Coverage) -> None:
-        """Replace the record of coverage, whole; an exact entry says so, beside the rest.
+        """Replace the record of coverage, whole; each entry with what it holds beside its period.
 
-        The other keys are as before plan 034, so that its versions still read the record.
+        Its scope type, whether it is exact, and its times. The keys of plan 034's record
+        keep their meaning, so that its versions still read the record.
         """
         self._check_writing()
+        times = {name: getattr(coverage, name) for name in COVERAGE_TIMES}
         entries = [
             {
-                "source": target.source,
-                "key": target.key,
+                "source": scope.source,
+                "type": scope.type.name,
+                "key": scope.key,
                 "start": covered.start.astimezone(UTC).isoformat(),
                 "end": covered.end.astimezone(UTC).isoformat(),
-                **({"exact": True} if target in coverage.exact else {}),
+                **({"exact": True} if scope in coverage.exact else {}),
+                **{
+                    name: held[scope].astimezone(UTC).isoformat()
+                    for name, held in times.items()
+                    if scope in held
+                },
             }
-            for target, covered in sorted(
-                coverage.periods.items(), key=lambda item: (item[0].source, item[0].key)
+            for scope, covered in sorted(
+                coverage.periods.items(),
+                key=lambda item: (item[0].source, item[0].type.name, item[0].key),
             )
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))
 
-    def tombstones(self) -> dict[tuple[str, str], Tombstone]:
-        """Read the documents that answered as gone, by resource type and id."""
+    def tombstones(self) -> dict[DocumentKey, Tombstone]:
+        """Read the documents that answered as gone, by source, document type and id.
+
+        An entry written before plan 056 names the plural of its type as ``kind``, and
+        its space by id as ``space``: it is Confluence's, and of the space that Confluence's
+        view of the store lists under that id, whichever view reads it. One whose space no
+        stored listing names keeps the id as its scope's key, until a whole read of that
+        space finds it, and ``raw.spaces_unresolved`` says so once a read.
+        """
         path = self.root / TOMBSTONES
         if not path.exists():
             return {}
-        stones: dict[tuple[str, str], Tombstone] = {}
-        for item in Fields.each(_record_json(path), TOMBSTONES):
+        stones: dict[DocumentKey, Tombstone] = {}
+        keys: dict[str, str] | None = None  # each space's key by its id, for a former entry
+        unresolved: set[str] = set()
+        for item in Fields.each(_record_json(path, TOMBSTONES), TOMBSTONES):
+            former = "kind" in item.value
+            if former and keys is None:
+                spaces = RawStore(self.root, CONFLUENCE).spaces()
+                keys = {each.id: each.key for each in spaces if isinstance(each, Space)}
             with item.refusals():
-                resource_type, identifier = item.text("kind"), _identifier(item.text("id"), "id")
-                if resource_type not in {Page.resource_type, BlogPost.resource_type}:
-                    message = f"{item.path}.kind: not a resource type of Confluence"
-                    raise RepresentationError(message)
+                if former:
+                    source, named = CONFLUENCE, FORMER_KINDS.get(item.text("kind"), "")
+                    space_id = item.text("space")
+                    scope_key = (keys or {}).get(space_id, space_id)
+                    unresolved |= {space_id} - (keys or {}).keys()
+                else:
+                    source, named, scope_key = (
+                        item.text(key) for key in ("source", "type", "scope")
+                    )
+                if named not in HELD_IN:
+                    message = "type: not a document type of Confluence or Jira"
+                    raise RefusedError(message)
                 first_gone = item.time("first_gone") if item.optional_text("first_gone") else None
                 stone = Tombstone(
-                    resource_type=resource_type,
-                    id=identifier,
-                    space_id=item.text("space"),
+                    scope=Scope(source=source, type=HELD_IN[named], key=scope_key),
+                    type=named,
+                    id=_identifier(item.text("id"), "id"),
                     first_gone=first_gone,
                     confirmed=item.flag("confirmed"),
                 )
             stones[stone.key] = stone
+        if unresolved:
+            structlog.get_logger().warning("raw.spaces_unresolved", spaces=sorted(unresolved))
         return stones
 
     def put_tombstones(self, tombstones: Iterable[Tombstone]) -> None:
@@ -521,9 +630,10 @@ class RawStore:
         self._check_writing()
         entries = [
             {
-                "kind": stone.resource_type,
+                "source": stone.scope.source,
+                "type": stone.type,
                 "id": stone.id,
-                "space": stone.space_id,
+                "scope": stone.scope.key,
                 "first_gone": stone.first_gone.astimezone(UTC).isoformat()
                 if stone.first_gone
                 else None,

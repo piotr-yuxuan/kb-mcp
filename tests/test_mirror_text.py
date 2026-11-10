@@ -60,10 +60,10 @@ def test_a_slug_keeps_ascii_letters_and_digits(title: str, expected: str) -> Non
 
 def test_documents_are_placed_by_space_project_and_key() -> None:
     """Pages and blog posts by space key, id and slug; issues by project and key."""
-    assert confluence_path(page("Probe complex"), "MFS") == PurePosixPath(
+    assert confluence_path("confluence", page("Probe complex"), "MFS") == PurePosixPath(
         "confluence/MFS/196845-probe-complex.md"
     )
-    assert confluence_path(page("News!", BlogPost), "MFS") == PurePosixPath(
+    assert confluence_path("confluence", page("News!", BlogPost), "MFS") == PurePosixPath(
         "confluence/MFS/blog/196845-news.md"
     )
     issue = Issue(
@@ -78,8 +78,8 @@ def test_documents_are_placed_by_space_project_and_key() -> None:
         issue_type="Idea",
         status="Parking lot",
     )
-    assert issue_path(issue) == PurePosixPath("jira/PRB/PRB-1.md")
-    assert tree_path("MFS") == PurePosixPath("confluence/MFS/_tree.md")
+    assert issue_path("jira", issue) == PurePosixPath("jira/PRB/PRB-1.md")
+    assert tree_path("confluence", "MFS") == PurePosixPath("confluence/MFS/_tree.md")
 
 
 @pytest.mark.parametrize(
@@ -115,12 +115,15 @@ def test_work_log_documents_are_placed_by_type_id_and_title(
     A day's and a meeting's file is <data>/docs/worklog/{days,meetings}/<id>.md alone, as
     plan 042 says: the title is in the id already.
     """
-    assert worklog_path(document_type, identifier, title) == PurePosixPath("worklog", expected)
+    path = worklog_path("worklog", document_type, identifier, title)
+    assert path == PurePosixPath("worklog", expected)
 
 
 def test_an_empty_slug_leaves_the_id_alone() -> None:
     """A title without ASCII letters or digits names the file by its id."""
-    assert confluence_path(page("日本語"), "MFS") == PurePosixPath("confluence/MFS/196845.md")
+    assert confluence_path("confluence", page("日本語"), "MFS") == PurePosixPath(
+        "confluence/MFS/196845.md"
+    )
 
 
 @pytest.mark.parametrize(

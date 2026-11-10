@@ -154,6 +154,7 @@ What any command may log.
 | `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone, after the values that the settings loaded ignored, unless at the level error |
 | `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone; when the program's former name left settings, data or variables, the steps to move them follow, as [move to kb-mcp](../../how-to/move-to-kb-mcp.md) says |
 | `progress` | info | `task`, `done`, `total`, `remaining` | A task's heartbeat, every 10 s at most, and at its end; `remaining` in whole seconds |
+| `raw.spaces_unresolved` | warning | `spaces` | A record of what answered as gone, in its former format, names spaces by an id that no stored listing of Confluence names: their entries keep the id as their scope's key, until a whole read of the space finds it |
 | `log.unwritable` | warning | `folder`, `reason` | The log folder cannot be written: no file, or nothing more in it |
 | `log.capped` | warning | | The file reached its cap: nothing more is written to it |
 | `telemetry.undelivered` | warning | `endpoint`, `reason` | The endpoint cannot be reached, or did not take everything at the end |

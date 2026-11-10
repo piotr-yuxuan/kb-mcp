@@ -86,17 +86,19 @@ which makes GETs alone, one at a time and paced, signed in by the saved session 
 token ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
 listings whole; for each Jira project, it searches the issues updated in its fetch window.
-Then it fetches each document updated in the fetch window whose revision the raw store lacks
+Then it fetches each document updated in the fetch window whose revision the raw store
+lacks, and each that joined a space since its stored listing, or joined before and is
+still to fetch, whatever its update time
 ([`Fetching.fetch_listed`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
 its files first, the snapshot last
 ([`Fetching.keep`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)),
-and counts what it fetches apart from what it lists. Without `--since`, each target
+and counts what it fetches apart from what it lists. Without `--since`, each scope
 fetches what changed since its last fetch
-([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a
-project from a day before the end of the period it covers, which ends at its earliest
-document not stored whole, so that a run asks for that again; a space from the start of
-that period, its listing being read whole anyway; a target never fetched, its last 7
-days. A catch-up that would start after `--until` skips its target.
+([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)): a scope
+whose coverage is exact from a day before the end of the period it covers, which for a
+project ends at its earliest document not stored whole, so that a run asks for that
+again; a space with a failure in its period from the start of that period, its listing
+being read whole anyway; a scope never fetched, its last 7 days. A catch-up that would start after `--until` skips its scope.
 
 - **Writes**, into `<data>/raw/` alone, through
   [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py):
@@ -126,7 +128,7 @@ snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
 the listings, the users and the tombstones, and the setting `accounts.atlassian.site`:
 nothing else shapes its files. Confluence and Jira are prepared apart, Confluence first,
-each its own resource types, and each places every document, since a page links an issue, and an
+each its own document types, and each places every document, since a page links an issue, and an
 issue a page. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
 ([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); for its own, it turns the site's HTML

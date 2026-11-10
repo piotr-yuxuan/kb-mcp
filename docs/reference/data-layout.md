@@ -63,8 +63,9 @@ The site's responses and its HTML change without notice. So that a change stays 
   document (its type, id, revision, update time and Confluence version), read apart from
   the rest of the entry, so that an entry whose other fields have changed still lets the
   document be fetched. `mirror.domain.mirror.FrontMatter` holds what the mirror says of
-  each [document](concepts.md#document). A fetched document knows where it is stored
-  (`source`, `resource_type`) and names its state (`revision`). Every layer above the adapters
+  each [document](concepts.md#document). A fetched document knows its document type,
+  whose plural names where its source's view of the raw store keeps it
+  (`document_type`), and names its state (`revision`). Every layer above the adapters
   works with these types alone.
 - **One module per representation.** `sources.atlassian.fetch.adapters.confluence_v2`
   and `sources.atlassian.fetch.adapters.jira_v3` hold all that the code knows of those
@@ -105,11 +106,12 @@ it; every method that writes refuses to run outside it.
 A [snapshot](concepts.md#snapshot) lies at:
 
 ```
-<data>/raw/<source>/<resource type>/<id>/<revision>/<file>.json
+<data>/raw/<source>/<plural>/<id>/<revision>/<file>.json
 ```
 
-- `source` and `resource_type`: `confluence/pages`, `confluence/blogposts`, `jira/issues`, the
-  `source` and `resource_type` of `Page`, `BlogPost` and `Issue`.
+- `source` and `plural`: the source's name, whose view of the store `RawStore` is, and the
+  plural of its document type: `confluence/pages`, `confluence/blogposts`, `jira/issues`
+  for the default sources, of `Page`, `BlogPost` and `Issue`.
 - `id`: the content id (Confluence) or the issue id (Jira, which stays when the key
   changes).
 - `revision`: the version number padded to six digits for Confluence (`000003`), the
@@ -202,16 +204,23 @@ Each run that fetches a space replaces that space's listings, each as received, 
 result of every page of each list:
 
 ```
-<data>/raw/confluence/spaces/<space id>/space.json      the space, from GET /wiki/api/v2/spaces?keys=KEY
-<data>/raw/confluence/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
-<data>/raw/confluence/spaces/<space id>/blogposts.json  every blog post, likewise
-<data>/raw/confluence/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
-<data>/raw/confluence/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
+<data>/raw/<source>/spaces/<space id>/space.json      the space, from GET /wiki/api/v2/spaces?keys=KEY
+<data>/raw/<source>/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
+<data>/raw/<source>/spaces/<space id>/blogposts.json  every blog post, likewise
+<data>/raw/<source>/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
+<data>/raw/confluence/users.json                      every author seen, from GET /wiki/rest/api/user/bulk
 ```
+
+`<source>` is the name of the source of spaces, `confluence` by default; the site's
+users are the site's, kept at one path whatever the sources' names.
 
 `put_space(space, pages, blog_posts, folders, listed_at=...)` replaces one space's
 listings, each file whole, one after another, and records in `listed_at.json` when they
-were listed (`listed_at(space_id)`); other spaces' are kept. Of each listing entry it
+were listed (`listed_at(space_id)`); other spaces' are kept. `put_pending(space_id, ids)`
+keeps in `pending.json`, beside them, the ids of the documents that joined the space and
+are not stored whole yet, or removes the file when none (`pending(space_id)`, which
+refuses by name a file that does not read, as the store's other records); a fetch writes
+it just before the listings, after its documents. Of each listing entry it
 reads only the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
@@ -232,24 +241,41 @@ Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
 Two more of the store's own records, each replaced whole:
 
 - `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
-  each target (a space key or a project key,
-  `sources.atlassian.fetch.domain.coverage.Target`), the one period over which every
-  document updated is stored (`sources.atlassian.fetch.domain.coverage.Coverage`), and
-  `"exact": true` on a project's entry written since plan 034. A run that listed a
-  target whole joins its fetch window to that period when the two overlap or touch. A space's
-  period ends at the fetch window's end whatever failed, since a run without `--since` starts
-  at its covered start and asks again for whatever failed inside. A project's ends at
+  each scope, by its `source`, its scope `type` (`space` or `project`) and its `key`
+  (`sources.atlassian.fetch.domain.coverage.Scope`), the one period over which every
+  change was asked for, `start` and `end` (`sources.atlassian.fetch.domain.coverage.Coverage`),
+  `"exact": true` on an exact entry, a project's since plan 034 and a space's since plan
+  056, `as_of`, the period's end
+  when a run last left it exact, and `whole_read_at`, when a run last listed it whole; each
+  time only once known. An entry without `type`, as plan 056 found them, is of its
+  source's scope type, its source being its connector's name. A run that listed a
+  scope whole joins its fetch window to that period when the two overlap or touch, or
+  replaces an inexact period that the window starts at or before. Without a failure, such a
+  run leaves the period exact. A space's period ends at the fetch window's end whatever
+  failed, and a failure leaves it inexact, an entry of its listing that the adapter
+  refuses among them, so that a run without `--since` starts at its covered start and
+  asks again for whatever failed inside; each run of a space also fetches what its
+  listing names, by each entry's id, that its stored listing did not, and what
+  `pending.json` holds, whatever its update time, as a page moved in keeps its own, and
+  keeps in `pending.json` each of those that it did not store whole. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
   snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
   even below the old end, else at the fetch window's end; a search entry that the adapter
   refuses leaves it as it was, and a failure at its very start makes it inexact. A run
-  without `--since` searches an exact project from a day before its covered end, and an
-  entry without `exact` from its covered start, which replaces it with an exact one.
-  `exact` on a space's entry is read as false. Versions before plan 034 read the record,
-  and ignore `exact`.
+  without `--since` reads an exact scope from a day before its covered end, and an entry
+  without `exact` from its covered start, which takes, after an upgrade, a page that moved
+  into a space during its covered period and was never fetched. Versions before plan 034 read the record, and
+  ignore `exact`; those before plan 056 ignore `type` and the times, and read a space's
+  `exact` as false.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
-  `put_tombstones()`: each Confluence document absent from its space's listing
-  (`sources.atlassian.fetch.domain.deletions.Tombstone`), pending until a probe answers,
+  `put_tombstones()`: each document absent from its scope's whole read, a space's
+  listing, by its `source`, its document `type` and its `id`, with the key of that
+  `scope` (`sources.atlassian.fetch.domain.deletions.Tombstone`); an entry as plan 056
+  found them names the plural `kind` and the space's id, `space`, and is Confluence's,
+  of the space that Confluence's view of the store lists under that id; one whose space
+  no stored listing names keeps the space's id as its scope's key, until that space's
+  next whole read takes it into its scope, and `raw.spaces_unresolved` says so once a
+  read. A tombstone is pending until a probe answers,
   then dated by its first answer of gone (404, trashed, or moved to a space the store
   does not keep), and confirmed by a second, at least an hour later. A document found in
   a kept space whose stored listing names it has moved, and loses its tombstone, as does
@@ -269,9 +295,9 @@ Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 004's plan defines: `ending`, how the fetch ended (`done`, `failed`, `sign in again`, or
 `interrupted` by Ctrl-C), and `counts`, each count by its name; reports written before
 held `status`, the exit status, in place of `ending`. A run report holds counts and
-refused fields' paths, never content, and names no target. No code reads one back. Its counts of documents depend on whether
-`--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
-stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
+refused fields' paths, never content, and names no scope. No code reads one back. Its counts of documents depend on whether
+`--since` was given (034): with it, `<source> <plural>: in the period` and `<source> <plural>: already
+stored`; without, `<source> <plural>: new or changed since the last fetch`; `listed` and `fetched` either way.
 
 ## The Markdown mirror
 
@@ -281,11 +307,11 @@ finds there (030):
 
 | Folder | Owned by | Removed by |
 |---|---|---|
-| `confluence/` | Confluence's prepare (005) | `sources.atlassian.prepare.adapters.owned.owned` |
-| `jira/` | Jira's prepare (005) | the same |
+| `confluence/` | Confluence's prepare (005), of the source of that name, as of any source of Confluence's connector | `sources.atlassian.prepare.adapters.owned.owned` |
+| `jira/` | Jira's prepare (005), likewise | the same |
 | `assets/` | Confluence's and Jira's together: each writes the files of its own documents | `sources.atlassian.prepare.adapters.owned.attached`, a file that no placed document of either wants and no document file of either links (`unlinked`), unless a problem was found, of either source |
-| `worklog/` | the work log's prepare (017, [below](#the-work-log)) | `sources.worklog.prepare.adapters.owned.worklog_owned` |
-| `<name>/` | any other source: `<name>` is its declaration's, which the registry's rule keeps off `assets` | its own |
+| `worklog/` | the work log's prepare (017, [below](#the-work-log)), of the source of that name, as of any source of its connector | `sources.worklog.prepare.adapters.owned.worklog_owned` |
+| `<name>/` | any other source: `<name>` is its own, which the registry's rule keeps off `assets` | its connector's |
 
 A source that attaches files keeps them under `<name>/_assets/`, in its own folder, so that
 no other source removes them, and under a name beginning with `_`, which keeps them out of
@@ -525,13 +551,16 @@ cannot tell apart. The work log does not use the file: its `revision`
 ([below](#the-work-log)) already skips what has not changed.
 
 As the file is opened, the run takes its write lock, then `PRAGMA integrity_check`
-judges it, each index against its table: one that the check finds damaged, or that
+judges it, each index against its table. A file whose one table holds `key` and
+`markdown` alone, as one written before plan 030 does, is first adopted, under the lock:
+each of its rows becomes a row of each Atlassian source, and `prepare.cache_adopted` says
+how many rows each took. One that the check finds damaged, or that
 SQLite finds damaged, no database, or of a format that it cannot read or may not write
 (`SQLITE_CORRUPT` and `SQLITE_NOTADB` by their primary codes, `SQLITE_ERROR` and
 `SQLITE_READONLY` exactly, since their extended codes, such as
 `SQLITE_READONLY_DIRECTORY` for a folder that the run may not write, say nothing of the
-file), or whose schema names columns other than `source`, `key` and `markdown`, as one
-written before plan 030 does, or a name that is no longer UTF-8 text, is deleted with its
+file), or whose schema names columns other than `source`, `key` and `markdown`, or a
+name that is no longer UTF-8 text, is deleted with its
 `-wal` and `-shm`, `prepare.cache_replaced` says why ([prepare's
 telemetry](telemetry/prepare.md)), and an empty file takes its
 place, so that the run goes on and converts everything. Damage that SQLite finds during

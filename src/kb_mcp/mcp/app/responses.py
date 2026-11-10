@@ -207,11 +207,12 @@ def roles(name: str, held: Sequence[tuple[str, int, datetime | None]]) -> str:
 def facts(front: FrontMatter) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
-    Its issue type, its status unless current, its assignee (``unassigned`` for an issue
-    with none), its author, its creator when named otherwise than its author, and its
-    created day, leaving out what it lacks.
+    Its issue type, its status unless current, its assignee (``unassigned`` for a document
+    with a key, an issue, with none), its author, its creator when named otherwise than its
+    author, and its created day, leaving out what it lacks.
     """
-    unassigned = "unassigned" if front.source == "jira" else ""
+    # A stopgap: plan 057 decides it by the roles that the document's type takes.
+    unassigned = "unassigned" if front.key is not None else ""
     creator = front.creator
     shown = (
         short(front.issue_type, LABEL) if front.issue_type else "",

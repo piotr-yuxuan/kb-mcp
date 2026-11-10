@@ -188,10 +188,19 @@ keeps has changed since the former name:
   `account: <id>` becomes `identity: 'atlassian:<id>'`; until then `index` reads the
   former entries as those identities, and no person's id changes.
 
-- **The first prepare converts everything once.** The cache of conversions holds its rows
-  by source now, so a file of the former columns is replaced, `prepare.cache_replaced`
-  saying so; each run after it converts what changed, as before. Nothing is downloaded
+- **The cache of conversions is kept.** It holds its rows by source now, so the first
+  prepare makes each row of the former file a row of Confluence and of Jira,
+  `prepare.cache_adopted` saying how many, and converts only what changed, as before;
+  each prune then drops the rows that its source did not use. Nothing is downloaded
   again.
+- **The first fetch of each space reads its whole covered period.** A space's coverage
+  was never exact before, so that fetch asks again for every change since its covered
+  start, and may fetch pages that moved into the space while the former version ran;
+  from then on, a space read whole without failure is exact.
+- **No way back without a copy.** The first fetch of spaces writes `raw/tombstones.json`
+  in a new format, which the tag `pre-kb-mcp` cannot read, and `raw/coverage.json` with
+  keys that it ignores, a space's coverage then read inexact: to go back to the tag, put
+  back the two files as they were before that fetch, so keep a copy of them first.
 - **A report per source.** A download's report is
   `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it
   fetches, where it was `<time>.json`. Reports already there stay as they are. No code

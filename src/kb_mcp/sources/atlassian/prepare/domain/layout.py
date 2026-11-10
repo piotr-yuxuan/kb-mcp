@@ -16,7 +16,6 @@ from kb_mcp.kernel.names import ASSETS
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
-from kb_mcp.sources.atlassian.fetch.domain.names import CONFLUENCE, JIRA
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,23 +29,23 @@ ASSET_NAME = re.compile(r"[0-9a-f]{64}(?:\.[a-z0-9]{1,8})?")
 NONE = "<p>None.</p>"
 
 
-def confluence_path(document: ConfluenceDocument, space: str) -> PurePosixPath:
-    """Return where a page or a blog post of the space with this key goes in the mirror."""
+def confluence_path(source: str, document: ConfluenceDocument, space: str) -> PurePosixPath:
+    """Return where a source's page or blog post of the space with this key goes in the mirror."""
     name = "-".join(part for part in (document.id, slug(document.title)) if part)
-    folder = PurePosixPath(CONFLUENCE, space)
+    folder = PurePosixPath(source, space)
     if isinstance(document, BlogPost):
         folder /= "blog"
     return folder / f"{name}.md"
 
 
-def issue_path(issue: Issue) -> PurePosixPath:
-    """Return where an issue goes in the mirror."""
-    return PurePosixPath(JIRA, issue.project, f"{issue.key}.md")
+def issue_path(source: str, issue: Issue) -> PurePosixPath:
+    """Return where a source's issue goes in the mirror."""
+    return PurePosixPath(source, issue.project, f"{issue.key}.md")
 
 
-def tree_path(space: str) -> PurePosixPath:
-    """Return where the tree of the space with this key is."""
-    return PurePosixPath(CONFLUENCE, space, TREE)
+def tree_path(source: str, space: str) -> PurePosixPath:
+    """Return where the tree of a source's space with this key is."""
+    return PurePosixPath(source, space, TREE)
 
 
 def asset_path(digest: str, filename: str) -> PurePosixPath:

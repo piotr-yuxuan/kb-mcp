@@ -1,9 +1,10 @@
 # Sources
 
 The mirror has three [sources](../reference/concepts.md#source): Confluence and Jira, on the Atlassian site, and the user's
-work log, a folder of org files on this machine. A source is a declaration and the code
-that it names, and the three are declared alike, so that a new one is a package and one
-line of a registry. This page says why a source is put together as it is; [bring every
+work log, a folder of org files on this machine. Each is one instance of a
+[connector](../reference/concepts.md#connector), a declaration and the code that it
+names, and the three connectors are declared alike, so that a new one is a package and
+one line of a registry. This page says why a source is put together as it is; [bring every
 source up to date](../how-to/refresh.md) and [add the work log](../how-to/work-log.md)
 say how to use them, and [add a source](../how-to/add-a-source.md) how to write one.
 
@@ -35,17 +36,21 @@ Each writes through the mirror's common part: the front matter, which search rea
 the writer of the files that changed, and pandoc. So the mirror imports no source, and no
 source another ([the code's layout](code-layout.md#the-stages-within-a-source)).
 
-## A source is a declaration
+## A connector is a declaration, a source one instance of it
 
-A source is data that names the code of its stages
-([`Source`](../../src/kb_mcp/sources/declaration.py)), and the three are declared alike:
+A connector is data that names the code of its stages
+([`Connector`](../../src/kb_mcp/sources/declaration.py)), and the three are declared alike:
 [`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py),
 [`JIRA`](../../src/kb_mcp/sources/atlassian/declared.py) and
-[`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py).
+[`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py). A source is one configured
+instance of one connector, its name and its connector
+([`Source`](../../src/kb_mcp/sources/declaration.py)); everything that runs per source
+reads its connector from it, and its name alone names its table, its folders and the
+front matter's `source`. The registry gives each connector one source, of its own name.
 
 | Part | Where | Holds | Loaded |
 |---|---|---|---|
-| Declaration | `sources/<package>/declared.py` | its name, summary, resource types and options, its settings' names, its account, its table, its fetcher and preparers by module path, and its light checks | at every parse: standard library alone |
+| Declaration | `sources/<package>/declared.py` | its name, summary, scope types and options, its settings' names, its account, its table, its fetcher and preparers by module path, and its light checks | at every parse: standard library alone |
 | Tables | `sources/<package>/settings.py` | the Pydantic models of `[sources.<name>]` and of its account | with the settings |
 | Fetcher | `sources/<package>/fetch/app/` | a `Fetcher`; none for a source read in place | by the run that uses it |
 | Preparers | `sources/<package>/prepare/app/` | a `Preparer` each, one per source today | by the run that uses it |
@@ -63,11 +68,12 @@ an API token without its email
 ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), what its run
 does not apply, and what its echo says.
 
-- **One fetcher may serve several sources.** Confluence and Jira name one fetcher, which
-  reads the resource types of the source that it runs for from `run.source`
-  ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as their one
-  preparer reads the resource types that it converts, and the source whose rows of the cache of
-  conversions it reads ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+- **One fetcher may serve several connectors.** Confluence and Jira name one fetcher,
+  which reads the scope types of the connector of the source that it runs for from
+  `run.source` ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), as
+  their one preparer reads the document types that it converts, and the source whose rows
+  of the cache of conversions it reads
+  ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
   one row's name, `git`, told apart by their order alone: that plan names them.
@@ -92,7 +98,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   log that is not a folder
   ([its preparer's](../../src/kb_mcp/sources/worklog/prepare/app/preparer.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_targets`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
+  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
   read in place has no fetcher: the work log's preparer reads its folder, and its
   `preflight` checks it.
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
@@ -112,56 +118,59 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   whichever sources it takes
   ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)).
 
-## Resource types
+## Scope types and document types
 
-A source declares what it can read, each a resource type, a
-[`ResourceType`](../../src/kb_mcp/sources/declaration.py): its name, a help line, how it is
-read ([`Reading`](../../src/kb_mcp/sources/declaration.py)), and its options, each an
-[`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds. They are the
-folders that the raw store keeps
+A connector declares what it reads as scope types, each a
+[`ScopeType`](../../src/kb_mcp/sources/declaration.py): its name, its key's rule, how a
+fetch enumerates its documents ([`Enumeration`](../../src/kb_mcp/sources/declaration.py)),
+the document types that it holds, each a
+[`DocumentType`](../../src/kb_mcp/sources/declaration.py) with its plural, and the option
+that replaces its source's list of keys for one run. A document type's plural is its
+folder of the raw store
 ([`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
-[`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)) and, for the work
-log, which keeps no store, its documents' types
-([`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py)):
+[`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)); the work log keeps
+no store ([`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py)). A connector's other
+options, each an [`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds,
+are its fetch's:
 
-| Source | Type | Read | Options |
-|---|---|---|---|
-| `confluence` | `pages`, `blogposts` | listed whole, per space | `--since`, `--until`, `--max-file-mb` |
-| `jira` | `issues` | searched by update time, per project | the same |
-| `worklog` | `entries`, `days`, `meetings`, `transcripts` | read whole, in place | none |
+| Connector | Scope type | Enumerated | Document types | Options |
+|---|---|---|---|---|
+| `confluence` | `space`, by `--space` | listed whole | `page`, `blogpost` | `--since`, `--until`, `--max-file-mb` |
+| `jira` | `project`, by `--project` | searched by update time | `issue` | the same |
+| `worklog` | `folder`, its one scope the whole source | read whole, in place | `entry`, `transcript`, `day`, `meeting` | none |
 
-`--space` and `--project` replace a setting for one run
-([`SPACE`](../../src/kb_mcp/sources/atlassian/declared.py), by its `setting`). How each
-type is read sets its coverage: per target, an exact end only where searched by time.
-Coverage, which may not import a declaration, decides so by the target's source, which
-[a test](../../tests/test_names.py) holds to the declarations. Choosing among a source's types waits for one worth
-fetching apart, such as Jira's boards: until then a source's types are read whole. The
-Atlassian fetcher lists every resource type of a space, and its preparer, which removes
-the files of every resource type of its source, refuses a declaration that names some of
-them
-([`preflight`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)). So a type's
-name, its options and how it is read are read so far, the last in the groups of `fetch
---help` and `prepare --help`, each opening with its source's help; no command reads a
-type's help yet.
+The Atlassian scope types are declared beside the names that the fetch reads
+([`SPACE`](../../src/kb_mcp/sources/atlassian/fetch/domain/names.py),
+[`PROJECT`](../../src/kb_mcp/sources/atlassian/fetch/domain/names.py)), since contract J
+keeps the fetch from importing the declaration. A source's scope types are read whole:
+the Atlassian fetcher lists every document type of a space, and its preparer, which
+removes the files of every document type of its source, refuses a connector whose scope
+types hold some of them
+([`preflight`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)). How each scope
+type is enumerated is said in the groups of `fetch --help` and `prepare --help`, each
+opening with its connector's help.
 
 ## The registry, a list in the code
 
-[`SOURCES`](../../src/kb_mcp/sources/registry.py) holds the declarations in name order. The
-entry, [`main`](../../src/kb_mcp/cli/main.py), takes the registry as a parameter, `SOURCES`
+[`CONNECTORS`](../../src/kb_mcp/sources/registry.py) holds the connectors in name order,
+and [`SOURCES`](../../src/kb_mcp/sources/registry.py) a source of each, of its name. The
+entry, [`main`](../../src/kb_mcp/cli/main.py), takes the sources as a parameter, `SOURCES`
 by default, and hands it to the parser's declarations and to
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py), so that a test registers a source of
 its own without touching `src/`
 ([`registry`](../../tests/test_memo_source.py)).
 
 Its rules hold for any registry that the entry is given
-([`refuse`](../../src/kb_mcp/sources/registry.py)), and refuse, naming the declaration: a
+([`refuse`](../../src/kb_mcp/sources/registry.py)), and refuse, naming the source: a
 name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), or `assets`;
-two of one name; two declarations naming one account differently; a source naming no
-setting, or neither a fetcher nor a preparer; an option that another source declares
-otherwise, or that takes a flag of `fetch`'s own
-([`add_source_options`](../../src/kb_mcp/cli/options/_sources.py)); a type read in a way that
-the help has no words for ([`source_groups`](../../src/kb_mcp/cli/options/_sources.py)). An
+two of one name, or of one connector, whose options replace its one source's settings;
+two connectors naming one account differently; a connector naming no setting, or neither
+a fetcher nor a preparer; an option that another connector declares otherwise, or that
+takes a flag of `fetch`'s own
+([`add_source_options`](../../src/kb_mcp/cli/options/_sources.py)); a scope type enumerated
+in a way that the help has no words for
+([`source_groups`](../../src/kb_mcp/cli/options/_sources.py)). An
 option's value is kept
 under its flag itself, so no flag takes a
 name that the program holds. Once the arguments are parsed, so that `--help` imports no
@@ -288,8 +297,8 @@ keeps out of the index.
 They share the site, the sign-in and the raw store, so `sources/atlassian/` stays one
 package, but each is a source: a row, a report and a set of files of its own.
 
-- **Fetched apart.** Each fetch takes its own source's targets
-  ([`targets_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
+- **Fetched apart.** Each fetch takes its own source's scopes
+  ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
   probes, projects and users keep their order across two runs, each with its own sign-in
   check, hold on the raw store and report, `<data>/runs/<time>-<source>.json`. The record of
   what answered as gone is Confluence's: a fetch of projects neither reads nor rewrites
@@ -298,31 +307,34 @@ package, but each is a source: a row, a report and a set of files of its own.
   the mirror's documents
   ([`LinkTargets.documents`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)),
   and both attach files in `docs/assets/`. So each prepare reads the whole raw store and
-  places every document, and converts only its own resource types
+  places every document, and converts only its own document types
   ([`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)): pages and blog
   posts, with the spaces' trees, for Confluence; issues for Jira. Prepared in name order,
   Confluence then Jira, after any fetch, every link is what one prepare of both would
   make. `prepare confluence` prepares Confluence alone, so Jira's files whose links
   depend on Confluence's pages are rewritten only when Jira is prepared.
-- **What each owns.** Confluence writes and removes under `docs/confluence/`, Jira under
-  `docs/jira/`. `docs/assets/` is theirs together: each writes the files of its own
+- **What each owns.** Each source writes and removes under the folder of its name,
+  Confluence's under `docs/confluence/` and Jira's under `docs/jira/` by default, the
+  files of its own document types
+  ([`owned`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)). `docs/assets/` is theirs together: each writes the files of its own
   documents, and removes a file that no placed document of either wants and no document
   file left links, since the last good copy of a document not rebuilt still shows it
   ([`unlinked`](../../src/kb_mcp/sources/atlassian/prepare/adapters/owned.py)).
-- **Problems.** Each reports the problems of its own resource types. A snapshot or listing that
+- **Problems.** Each reports the problems of its own document types. A snapshot or listing that
   cannot be read stops the removals of the source that it belongs to, and every removal
   under `docs/assets/`, since the files wanted are then unknown; each source's conversion
   problems stop its own removals alone. So an issue that pandoc fails on keeps its file, and
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
   it says so, by that source, under a row that stays done
-  ([`prepare_classes`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
+  ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
   key, so that a text that both convert is a row of each, which neither prune takes from the
   other. A column keeps one file, which the data guard already judges. A file of the former
-  columns fails [`COLUMNS`](../../src/kb_mcp/mirror/adapters/conversions.py) and is replaced
-  once, so that the first prepare since converts everything again.
+  columns is adopted once, each of its rows a row of each source of the site
+  ([`opened`](../../src/kb_mcp/mirror/adapters/conversions.py)), so that the first prepare
+  since converts nothing that it holds.
 - **Cost.** The raw store is read and placed twice per prepare of both, in place of once:
   0.41 s more on a store of 1,474 documents, against 2.3 s for a `prepare` that the cache
   spares pandoc, and 31 s for one that it does not.

@@ -123,7 +123,7 @@ source. The exit status is
 on stderr) or you answered no, 2 for refused settings or options, or no terminal to ask
 on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `kb-mcp
 --help` lists them. Running the same command again without `--since` fetches only what
-changed since each target's last fetch, and asks again for what failed; the counts then
+changed since each scope's last fetch, and asks again for what failed; the counts then
 say how many documents are new or changed, apart from how many are listed.
 
 ## End the session

@@ -21,16 +21,16 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     """Refuse what no fetch can run with, before anything is asked: the first found.
 
     A source named but not configured, or none left; then what each source taken refuses,
-    by its declaration's ``refused``, such as an option that does not read, or a site not
+    by its connector's ``refused``, such as an option that does not read, or a site not
     set: no source's options are read unless it is taken.
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     faults = [
         choice_refused(arguments, settings),
         *(
-            declared.refused(given(arguments, declared.options), settings)
-            for declared in taken
-            if declared.refused is not None
+            connector.refused(given(arguments, connector.flags), settings)
+            for connector in (declared.connector for declared in taken)
+            if connector.refused is not None
         ),
     ]
     return next((fault for fault in faults if fault is not None), None)
@@ -40,14 +40,14 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     """Name what the run does not apply, and why.
 
     What it does not apply of the sources left out; then what each source taken does not
-    apply, by its declaration's ``unapplied``, such as an email without the API token that
+    apply, by its connector's ``unapplied``, such as an email without the API token that
     it signs in with.
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     unused = left_unapplied(arguments, settings)
-    for declared in taken:
-        options = given(arguments, declared.options)
-        unused |= declared.unapplied(options, settings) if declared.unapplied else {}
+    for connector in (declared.connector for declared in taken):
+        options = given(arguments, connector.flags)
+        unused |= connector.unapplied(options, settings) if connector.unapplied else {}
     return unused
 
 
@@ -61,7 +61,7 @@ def register(
     of those sources'. A source named comes with the others, after the options or before
     them: its ``dest`` is ``source``, as ``sources`` holds the registry.
     """
-    fetched = [declared for declared in sources if declared.fetcher is not None]
+    fetched = [declared for declared in sources if declared.connector.fetcher is not None]
     parser = subparsers.add_parser(
         "fetch",
         help="bring what changed in each source into its store",
@@ -70,9 +70,10 @@ def register(
             " taken, in the registry's order, each with its `source`, its `ending` (done,"
             " failed, sign in again, interrupted, not run), its `counts`, null when it gave"
             " none, and its `problems` and `warnings`, each with its `where` and `reason`,"
-            " a target, a document or a file and why it failed. The counts: each count by"
+            " a scope, a document or a file and why it failed. The counts: each count by"
             " its name, of what the fetch did, or with --dry-run would do; `windows`, each"
-            " target's: its `target`, `start`, `end` and `reason`, and its `coverage`,"
+            " scope's: its `scope`, by its source, type and key, its `start`, `end` and"
+            " `reason`, and its `coverage`,"
             " extended, capped at a failure, held, or null when not written; `dry_run`,"
             " whether the fetch only planned."
         ),

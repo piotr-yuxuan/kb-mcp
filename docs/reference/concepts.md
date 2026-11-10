@@ -63,16 +63,17 @@ connector.
 **In the code.** The package [`sources/atlassian/`](../../src/kb_mcp/sources/atlassian/)
 holds two connectors, Confluence and Jira, which share one sign-in, one raw store and
 one coverage file; [`sources/worklog/`](../../src/kb_mcp/sources/worklog/) holds the
-work log's. A connector's declaration is carried by
-[`Source`](../../src/kb_mcp/sources/declaration.py), with
-[`Source.fetcher`](../../src/kb_mcp/sources/declaration.py),
-[`Source.preparers`](../../src/kb_mcp/sources/declaration.py),
-[`Source.resource_types`](../../src/kb_mcp/sources/declaration.py) and
-[`Source.account`](../../src/kb_mcp/sources/declaration.py); by
+work log's. A connector is a [`Connector`](../../src/kb_mcp/sources/declaration.py), with
+[`Connector.scope_types`](../../src/kb_mcp/sources/declaration.py),
+[`Connector.fetcher`](../../src/kb_mcp/sources/declaration.py),
+[`Connector.preparers`](../../src/kb_mcp/sources/declaration.py) and
+[`Connector.account`](../../src/kb_mcp/sources/declaration.py); its scope types are each a
+[`ScopeType`](../../src/kb_mcp/sources/declaration.py), with its
+[`Enumeration`](../../src/kb_mcp/sources/declaration.py), and its document types each a
+[`DocumentType`](../../src/kb_mcp/sources/declaration.py); its sign-in is an
 [`Account`](../../src/kb_mcp/sources/declaration.py), with
 [`Account.login`](../../src/kb_mcp/sources/declaration.py) and
-[`Account.checks`](../../src/kb_mcp/sources/declaration.py); and by
-[`Reading`](../../src/kb_mcp/sources/declaration.py), the enumeration of a scope type.
+[`Account.checks`](../../src/kb_mcp/sources/declaration.py).
 
 ### source
 
@@ -86,15 +87,16 @@ clients are two sources of one connector.
 prepare work per source. Sources whose sign-ins reach the same place may share that
 sign-in's state, as their connector defines.
 
-**In the code.** [`Source`](../../src/kb_mcp/sources/declaration.py), a declaration
-whose name is also its one instance; [`SourceRun`](../../src/kb_mcp/sources/stages.py),
+**In the code.** [`Source`](../../src/kb_mcp/sources/declaration.py), its name and its
+connector, one of each connector, of its name, in
+[`SOURCES`](../../src/kb_mcp/sources/registry.py); [`SourceRun`](../../src/kb_mcp/sources/stages.py),
 which binds it to its settings;
 [`FrontMatter.source`](../../src/kb_mcp/mirror/domain/mirror.py) and the index's column
-`documents.source`, which hold its name; the names
-[`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py),
-[`JIRA`](../../src/kb_mcp/sources/atlassian/declared.py) and
-[`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py); and the filter `source` of
-[`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py).
+`documents.source`, which hold its name; and the filter `source` of
+[`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py), which
+[`search_filters`](../../src/kb_mcp/mcp/app/tools.py) gives the sources that
+[`Source.prepared_by_default`](../../src/kb_mcp/sources/declaration.py) takes, then those
+that the index holds.
 
 ### scope
 
@@ -130,12 +132,15 @@ scope type may make less often, starts a document's absence. `browse` walks a sc
 tree.
 
 **In the code.** On the fetching side:
-[`Target`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Scope`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 [`Coverage`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), with
-[`Coverage.periods`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py) and
-[`Coverage.exact`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
+[`Coverage.periods`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Coverage.exact`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`Coverage.as_of`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py) and
+[`Coverage.whole_read_at`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
 [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py);
-[`TargetFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
+[`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), a run's scopes, and
+[`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
 [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), the stored
 listings and `listed_at.json`, which are what a scope listed at its last whole read. On
 the serving side: [`SCOPES`](../../src/kb_mcp/mcp/app/surface.py) and
@@ -218,8 +223,8 @@ the same document at other stages,
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py) and
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
-[`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py); the type lists
-[`TYPES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) and
+[`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each
+connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py), with
 [`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py);
 [`Link`](../../src/kb_mcp/mirror/domain/mirror.py),
 [`Link.ref`](../../src/kb_mcp/mirror/domain/mirror.py) and
@@ -777,7 +782,8 @@ Confluence's and Jira's sources share: the origin's responses as received, with 
 store's own records.
 
 - **In the code.**
-  [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
+  [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py), one
+  source's view of it, which holds the source's name,
   [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and,
   for what its adapter refuses, a [`Problem`](../../src/kb_mcp/kernel/outcome.py).
 
@@ -798,7 +804,7 @@ excluded, and why the period starts there.
 - **In the code.**
   [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
   [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
-  [`TargetFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
+  [`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
   [`Period`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py).
 
 ### work log

@@ -14,14 +14,14 @@ fetched in the run's trace, in its space's or project's span.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `fetch.listed` | info | `target`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its fetch window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
+| `fetch.listed` | info | `scope`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its fetch window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
 | `fetch.document` | debug | `id`, `kind`, `title` | A document is fetched, and its snapshot read |
 | `fetch.document_failed` | warning | `id`, `kind`, `reason` | A document cannot be fetched: the run goes on, and exits 1 |
 | `fetch.document_unread` | warning | `kind`, `reason` | A snapshot that its adapter refuses: stored as it came, without its files |
 | `fetch.file_skipped` | info | `id`, `file_name`, `reason` | An attached file is not downloaded, by its media type or its size |
 | `fetch.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
-| `fetch.target_failed` | warning | `target` | A space or a project named cannot be listed |
-| `fetch.coverage` | info | `target`, `outcome`, `reason` | A target finished or skipped: its coverage `extended` to its fetch window's end, joined with it, or, for a project's entry from before plan 034 that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
+| `fetch.scope_failed` | warning | `scope` | A space or a project named cannot be listed |
+| `fetch.coverage` | info | `scope`, `outcome`, `reason` | A scope finished or skipped: its coverage `extended` to its fetch window's end, joined with it, or, for an inexact entry that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
 | `fetch.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only plans |
 | `fetch.source` | info | `source`, `ending` | A source's row ended: `done`, `failed`, `sign in again` or, in a dry run, `not run` |
 | `fetch.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
@@ -33,15 +33,15 @@ fetched in the run's trace, in its space's or project's span.
 | `http.retry` | debug | `path`, `attempt`, `failure`, `wait_s` | A request retried after a throttling, gateway or transport failure |
 
 `source` is `confluence` or `jira`; `kind`, `confluence pages`, `confluence blogposts`
-or `jira issues`; `target`, as `space MFS` or `project PRB`.
+or `jira issues`; `scope`, as `space MFS` or `project PRB`.
 
 ## Spans
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
 | `fetch.source` | internal | `kb_mcp.source`, `kb_mcp.ending` | A source's row: its source and how it ended, no ending on one that Ctrl-C stopped |
-| `fetch.space` | internal | `kb_mcp.target` | A space, by its key: listed, stored, its documents fetched; an error when it cannot be listed |
-| `fetch.project` | internal | `kb_mcp.target` | A project, by its key: searched, its issues fetched; an error when the search cannot be read |
+| `fetch.space` | internal | `kb_mcp.scope` | A space, by its key: listed, stored, its documents fetched; an error when it cannot be listed |
+| `fetch.project` | internal | `kb_mcp.scope` | A project, by its key: searched, its issues fetched; an error when the search cannot be read |
 | `fetch.probes` | internal | | The documents that a space no longer lists, probed |
 | `fetch.users` | internal | | The authors' names, fetched and merged |
 | `fetch.document` | internal | `kb_mcp.document.id`, `kb_mcp.document.kind`, `kb_mcp.document.title` | A document fetched: the root of a trace of its own, linked to its space's or project's span; an error when the fetch fails |

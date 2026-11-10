@@ -39,9 +39,8 @@ from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import WORKLOG_OWNED, worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import worklog_globs, worklog_path
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
-    SOURCE,
     TODO,
     TODO_ARCHIVE,
     WorklogDocument,
@@ -200,9 +199,9 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
 
 
 def existing(
-    docs: Path,
+    docs: Path, source: str
 ) -> tuple[dict[str, tuple[FrontMatter, str]], dict[str, set[PurePosixPath]]]:
-    """Return the work log's files under ``docs``, by their document's id: front matter, body.
+    """Return a work log source's files under ``docs``, by their document's id: front matter, body.
 
     Then where they are, from ``docs``, by id: every file of one id, though only the last
     read of two is returned first, as a run under a problem may leave two. A damaged one
@@ -210,7 +209,7 @@ def existing(
     """
     kept: dict[str, tuple[FrontMatter, str]] = {}
     placed: dict[str, set[PurePosixPath]] = {}
-    for file in documents(docs, WORKLOG_OWNED):
+    for file in documents(docs, worklog_globs(source)):
         try:
             matter, body = load(file.read_text(encoding="utf-8"), str(file))
         except OSError, ValueError:
@@ -233,9 +232,11 @@ def moved(
 
 
 def prepare_worklog(
-    folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
+    folder: Path, docs: Path, pandoc: Pandoc, *, source: str, archives: bool = True
 ) -> Outcome[WorklogCounts]:
-    """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
+    """Mirror the work log under ``folder`` into the folder of ``docs`` of its ``source``.
+
+    With ``pandoc``.
 
     Without ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out, and so their
@@ -252,7 +253,7 @@ def prepare_worklog(
     link's other end.
     """
     log = structlog.get_logger()
-    kept, placed = existing(docs)
+    kept, placed = existing(docs, source)
     read = read_worklog(folder, archives=archives)
     problems, held = list(read.problems), dict(read.held_back)
     converter = pandoc.org_converter()
@@ -287,7 +288,7 @@ def prepare_worklog(
                 CONVERSION_DURATION.record(time.perf_counter() - began, typed)
             DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **typed})
             matter = WorklogFrontMatter(
-                source=SOURCE,
+                source=source,
                 type=document.type,
                 id=document.id,
                 key=None,
@@ -311,7 +312,7 @@ def prepare_worklog(
                 breadcrumb=tuple(one_line(part) for part in document.breadcrumb),
                 fetched_at=fetched_at,
             )
-            path = worklog_path(document.type, document.id, document.title)
+            path = worklog_path(source, document.type, document.id, document.title)
             ready[path] = (matter, body)
             log.debug(
                 "worklog.document",
@@ -331,7 +332,13 @@ def prepare_worklog(
     }
     retired = moved((matter.id for matter, _ in ready.values()), placed)
     with TRACER.start_as_current_span("worklog.write"):
-        changes = write_changed(docs, wanted, worklog_owned, remove=not problems, retired=retired)
+        changes = write_changed(
+            docs,
+            wanted,
+            lambda folder: worklog_owned(folder, source),
+            remove=not problems,
+            retired=retired,
+        )
     log.info(
         "worklog.end",
         documents=len(wanted),
@@ -348,7 +355,7 @@ def prepare_worklog(
 
 
 def plan_worklog(
-    folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
+    folder: Path, docs: Path, pandoc: Pandoc, *, source: str, archives: bool = True
 ) -> Outcome[WorklogPlanned]:
     """Say what preparing the work log would do, converting and writing nothing.
 
@@ -361,7 +368,7 @@ def plan_worklog(
     ``PandocFailedError`` when it gives none. ``worklog.end`` says at INFO what a run
     would do.
     """
-    kept, placed = existing(docs)
+    kept, placed = existing(docs, source)
     read = read_worklog(folder, archives=archives)
     converter = pandoc.org_converter()
     held = {identifier: matter.revision for identifier, (matter, _) in kept.items()}
@@ -370,8 +377,8 @@ def plan_worklog(
         for document in read.documents
         if held.get(document.id) != revision(converter, document.text)
     )
-    wanted = {worklog_path(each.type, each.id, each.title) for each in read.documents}
-    stale = worklog_owned(docs) - wanted
+    wanted = {worklog_path(source, each.type, each.id, each.title) for each in read.documents}
+    stale = worklog_owned(docs, source) - wanted
     retired = moved((each.id for each in read.documents), placed)
     to_remove = len(stale & retired if read.problems else stale)
     structlog.get_logger().info(

@@ -21,7 +21,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.commands.serve import served
 from kb_mcp.cli.main import main
-from kb_mcp.mcp.app.tools import UnanswerableError
+from kb_mcp.mcp.app.tools import SearchFilters, UnanswerableError
 from kb_mcp.search.app.indexing import Embedding, build_index
 from tests.answers import TOOLS, estimate, parts
 from tests.collector import Collector, attributes, collecting
@@ -316,7 +316,7 @@ def test_a_tool_that_fails_is_measured_and_said_with_its_error_type(
         raise raised
 
     with capture_logs() as events, pytest.raises(seen):
-        served(search)(query="Kafka")
+        served(search, SearchFilters)(query="Kafka")
     (call,) = (event for event in events if event["event"] == "serve.call")
     assert (call["tool"], call["error"]) == ("search", error_type)
     duration = telemetry.measured()["mcp.server.operation.duration"]

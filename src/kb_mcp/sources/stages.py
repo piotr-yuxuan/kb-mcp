@@ -16,7 +16,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, InstanceOf
 
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.record import Record
@@ -40,15 +40,18 @@ class Check(Record):
 class SourceRun(Record):
     """What a fetcher or a preparer runs with: its source, the settings, tables, options, a dry run.
 
-    ``source`` is the source that it is run for, its name and resource types, which a
-    fetcher or preparer serving several sources reads; ``source_table`` is that source's
+    ``source`` is the source that it is run for, its name and connector, which a fetcher
+    or preparer serving several connectors reads; ``sources`` every source of the
+    registry, which a preparer that places documents across sources reads;
+    ``source_table`` is that source's
     ``[sources.<name>]``, ``account_table`` its account's table, None for a source that
     signs in with none. ``options`` holds its options' values by flag, None when not given,
     and nothing for a preparer, a source's options being its fetch's; ``now`` and ``sleep``
     are the clock and the pause between requests.
     """
 
-    source: Source
+    source: InstanceOf[Source]
+    sources: tuple[InstanceOf[Source], ...]
     settings: Settings
     source_table: BaseModel
     account_table: BaseModel | None

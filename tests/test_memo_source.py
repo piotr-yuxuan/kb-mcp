@@ -2,8 +2,8 @@
 
 Plan 030's criterion 4. ``tests/fixtures/memo_source/`` holds ``kb_memo``, shaped as a
 package of this monorepo would be, its declaration, its table and its preparer, and no
-module of ``src/`` names it: ``SOURCES`` and its declaration, one line, are the whole
-registration. Given them, ``--help`` lists it among ``prepare``'s choices and imports none
+module of ``src/`` names it: ``SOURCES`` and a source of its connector, one line, are the
+whole registration. Given them, ``--help`` lists it among ``prepare``'s choices and imports none
 of contract G's packages; ``check`` lists its setting; ``prepare`` writes under
 ``docs/memo/`` alone, search finds a note by a word only it holds, a second run writes
 nothing and a note removed takes its file with it. Without that line, its table is not
@@ -30,6 +30,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
+from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES
 from tests.answers import parts
 from tests.mirrors import page, write
@@ -39,8 +40,6 @@ from tests.test_worklog_served import refs
 if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
-
-    from kb_mcp.sources.declaration import Source
 
 FIXTURE = Path(__file__).parent / "fixtures" / "memo_source"
 # A word that one note holds, and no other.
@@ -53,9 +52,12 @@ NAMED = re.compile(r"\bmemo\b|\bkb_memo\b", re.IGNORECASE)
 
 @pytest.fixture
 def registry(monkeypatch: MonkeyPatch) -> tuple[Source, ...]:
-    """Give ``SOURCES`` and the memo's declaration, its package on the path: the one line."""
+    """Give ``SOURCES`` and a source of the memo's connector, its package on the path: the line."""
     monkeypatch.syspath_prepend(FIXTURE)
-    return (*SOURCES, importlib.import_module("kb_memo.declared").MEMO)
+    return (
+        *SOURCES,
+        Source(name="memo", connector=importlib.import_module("kb_memo.declared").MEMO),
+    )
 
 
 @pytest.fixture
@@ -118,9 +120,10 @@ def test_help_lists_it_and_imports_none_of_the_runs_packages(tmp_path: Path) -> 
             "-c",
             (
                 "from kb_mcp.cli.main import main\n"
+                "from kb_mcp.sources.declaration import Source\n"
                 "from kb_mcp.sources.registry import SOURCES\n"
                 "from kb_memo.declared import MEMO\n"
-                "main(['prepare', '--help'], (*SOURCES, MEMO))\n"
+                "main(['prepare', '--help'], (*SOURCES, Source(name='memo', connector=MEMO)))\n"
             ),
         ],
         stdin=subprocess.DEVNULL,

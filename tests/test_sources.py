@@ -45,14 +45,15 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBus
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
+from kb_mcp.sources.atlassian.fetch.domain import names
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.atlassian.prepare.app import prepare as atlassian_prepare
 from kb_mcp.sources.atlassian.prepare.app import preparer
-from kb_mcp.sources.declaration import Option, ResourceType
+from kb_mcp.sources.declaration import Option
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 from tests.reference import Emitted
 from tests.test_confirmation import QUESTION, Terminal
 from tests.test_fetching import PAGES, SITE, FakeSite
@@ -69,7 +70,7 @@ if TYPE_CHECKING:
     from opentelemetry.sdk.metrics.export import Metric
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Source
+    from kb_mcp.sources.declaration import Connector, Source
     from tests.conftest import InMemory
 
 # Each setting that chooses a source, as the declaration's functions take them.
@@ -191,7 +192,7 @@ def test_a_registry_with_nothing_to_prepare_is_refused(
     """The work log alone, not configured: exit 2, since no store is kept either."""
     config = settings_file(home, None)
     given = command(home, config, "prepare", "--yes")
-    assert main(given, (WORKLOG,)) == ExitStatus.REFUSED
+    assert main(given, sourced(WORKLOG)) == ExitStatus.REFUSED
     assert "nothing to prepare: none of its sources is configured" in capsys.readouterr().err
 
 
@@ -210,11 +211,9 @@ def test_a_source_that_does_not_exist_is_refused_by_the_options(
 def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declares_none() -> None:
     """Of the sources taken: --since by Jira, under a registry whose Jira has no option."""
     plain = replace(
-        JIRA,
-        resource_types=(ResourceType(name="issues", help="a project's issues", read="searched"),),
-        described=None,
+        JIRA, scope_types=(replace(names.PROJECT, option=None),), options=(), described=None
     )
-    registry = (CONFLUENCE, plain, WORKLOG)
+    registry = sourced(CONFLUENCE, plain, WORKLOG)
     given = parser(sources=registry).parse_args(["fetch", "--since", "7d"])
     assert "--since: ignored by jira" in fetch_described(given, CONFIGURED)
     alone = parser(sources=registry).parse_args(["fetch", "--since", "7d", "confluence"])
@@ -223,13 +222,8 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
 
 def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
     """A source's options are its fetch's: the parser offers none, and the summary reads none."""
-    noted = ResourceType(
-        name="notes",
-        help="a folder's notes",
-        read="in place",
-        options=(Option(flag="--tag", help="a tag"),),
-    )
-    registry = (CONFLUENCE, JIRA, replace(WORKLOG, resource_types=(noted,)))
+    noted = replace(WORKLOG, options=(Option(flag="--tag", help="a tag"),))
+    registry = sourced(CONFLUENCE, JIRA, noted)
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
     assert "source confluence: spaces MFS" in fetch_described(given, CONFIGURED)
@@ -479,13 +473,13 @@ def test_a_first_fetch_without_since_fetches_the_last_week_of_each_target(
     """
     config = settings_file(home, None, atlassian=True)
     assert main(command(home, config, "fetch", "--yes")) != ExitStatus.REFUSED
-    rule = "period: since each target's last fetch; the last 7 days for one never fetched\n"
+    rule = "period: since each scope's last fetch; the last 7 days for one never fetched\n"
     assert capsys.readouterr().err.count(rule) == 1
     assert signed_in.asked
-    periods = RawStore((home / "data" / "raw").resolve()).coverage().periods
+    periods = RawStore((home / "data" / "raw").resolve(), "confluence").coverage().periods
     assert set(periods) == {
-        Target(source="confluence", key="MFS"),
-        Target(source="jira", key="PRB"),
+        Scope(source="confluence", type=names.SPACE, key="MFS"),
+        Scope(source="jira", type=names.PROJECT, key="PRB"),
     }
     assert {each.end - each.start for each in periods.values()} == {WEEK}
 
@@ -493,28 +487,30 @@ def test_a_first_fetch_without_since_fetches_the_last_week_of_each_target(
 def runs(
     settings: Settings,
     now: datetime,
-    *declared: Source,
+    *declared: Connector,
     options: Mapping[str, object] | None = None,
     dry_run: bool = False,
 ) -> list[SourceRun]:
-    """Give a run of each source, at ``now``, as the command builds it from the settings.
+    """Give a run of each connector's one source, at ``now``, as the command builds it.
 
-    Each source's options are those of ``options`` that it declares, None when not given.
+    Each source's options are those of ``options`` that its connector declares, None when
+    not given; the registry is ``SOURCES``.
     """
     return [
         SourceRun(
             source=each,
+            sources=SOURCES,
             settings=settings,
             source_table=getattr(settings.sources, each.name),
             account_table=None
-            if each.account is None
-            else getattr(settings.accounts, each.account.name),
-            options={flag: (options or {}).get(flag) for flag in each.options},
+            if each.connector.account is None
+            else getattr(settings.accounts, each.connector.account.name),
+            options={flag: (options or {}).get(flag) for flag in each.connector.flags},
             now=lambda: now,
             sleep=lambda _: None,
             dry_run=dry_run,
         )
-        for each in declared
+        for each in sourced(*declared)
     ]
 
 
@@ -772,7 +768,7 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
 
 
 @pytest.mark.parametrize("stage", ["fetch", "prepare"])
-@pytest.mark.parametrize("registry", [SOURCES, (WORKLOG,), (CONFLUENCE, WORKLOG)])
+@pytest.mark.parametrize("registry", [SOURCES, sourced(WORKLOG), sourced(CONFLUENCE, WORKLOG)])
 def test_the_sources_offered_are_the_registry_s(
     stage: str, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
@@ -780,7 +776,9 @@ def test_the_sources_offered_are_the_registry_s(
 
     By ``prepare`` every source, by ``fetch`` those that have a fetcher.
     """
-    names = [each.name for each in registry if stage == "prepare" or each.fetcher is not None]
+    names = [
+        each.name for each in registry if stage == "prepare" or each.connector.fetcher is not None
+    ]
     for name in names:
         assert parser(sources=registry).parse_args([stage, name]).source == [name]
     for name in (each.name for each in SOURCES if each.name not in names):
@@ -806,7 +804,7 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
     assert "confluence pages: to fetch" in fetched[0]
     assert "jira issues: to fetch" in fetched[1]
     windows = [each for each_fetched in fetched for each in each_fetched["windows"]]
-    assert [(each["target"]["key"], each["reason"], each["coverage"]) for each in windows] == [
+    assert [(each["scope"]["key"], each["reason"], each["coverage"]) for each in windows] == [
         ("MFS", "given", None),
         ("PRB", "given", None),
     ]
@@ -1396,14 +1394,14 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
         return {"sources.jira.projects": "a declaration's reason"}
 
     checked = replace(JIRA, described=said, unapplied=unused)
-    registry = (CONFLUENCE, checked, WORKLOG)
+    registry = sourced(CONFLUENCE, checked, WORKLOG)
     given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02")
     assert main(given, registry) == ExitStatus.OK
     err = capsys.readouterr().err
     assert "  a declaration's line\n" in err
     assert "(not applied: a declaration's reason)" in err
     refusing = replace(JIRA, refused=lambda _options, _settings: "a declaration's refusal")
-    registry = (CONFLUENCE, refusing, WORKLOG)
+    registry = sourced(CONFLUENCE, refusing, WORKLOG)
     assert main(given, registry) == ExitStatus.REFUSED
     assert "a declaration's refusal" in capsys.readouterr().err
     assert main([*given, "confluence"], registry) == ExitStatus.OK
@@ -1503,7 +1501,7 @@ def test_fetch_offers_each_option_that_its_sources_declare_once(
     arguments = parser().parse_args(["fetch", "--since", "7d", "--max-file-mb", "2"])
     assert given(arguments, ("--since", "--max-file-mb")) == {"--since": "7d", "--max-file-mb": 2}
     with pytest.raises(SystemExit) as stopped:
-        parser(sources=(WORKLOG,)).parse_args(["fetch", "--since=7d"])
+        parser(sources=sourced(WORKLOG)).parse_args(["fetch", "--since=7d"])
     assert stopped.value.code == ExitStatus.REFUSED
     assert "unrecognized arguments: --since=7d" in capsys.readouterr().err
 

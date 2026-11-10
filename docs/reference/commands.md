@@ -383,13 +383,13 @@ options:
 
 confluence:
   Confluence, on the Atlassian site: the pages and blog posts of its spaces, with
-  their files: pages, listed whole; blogposts, listed whole.
+  their files: each space listed whole.
 
   --space SPACE         a space key, in place of the setting's; repeat for more
 
 jira:
   Jira, on the Atlassian site: the issues of its projects, with their comments and
-  files: issues, searched by update time.
+  files: each project searched by update time.
 
   --project PROJECT     a project key, in place of the setting's; repeat for more
 
@@ -397,7 +397,7 @@ several sources:
   The options of confluence, jira.
 
   --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
-                        target's last fetch
+                        scope's last fetch
   --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
   --max-file-mb MAX_FILE_MB
                         the largest file kept, in MiB; 50 by default
@@ -405,11 +405,11 @@ several sources:
 With --format json: `exit_status`, the run's; `sources`, a row per source taken, in
 the registry's order, each with its `source`, its `ending` (done, failed, sign in
 again, interrupted, not run), its `counts`, null when it gave none, and its `problems`
-and `warnings`, each with its `where` and `reason`, a target, a document or a file and
+and `warnings`, each with its `where` and `reason`, a scope, a document or a file and
 why it failed. The counts: each count by its name, of what the fetch did, or with
---dry-run would do; `windows`, each target's: its `target`, `start`, `end` and
-`reason`, and its `coverage`, extended, capped at a failure, held, or null when not
-written; `dry_run`, whether the fetch only planned.
+--dry-run would do; `windows`, each scope's: its `scope`, by its source, type and key,
+its `start`, `end` and `reason`, and its `coverage`, extended, capped at a failure,
+held, or null when not written; `dry_run`, whether the fetch only planned.
 ```
 
 ## `index`
@@ -542,16 +542,15 @@ options:
 
 confluence:
   Confluence, on the Atlassian site: the pages and blog posts of its spaces, with
-  their files: pages, listed whole; blogposts, listed whole.
+  their files: each space listed whole.
 
 jira:
   Jira, on the Atlassian site: the issues of its projects, with their comments and
-  files: issues, searched by update time.
+  files: each project searched by update time.
 
 worklog:
-  The user's work log: org files read in place, never written: entries, read whole,
-  in place; days, read whole, in place; meetings, read whole, in place; transcripts,
-  read whole, in place.
+  The user's work log: org files read in place, never written: its folder, read
+  whole, in place.
 
 With --format json: `exit_status`, the run's; `sources`, a row per source taken, in
 the registry's order, each with its `source`, its `ending` (done, failed, interrupted,

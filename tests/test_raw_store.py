@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Problem
@@ -17,6 +18,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     StoreBusyError,
     StoredSnapshot,
 )
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     BlogPost,
     Folder,
@@ -25,7 +27,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     SiteUser,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
 from kb_mcp.sources.atlassian.fetch.domain.deletions import Tombstone
 from kb_mcp.sources.atlassian.fetch.domain.period import Period
 from tests.samples import (
@@ -50,7 +52,7 @@ NEWER = 10
 @pytest.fixture
 def store(tmp_path: Path) -> Iterator[RawStore]:
     """Give a store under a scratch folder, held for writing."""
-    raw = RawStore(tmp_path / "raw")
+    raw = RawStore(tmp_path / "raw", "confluence")
     with raw.writing():
         yield raw
 
@@ -100,10 +102,12 @@ def test_responses_are_kept_as_received(store: RawStore) -> None:
     assert store.responses(folder) == responses
 
 
-def test_issues_are_stored_by_their_id_and_update_time(store: RawStore) -> None:
-    """An issue's folder is its id, and its revision its update time in UTC."""
+def test_issues_are_stored_by_their_id_and_update_time(tmp_path: Path) -> None:
+    """An issue's folder is its id, and its revision its update time in UTC, in its source's."""
+    store = RawStore(tmp_path / "raw", "jira")
     responses = {jira_v3.ISSUE: v3_issue(), jira_v3.COMMENTS: [v3_comment()]}
-    folder = store.put(Issue, responses, FETCHED, {})
+    with store.writing():
+        folder = store.put(Issue, responses, FETCHED, {})
     assert folder == store.root / "jira" / "issues" / "10000" / "20261020T213758.027000Z"
     [stored] = readable(store.latest(Issue))
     assert stored.snapshot.document.title == "What are archived ideas?"
@@ -230,10 +234,14 @@ def test_a_digest_that_is_a_path_is_refused(store: RawStore) -> None:
 
 def test_writing_needs_the_lock_and_one_writer_holds_it(tmp_path: Path) -> None:
     """Writes happen inside writing(); a second writer is refused while the first holds."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with pytest.raises(RuntimeError, match="only inside"):
         store.put_blob(b"bytes")
-    with store.writing(), pytest.raises(StoreBusyError), RawStore(store.root).writing():
+    with (
+        store.writing(),
+        pytest.raises(StoreBusyError),
+        RawStore(store.root, "confluence").writing(),
+    ):
         pass
     with store.writing():
         store.put_blob(b"bytes")
@@ -241,7 +249,7 @@ def test_writing_needs_the_lock_and_one_writer_holds_it(tmp_path: Path) -> None:
 
 def test_an_empty_store_has_nothing(tmp_path: Path) -> None:
     """A store that was never written has no snapshots, spaces or users."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     assert list(store.latest(Issue)) == []
     assert store.spaces() == []
     assert store.users() == []
@@ -316,7 +324,7 @@ def test_a_snapshot_without_one_of_its_responses_is_refused(
     del responses[missing]
     with pytest.raises(ValueError, match=f"a snapshot without {missing}"):
         store.put(document_class, responses, FETCHED, {})
-    assert not (store.root / document_class.source).exists()
+    assert not (store.root / store.source).exists()
 
 
 def test_a_blob_of_another_attachment_is_not_a_file_of_this_snapshot(store: RawStore) -> None:
@@ -346,7 +354,7 @@ def test_a_user_without_an_account_id_is_named_by_its_index(store: RawStore) -> 
 )
 def test_every_write_needs_the_lock(tmp_path: Path, write: object) -> None:
     """No method writes outside writing()."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     with pytest.raises(RuntimeError, match="only inside"):
         write(store)  # type: ignore[operator]
     assert not (store.root / "confluence").exists()
@@ -357,56 +365,150 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     start = datetime(2026, 10, 15, 11, tzinfo=timezone(timedelta(hours=2)))
     coverage = Coverage(
         periods={
-            Target(source="confluence", key="MFS"): Period(start, FETCHED),
-            Target(source="jira", key="PRB"): Period(start - timedelta(days=1), FETCHED),
-            Target(source="jira", key="OPS"): Period(start, FETCHED),
+            Scope(source="confluence", type=names.SPACE, key="MFS"): Period(start, FETCHED),
+            Scope(source="jira", type=names.PROJECT, key="PRB"): Period(
+                start - timedelta(days=1), FETCHED
+            ),
+            Scope(source="jira", type=names.PROJECT, key="OPS"): Period(start, FETCHED),
         },
-        exact=frozenset({Target(source="jira", key="PRB")}),
+        exact=frozenset({Scope(source="jira", type=names.PROJECT, key="PRB")}),
     )
     store.put_coverage(coverage)
     assert store.coverage() == coverage
     stone = Tombstone(
-        resource_type="pages", id="1001", space_id="196613", first_gone=FETCHED, confirmed=True
+        scope=Scope(source="confluence", type=names.SPACE, key="MFS"),
+        type="page",
+        id="1001",
+        first_gone=FETCHED,
+        confirmed=True,
     )
     store.put_tombstones([stone])
-    assert store.tombstones() == {("pages", "1001"): stone}
+    assert store.tombstones() == {("confluence", "page", "1001"): stone}
 
 
-def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: RawStore) -> None:
-    """Its four keys as they were, ``exact`` only on an exact entry: old versions read it.
+def test_a_tombstone_record_written_at_pre_kb_mcp_reads_as_confluence_s_and_is_written_anew(
+    store: RawStore,
+) -> None:
+    """Plan 056: ``kind`` names the plural, ``space`` the id of a space that the store lists.
 
-    A record from before plan 034, without ``exact``, reads as inexact.
+    Read as Confluence's, of that space's scope, whichever source's view reads it; written
+    back with its source, type and scope, by key.
+    """
+    store.put_space(v2_space(), [], [], [])
+    (store.root / "tombstones.json").write_text(
+        '[{"kind": "blogposts", "id": "600", "space": "196613",'
+        ' "first_gone": "2026-10-22T09:00:00+00:00", "confirmed": false}]',
+        "utf-8",
+    )
+    stone = Tombstone(
+        scope=Scope(source="confluence", type=names.SPACE, key="MFS"),
+        type="blogpost",
+        id="600",
+        first_gone=datetime(2026, 10, 22, 9, tzinfo=UTC),
+    )
+    assert store.tombstones() == {("confluence", "blogpost", "600"): stone}
+    assert RawStore(store.root, "jira").tombstones() == store.tombstones()
+    store.put_tombstones(store.tombstones().values())
+    assert json.loads((store.root / "tombstones.json").read_text("utf-8")) == [
+        {
+            "source": "confluence",
+            "type": "blogpost",
+            "id": "600",
+            "scope": "MFS",
+            "first_gone": "2026-10-22T09:00:00+00:00",
+            "confirmed": False,
+        }
+    ]
+
+
+def test_a_coverage_record_keeps_plan_034_s_keys_beside_the_scope_type_and_its_times(
+    store: RawStore,
+) -> None:
+    """Its four keys as they were, ``exact`` only on an exact entry, a time only when known.
+
+    Plan 056 adds the scope type, the as-of time and the last whole read: old versions,
+    which read the four keys and ``exact``, still read it. A record from before plan 034,
+    without ``exact``, reads as inexact.
     """
     start = datetime(2026, 10, 15, 9, tzinfo=UTC)
     period = Period(start, start + timedelta(days=7))
-    space, project = Target(source="confluence", key="MFS"), Target(source="jira", key="PRB")
+    space, project = (
+        Scope(source="confluence", type=names.SPACE, key="MFS"),
+        Scope(source="jira", type=names.PROJECT, key="PRB"),
+    )
     store.put_coverage(
-        Coverage(periods={space: period, project: period}, exact=frozenset({project}))
+        Coverage(
+            periods={space: period, project: period},
+            exact=frozenset({project}),
+            as_of={project: period.end},
+            whole_read_at={space: period.end},
+        )
     )
     written = json.loads((store.root / "coverage.json").read_text("utf-8"))
     times = {"start": "2026-10-15T09:00:00+00:00", "end": "2026-10-22T09:00:00+00:00"}
     assert written == [
-        {"source": "confluence", "key": "MFS", **times},
-        {"source": "jira", "key": "PRB", **times, "exact": True},
+        {
+            "source": "confluence",
+            "type": "space",
+            "key": "MFS",
+            **times,
+            "whole_read_at": times["end"],
+        },
+        {
+            "source": "jira",
+            "type": "project",
+            "key": "PRB",
+            **times,
+            "exact": True,
+            "as_of": times["end"],
+        },
     ]
-    old = [{key: value for key, value in entry.items() if key != "exact"} for entry in written]
+    old = [{"source": each["source"], "key": each["key"], **times} for each in written]
     (store.root / "coverage.json").write_text(json.dumps(old), "utf-8")
     assert store.coverage() == Coverage(periods={space: period, project: period})
 
 
-def test_a_space_s_entry_marked_exact_is_read_as_inexact(store: RawStore) -> None:
-    """A space is listed whole: a hand-edited or later record does not change its catch-up."""
+def test_a_coverage_record_written_at_pre_kb_mcp_reads_as_it_was_written(
+    store: RawStore,
+) -> None:
+    """The user's other machine: each entry's scope type is its source's, and nothing is lost.
+
+    The record as the tag's ``put_coverage`` writes it: no type, ``exact`` on a project's
+    entry alone, no time.
+    """
+    (store.root / "coverage.json").write_text(
+        '[{"source": "confluence", "key": "MFS", "start": "2026-10-15T09:00:00+00:00",'
+        ' "end": "2026-10-22T09:00:00+00:00"},'
+        ' {"source": "jira", "key": "PRB", "start": "2026-10-14T09:00:00+00:00",'
+        ' "end": "2026-10-22T09:00:00+00:00", "exact": true}]',
+        "utf-8",
+    )
+    end = datetime(2026, 10, 22, 9, tzinfo=UTC)
+    project = Scope(source="jira", type=names.PROJECT, key="PRB")
+    assert store.coverage() == Coverage(
+        periods={
+            Scope(source="confluence", type=names.SPACE, key="MFS"): Period(
+                end - timedelta(7), end
+            ),
+            project: Period(end - timedelta(8), end),
+        },
+        exact=frozenset({project}),
+    )
+
+
+def test_a_space_s_entry_marked_exact_is_read_as_exact(store: RawStore) -> None:
+    """Plan 056: a space read whole without failure is exact, as a project can be."""
     (store.root / "coverage.json").write_text(
         '[{"source": "confluence", "key": "MFS", "start": "2026-10-15T09:00:00+00:00",'
         ' "end": "2026-10-16T09:00:00+00:00", "exact": true}]',
         "utf-8",
     )
-    assert store.coverage().exact == frozenset()
+    assert store.coverage().exact == {Scope(source="confluence", type=names.SPACE, key="MFS")}
 
 
 def test_records_never_written_read_as_empty(tmp_path: Path) -> None:
     """A first run has no coverage and no tombstone."""
-    store = RawStore(tmp_path / "raw")
+    store = RawStore(tmp_path / "raw", "confluence")
     assert store.coverage() == Coverage()
     assert store.tombstones() == {}
 
@@ -422,11 +524,40 @@ def test_a_record_naming_a_key_that_is_a_path_is_refused(store: RawStore) -> Non
         store.coverage()
 
 
+def test_a_former_tombstone_of_a_space_not_listed_keeps_its_id_and_says_so_once(
+    store: RawStore,
+) -> None:
+    """Not a refusal of the file, which would stop every fetch of spaces and bring gone pages back.
+
+    Its scope's key is the space's id, until a whole read of the space finds it.
+    """
+    (store.root / "tombstones.json").write_text(
+        '[{"kind": "pages", "id": "1", "space": "999", "first_gone": null, "confirmed": false},'
+        ' {"kind": "pages", "id": "2", "space": "999", "first_gone": null, "confirmed": false}]',
+        "utf-8",
+    )
+    with capture_logs() as events:
+        stones = store.tombstones()
+    assert {stone.scope.key for stone in stones.values()} == {"999"}
+    assert [(each["event"], each["spaces"]) for each in events] == [
+        ("raw.spaces_unresolved", ["999"])
+    ]
+
+
+@pytest.mark.parametrize("text", ['["1001", "10', '{"pending": []}', '["../x"]'])
+def test_a_pending_record_that_does_not_read_is_refused_by_name(store: RawStore, text: str) -> None:
+    """Truncated, of another shape, or naming no id: refused, not read as no id at all."""
+    store.put_space(v2_space(), [], [], [])
+    (store.root / "confluence" / "spaces" / "196613" / "pending.json").write_text(text, "utf-8")
+    with pytest.raises(RepresentationError, match=r"^confluence/spaces/196613/pending\.json: "):
+        store.pending("196613")
+
+
 def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:
     """A damaged record is refused by name, rather than hiding a page for no reason."""
     (store.root / "tombstones.json").write_text(
-        '[{"kind": "pages", "id": "1001", "space": "196613", "first_gone": null,'
-        ' "confirmed": true}]',
+        '[{"source": "confluence", "type": "page", "id": "1001", "scope": "MFS",'
+        ' "first_gone": null, "confirmed": true}]',
         "utf-8",
     )
     with pytest.raises(RepresentationError, match=r"tombstones\.json\[0\]: confirmed"):

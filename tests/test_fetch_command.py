@@ -21,13 +21,13 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
-from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Targets, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview, run_fetch
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 from tests.samples import v2_page
 from tests.test_cli import logged_as
-from tests.test_fetching import CAP, SITE, FakeSite, stamp
+from tests.test_fetching import CAP, SITE, FakeSite, scopes, stamp
 from tests.test_incremental_fetch import RefreshSite, run, settings
 from tests.test_observed import said
 
@@ -258,12 +258,22 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
         [],
     ]
     assert [
-        (each["target"], each["start"], each["reason"], each["coverage"])
+        (each["scope"], each["start"], each["reason"], each["coverage"])
         for result in (confluence, jira)
         for each in result["windows"]
     ] == [
-        ({"source": "confluence", "key": "MFS"}, "2026-10-02T00:00:00Z", "given", "extended"),
-        ({"source": "jira", "key": "PRB"}, "2026-10-02T00:00:00Z", "given", "extended"),
+        (
+            {"source": "confluence", "type": "space", "key": "MFS"},
+            "2026-10-02T00:00:00Z",
+            "given",
+            "extended",
+        ),
+        (
+            {"source": "jira", "type": "project", "key": "PRB"},
+            "2026-10-02T00:00:00Z",
+            "given",
+            "extended",
+        ),
     ]
     assert all(each["end"] for result in (confluence, jira) for each in result["windows"])
     assert [each["dry_run"] for each in (confluence, jira)] == [False, False]
@@ -325,7 +335,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
 ) -> None:
     """The user's own key is shown to them, and never written to the run report.
 
-    It is the warning fetch.target_failed, which the run's log file holds too.
+    It is the warning fetch.scope_failed, which the run's log file holds too.
     """
     chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=(home / "kb-mcp").resolve())
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
@@ -334,10 +344,10 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     options = ("--site", SITE, "--space", "NOPE", "--since", "7d", "--detail", "detailed")
     assert main(command(home, *options)) == SOME_FAILED
     captured = capsys.readouterr()
-    assert ("warning", "fetch.target_failed") in said(captured.err)
+    assert ("warning", "fetch.scope_failed") in said(captured.err)
     assert "space NOPE: not found" in captured.err
-    (failed,) = logged_as(home, "fetch.target_failed")
-    assert (failed["level"], failed["target"]) == ("warning", "space NOPE: not found")
+    (failed,) = logged_as(home, "fetch.scope_failed")
+    assert (failed["level"], failed["scope"]) == ("warning", "space NOPE: not found")
     assert "  confluence spaces failed: not found: 1\n" in captured.out
     [report] = chosen.runs.iterdir()
     assert report.name.endswith("-confluence.json")
@@ -389,7 +399,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--site", SITE, "--space", "MFS", "--since", "7d")
-    with RawStore(chosen.raw).writing():
+    with RawStore(chosen.raw, "confluence").writing():
         assert main(command(home, *options)) == SOME_FAILED
     err = capsys.readouterr().err
     assert ("error", "fetch.store_busy") in said(err)
@@ -409,22 +419,28 @@ def counted(
 ) -> tuple[Outcome[FetchCounts], list[dict[str, object]], Settings]:
     """Run over a space of 50 pages: 7 changed in the window, of which 4 were stored first.
 
-    The 4 changed on the 21st, stored by a run --since the 20th; 3 more on the 23rd; 43 on
-    the 1st. ``first_fetch`` forgets the coverage before the run counted, on the 27th.
-    Give its outcome, the events it logged, and its settings.
+    The 4 changed on the 21st, stored by a run --since the 20th on the 22nd, which lists
+    all 50; 3 more on the 23rd, edited since that run; 43 on the 1st. ``first_fetch``
+    forgets the coverage before the run counted, on the 27th. Give its outcome, the
+    events it logged, and its settings.
     """
-    days = [21] * 4 + [23] * 3 + [1] * 43
+    edited = 23
+    days = [21] * 4 + [edited] * 3 + [1] * 43
     pages = {
         str(6000 + n): v2_page(id=str(6000 + n), version=stamp(day)) for n, day in enumerate(days)
     }
+    before = {
+        identifier: v2_page(id=identifier, version=stamp(1, number=2)) if day == edited else page
+        for (identifier, page), day in zip(pages.items(), days, strict=True)
+    }
     chosen = settings(tmp_path)
-    first = RefreshSite(listing=dict(list(pages.items())[:4]), posts={})
+    first = RefreshSite(listing=before, posts={})
     assert (
         run(
             chosen,
             monkeypatch,
             first,
-            Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=SINCE),
+            Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=SINCE),
             LISTED_AT,
         )
         == "done"
@@ -432,7 +448,7 @@ def counted(
     if first_fetch:
         (chosen.raw / "coverage.json").unlink()
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite(listing=pages, posts={}).client())
-    targets = Targets(spaces=["MFS"], projects=[], max_file_bytes=CAP, since=since)
+    targets = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=since)
     with capture_logs() as events:
         outcome = run_fetch(chosen, targets, lambda: COUNTED_AT, lambda _: None)
     return outcome, events, chosen
@@ -440,7 +456,7 @@ def counted(
 
 @pytest.mark.parametrize(
     ("since", "first_fetch", "reason"),
-    [(SINCE, False, "given"), (None, False, "covered start"), (None, True, "first fetch")],
+    [(SINCE, False, "given"), (None, False, "since the last fetch"), (None, True, "first fetch")],
 )
 def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     tmp_path: Path,
@@ -453,7 +469,7 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     """50 listed, 7 in the window of which 4 stored: the task, short and its JSON say 3.
 
     fetch.listed says each number, and the window's reason; the window goes to the
-    JSON, and the run report names no target.
+    JSON, and the run report names no scope.
     """
     outcome, events, chosen = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
     listed = [event for event in events if event["event"] == "fetch.listed"]
@@ -465,8 +481,8 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     assert tasks[-1] == (3, 3)
     assert outcome.counts.text("short") == "confluence pages: fetched: 3\n"
     [window] = to_jsonable_python(outcome)["counts"]["windows"]
-    assert (window["target"], window["end"], window["reason"], window["coverage"]) == (
-        {"source": "confluence", "key": "MFS"},
+    assert (window["scope"], window["end"], window["reason"], window["coverage"]) == (
+        {"source": "confluence", "type": "space", "key": "MFS"},
         "2026-10-27T09:00:00Z",
         reason,
         "extended",
@@ -577,7 +593,7 @@ def test_a_source_without_a_fetcher_is_no_choice(
     """Argparse refuses the work log, and a source of the tests read in place alike: exit 2."""
     memo = replace(WORKLOG, name="memo")
     with pytest.raises(SystemExit) as stopped:
-        main(command(home, name), (*SOURCES, memo))
+        main(command(home, name), (*SOURCES, *sourced(memo)))
     assert stopped.value.code == REFUSED
     assert f"invalid choice: {name!r} (choose from 'confluence', 'jira')" in capsys.readouterr().err
 
@@ -585,7 +601,7 @@ def test_a_source_without_a_fetcher_is_no_choice(
 def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     capsys: CaptureFixture[str],
 ) -> None:
-    """Each with its resource types, how each is read, and the options that it alone declares.
+    """Each with its scope types, how each is enumerated, and the options that it alone declares.
 
     Those that both declare, in a group of their own; none of the work log.
     """
@@ -595,10 +611,10 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     _, confluence = said_of.split(" confluence: Confluence, on the Atlassian site", 1)
     confluence, jira = confluence.split(" jira: Jira, on the Atlassian site", 1)
     jira, both = jira.split(" several sources: The options of confluence, jira.", 1)
-    assert "pages, listed whole; blogposts, listed whole." in confluence
+    assert "each space listed whole." in confluence
     assert "--space SPACE" in confluence
     assert "--project" not in confluence
-    assert "issues, searched by update time." in jira
+    assert "each project searched by update time." in jira
     assert "--project PROJECT" in jira
     assert "--since" not in jira
     assert all(flag in both for flag in ("--since SINCE", "--until UNTIL", "--max-file-mb"))
@@ -608,7 +624,7 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
 def test_a_source_alone_keeps_its_options_in_its_own_group(capsys: CaptureFixture[str]) -> None:
     """No other source shares them, so no group of several sources, under this registry."""
     with pytest.raises(SystemExit):
-        main(["fetch", "--help"], (JIRA, WORKLOG))
+        main(["fetch", "--help"], sourced(JIRA, WORKLOG))
     said_of = " ".join(capsys.readouterr().out.split())
     assert "several sources" not in said_of
     _, jira = said_of.split(" jira: Jira, on the Atlassian site", 1)
@@ -618,6 +634,6 @@ def test_a_source_alone_keeps_its_options_in_its_own_group(capsys: CaptureFixtur
 def test_each_flag_of_the_registry_is_declared_alike_by_each_source_that_declares_it() -> None:
     """Options that several sources share are added once, so each must mean one thing."""
     refuse(SOURCES)
-    by_flag = [option for declared in SOURCES for option in declared.options.values()]
+    by_flag = [option for declared in SOURCES for option in declared.connector.flags.values()]
     for option in by_flag:
         assert {each for each in by_flag if each.flag == option.flag} == {option}

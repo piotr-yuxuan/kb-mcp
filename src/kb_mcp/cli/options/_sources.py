@@ -12,36 +12,40 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.declaration import Source
 
-# How a resource type is read, in the words of its source's group.
+# How a fetch enumerates a scope type's documents, in the words of its source's group,
+# each said of the scope type's name.
 READ = {
-    "listed": "listed whole",
-    "searched": "searched by update time",
-    "in place": "read whole, in place",
+    "listed": "each {} listed whole",
+    "searched": "each {} searched by update time",
+    "in place": "its {}, read whole, in place",
 }
 
 
 def source_groups(
     parser: argparse.ArgumentParser, sources: Sequence[Source]
 ) -> dict[str, argparse._ArgumentGroup]:
-    """Add a group per source to the help, what it is, what it reads and how; give each by name.
+    """Add a group per source to the help: what it is, its scope types and how each is read.
 
-    Raises ValueError, naming the source, for a type read in a way that ``READ`` has no
-    words for, the first found, as the registry's rules do.
+    Give each group by its source's name. Raises ValueError, naming the source, for a scope
+    type enumerated in a way that ``READ`` has no words for, the first found, as the
+    registry's rules do.
     """
     unknown = [
-        f"source {declared.name!r}: type {each.name!r}: read {each.read!r}:"
+        f"source {declared.name!r}: scope type {each.name!r}: enumerated {each.enumeration!r}:"
         f" not one of {', '.join(READ)}"
         for declared in sources
-        for each in declared.resource_types
-        if each.read not in READ
+        for each in declared.connector.scope_types
+        if each.enumeration not in READ
     ]
     if unknown:
         raise ValueError(unknown[0])
     return {
         declared.name: parser.add_argument_group(
             declared.name,
-            f"{declared.help}: "
-            + "; ".join(f"{each.name}, {READ[each.read]}" for each in declared.resource_types)
+            f"{declared.connector.help}: "
+            + "; ".join(
+                READ[each.enumeration].format(each.name) for each in declared.connector.scope_types
+            )
             + ".",
         )
         for declared in sources
@@ -55,15 +59,20 @@ def add_source_options(
 
     An option that several sources declare is added once, in a group of its own, naming
     them. None has a default, so that one given is told from one not given; one that
-    replaces a setting repeats. Its value is kept under its flag itself, so that no flag that
-    a source declares takes a name that the program holds, such as ``sources``; help names
-    its value as it would by the flag alone. Give the actions, and each flag's setting.
+    replaces a setting of its source's table repeats. Its value is kept under its flag
+    itself, so that no flag that a source declares takes a name that the program holds,
+    such as ``sources``; help names its value as it would by the flag alone. Give the
+    actions, and each flag's setting, by its path.
     Raises ValueError, naming the source, for an option that takes a flag of the
     command's own, as the registry's rules do.
     """
     groups = source_groups(parser, sources)
-    options = {flag: option for declared in sources for flag, option in declared.options.items()}
-    declaring = {flag: [each for each in sources if flag in each.options] for flag in options}
+    options = {
+        flag: option for declared in sources for flag, option in declared.connector.flags.items()
+    }
+    declaring = {
+        flag: [each for each in sources if flag in each.connector.flags] for flag in options
+    }
     several = sorted({each.name for found in declaring.values() if found[1:] for each in found})
     shared = (
         parser.add_argument_group("several sources", f"The options of {', '.join(several)}.")
@@ -86,7 +95,11 @@ def add_source_options(
         flag = error.argument_name
         message = f"source {declaring[flag][0].name!r}: option {flag}: a flag of the command's own"
         raise ValueError(message) from error
-    flags = {added[flag].dest: option.setting for flag, option in options.items() if option.setting}
+    flags = {
+        added[flag].dest: f"sources.{declaring[flag][0].name}.{option.setting}"
+        for flag, option in options.items()
+        if option.setting
+    }
     return tuple(added.values()), flags
 
 
@@ -112,7 +125,7 @@ def left_unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]
     """
     taken, left = chosen(arguments, settings)
     reads = arguments.command.reads
-    signing = {declared.account.name for declared in taken if declared.account is not None}
+    signing = {each.account.name for each in (d.connector for d in taken) if each.account}
     unused = {
         path: f"{declared.name} {left[declared.name]}"
         for declared in arguments.sources
@@ -121,9 +134,9 @@ def left_unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]
         if path in reads and (left[declared.name] != "not configured" or path != declared.paths[0])
     }
     unused |= {
-        path: f"no source of the {declared.account.name} account in this {arguments.command.name}"
-        for declared in arguments.sources
-        if declared.account is not None and declared.account.name not in signing
-        for path in declared.account.paths
+        path: f"no source of the {account.name} account in this {arguments.command.name}"
+        for account in (declared.connector.account for declared in arguments.sources)
+        if account is not None and account.name not in signing
+        for path in account.paths
     }
     return unused

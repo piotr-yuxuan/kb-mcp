@@ -31,9 +31,9 @@ server never fetches from the site.
 
 - **Why.** The user chooses when the site is read, and is there when a session has
   expired: through single sign-on, only a person can sign in again. Coverage makes a run
-  by hand cheap: without `--since`, a run fetches what changed since each target's last
+  by hand cheap: without `--since`, a run fetches what changed since each scope's last
   fetch ([`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
-  so nobody keeps track of when the last run was, and a target never fetched takes its
+  so nobody keeps track of when the last run was, and a scope never fetched takes its
   last 7 days rather than refusing the run. A project's search starts a day before its
   covered end, which stops at its first document not stored whole, so that what failed
   is asked for again; a space's listing is read whole anyway, so it is checked by
@@ -63,7 +63,8 @@ server never fetches from the site.
   [plan 031](../work/changelog/031-composable-commands.md#settled-by-the-user), which removed
   the `sync` of [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the
   catch-up from the last fetch, a project's end exact, by
-  [plan 034](../work/changelog/034-incremental-fetch.md#decisions).
+  [plan 034](../work/changelog/034-incremental-fetch.md#decisions); a space's coverage
+  exact after a whole read without failure by plan 056.
 
 ## Cookies and API tokens
 

@@ -41,14 +41,15 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     runs = [
         SourceRun(
             source=declared,
+            sources=arguments.sources,
             settings=settings,
             source_table=getattr(settings.sources, declared.name),
             account_table=(
                 None
-                if declared.account is None
-                else getattr(settings.accounts, declared.account.name)
+                if declared.connector.account is None
+                else getattr(settings.accounts, declared.connector.account.name)
             ),
-            options=given(arguments, declared.options) if stage == FETCH else {},
+            options=given(arguments, declared.connector.flags) if stage == FETCH else {},
             now=lambda: datetime.now(UTC),
             sleep=time.sleep,
             dry_run=arguments.dry_run,

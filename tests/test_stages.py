@@ -3,7 +3,7 @@
 The expectations come from the plan's "A source's declaration, and the roles'
 interfaces": a declaration names its fetcher, if any, and its preparers by module path,
 which ``--help`` never imports; one fetcher and one preparer serve Confluence and Jira,
-each reading from ``run.source`` the source that it runs for, so its resource types and its
+each reading from ``run.source`` the source that it runs for, so its document types and its
 rows of the cache of conversions; the work log, read in place, has no fetcher;
 ``preflight`` says what a fetcher or a preparer cannot go on with before any source starts; each
 preparer that converts finds pandoc itself, so that pandoc gone fails its result alone;
@@ -31,19 +31,23 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.outcome import Problem
+from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
+from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
-from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
+from kb_mcp.sources.atlassian.prepare.domain.layout import TREE
+from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from kb_mcp.sources.worklog.prepare.app.prepare import WorklogCounts, WorklogPlanned
-from tests.composed import MODEL
+from tests.composed import MODEL, sourced
 from tests.samples import v2_space
 from tests.test_fetching import SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, WEEK
@@ -65,14 +69,14 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.sources.declaration import Source
+    from kb_mcp.sources.declaration import Connector
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
-# Each module that a declaration of the registry names, its stages' and its tables'.
+# Each module that a connector of the registry names, its stages' and its tables'.
 NAMED = frozenset(
     path.partition(":")[0]
-    for each in SOURCES
+    for each in (source.connector for source in SOURCES)
     for path in (
         each.table_path,
         *each.preparers,
@@ -137,49 +141,52 @@ def signed_in(settings: Settings) -> Settings:
 @pytest.fixture
 def stored(settings: Settings) -> Settings:
     """Store a space with one page, and one issue; give the settings."""
-    store = RawStore(settings.raw)
+    store = RawStore(settings.raw, "confluence")
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
         store.put(Page, page_responses("100", "Home", 1, "<p>Home page.</p>", []), FETCHED, {})
-        store.put(Issue, issue_responses("What are archived ideas?"), FETCHED, {})
+    jira = RawStore(settings.raw, "jira")
+    with jira.writing():
+        jira.put(Issue, issue_responses("What are archived ideas?"), FETCHED, {})
     return settings
 
 
 def run_of(
-    declared: Source,
+    declared: Connector,
     settings: Settings,
     options: Mapping[str, object] | None = None,
     *,
     dry_run: bool = False,
 ) -> SourceRun:
-    """Give a run of a declaration's stages, its tables from the settings, at FIRST.
+    """Give a run of a connector's stages for its one source, its tables from the settings.
 
-    Each option that it declares is held, as ``fetch``'s command gives them: None when not
-    among ``options``.
+    At FIRST. Each option that it declares is held, as ``fetch``'s command gives them: None
+    when not among ``options``.
     """
     account = declared.account
     return SourceRun(
-        source=declared,
+        source=Source(name=declared.name, connector=declared),
+        sources=SOURCES,
         settings=settings,
         source_table=getattr(settings.sources, declared.name),
         account_table=None if account is None else getattr(settings.accounts, account.name),
-        options={**dict.fromkeys(declared.options), **(options or {})},
+        options={**dict.fromkeys(declared.flags), **(options or {})},
         now=lambda: FIRST,
         sleep=lambda _: None,
         dry_run=dry_run,
     )
 
 
-def fetcher_of(declared: Source) -> Fetcher:
-    """Load the fetcher that a declaration names, checked against its interface."""
+def fetcher_of(declared: Connector) -> Fetcher:
+    """Load the fetcher that a connector names, checked against its interface."""
     assert declared.fetcher is not None
     fetcher = pkgutil.resolve_name(declared.fetcher)
     assert isinstance(fetcher, Fetcher)
     return fetcher
 
 
-def preparer_of(declared: Source) -> Preparer:
-    """Load the one preparer that a declaration names, checked against its interface."""
+def preparer_of(declared: Connector) -> Preparer:
+    """Load the one preparer that a connector names, checked against its interface."""
     (path,) = declared.preparers
     preparer = pkgutil.resolve_name(path)
     assert isinstance(preparer, Preparer)
@@ -213,14 +220,16 @@ def row_text(name: str, outcome: str, text: str) -> str:
 
 @pytest.mark.parametrize(
     "path",
-    sorted({each.fetcher for each in SOURCES if each.fetcher is not None}),
+    sorted({each.connector.fetcher for each in SOURCES if each.connector.fetcher is not None}),
 )
 def test_each_fetcher_that_the_registry_names_loads_as_a_fetcher(path: str) -> None:
     """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Fetcher)
 
 
-@pytest.mark.parametrize("path", sorted({path for each in SOURCES for path in each.preparers}))
+@pytest.mark.parametrize(
+    "path", sorted({path for each in SOURCES for path in each.connector.preparers})
+)
 def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) -> None:
     """Loaded by its module path, it has the interface's methods."""
     assert isinstance(pkgutil.resolve_name(path), Preparer)
@@ -228,7 +237,9 @@ def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) ->
 
 def test_confluence_and_jira_share_their_roles_and_the_work_log_has_no_fetcher() -> None:
     """One fetcher and one preparer serve both sources of the site; one preparer each."""
-    assert {each.name: (each.fetcher, len(each.preparers)) for each in SOURCES} == {
+    assert {
+        each.name: (each.connector.fetcher, len(each.connector.preparers)) for each in SOURCES
+    } == {
         "confluence": (CONFLUENCE.fetcher, 1),
         "jira": (CONFLUENCE.fetcher, 1),
         "worklog": (None, 1),
@@ -284,8 +295,8 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     confluence = fetcher.fetch(run_of(CONFLUENCE, signed_in(settings), SINCE))
     first = list(site.asked)
     assert isinstance(confluence.counts, FetchCounts)
-    covered = RawStore(settings.raw).coverage().periods
-    assert set(covered) == {Target(source="confluence", key="MFS")}
+    covered = RawStore(settings.raw, "confluence").coverage().periods
+    assert set(covered) == {Scope(source="confluence", type=names.SPACE, key="MFS")}
     jira = fetcher_of(JIRA).fetch(run_of(JIRA, settings, SINCE))
     then = site.asked[len(first) :]
     assert isinstance(jira.counts, FetchCounts)
@@ -293,10 +304,58 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     assert [url.path for url in first if url.path.startswith("/rest/api/3/")] == []
     assert then
     assert [url.path for url in then if url.path.startswith("/wiki/")] == []
-    assert set(RawStore(settings.raw).coverage().periods) == {
-        Target(source="confluence", key="MFS"),
-        Target(source="jira", key="PRB"),
+    assert set(RawStore(settings.raw, "confluence").coverage().periods) == {
+        Scope(source="confluence", type=names.SPACE, key="MFS"),
+        Scope(source="jira", type=names.PROJECT, key="PRB"),
     }
+
+
+@pytest.mark.usefixtures("site")
+def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: Path) -> None:
+    """Plan 056, criterion 3: Confluence's connector, its one source named ``wiki``.
+
+    Fetched, then prepared, from the scripted site: its raw folder, its mirror's folder
+    and each of its documents' front matter carry its name; nothing carries the
+    connector's, but the site's users, which are the site's, beside its first source's.
+    """
+    registry = (Source(name="wiki", connector=CONFLUENCE), *sourced(JIRA, WORKLOG))
+    config = home / "config.toml"
+    config.write_text(f'[accounts.atlassian]\nsite = "{SITE}"\n[sources.wiki]\nspaces = ["MFS"]\n')
+    data = home / "data"
+    write_cookies(data / "session" / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    given = ["--yes", "--config", str(config), "--data-dir", str(data), "wiki"]
+    # A file of the scripted site fails, which fails the fetch.
+    assert main(["fetch", *given, "--since", SINCE["--since"]], registry) == ExitStatus.FAILED
+    assert main(["prepare", *given], registry) == ExitStatus.OK
+    assert sorted(each.name for each in (data / "raw").iterdir() if each.is_dir()) == [
+        "blobs",
+        "confluence",
+        "wiki",
+    ]
+    assert [each.name for each in (data / "raw" / "confluence").iterdir()] == ["users.json"]
+    assert (data / "raw" / "wiki" / "pages").is_dir()
+    assert (data / "raw" / "wiki" / "spaces").is_dir()
+    assert sorted(each.name for each in (data / "docs").iterdir()) == ["assets", "wiki"]
+    written = sorted((data / "docs" / "wiki").rglob("*.md"))
+    assert written
+    sources = {
+        load(path.read_text("utf-8"), path.name)[0].source for path in written if path.name != TREE
+    }
+    assert sources == {"wiki"}
+
+
+def test_a_work_log_of_another_name_is_prepared_under_its_name(home: Path, worklog: Path) -> None:
+    """Plan 056: the work log's connector, its one source named ``notes``: its folder and name."""
+    registry = (*sourced(CONFLUENCE, JIRA), Source(name="notes", connector=WORKLOG))
+    config = home / "config.toml"
+    config.write_text(f"[sources.notes]\npath = {json.dumps(str(worklog))}\n", "utf-8")
+    data = home / "data"
+    given = ["prepare", "notes", "--yes", "--config", str(config), "--data-dir", str(data)]
+    assert main(given, registry) == ExitStatus.OK
+    assert sorted(each.name for each in (data / "docs").iterdir()) == ["notes"]
+    written = sorted((data / "docs" / "notes").rglob("*.md"))
+    assert len(written) == WORKLOG_DOCUMENTS
+    assert {load(path.read_text("utf-8"), path.name)[0].source for path in written} == {"notes"}
 
 
 def test_a_fetch_with_no_session_saved_is_to_sign_in_before_any_request(
@@ -393,7 +452,10 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
 # The record of what answered as gone, damaged, and whole but not as the store writes it.
 RECORDS = (
     "not json",
-    '[{"kind":"pages","id":"1001","space":"999","first_gone":null,"confirmed":false}]',
+    (
+        '[{"source":"confluence","type":"page","id":"1001","scope":"OPS","first_gone":null,'
+        '"confirmed":false}]'
+    ),
 )
 
 
@@ -422,7 +484,9 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
     run = run_of(CONFLUENCE, signed_in(settings), SINCE)
     assert fetcher_of(CONFLUENCE).preflight(run) is None
     assert fetcher_of(CONFLUENCE).fetch(run).counts is not None
-    assert list(RawStore(settings.raw).tombstones()) == [("pages", "1001")]
+    assert list(RawStore(settings.raw, "confluence").tombstones()) == [
+        ("confluence", "page", "1001")
+    ]
     assert any(each.path.startswith("/wiki/") for each in site.asked)
 
 
@@ -464,6 +528,26 @@ def test_a_record_of_confluence_s_stops_no_run_without_confluence(
     assert ".refused" not in err
     assert [row["source"] for row in json.loads(out)["sources"]] == [given[1]]
     assert stones.read_text("utf-8") == "not json"
+
+
+def test_a_damaged_pending_record_refuses_a_fetch_of_its_space_alone(
+    settings: Settings, site: FakeSite
+) -> None:
+    """Truncated: named by its path by the preflight of a run of its space, and of no other.
+
+    The run's space is MFS; a space outside it, damaged, stops nothing.
+    """
+    store = RawStore(settings.raw, "confluence")
+    with store.writing():
+        store.put_space(v2_space(id="111", key="OPS"), [], [], [])
+        store.put_space(v2_space(id=SPACE_ID), [], [], [])
+    (settings.raw / "confluence" / "spaces" / "111" / "pending.json").write_text("[", "utf-8")
+    run = run_of(CONFLUENCE, signed_in(settings), SINCE)
+    assert fetcher_of(CONFLUENCE).preflight(run) is None
+    (settings.raw / "confluence" / "spaces" / SPACE_ID / "pending.json").write_text("[", "utf-8")
+    refusal = fetcher_of(CONFLUENCE).preflight(run)
+    assert refusal == f"confluence/spaces/{SPACE_ID}/pending.json: not JSON"
+    assert site.asked == []
 
 
 @pytest.mark.parametrize(

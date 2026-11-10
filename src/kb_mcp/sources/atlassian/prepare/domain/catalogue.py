@@ -30,30 +30,21 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Page,
     Space,
 )
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, CONFLUENCE, ISSUE, JIRA, PAGE
+from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from datetime import datetime
 
-    from kb_mcp.sources.atlassian.fetch.domain.content import Comment, SiteUser
+    from kb_mcp.sources.atlassian.fetch.domain.content import SiteUser, Snapshot
 
-# The front matter's type of each document class.
-TYPES: dict[type[ConfluenceDocument | Issue], str] = {
-    Page: PAGE,
-    BlogPost: BLOGPOST,
-    Issue: ISSUE,
-}
-# Each type with its source, as the front matter names them.
-SOURCE_TYPES = frozenset((document_class.source, name) for document_class, name in TYPES.items())
-# Keys that one source alone has, always.
+# Keys that the documents of one scope type alone have, always: a space's, a project's.
 ONLY = {
-    "space": CONFLUENCE,
-    "version": CONFLUENCE,
-    "key": JIRA,
-    "project": JIRA,
-    "issue_type": JIRA,
+    "space": SPACE,
+    "version": SPACE,
+    "key": PROJECT,
+    "project": PROJECT,
+    "issue_type": PROJECT,
 }
 
 
@@ -64,15 +55,18 @@ class AtlassianFrontMatter(FrontMatter):
     def check_atlassian(self) -> Self:
         """Refuse what the layout's table rules out for Confluence and Jira.
 
-        A source and type that disagree, a key that only the other source has, a revision
-        off ``REVISION``, and a participant, a role of another source.
+        A type of neither, a key that only another type has, a revision off ``REVISION``,
+        and a participant, a role of another source.
         """
-        if (self.source, self.type) not in SOURCE_TYPES:
-            message = "type: not one of the source's types"
+        if self.type not in {
+            each.name for each in (*SPACE.document_types, *PROJECT.document_types)
+        }:
+            message = "type: not one of Confluence's or Jira's"
             raise RefusedError(message)
-        for name, source in ONLY.items():
-            if (getattr(self, name) is not None) != (self.source == source):
-                message = f"{name}: only and always for {source}"
+        for name, scope_type in ONLY.items():
+            held = self.type in {each.name for each in scope_type.document_types}
+            if (getattr(self, name) is not None) != held:
+                message = f"{name}: only and always in a {scope_type.name}"
                 raise RefusedError(message)
         require(REVISION, self.revision, "revision")
         if any(person.role == PARTICIPANT for person in self.people):
@@ -182,19 +176,20 @@ def identity(person: SiteUser) -> str:
 
 
 def front_matter(
-    document: ConfluenceDocument | Issue,
-    comments: Iterable[Comment],
-    fetched_at: datetime,
-    catalogue: Catalogue,
-    site: str | None,
+    source: str, snapshot: Snapshot, fetched_at: datetime, catalogue: Catalogue, site: str | None
 ) -> FrontMatter:
-    """Say what the mirror says of a document and its comments, as the layout's table does.
+    """Say what the mirror says of a source's snapshot, as the layout's table does.
 
     Every text is one visible line; a page's space key comes from the listed spaces, and
     is None when its space is not listed, which ``AtlassianFrontMatter`` refuses. Each
     commenter comes once, by their first comment, with the times of their comments
-    ascending; a comment without an author names nobody.
+    ascending; a comment without an author names nobody. Raises TypeError for a document
+    that is neither Confluence's nor Jira's.
     """
+    document, comments = snapshot.document, snapshot.comments
+    if not isinstance(document, ConfluenceDocument | Issue):
+        message = f"{type(document).__name__}: not a document the mirror knows"
+        raise TypeError(message)
     issue = document if isinstance(document, Issue) else None
     confluence = document if isinstance(document, ConfluenceDocument) else None
     space = None if confluence is None else catalogue.spaces.get(confluence.space_id)
@@ -218,8 +213,8 @@ def front_matter(
         for (name, held), at in said.items()
     ]
     return AtlassianFrontMatter(
-        source=document.source,
-        type=TYPES[type(document)],
+        source=source,
+        type=document.document_type.name,
         id=document.id,
         key=None if issue is None else issue.key,
         title=one_line(document.title),

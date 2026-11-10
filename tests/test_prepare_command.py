@@ -149,7 +149,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     The second run converts nothing and writes nothing: it reuses what the first
     converted, and finds unchanged what the first wrote.
     """
-    store = RawStore(home / "data" / "raw")
+    store = RawStore(home / "data" / "raw", "confluence")
     html = '<p>Home.</p><iframe src="http://example.invalid/x"></iframe>'
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
@@ -188,7 +188,7 @@ def test_the_command_reports_the_documents_it_builds(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Two pages: the run's log file ends Confluence's task of documents with both done."""
-    store = RawStore(home / "data" / "raw")
+    store = RawStore(home / "data" / "raw", "confluence")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Away", None, None)]
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), listed, [], [])
@@ -211,7 +211,7 @@ def two_pages(home: Path, monkeypatch: MonkeyPatch) -> Path:
     script = f'case "$1" in --version) echo "pandoc 9.9";; *) echo run >> "{runs}"; cat;; esac'
     folder = fake_pandoc(home / "bin", script)
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
-    store = RawStore(home / "data" / "raw")
+    store = RawStore(home / "data" / "raw", "confluence")
     listed = [listing_page("100", "Home", None, None), listing_page("101", "Away", None, None)]
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), listed, [], [])
@@ -228,7 +228,7 @@ def test_the_command_mirrors_both_of_confluence_s_kinds(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """A blog post is Confluence's as a page is: prepared, and counted under its row."""
-    store = RawStore(home / "data" / "raw")
+    store = RawStore(home / "data" / "raw", "confluence")
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), LISTED[:1], [POST_LISTED], [])
         store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
@@ -301,7 +301,7 @@ def test_a_new_pandoc_converts_again_and_writes_the_bytes_of_a_prepare_from_no_c
     script = f'case "$1" in --version) cat "{version}";; *) cat "{version}" -;; esac'
     folder = fake_pandoc(home / "bin", script)
     monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
-    store = RawStore(home / "data" / "raw")
+    store = RawStore(home / "data" / "raw", "confluence")
     with store.writing():
         store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
         store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
@@ -381,7 +381,7 @@ def test_a_run_with_a_problem_exits_one_and_says_what_was_not_mirrored(
     places every document, then prepare.nothing_removed warns that Confluence removed none
     of its files; the run's log file holds both. Its row fails, Jira's is done.
     """
-    store = RawStore(home / "data" / "raw")
+    store = RawStore(home / "data" / "raw", "confluence")
     stamp = {"number": 1, "createdAt": "2026-10-20T21:52:41Z"}
     responses = {
         confluence_v2.DOCUMENT: v2_page(version=stamp),
@@ -510,12 +510,12 @@ def test_what_a_fetch_reads_is_not_read_by_a_prepare(
 def test_the_help_shows_a_group_per_source_with_what_it_reads(
     capsys: CaptureFixture[str],
 ) -> None:
-    """Every registered source, its resource types said; no option of a fetch."""
+    """Every registered source, its scope types said; no option of a fetch."""
     with pytest.raises(SystemExit):
         main(["prepare", "--help"])
     said_of = " ".join(capsys.readouterr().out.split())
-    assert "pages, listed whole; blogposts, listed whole." in said_of
-    assert "issues, searched by update time." in said_of
-    assert "entries, read whole, in place; days, read whole, in place;" in said_of
+    assert "each space listed whole." in said_of
+    assert "each project searched by update time." in said_of
+    assert "its folder, read whole, in place." in said_of
     assert "--since" not in said_of
     assert "--space" not in said_of

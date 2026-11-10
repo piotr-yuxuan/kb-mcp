@@ -25,7 +25,7 @@ def preflight(run: SourceRun) -> str | None:
     """Refuse a work log that is not a folder, by its setting, before any source starts."""
     folder = run.source_table.path
     if folder is None or not folder.is_dir():
-        return "sources.worklog.path: not a folder"
+        return f"{run.source.paths[0]}: not a folder"
     return None
 
 
@@ -41,7 +41,13 @@ def prepare(run: SourceRun) -> Outcome[WorklogCounts | WorklogPlanned]:
     table = run.source_table
     act = plan_worklog if run.dry_run else prepare_worklog
     try:
-        done = act(table.path, run.settings.docs, Pandoc.find(), archives=table.archives)
+        done = act(
+            table.path,
+            run.settings.docs,
+            Pandoc.find(),
+            source=run.source.name,
+            archives=table.archives,
+        )
     except (PandocMissingError, PandocFailedError) as error:
         structlog.get_logger().error("worklog.pandoc_failed", reason=str(error))
         return Outcome.of(problems=(Problem(where="pandoc", reason=str(error)),))
