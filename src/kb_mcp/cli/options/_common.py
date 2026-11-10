@@ -18,6 +18,11 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.output import Level
 
+# What took the place of --site, which plan 059 removed.
+SITE_GONE = (
+    "gone; each source's site is its setting, sources.<name>.site in the settings file, or"
+    " KB_MCP_SOURCES__<NAME>__SITE, as docs/how-to/move-to-kb-mcp.md says"
+)
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")
 
@@ -36,6 +41,21 @@ class Verbose(argparse.Action):
         """Take the next level of ``VERBOSITY``, or keep its last."""
         step = VERBOSITY.index(getattr(namespace, self.dest)) + 1
         setattr(namespace, self.dest, VERBOSITY[min(step, len(VERBOSITY) - 1)])
+
+
+class Gone(argparse.Action):
+    """An option or a value that went, refused with what takes its place: exit 2."""
+
+    @override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: object,
+        option_string: str | None = None,
+    ) -> None:
+        """Refuse it, saying what took its place, its ``const``."""
+        parser.error(f"{option_string}: {self.const}")
 
 
 class Quiet(argparse.Action):
@@ -100,13 +120,18 @@ def add_yes_option(parser: argparse.ArgumentParser) -> None:
 def add_settings_options(
     parser: argparse.ArgumentParser,
 ) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
-    """Add --config and --data-dir; return their actions, and each flag's setting."""
+    """Add --config and --data-dir; return their actions, and each flag's setting.
+
+    And --site, hidden, which plan 059 removed: refused, naming the settings that took its
+    place.
+    """
     config = parser.add_argument(
         "--config", type=Path, default=SETTINGS_PATH, help="the settings file"
     )
     config.completer = FilesCompleter(["toml"])
     data_dir = parser.add_argument("--data-dir", help="the data directory, overriding the settings")
     data_dir.completer = DirectoriesCompleter()
+    parser.add_argument("--site", action=Gone, const=SITE_GONE, help=argparse.SUPPRESS)
     return (config, data_dir), {"data_dir": "data_dir"}
 
 

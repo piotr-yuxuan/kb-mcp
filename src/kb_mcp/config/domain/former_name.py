@@ -71,7 +71,9 @@ BY_HAND = (
     "- another search engine over the mirror: each collection on ~/atlassian-offline-mcp/docs/",
     "  added again on ~/kb-mcp/docs/",
     "- scripts, aliases, crontabs and agents' setups: each command that went, sync, download",
-    "  and mirror, and index for search by meaning, as that page's section 9 says",
+    "  and mirror, and index for search by meaning, as that page's section 9 says; --site,",
+    "  which went, as sources.<name>.site or KB_MCP_SOURCES__<NAME>__SITE; login atlassian,",
+    "  as login <source>, or login alone for each site",
 )
 
 

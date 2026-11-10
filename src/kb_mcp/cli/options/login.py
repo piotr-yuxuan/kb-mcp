@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,10 +10,13 @@ from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 
 if TYPE_CHECKING:
-    import argparse
     from collections.abc import Mapping, Sequence
 
     from kb_mcp.sources.declaration import Source
+
+
+# The sign-in that ``login`` named before plan 059, whose sources it signed in.
+FORMER = "atlassian"
 
 
 def signing(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[Source, ...]:
@@ -90,11 +94,20 @@ def register(
     add_output_options(parser)
     add_yes_option(parser)
     signed = [each for each in sources if each.connector.login is not None]
+    names = [each.name for each in signed]
+
+    def named(text: str) -> str:
+        if text == FORMER and text not in names:
+            message = f"{FORMER}: gone; name a source, login {' or login '.join(names)}, or none"
+            raise argparse.ArgumentTypeError(message)
+        return text
+
     source = parser.add_argument(
         "source",
         nargs="?",
-        choices=[each.name for each in signed],
-        help="the source whose site to sign in to; by default each one configured",
+        type=named,
+        choices=names,
+        help="the source whose site to sign in to; by default each one in use",
     )
     chrome = parser.add_argument(
         "--chrome", type=Path, help="Chrome's executable, where the chrome channel fails"

@@ -83,7 +83,9 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
 - another search engine over the mirror: each collection on ~/atlassian-offline-mcp/docs/
   added again on ~/kb-mcp/docs/
 - scripts, aliases, crontabs and agents' setups: each command that went, sync, download
-  and mirror, and index for search by meaning, as that page's section 9 says
+  and mirror, and index for search by meaning, as that page's section 9 says; --site,
+  which went, as sources.<name>.site or KB_MCP_SOURCES__<NAME>__SITE; login atlassian,
+  as login <source>, or login alone for each site
 ```
 
 Keys and variables are named, and settings with their layer, never with their values.
@@ -270,6 +272,8 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 | `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
 | `login` | `login`, each site of the sources whose site or scopes are set, or `login jira` for one source |
 | `--summary short` or `--summary detailed` | `--detail short` or `--detail detailed`; `--summary` is refused, exit 2 |
+| `login atlassian` | `login confluence` or `login jira`, or `login` for each site; `login atlassian` is refused, saying so |
+| `--site <site>` | the site of each source, `sources.<name>.site` in the settings file or `KB_MCP_SOURCES__<NAME>__SITE`; `--site` is refused, saying so |
 
 A script that wants search by meaning ends with `index`, then `embed`, never with
 `prepare && embed`: `embed` reads the index, not the mirror, so a page that `prepare`

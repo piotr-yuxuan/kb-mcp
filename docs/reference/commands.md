@@ -440,8 +440,8 @@ usage: kb-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
                     [{confluence,jira}]
 
 positional arguments:
-  {confluence,jira}     the source whose site to sign in to; by default each one
-                        configured
+  {confluence,jira}     the source whose site to sign in to; by default each one in
+                        use
 
 options:
   -h, --help            show this help message and exit

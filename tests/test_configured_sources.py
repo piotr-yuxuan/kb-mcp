@@ -309,3 +309,22 @@ def test_a_prepare_of_one_site_keeps_the_files_that_another_site_s_documents_lin
     assert linked
     assert main(["prepare", *given, "clientjira"]) == ExitStatus.OK
     assert all(each.exists() for each in linked)
+
+
+@pytest.mark.parametrize(
+    ("given", "said"),
+    [
+        (["check", "--site", SITE], "--site: gone; each source's site is its setting"),
+        (["fetch", "--site", SITE], "KB_MCP_SOURCES__<NAME>__SITE"),
+        (["login", "atlassian"], "atlassian: gone; name a source, login confluence or login jira"),
+    ],
+    ids=["check", "fetch", "login"],
+)
+def test_the_options_that_went_are_refused_saying_what_took_their_place(
+    tmp_path: Path, capsys: CaptureFixture[str], given: list[str], said: str
+) -> None:
+    """Review round 1: --site and login atlassian, exit 2, never taken for another word."""
+    with pytest.raises(SystemExit) as stopped:
+        main([*given, "--config", str(tmp_path / "none.toml")])
+    assert stopped.value.code == ExitStatus.REFUSED
+    assert said in capsys.readouterr().err
