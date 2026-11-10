@@ -440,16 +440,16 @@ def test_serve_records_as_documented(tmp_path: Path) -> None:
     """
     data = tmp_path / "data"
     fillers(data / "docs")
-    write(data / "docs", page("4002", "Holiday canteen", space="ENG"), "Leave for a meal.\n")
+    write(data / "docs", page("4002", "Holiday canteen", scope="space:ENG"), "Leave for a meal.\n")
     write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
     build_index(data / "docs", data / "index.sqlite", MOMENT, Embedding(tiny(), data / "v.db"))
     calls: list[tuple[str, dict[str, object]]] = [
         ("search", {"query": "vacation lunch"}),
         ("ask", {"question": "vacation lunch"}),
         ("read", {"ref": "PROJ-7"}),
-        ("browse", {"space": "ENG"}),
+        ("browse", {"scope": "space:ENG"}),
         ("status", {}),
-        ("search", {"query": "kafka", "filters": {"space": "NOPE"}}),
+        ("search", {"query": "kafka", "filters": {"scope": "space:NOPE"}}),
     ]
 
     async def search(command: StdioServerParameters) -> None:

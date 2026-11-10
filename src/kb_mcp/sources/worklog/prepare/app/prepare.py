@@ -3,7 +3,7 @@
 It reads the work log's folder, converts each document whose revision is not the one its
 file holds, and hands every file to ``mirror_files``, which writes those that changed and
 removes, under ``worklog/`` alone, those of documents gone. A document whose file holds
-its revision keeps that file's body, dates and time of fetch, so that an edit elsewhere
+its revision keeps that file's body and dates, so that an edit elsewhere
 in its org file moves neither; but a day, a meeting and a dated transcript are dated by
 their day, afresh at each run, so that a file that held another date takes its day
 without a conversion. A run that reports a problem removes nothing but the old file of a
@@ -27,14 +27,14 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import trace
 
-from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE
+from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE, WORKLOG_SCOPE_TYPE
 from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, document_id
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -268,7 +268,7 @@ def prepare_worklog(
             old, body = kept.get(document.id, (None, ""))
             began = time.perf_counter()
             if old is not None and old.revision == name:
-                outcome, fetched_at = "kept", old.fetched_at
+                outcome = "kept"
                 # A day is not in the revision: a file that held another date takes it.
                 created, updated = (
                     (old.created, old.updated) if document.day is None else document.dates(None)
@@ -284,7 +284,6 @@ def prepare_worklog(
                     continue
                 outcome = "mirrored"
                 created, updated = document.dates(None if old is None else old.created)
-                fetched_at = document.file.fetched_at
                 CONVERSION_DURATION.record(time.perf_counter() - began, typed)
             DOCUMENTS.add(1, {"kb_mcp.outcome": outcome, **typed})
             matter = WorklogFrontMatter(
@@ -293,24 +292,26 @@ def prepare_worklog(
                 id=document.id,
                 key=None,
                 title=one_line(document.title),
-                space=None,
-                project=None,
+                scope=f"{WORKLOG_SCOPE_TYPE}:{source}",
                 status=one_line(document.status),
-                issue_type=None,
+                subtype=None,
                 labels=tuple(one_line(label) for label in document.labels),
                 people=tuple(
                     Mention(role=PARTICIPANT, name=name)
                     for name in dict.fromkeys(one_line(each) for each in document.people)
                     if name
                 ),
-                links=tuple(Link(relation=relation, ref=ref) for relation, ref in document.links),
+                parent=None,
+                links=tuple(
+                    Link(relation=relation, document=document_id(source, other))
+                    for relation, other in document.links
+                ),
                 created=created,
                 updated=updated,
                 version=None,
                 revision=name,
                 url=None,
                 breadcrumb=tuple(one_line(part) for part in document.breadcrumb),
-                fetched_at=fetched_at,
             )
             path = worklog_path(source, document.type, document.id, document.title)
             ready[path] = (matter, body)
@@ -322,10 +323,15 @@ def prepare_worklog(
                 type=document.type,
                 outcome=outcome,
             )
-    ends = {matter.id for matter, _ in ready.values()} | kept.keys()
+    ends = {
+        document_id(source, each)
+        for each in {matter.id for matter, _ in ready.values()} | kept.keys()
+    }
     wanted: dict[PurePosixPath, bytes | Path] = {
         path: dump(
-            copy.replace(matter, links=tuple(link for link in matter.links if link.ref in ends)),
+            copy.replace(
+                matter, links=tuple(link for link in matter.links if link.document in ends)
+            ),
             body,
         ).encode()
         for path, (matter, body) in ready.items()

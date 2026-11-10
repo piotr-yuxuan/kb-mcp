@@ -70,11 +70,11 @@ def data(tmp_path: Path) -> Path:
     fillers(docs)
     for number in range(DECOYS):
         write(docs, page(str(5000 + number), f"Decoy {number}"), "undo seller undo seller\n")
-    write(docs, page("4001", "Rollback runbook", space="OPS"), "How to restore payouts.\n")
+    write(docs, page("4001", "Rollback runbook", scope="space:OPS"), "How to restore payouts.\n")
     write(docs, page("4002", TARGET), "Leave for a meal.\n")
-    write(docs, page("4003", WORDS, space="OPS"), "revert release\n")
+    write(docs, page("4003", WORDS, scope="space:OPS"), "revert release\n")
     mixed = "# Mixed notes\n\n## Notes\n\nrevert\n\n## Plan\n\nrollback deploy rollback deploy\n"
-    write(docs, page("4004", MIXED, space="OPS"), mixed)
+    write(docs, page("4004", MIXED, scope="space:OPS"), mixed)
     write(docs, issue("PROJ-7", "Kafka upgrade"))
     write(docs, page("4005", "Handbook"), HANDBOOK)
     embedding = Embedding(tiny(), tmp_path / "data" / "v.db")
@@ -127,7 +127,7 @@ def test_a_filter_applies_before_the_nearest_are_cut(data: Path) -> None:
     """Over a hundred decoys are nearer, but only the runbook is in OPS's space."""
     semantic = library(data, "semantic")
     assert "Rollback runbook" not in semantic.search("revert seller", limit=50)
-    assert titles(semantic.search("revert seller", filters={"space": "OPS"}))[0] == (
+    assert titles(semantic.search("revert seller", filters={"scope": "space:OPS"}))[0] == (
         "Rollback runbook"
     )
 

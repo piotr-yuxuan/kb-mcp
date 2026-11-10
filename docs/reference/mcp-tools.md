@@ -42,7 +42,7 @@ says why.
 
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
 with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref,
-path, update and fetch time, labelled `mirrored`, then what the document has of its issue type, its status
+path and update time, then what the document has of its subtype, such as an issue's type, its status
 unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
 otherwise than its author, and `created <day>`, such as
@@ -65,8 +65,10 @@ Other filters of people add neither.
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (one of the sources that keep a store or are
   configured, by default `confluence`, `jira`, and `worklog` once its folder is set, then
-  those that the index holds, read as the server starts), `space`,
-  `project`, `status`, `label`, `issue_type`, `person` (someone in any role, by any
+  those that the index holds, read as the server starts), `scope` (as `status` names it,
+  its scope type then its key, such as `space:ENG` or `project:PRB`, or its key alone,
+  which matches it in every scope type and source), `status`, `label`, `subtype`,
+  `person` (someone in any role, by any
   name that a source writes for them or by their id, `p-` and 16 hex digits),
   `author` (an issue's reporter, the person it is for, who may not be who created it; a
   page's creator), `creator` (who created an issue), `assignee`, `commenter` (who wrote
@@ -119,9 +121,9 @@ Other filters of people add neither.
 ### read
 
 Reads a document, or one of its sections, from a character offset, in slices. Each
-slice opens with the document's title, path and fetch time, and one from the body's
+slice opens with the document's title and path, and one from the body's
 start with its front matter, a `key: value` line each, of what it has: its ref, type,
-space, project, issue type, status, labels, breadcrumb, people, links, created and updated
+scope, subtype, status, labels, parent, breadcrumb, people, links, created and updated
 days and address. People come there one line
 per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
 without the identity that the mirror keeps beside it, an account id standing for the
@@ -140,11 +142,14 @@ most, then how many more, such as `transcript: t-20261027-1`.
 
 ### browse
 
-Lists the documents of a space or a project in tree order, or those under a parent.
+Lists the documents of a scope in tree order, or those under a parent. A document sits
+under the titles of its breadcrumb, its parents' titles; those not listed come as a
+context line in brackets.
 
-- `space`: a space's key.
-- `project`: a project's key; give `space` or `project`, not both.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone; refused, with
+  the scopes that match, when several do.
 - `parent`: a page id, an issue key or an address within it.
+- `source`: narrows `scope` when several sources hold it.
 - `limit`: 1 to 200 documents, 50 by default.
 - `cursor`: the one that the previous answer ended with.
 
@@ -152,6 +157,7 @@ Lists the documents of a space or a project in tree order, or those under a pare
 
 Says what the mirror holds, when its index was built, and whether it searches by
 meaning: the model, the chunks, and the chunking that cut them. A line counts the
+documents of each scope, the most first, such as `scopes: space:ENG 31, project:PRB 2`. A line counts the
 persons, those in more than one source and those by name alone, of no identity, then
 names the keys that names of several identities share, five at most, then how many
 more, each with the persons holding it, such as `persons: 42, 12 in more than one
@@ -178,16 +184,16 @@ each cited by section. Needs `read`.
 
 ### changes
 
-List what changed in a space or a project since a date, through `search` by update;
-summarise by theme, with refs and dates. Needs `search`.
+List what changed in a scope since a date, through `search` by update; summarise by
+theme, with refs and dates. Needs `search`.
 
-- `scope`: `space:KEY` or `project:KEY`, since a site may use one key for both; a bare
-  key is refused, naming both forms.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone, as the filter
+  `scope` takes it.
 - `since`: an ISO 8601 date or time, such as `2026-10-01`.
 
 ### overview
 
-Browse a space or a project, read its top documents' first sections, and say how it is
-organised and what to read first. Needs `browse` and `read`.
+Browse a scope, read its top documents' first sections, and say how it is organised and
+what to read first. Needs `browse` and `read`.
 
-- `scope`: `space:KEY` or `project:KEY`.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone.

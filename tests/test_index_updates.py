@@ -46,9 +46,9 @@ if TYPE_CHECKING:
 # rowids and their sections' bounds, the rest by path, and the meta rows but the build's.
 TABLES = {
     "documents": """
-        SELECT path, digest, source, type, id, key, title, space, project, status,
-               issue_type, labels, people, links, created, updated, version, revision, url,
-               breadcrumb, fetched_at, length, last_section - first_section
+        SELECT path, digest, source, type, id, key, title, scope, status, subtype, labels,
+               people, parent, links, created, updated, version, revision, url, breadcrumb,
+               length, last_section - first_section
         FROM documents ORDER BY path
     """,
     "labels": """
@@ -147,7 +147,11 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 ROLLBACK = page("196845", "Rollback", labels=("ops",))
 ENTRY = replace(
-    page("e-20261020-1", "Old title"), source="worklog", type="entry", space=None, version=None
+    page("e-20261020-1", "Old title"),
+    source="worklog",
+    type="entry",
+    scope="folder:worklog",
+    version=None,
 )
 
 
@@ -164,7 +168,7 @@ def test_an_updated_index_equals_a_whole_build_at_each_step(data: Path) -> None:
     retitled = write(docs, replace(ROLLBACK, title="Rollback plan"), BODY)
     step.equal()  # retitled, so that its path changes
     (docs / retitled).unlink()
-    moved = write(docs, replace(ROLLBACK, title="Rollback plan", space="OPS"), BODY)
+    moved = write(docs, replace(ROLLBACK, title="Rollback plan", scope="space:OPS"), BODY)
     step.equal()  # moved to another space
     (docs / moved).unlink()
     step.equal()  # removed

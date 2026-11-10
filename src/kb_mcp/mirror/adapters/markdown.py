@@ -13,7 +13,7 @@ import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import ASSETS, ATLASSIAN_ISSUER
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, document_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -22,6 +22,13 @@ if TYPE_CHECKING:
 FRONT_MATTER_KEYS = list(FrontMatter.model_fields)
 PERSON = list(Mention.model_fields)
 LINK = list(Link.model_fields)
+# The keys of the front matter that the files of plan 058 hold, which ``load`` reads until
+# every file has been prepared once after the upgrade; a later plan removes them.
+FORMER_KEYS = [
+    *("source", "type", "id", "key", "title", "space", "project", "status", "issue_type"),
+    *("labels", "people", "links", "created", "updated", "version", "revision", "url"),
+    *("breadcrumb", "fetched_at"),
+]
 TIME = "%Y-%m-%dT%H:%M:%SZ"
 OPENING = "---\n"
 CLOSING = "\n---\n"
@@ -91,10 +98,14 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
 
     Any other key, order or type is refused, naming ``path`` and the key, as is a
     person's field other than ``Mention``'s, out of their order, or an empty ``at``,
-    and a link's field other than ``Link``'s, or out of their order. A person's
+    and a link's field other than ``Link``'s, or out of their order. Until every file has
+    been prepared once after the upgrade, as a later plan removes it: a person's
     ``account``, which plan 041's files hold in place of ``identity`` and the Atlassian
-    connectors alone wrote, reads as an identity of ATLASSIAN_ISSUER's: until every file
-    has been prepared once after the upgrade; a later plan removes it.
+    connectors alone wrote, reads as an identity of ATLASSIAN_ISSUER's; and a front
+    matter of FORMER_KEYS reads as today's: its ``space`` or ``project`` as its scope,
+    else the work log's one scope, ``folder:<source>``; its ``issue_type`` as its
+    subtype; no parent; each link's ``ref``, a key or id of its own source, as the
+    document of that id; ``fetched_at`` left out.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
     if not text.startswith(OPENING) or end < 0:
@@ -104,7 +115,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         values = yaml.safe_load(text[len(OPENING) : end + 1])
     except yaml.YAMLError:
         values = None
-    if type(values) is not dict or list(values) != FRONT_MATTER_KEYS:
+    if type(values) is not dict or list(values) not in (FRONT_MATTER_KEYS, FORMER_KEYS):
         # The mirror's keys that it lacks, never the file's own: those could be content.
         lacking = [key for key in FRONT_MATTER_KEYS if type(values) is dict and key not in values]
         message = f"{path}: front matter without exactly the mirror's keys, in order" + (
@@ -112,6 +123,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
         )
         raise RepresentationError(message)
     fields = Fields(values, path)
+    former = list(values) == FORMER_KEYS
     people = []
     for person in fields.objects("people"):
         held = "account" if "account" in person.value else "identity"
@@ -135,24 +147,39 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
                     at=tuple(times.time(name) for name in times.value),
                 )
             )
-    links = []
+    source, links = fields.text("source"), []
     for link in fields.objects("links"):
-        in_order(link, LINK)
+        held = "ref" if former else "document"
+        in_order(link, [held if name == "document" else name for name in LINK])
+        other = link.text(held)
         with link.refusals():
-            links.append(Link(relation=link.text("relation"), ref=link.text("ref")))
+            links.append(
+                Link(
+                    relation=link.text("relation"),
+                    document=document_id(source, other) if former else other,
+                )
+            )
+    if former:
+        named = [
+            f"{name}:{key}" for name in ("space", "project") if (key := fields.optional_text(name))
+        ]
+        scope, subtype, parent = (named or [f"folder:{source}"])[0], "issue_type", None
+    else:
+        scope, subtype = fields.text("scope"), "subtype"
+        parent = fields.optional_text("parent")
     with fields.refusals():
         front_matter = FrontMatter(
-            source=fields.text("source"),
+            source=source,
             type=fields.text("type"),
             id=fields.text("id"),
             key=fields.optional_text("key"),
             title=fields.text("title"),
-            space=fields.optional_text("space"),
-            project=fields.optional_text("project"),
+            scope=scope,
             status=fields.text("status"),
-            issue_type=fields.optional_text("issue_type"),
+            subtype=fields.optional_text(subtype),
             labels=fields.texts("labels"),
             people=tuple(people),
+            parent=parent,
             links=tuple(links),
             created=fields.time("created"),
             updated=fields.time("updated"),
@@ -160,7 +187,6 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
             revision=fields.text("revision"),
             url=fields.optional_text("url"),
             breadcrumb=fields.texts("breadcrumb"),
-            fetched_at=fields.time("fetched_at"),
         )
     return front_matter, text[end + len(CLOSING) :].removeprefix("\n")
 

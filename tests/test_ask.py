@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 # A passage's two lines about it, then its text, which runs to the next passage.
 ABOUT = re.compile(
     r"^(\d+)\. (.*) \| (\S+) \| section (\d+)(?:: (.*))? \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC)"
-    r" \| mirrored (\d{4}-\d\d-\d\d) \| (.*)\n(.*) \| (read\(.*\))\n",
+    r" \| (.*)\n(.*) \| (read\(.*\))\n",
     re.MULTILINE,
 )
 RETENTION = (
@@ -92,12 +92,12 @@ def passages(answer: str) -> list[dict[str, str]]:
     found = list(ABOUT.finditer(block))
     ends = [match.start() - 2 for match in found[1:]] + [len(block)]
     names = (
-        *("number", "title", "ref", "section", "heading", "updated", "mirrored", "facts"),
+        *("number", "title", "ref", "section", "heading", "updated", "facts"),
         "address",
     )
     return [
-        dict(zip(names, match.groups()[:9], strict=True))
-        | {"read": match[10], "text": block[match.end() : end]}
+        dict(zip(names, match.groups()[:8], strict=True))
+        | {"read": match[9], "text": block[match.end() : end]}
         for match, end in zip(found, ends, strict=True)
     ]
 
@@ -145,7 +145,7 @@ def test_a_passage_quotes_the_section_that_holds_the_words(words: Library) -> No
         "2",
         "Retention",
     )
-    assert (first["updated"], first["mirrored"]) == ("2026-10-20 21:52 UTC", "2026-10-20")
+    assert first["updated"] == "2026-10-20 21:52 UTC"
     assert first["address"] == "https://example.atlassian.net/wiki/x/1"
     assert first["read"] == 'read(ref="196845", section=2)'
     assert section in words.read("196845", section=2)
@@ -239,7 +239,7 @@ def test_an_issue_key_in_the_question_puts_its_issue_first(words: Library) -> No
     ("filters", "message"),
     [
         ({"spaec": "ENG"}, "filters: no spaec"),
-        ({"space": "NOPE"}, "space: no document has"),
+        ({"scope": "space:NOPE"}, "scope: no document has"),
         ({"person": "nobody"}, "person: no document has"),
         ({"updated_after": "yesterday"}, "updated_after: an ISO 8601 date"),
     ],
@@ -257,7 +257,7 @@ def test_filters_are_refused_as_search_refuses_them(
 
 def test_filters_narrow_and_a_question_without_words_is_refused(words: Library) -> None:
     """The issue alone in its project; a question of marks alone has nothing to search."""
-    found = passages(words.ask("brokers", filters={"project": "proj"}))
+    found = passages(words.ask("brokers", filters={"scope": "project:proj"}))
     assert [each["ref"] for each in found] == ["PROJ-7"]
     assert words.ask("?!") == "The question has no words to search: ask it in words."
 
@@ -265,7 +265,7 @@ def test_filters_narrow_and_a_question_without_words_is_refused(words: Library) 
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        ({"issue_type": "BUG"}, ["PROJ-1"]),
+        ({"subtype": "BUG"}, ["PROJ-1"]),
         ({"author": "bo sample"}, ["196845", "PROJ-1"]),
         ({"assignee": "Helene Example"}, ["PROJ-2"]),
         ({"created_after": "2026-10-25"}, ["PROJ-1", "PROJ-3"]),

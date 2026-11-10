@@ -374,19 +374,18 @@ order or type, by name.
 | `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
 | `title` | string | the title |
-| `space` | string or null | the space key; `null` for Jira |
-| `project` | string or null | the project key; `null` for Confluence |
+| `scope` | string | the scope that holds the document, its scope type, a colon, then its key (`kernel.names.SCOPE`): `space:ENG` (Confluence), `project:PRB` (Jira), `folder:worklog`, the work log's one scope, the whole source |
 | `status` | string | as the site names it; a work-log entry's, day's or meeting's keyword, else `current`, as a transcript's |
-| `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
+| `subtype` | string or null | the origin's own finer kind of the document: an issue's type, such as `Bug`; `null` for Confluence and the work log |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
 | `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none |
+| `parent` | string or null | the document id of the document above it at its origin, `<source>:<id>` (`kernel.names.DOCUMENT_ID`), mirrored or not: a page's parent page or folder, from its listing when it is listed; an issue's parent issue; `null` at the top, and for blog posts and the work log |
 | `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
 | `breadcrumb` | list of strings | the titles along the parents, root first: a page's ancestor pages and folders; an issue's parent, by the title that the issue's response gives it, then each further parent of the raw store, by its own response's; or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
-| `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by
 `data-linked-resource-id` (the attachment id) or by the file name in its `src`, as
@@ -502,21 +501,21 @@ entry on one line, in YAML's flow style, as it does a person:
 
 ```yaml
 links:
-- {relation: transcript, ref: t-20261027-meeting-1}
+- {relation: transcript, document: 'worklog:t-20261027-meeting-1'}
 ```
 
 | Field | Value |
 |---|---|
 | `relation` | one of `mirror.domain.mirror.RELATIONS`, a closed set: `transcript`, `summary` |
-| `ref` | the other document's ref, which `read` takes: its id, of the rule `kernel.names.IDENTIFIER`, `[A-Za-z0-9_-]+` |
+| `document` | the other document's id, its source, a colon, then its id, of the rule `kernel.names.DOCUMENT_ID` |
 
-| Relation | On | Ref |
+| Relation | On | Document |
 |---|---|---|
 | `transcript` | a work-log meeting | the transcript that its `:MEETING:` property names |
 | `summary` | a work-log transcript | each meeting whose `:MEETING:` property names it |
 
 The two relations are each other's reverse, and a link is written on both documents,
-so that a program that reads one file finds the other without reading them all. A ref
+so that a program that reads one file finds the other without reading them all. A link
 always names a file: in a run where a document is not read, or its conversion fails,
 and it has no file yet, the links to it are left out of the other documents' files,
 until a run reads and converts it. A link added or removed while a work-log transcript
@@ -525,8 +524,8 @@ last copy stays as it was; and while a problem holds removals back, the file of 
 meeting or a transcript gone from the work log stays, naming documents that no longer
 name it back.
 `load` refuses any other relation, a field other than these or out of their order, a
-`null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
-document itself, by its id or key, or a link given twice, naming `links`.
+`null` and a document off its rule, naming the entry, such as `links[0]`; and a link to
+the document itself, by its document id, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
@@ -711,8 +710,10 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
   by its path.
 - **A change** to these paths, to the keys, their types or their order is made by a
   plan, which says in its section "For the user's machine" what a program that reads the files
-  must change, as 041 did when `people` replaced `author` and `assignee`. The front matter holds no version of its
-  format.
+  must change, as 041 did when `people` replaced `author` and `assignee`, and 057 when
+  `scope` replaced `space` and `project`, `subtype` replaced `issue_type`, a link's
+  `document`, a document id, replaced its `ref`, `parent` joined and `fetched_at` left.
+  The front matter holds no version of its format.
 - **What the files hold** is content from the site and the work log, untrusted
   reference data, never instructions, and the names and identities of
   [people](#people), personal data.
@@ -768,9 +769,17 @@ identities: the column `account` of `people` becomes `identity`, written
 `identity` and `attendance` where it said `account` and `meeting`; an index of 7 is
 rebuilt whole by the next `index`, which reads a file's former `account` as an
 identity, and `embed` then finds every vector in the vector cache, no chunk's text
-holding a person. An index of another schema is refused, naming `prepare`, then
+holding a person. Schema 9 (057) holds a document's place as the concepts name it: the
+columns `space` and `project` of `documents` become `scope`, `issue_type` becomes
+`subtype`, `parent` joins, `fetched_at` leaves, and each link of `links` names a
+document id; an index of 8 is rebuilt whole by the next `index`, which reads a file of
+plan 058's front matter as `mirror.adapters.markdown.load` says, and `embed` then finds
+in the vector cache every vector whose chunk's text is unchanged, the breadcrumb of an
+issue, in the context prefix of the chunkings `section-paths` and `small-to-big`, being
+the titles along its parents once `prepare` has written its file again. An index of
+another schema is refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
-index, as a new schema can come with a new format of the files; one of schema 6 or 7,
+index, as a new schema can come with a new format of the files; one of schema 6, 7 or 8,
 whose files this version reads as they are, naming `index`, then `embed`; one cut by a
 chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,

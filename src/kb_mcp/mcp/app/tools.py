@@ -85,7 +85,7 @@ NO_QUESTION = "The question has no words to search: ask it in words."
 ASK_DOCUMENTS = 20
 NOT_MIRRORED = (
     "Not mirrored: the mirror holds no such document. It holds what was downloaded;"
-    " status() says which spaces and projects, and search() finds by words."
+    " status() says which scopes, and search() finds by words."
 )
 TRACER = trace.get_tracer(__name__)
 # The searches asked by meaning that ranked by words alone, by the mode asked.
@@ -98,6 +98,7 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    scope: as status() names it, such as space:ENG, or its key alone, in any source.
     person: in any role, by any of their names or their id.
     author: an issue's reporter, a page's creator; creator: an issue's.
     commented_*: by commenter if given; _after included, _before excluded.
@@ -105,11 +106,10 @@ class SearchFilters(TypedDict, total=False):
     """
 
     source: str  # one of the sources that the server's settings name: search_filters
-    space: str
-    project: str
+    scope: str
     status: str
     label: str
-    issue_type: str
+    subtype: str
     person: str
     author: str
     creator: str
@@ -388,12 +388,13 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: SearchReader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = ("source", "space", "project", "status", "label", "issue_type")
+    names = ("source", "status", "label", "subtype")
     dates = (
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
     )
     return Filters(
+        scope=scope_of(reader, given.get("scope")),
         **{name: canonical(reader, name, given.get(name)) for name in names},
         **{name: who(reader, name, given.get(name)) for name in PERSON_FILTERS},
         **{name: instant(name, given.get(name)) for name in dates},
@@ -531,6 +532,15 @@ def canonical(reader: SearchReader, name: str, value: str | None) -> str | None:
     message = f"{name}: no document has {json.dumps(value, ensure_ascii=False)}; the valid values:"
     listed = sorted(valid, key=lambda each: wanted not in plain(each))
     raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
+
+
+def scope_of(reader: SearchReader, value: str | None) -> str | None:
+    """Find a scope as the index holds it, as ``canonical`` finds a value: whole, or its key.
+
+    A scope is given whole, its scope type then its key, as ``space:ENG``, or by its key
+    alone, which matches it in every scope type and source.
+    """
+    return canonical(reader, "scope" if value is None or ":" in value else "scope key", value)
 
 
 def instant(name: str, value: str | None) -> datetime | None:
@@ -793,10 +803,10 @@ class Library:
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
-    def key_of(self, kind: Literal["space", "project"], key: str) -> str:
-        """Give a space's or a project's key as the index holds it; refuse one it lacks."""
+    def scope_of(self, scope: str) -> str:
+        """Give a scope as the index holds it, as ``scope_of`` does; refuse one it lacks."""
         with self._reading() as reader:
-            return canonical(reader, kind, key) or ""
+            return scope_of(reader, scope) or ""
 
     def resolve(self, ref: str) -> str | None:
         """Find a document's path by its id, key, address or path, as read does."""
@@ -877,33 +887,39 @@ class Library:
 
     def browse(
         self,
-        space: str | None = None,
-        project: str | None = None,
+        scope: str | None = None,
         parent: str | None = None,
+        source: str | None = None,
         limit: int = BROWSE_LIMIT,
         cursor: str | None = None,
     ) -> str:
-        """List the documents of a space or a project in tree order, or those under a parent.
+        """List the documents of a scope in tree order, or those under a parent.
 
-        Give space or project; parent is a page id, an issue key or an address within it.
+        scope: as status() names it, such as space:ENG, or its key alone; source narrows
+        it when several sources hold it. parent is a ref or an address within it.
         Bracketed lines name ancestors that are not listed there.
         """
-        bounded(space=(space, LONGEST["value"]), project=(project, LONGEST["value"]))
+        bounded(scope=(scope, LONGEST["value"]), source=(source, LONGEST["value"]))
         bounded(parent=(parent, LONGEST["ref"]), cursor=(cursor, LONGEST["cursor"]))
         with self._reading() as reader:
-            if (space is None) == (project is None):
-                keys = [f"space {key}" for key, _ in reader.values("space")]
-                keys += [f"project {key}" for key, _ in reader.values("project")]
-                message = "browse: give either space or project, one of:"
-                raise UnanswerableError(responses.refusal(message, keys[:VALUES_SHOWN], len(keys)))
+            if scope is None:
+                scopes = [each for each, _ in reader.values("scope")]
+                message = "browse: give a scope, one of:"
+                raise UnanswerableError(
+                    responses.refusal(message, scopes[:VALUES_SHOWN], len(scopes))
+                )
             built_at, build = reader.built_at(), reader.build()
             offset = start_of(cursor, build)
-            narrowed = Filters(
-                space=canonical(reader, "space", space),
-                project=canonical(reader, "project", project),
+            kept = Filters(
+                source=canonical(reader, "source", source), scope=scope_of(reader, scope)
             )
-            listed = reader.listing(narrowed)
+            listed = reader.listing(kept)
             top = None if parent is None else self._find(reader, parent)
+        held = sorted({(entry.front.scope, entry.front.source) for entry in listed})
+        if len(held) > 1:
+            named = [f"{each} ({source})" for each, source in held]
+            message = "browse: several scopes match; give one whole, and its source if need be:"
+            raise UnanswerableError(responses.refusal(message, named[:VALUES_SHOWN], len(named)))
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
         # Where each document sits: the titles along its parents, then its own.
@@ -920,7 +936,7 @@ class Library:
         def more(count: int) -> str:
             after = cursor_at(offset + count, build)
             return responses.call(
-                self.browse, space=space, project=project, parent=parent, limit=limit, cursor=after
+                self.browse, scope=scope, parent=parent, source=source, limit=limit, cursor=after
             )
 
         allowed = responses.budget(limit, BROWSE_LIMIT)

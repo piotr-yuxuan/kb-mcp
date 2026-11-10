@@ -46,7 +46,7 @@ NAMING = {
     # A comment's example of a key moved into each source's table.
     "config/domain/settings.py": 1,
     # Docstrings of the front matter's Atlassian-shaped keys, which question 3 keeps.
-    "mirror/domain/mirror.py": 3,
+    "mirror/domain/mirror.py": 2,
 }
 # OpenTelemetry's SDK, exporters and instrumentation, which plan 016 keeps within
 # observability: elsewhere code uses the API alone. Import Linter forbids root packages

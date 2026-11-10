@@ -19,7 +19,7 @@ from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER, RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Mention
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Mention, document_id
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
@@ -39,13 +39,7 @@ if TYPE_CHECKING:
     from kb_mcp.sources.atlassian.fetch.domain.content import SiteUser, Snapshot
 
 # Keys that the documents of one scope type alone have, always: a space's, a project's.
-ONLY = {
-    "space": SPACE,
-    "version": SPACE,
-    "key": PROJECT,
-    "project": PROJECT,
-    "issue_type": PROJECT,
-}
+ONLY = {"version": SPACE, "key": PROJECT, "subtype": PROJECT}
 
 
 class AtlassianFrontMatter(FrontMatter):
@@ -55,8 +49,9 @@ class AtlassianFrontMatter(FrontMatter):
     def check_atlassian(self) -> Self:
         """Refuse what the layout's table rules out for Confluence and Jira.
 
-        A type of neither, a key that only another type has, a revision off ``REVISION``,
-        and a participant, a role of another source.
+        A type of neither, a key that only another type has, a scope not of its type's
+        scope type or off its key's rule, a revision off ``REVISION``, and a participant,
+        a role of another source.
         """
         if self.type not in {
             each.name for each in (*SPACE.document_types, *PROJECT.document_types)
@@ -68,6 +63,12 @@ class AtlassianFrontMatter(FrontMatter):
             if (getattr(self, name) is not None) != held:
                 message = f"{name}: only and always in a {scope_type.name}"
                 raise RefusedError(message)
+        kind, key = self.scope.split(":", 1)
+        scope_type = SPACE if self.type in {each.name for each in SPACE.document_types} else PROJECT
+        if kind != scope_type.name or scope_type.key is None:
+            message = "scope: not of its type's scope type"
+            raise RefusedError(message)
+        require(scope_type.key, key, "scope")
         require(REVISION, self.revision, "revision")
         if any(person.role == PARTICIPANT for person in self.people):
             message = "people: a role of another source"
@@ -109,6 +110,17 @@ class Catalogue(Record):
         listed = self.listed.get(document.id) if isinstance(document, ConfluenceDocument) else None
         return (listed or document).status
 
+    def parent(self, document: ConfluenceDocument | Issue) -> str | None:
+        """Give the id of a page's parent, a page or a folder, or of an issue's; else None.
+
+        A page's comes from its listing when it is listed.
+        """
+        if isinstance(document, Issue):
+            return None if document.parent is None else document.parent.id
+        listed = self.listed.get(document.id)
+        page = listed if isinstance(listed, Page) else document
+        return page.parent_id if isinstance(page, Page) else None
+
     def breadcrumb(self, document: ConfluenceDocument | Issue) -> tuple[str, ...]:
         """Return the titles above a page or an issue, root first; else none.
 
@@ -125,9 +137,7 @@ class Catalogue(Record):
                 seen.add(issue.parent.id)
                 issue = self.issues.get(issue.parent.id)
             return tuple(reversed(titles))
-        listed = self.listed.get(document.id)
-        page = listed if isinstance(listed, Page) else document
-        parent = page.parent_id if isinstance(page, Page) else None
+        parent = self.parent(document)
         above: list[str] = []
         while parent is not None and parent in self.nodes and parent not in above:
             above.append(parent)
@@ -186,15 +196,15 @@ def identity(person: SiteUser) -> str:
 
 
 def front_matter(
-    source: str, snapshot: Snapshot, fetched_at: datetime, catalogue: Catalogue, site: str | None
+    source: str, snapshot: Snapshot, catalogue: Catalogue, site: str | None
 ) -> FrontMatter:
     """Say what the mirror says of a source's snapshot, as the layout's table does.
 
     Every text is one visible line; a page's space key comes from the listed spaces, and
-    is None when its space is not listed, which ``AtlassianFrontMatter`` refuses. Each
-    commenter comes once, by their first comment, with the times of their comments
-    ascending; a comment without an author names nobody. Raises TypeError for a document
-    that is neither Confluence's nor Jira's.
+    one whose space is not listed is refused. Each commenter comes once, by their first
+    comment, with the times of their comments ascending; a comment without an author
+    names nobody. Raises TypeError for a document that is neither Confluence's nor
+    Jira's.
     """
     document, comments = snapshot.document, snapshot.comments
     if not isinstance(document, ConfluenceDocument | Issue):
@@ -203,6 +213,10 @@ def front_matter(
     issue = document if isinstance(document, Issue) else None
     confluence = document if isinstance(document, ConfluenceDocument) else None
     space = None if confluence is None else catalogue.spaces.get(confluence.space_id)
+    if confluence is not None and space is None:
+        message = "scope: the space is not listed"
+        raise RefusedError(message)
+    parent = catalogue.parent(document)
     # Each commenter's comment times, by name and identity, the first comment first.
     said: dict[tuple[str, str], list[datetime]] = {}
     for comment in sorted(comments, key=lambda each: each.created):
@@ -228,12 +242,12 @@ def front_matter(
         id=document.id,
         key=None if issue is None else issue.key,
         title=one_line(document.title),
-        space=None if space is None else space.key,
-        project=None if issue is None else issue.project,
+        scope=f"{PROJECT.name}:{issue.project}" if space is None else f"{SPACE.name}:{space.key}",
         status=one_line(catalogue.status(document)),
-        issue_type=None if issue is None else one_line(issue.issue_type),
+        subtype=None if issue is None else one_line(issue.issue_type),
         labels=tuple(one_line(label) for label in document.labels),
         people=(*sole, *commenters),
+        parent=None if parent is None else document_id(source, parent),
         links=(),
         created=document.created.astimezone(UTC),
         updated=document.updated.astimezone(UTC),
@@ -241,5 +255,4 @@ def front_matter(
         revision=document.revision,
         url=None if site is None else site + document.site_path,
         breadcrumb=catalogue.breadcrumb(document),
-        fetched_at=fetched_at.astimezone(UTC),
     )

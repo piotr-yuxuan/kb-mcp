@@ -49,7 +49,7 @@ def home(tmp_path: Path) -> Path:
     settings = home / ".config" / "kb-mcp" / "config.toml"
     settings.write_text(f"data_dir = {json.dumps(str(data))}\n", encoding="utf-8")
     fillers(data / "docs")
-    write(data / "docs", page("196845", "Kafka retention", space="ENG"))
+    write(data / "docs", page("196845", "Kafka retention", scope="space:ENG"))
     write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     return home
@@ -128,7 +128,7 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
     listed = {tool.name: tool.input_schema["$defs"]["SearchFilters"] for tool in tools.tools[:2]}
     assert list(listed) == ["ask", "search"]
     names = [
-        *("source", "space", "project", "status", "label", "issue_type"),
+        *("source", "scope", "status", "label", "subtype"),
         *("person", "author", "creator", "assignee", "commenter", "participant"),
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
@@ -233,10 +233,11 @@ def test_a_prompt_is_listed_only_when_its_tools_are_served(home: Path) -> None:
         (
             "changes",
             {"scope": "space:eng", "since": "2026-10-01"},
-            ["the space ENG", '"updated_after": "2026-10-01T00:00:00+00:00"'],
+            ["the scope space:ENG", '"updated_after": "2026-10-01T00:00:00+00:00"'],
             ["space:eng", "eng"],
         ),
-        ("overview", {"scope": "project:proj"}, ['browse(project="PROJ")'], ["proj"]),
+        ("overview", {"scope": "project:proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
+        ("overview", {"scope": "proj"}, ['browse(scope="PROJ")'], ["proj"]),
     ],
 )
 def test_a_prompt_is_one_user_message_of_canonical_values(
@@ -257,8 +258,8 @@ def test_a_prompt_is_one_user_message_of_canonical_values(
     ("name", "arguments", "named"),
     [
         ("brief", {"ref": "999999"}, "ref: not mirrored"),
-        ("overview", {"scope": "space:NOPE"}, "scope: space: no document has"),
-        ("overview", {"scope": "ENG"}, "scope: space:ENG or project:ENG"),
+        ("overview", {"scope": "space:NOPE"}, "scope: no document has"),
+        ("overview", {"scope": "NOPE"}, "scope key: no document has"),
         ("changes", {"scope": "space:ENG", "since": "last week"}, "since: an ISO 8601 date"),
     ],
 )

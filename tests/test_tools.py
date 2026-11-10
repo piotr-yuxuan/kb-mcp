@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 NEWER = MOMENT + timedelta(days=1)
 HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)
 # A hit's ref, and what ends its second line after the mirror date.
-FACTS = re.compile(r"^ {3}(\S+) \| .* \| mirrored \d{4}-\d\d-\d\d \| (.*)$", re.MULTILINE)
+FACTS = re.compile(r"^ {3}(\S+) \| \S+ \| updated [^|]* UTC \| (.*)$", re.MULTILINE)
 
 
 def refs(answer: str) -> list[str]:
@@ -231,7 +231,7 @@ def varied(tmp_path: Path) -> Library:
         tmp_path,
         [
             (page("196845", "Kafka runbook", labels=("runbook",), updated=NEWER), None),
-            (page("196846", "Kafka design", space="OPS", updated=midnight), None),
+            (page("196846", "Kafka design", scope="space:OPS", updated=midnight), None),
             (issue("PROJ-7", "Kafka upgrade", status="À faire", updated=midnight), None),
             (issue("PROJ-8", "Kafka rollback", status="Done"), None),
         ],
@@ -246,16 +246,16 @@ def test_what_changed_lists_the_newest_first(varied: Library) -> None:
 @pytest.mark.parametrize(
     ("query", "filters", "expected"),
     [
-        ("kafka", {"space": "ops"}, ["196846"]),
+        ("kafka", {"scope": "space:ops"}, ["196846"]),
         ("kafka", {"source": "jira"}, ["PROJ-8", "PROJ-7"]),
         ("kafka", {"status": "à faire"}, ["PROJ-7"]),
         ("kafka", {"label": "RUNBOOK"}, ["196845"]),
-        ("kafka 196845", {"space": "OPS"}, ["196846"]),
-        ("PROJ-7 kafka", {"project": "proj", "status": "Done"}, ["PROJ-8"]),
+        ("kafka 196845", {"scope": "OPS"}, ["196846"]),
+        ("PROJ-7 kafka", {"scope": "project:proj", "status": "Done"}, ["PROJ-8"]),
         ("", {"label": "runbook"}, ["196845"]),
         ("", {"updated_after": "2026-10-20", "source": "jira"}, ["PROJ-8", "PROJ-7"]),
-        ("", {"updated_before": "2026-10-20T00:00:01", "project": "PROJ"}, ["PROJ-7"]),
-        ("", {"updated_before": "2026-10-20", "project": "PROJ"}, []),
+        ("", {"updated_before": "2026-10-20T00:00:01", "scope": "PROJ"}, ["PROJ-7"]),
+        ("", {"updated_before": "2026-10-20", "scope": "project:PROJ"}, []),
     ],
 )
 def test_each_filter_narrows(
@@ -269,8 +269,8 @@ def test_each_filter_narrows(
 @pytest.mark.parametrize(
     ("filters", "valid"),
     [
-        ({"space": "NOPE"}, "ENG, OPS"),
-        ({"project": "NOPE"}, "PROJ"),
+        ({"scope": "space:NOPE"}, "space:ENG, project:PROJ, space:OPS"),
+        ({"scope": "NOPE"}, "ENG, PROJ, OPS"),
         ({"status": "Blocked"}, "current, Done, À faire"),
         ({"label": "nope"}, "runbook"),
     ],
@@ -311,7 +311,7 @@ def test_arguments_that_cannot_be_served_are_refused(
     [
         lambda library, cursor=None: library.search("lorem", limit=2, cursor=cursor),
         lambda library, cursor=None: library.ask("lorem", cursor=cursor),
-        lambda library, cursor=None: library.browse(space="ENG", limit=2, cursor=cursor),
+        lambda library, cursor=None: library.browse(scope="space:ENG", limit=2, cursor=cursor),
     ],
     ids=["search", "ask", "browse"],
 )
@@ -343,7 +343,7 @@ def people(tmp_path: Path) -> Library:
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        ({"issue_type": "bug"}, ["PROJ-1"]),
+        ({"subtype": "bug"}, ["PROJ-1"]),
         ({"author": "bo sample"}, ["PROJ-1", "196845"]),
         ({"assignee": "ADA EXAMPLE"}, ["PROJ-3", "PROJ-1"]),
         ({"assignee": "helene example"}, ["PROJ-2"]),
@@ -374,7 +374,7 @@ def test_people_and_created_dates_narrow_with_words_or_without(
     [
         ({"assignee": "helene"}, "Hélène Example, Ada Example"),
         ({"author": "AMPLE"}, "Bo Sample, Ada Example, A Person"),
-        ({"issue_type": "Epic"}, "Bug, Story, Task"),
+        ({"subtype": "Epic"}, "Bug, Story, Task"),
         ({"label": "resumé"}, "resume, résumé"),
     ],
 )
@@ -633,7 +633,7 @@ def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> No
         commented.search(filters={"commenter": "a person"}, sort="created"),
         commented.ask("broker crash"),
         *(commented.read(front.key or front.id) for front in COMMENTED),
-        commented.browse(project="PROJ"),
+        commented.browse(scope="project:PROJ"),
         commented.status(),
     ]
     with pytest.raises(UnanswerableError) as refused:
@@ -648,7 +648,7 @@ def worklog(document_type: str, id_: str, title: str, *names: str) -> FrontMatte
         page(id_, title),
         source="worklog",
         type=document_type,
-        space=None,
+        scope="folder:worklog",
         people=tuple(Mention(role="participant", name=name) for name in names),
         version=None,
         revision="0123456789abcdef",
@@ -669,7 +669,7 @@ MET = (
             "Payments stand-up",
             *("Alex Example", "Sam Sample"),
         ),
-        links=(Link(relation="transcript", ref="t-20261027-1"),),
+        links=(Link(relation="transcript", document="worklog:t-20261027-1"),),
     ),
     worklog(
         "meeting",
@@ -680,7 +680,7 @@ MET = (
     worklog("meeting", "m-20261027-vendor-call", "Vendor call", "Sam Sample", "Alex Example"),
     replace(
         worklog("transcript", "t-20261027-1", "Stand-up", "Alex Example", "Sam Sample", "You"),
-        links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
+        links=(Link(relation="summary", document="worklog:m-20261027-payments-stand-up"),),
     ),
     worklog("transcript", "t-20261020-1", "Retrospective", "You", "Unverified"),
     worklog("transcript", "t-20261021-1", "Planning", "You", "Robin Example"),
@@ -790,7 +790,7 @@ def test_read_shows_a_meeting_s_participants_and_its_transcript_and_back(met: Li
 def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: Path) -> None:
     """Twelve meetings that one transcript summarises, each id of 64 characters after its day."""
     meetings = [f"m-20261027-{number:02}-{'x' * 61}" for number in range(12)]
-    links = tuple(Link(relation="summary", ref=each) for each in meetings)
+    links = tuple(Link(relation="summary", document=f"worklog:{each}") for each in meetings)
     front = replace(worklog("transcript", "t-20261027-1", "Stand-up"), links=links)
     read = parts(built(tmp_path, [(front, None)]).read("t-20261027-1"))[1]
     assert f"\nsummary: {'; '.join(meetings[:10])}; 2 more\n" in read
@@ -1249,8 +1249,8 @@ def test_out_of_range_is_refused(tmp_path: Path, arguments: dict[str, int], mess
         library.read("196845", **arguments)
 
 
-def test_every_slice_carries_the_mirror_date(tmp_path: Path) -> None:
-    """The first slice has every key; later ones the title, path and mirror date."""
+def test_a_later_slice_carries_the_title_and_path(tmp_path: Path) -> None:
+    """The first slice has every key; later ones the title and path."""
     library = built(tmp_path, [(page("196845", "Kafka", labels=("ops",)), None)])
     first = library.read("196845", max_chars=20)
     assert "\nlabels: ops\n" in parts(first)[1]
@@ -1260,7 +1260,6 @@ def test_every_slice_carries_the_mirror_date(tmp_path: Path) -> None:
     assert frame.splitlines() == [
         "title: Kafka",
         f"path: {location(page('196845', 'Kafka'))}",
-        "mirrored: 2026-10-20 21:52 UTC",
     ]
 
 
@@ -1274,15 +1273,15 @@ def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
     library = built(
         tmp_path,
         [
-            (page("100", "Home", space="DOC"), None),
-            (page("101", "A", space="DOC", breadcrumb=("Home",)), None),
-            (page("102", "A B", space="DOC", breadcrumb=("Home",)), None),
-            (page("103", "Item 10", space="DOC", breadcrumb=("Home", "Folder")), None),
-            (page("104", "Item 2", space="DOC", breadcrumb=("Home", "Folder")), None),
-            (page("105", "Child", space="DOC", breadcrumb=("Home", "A")), None),
+            (page("100", "Home", scope="space:DOC"), None),
+            (page("101", "A", scope="space:DOC", breadcrumb=("Home",)), None),
+            (page("102", "A B", scope="space:DOC", breadcrumb=("Home",)), None),
+            (page("103", "Item 10", scope="space:DOC", breadcrumb=("Home", "Folder")), None),
+            (page("104", "Item 2", scope="space:DOC", breadcrumb=("Home", "Folder")), None),
+            (page("105", "Child", scope="space:DOC", breadcrumb=("Home", "A")), None),
         ],
     )
-    assert tree_lines(library.browse(space="doc")) == [
+    assert tree_lines(library.browse(scope="space:doc")) == [
         "- Home (100)",
         "  - A (101)",
         "    - Child (105)",
@@ -1291,7 +1290,7 @@ def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
         "    - Item 2 (104)",
         "    - Item 10 (103)",
     ]
-    assert tree_lines(library.browse(space="DOC", parent="101")) == ["- Child (105)"]
+    assert tree_lines(library.browse(scope="space:DOC", parent="101")) == ["- Child (105)"]
 
 
 def test_documents_with_one_place_in_the_tree_come_by_path(tmp_path: Path) -> None:
@@ -1299,11 +1298,11 @@ def test_documents_with_one_place_in_the_tree_come_by_path(tmp_path: Path) -> No
     library = built(
         tmp_path,
         [
-            (page("102", "Same", space="DOC"), f"# Same\n\n{LOREM}\n"),
-            (page("101", "Same", space="DOC"), f"# Same\n\n{LOREM}\n"),
+            (page("102", "Same", scope="space:DOC"), f"# Same\n\n{LOREM}\n"),
+            (page("101", "Same", scope="space:DOC"), f"# Same\n\n{LOREM}\n"),
         ],
     )
-    first = library.browse(space="DOC", limit=1)
+    first = library.browse(scope="space:DOC", limit=1)
     second = follow(library, first)
     assert second is not None
     assert [tree_lines(first), tree_lines(second)] == [["- Same (101)"], ["- Same (102)"]]
@@ -1314,12 +1313,12 @@ def test_a_page_of_results_names_the_ancestors_of_its_first_line(tmp_path: Path)
     library = built(
         tmp_path,
         [
-            (page("100", "Home", space="DOC"), None),
-            (page("101", "A", space="DOC", breadcrumb=("Home",)), None),
-            (page("105", "Child", space="DOC", breadcrumb=("Home", "A")), None),
+            (page("100", "Home", scope="space:DOC"), None),
+            (page("101", "A", scope="space:DOC", breadcrumb=("Home",)), None),
+            (page("105", "Child", scope="space:DOC", breadcrumb=("Home", "A")), None),
         ],
     )
-    second = follow(library, library.browse(space="DOC", limit=2))
+    second = follow(library, library.browse(scope="space:DOC", limit=2))
     assert second is not None
     assert tree_lines(second)[0] == "- [Home / A]"
     assert tree_lines(second)[1] == "    - Child (105)"
@@ -1338,7 +1337,7 @@ def test_a_project_is_browsed_by_the_titles_along_parents(tmp_path: Path) -> Non
             (issue("PROJ-9", "Early"), None),
         ],
     )
-    assert tree_lines(library.browse(project="PROJ")) == [
+    assert tree_lines(library.browse(scope="project:PROJ")) == [
         "- Early (PROJ-9)",
         "- Epic (PROJ-10)",
         "  - Story (PROJ-2)",
@@ -1347,15 +1346,34 @@ def test_a_project_is_browsed_by_the_titles_along_parents(tmp_path: Path) -> Non
         "- [Other epic]",
         "  - Orphan (PROJ-3)",
     ]
-    assert tree_lines(library.browse(project="PROJ", parent="PROJ-2")) == ["- Sub-task (PROJ-1)"]
+    assert tree_lines(library.browse(scope="PROJ", parent="PROJ-2")) == ["- Sub-task (PROJ-1)"]
+
+
+def test_a_key_of_two_scopes_is_refused_unless_narrowed(tmp_path: Path) -> None:
+    """The space PAY and the project PAY: the key alone names both, as the filter does."""
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Payments home", scope="space:PAY"), None),
+            (issue("PAY-1", "Payments epic"), None),
+        ],
+    )
+    with pytest.raises(UnanswerableError) as refused:
+        library.browse(scope="pay")
+    assert parts(str(refused.value))[1] == "project:PAY (jira), space:PAY (confluence)"
+    assert tree_lines(library.browse(scope="space:pay")) == ["- Payments home (100)"]
+    assert tree_lines(library.browse(scope="PAY", source="jira")) == ["- Payments epic (PAY-1)"]
+    assert sorted(refs(library.search("payments", filters={"scope": "pay"}))) == ["100", "PAY-1"]
 
 
 def test_a_deep_chain_still_moves_on(tmp_path: Path) -> None:
     """Sixty levels of long folder titles leave room for one document per page."""
     folders = tuple(f"Folder {level} " + "x" * 190 for level in range(60))
-    documents = [page(str(200 + n), f"Deep {n}", space="DOC", breadcrumb=folders) for n in range(3)]
+    documents = [
+        page(str(200 + n), f"Deep {n}", scope="space:DOC", breadcrumb=folders) for n in range(3)
+    ]
     library = built(tmp_path, [(front, None) for front in documents])
-    answer: str | None = library.browse(space="DOC", limit=1)
+    answer: str | None = library.browse(scope="space:DOC", limit=1)
     seen = []
     while answer is not None:
         seen += re.findall(r"\((\d+), updated", answer)
@@ -1363,18 +1381,18 @@ def test_a_deep_chain_still_moves_on(tmp_path: Path) -> None:
     assert seen == ["200", "201", "202"]
 
 
-def test_browse_needs_space_or_project(varied: Library) -> None:
-    """Neither, or both, is refused, listing the spaces and projects."""
+def test_browse_needs_a_scope(varied: Library) -> None:
+    """None is refused, listing the scopes, the most documents first."""
     with pytest.raises(UnanswerableError) as refused:
         varied.browse()
-    assert parts(str(refused.value))[1] == "space ENG, space OPS, project PROJ"
+    assert parts(str(refused.value))[1] == "space:ENG, project:PROJ, space:OPS"
 
 
 def test_status_says_what_the_index_holds(varied: Library) -> None:
     """Counts by type, space and project, and the build time."""
     content = parts(varied.status())[1]
     assert "documents: page 32, issue 2; sections: " in content
-    assert "spaces: ENG 31, OPS 1\nprojects: PROJ 2\n" in content
+    assert "scopes: space:ENG 31, project:PROJ 2, space:OPS 1\n" in content
     assert content.startswith("built: 2026-10-20 21:52 UTC\n")
 
 
@@ -1411,7 +1429,7 @@ def test_status_counts_the_persons_and_names_those_of_several_identities(
         write(tmp_path / "docs", front)
     build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
     content = parts(Library(SqliteIndex(tmp_path / "index.sqlite"), tmp_path / "docs").status())[1]
-    assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
+    assert f"\n{line}\nfiles skipped at build: 0\n" in content
 
 
 def test_status_names_five_names_of_several_identities_then_how_many_more(
@@ -1449,23 +1467,6 @@ def test_no_index_is_refused_with_the_command_that_builds_it(tmp_path: Path) -> 
         library.status()
 
 
-def test_each_tool_shows_the_mirror_date_apart_from_the_others(tmp_path: Path) -> None:
-    """The date of the copy, not of the last edit, is what each answer calls mirrored."""
-    fetched, created = MOMENT + timedelta(days=3), MOMENT - timedelta(days=10)
-    front = page("196845", "Kafka", fetched_at=fetched, created=created, labels=("ops",))
-    library = built(tmp_path, [(front, None)])
-    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23 |" in library.search("kafka")
-    first = parts(library.read("196845", max_chars=20))[1]
-    for line in ("mirrored: 2026-10-23 21:52 UTC", "created: 2026-10-10 21:52 UTC"):
-        assert f"\n{line}\n" in first
-    assert "\nupdated: 2026-10-20 21:52 UTC\n" in first
-    later = follow(library, library.read("196845", max_chars=20))
-    assert later is not None
-    assert "\nmirrored: 2026-10-23 21:52 UTC\n" in parts(later)[1]
-    assert "(196845, updated 2026-10-20, mirrored 2026-10-23)" in library.browse(space="ENG")
-    assert "\nnewest mirror date: 2026-10-23 21:52 UTC\n" in library.status()
-
-
 def test_what_changed_pages_through_every_document_once(varied: Library) -> None:
     """Following the cursor of a listing by update gives each document once, in order."""
     answer: str | None = varied.search(sort="updated")
@@ -1485,7 +1486,7 @@ def test_what_changed_pages_through_every_document_once(varied: Library) -> None
 @pytest.mark.parametrize("parent", ["999999", "PROJ-7", "196846"])
 def test_a_parent_outside_the_space_is_not_mirrored(varied: Library, parent: str) -> None:
     """A parent that the space does not hold lists nothing."""
-    assert varied.browse(space="ENG", parent=parent).startswith("Not mirrored:")
+    assert varied.browse(scope="space:ENG", parent=parent).startswith("Not mirrored:")
 
 
 def test_only_a_query_of_more_than_ten_words_is_said_cut(tmp_path: Path) -> None:
@@ -1519,7 +1520,7 @@ def test_each_hit_ends_its_second_line_with_who_and_when(people: Library) -> Non
 def test_a_hit_cuts_each_name_type_and_status_at_60_characters(tmp_path: Path) -> None:
     """As labels are: 59 characters and an ellipsis."""
     long = "Long name " * 10
-    front = issue("PROJ-1", "Broker", issue_type=long, status=long, assignee=long, author=long)
+    front = issue("PROJ-1", "Broker", subtype=long, status=long, assignee=long, author=long)
     library = built(tmp_path, [(front, None)])
     cut = f"{long[:59]}…"
     assert dict(FACTS.findall(parts(library.search("broker"))[1])) == {
@@ -1535,7 +1536,7 @@ def test_an_issue_without_assignee_says_so_and_a_work_log_entry_its_status(
         page("e-0123456789abcdef-2", "Broker notes", status="WAITING"),
         source="worklog",
         type="entry",
-        space=None,
+        scope="folder:worklog",
         people=(),
         version=None,
         revision="0123456789abcdef",

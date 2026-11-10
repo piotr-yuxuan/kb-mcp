@@ -25,6 +25,7 @@ from kb_mcp.kernel.names import (
     ENTRY_TYPE,
     MEETING_TYPE,
     TRANSCRIPT_TYPE,
+    WORKLOG_SCOPE_TYPE,
     WORKLOG_TYPES,
     RefusedError,
     require,
@@ -57,14 +58,13 @@ MEETING_FILE = "meeting-"
 # The folder of each that holds archived transcripts.
 ARCHIVED = "archive"
 ORG = ".org"
-# The work log's name as a source, in its documents' front matter.
 # A document's revision: a digest of what pandoc converts, and how.
 WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
 # The roles of the work log's documents, which hold no other: a meeting's participants
 # and a transcript's speakers.
 WORKLOG_ROLES = frozenset({PARTICIPANT})
 # The keys of the front matter that Confluence or Jira fills, and the work log never.
-NOT_FILLED = ("key", "space", "project", "issue_type", "version")
+NOT_FILLED = ("key", "subtype", "parent", "version")
 # The relations of a meeting to its transcript, and of a transcript to each meeting
 # that links to it, as the mirror's front matter names them.
 TRANSCRIBED = "transcript"
@@ -161,12 +161,15 @@ class WorklogFrontMatter(FrontMatter):
     def check_worklog(self) -> Self:
         """Refuse what the layout's table rules out for the work log.
 
-        A type not the work log's, a key that it never fills, an id off its
-        type's rule, so that a day never bears a meeting's, a revision off
-        ``WORKLOG_REVISION``, and a role of another source.
+        A type not the work log's, a scope other than its source's one, ``folder:<source>``,
+        a key that it never fills, an id off its type's rule, so that a day never bears a
+        meeting's, a revision off ``WORKLOG_REVISION``, and a role of another source.
         """
         if self.type not in WORKLOG_TYPES:
             message = "type: not one of the work log's types"
+            raise RefusedError(message)
+        if self.scope != f"{WORKLOG_SCOPE_TYPE}:{self.source}":
+            message = "scope: not the source's one scope"
             raise RefusedError(message)
         filled = [name for name in NOT_FILLED if getattr(self, name) is not None]
         if filled:

@@ -264,24 +264,21 @@ def test_the_documents_are_listed_and_counted(written: Written) -> None:
         assert [each.path for each in reader.recent(Filters(), "created", 0, 1)[1]] == [
             RUNBOOK_PATH
         ]
-        assert reader.values("space") == [("ENG", 1)]
-        assert reader.values("project") == [("PROJ", 1)]
+        assert reader.values("scope") == [("project:PROJ", 1), ("space:ENG", 1)]
         assert reader.values("label") == [("ops", 1)]
         assert reader.values("source") == [("confluence", 1), ("jira", 1)]
 
 
 def test_the_summary_says_what_the_index_holds(written: Written) -> None:
-    """Its documents by type, space and project, its sections, and when it was built."""
+    """Its documents by type and scope, its sections, and when it was built."""
     with written(BOTH).reading() as reader:
         summary = reader.index_status()
         assert reader.built_at() == MOMENT
         assert reader.build()
     assert summary.built_at == MOMENT
     assert summary.types == {"page": 1, "issue": 1}
-    assert summary.spaces == {"ENG": 1}
-    assert summary.projects == {"PROJ": 1}
+    assert summary.scopes == {"space:ENG": 1, "project:PROJ": 1}
     assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
-    assert summary.newest_fetch == MOMENT
     assert summary.persons.count == 1  # one author of both
     assert (summary.model, summary.chunks, summary.chunking) == (None, 0, None)
 
@@ -294,7 +291,7 @@ COMMENTED = MOMENT - timedelta(days=4)
 INSIDE = page(
     "1001",
     "Alike",
-    space="OPS",
+    scope="space:OPS",
     status="archived",
     labels=("kept",),
     created=MOMENT - timedelta(days=9),
@@ -315,7 +312,7 @@ OUTSIDE = issue(
     "PROJ-8",
     "Alike",
     status="Done",
-    issue_type="Bug",
+    subtype="Bug",
     created=MOMENT,
     updated=MOMENT,
     people=(Mention(role="commenter", name=BO, at=(COMMENTED - timedelta(days=1),)),),
@@ -338,11 +335,11 @@ ATTENDED = (*ALIKE, FilledDocument(front=MEETING, body=ALIKE_BODY, chunks=SAME_C
     [
         (Filters(source="confluence"), INSIDE),
         (Filters(source="jira"), OUTSIDE),
-        (Filters(space="OPS"), INSIDE),
-        (Filters(project="PROJ"), OUTSIDE),
+        (Filters(scope="space:OPS"), INSIDE),
+        (Filters(scope="project:PROJ"), OUTSIDE),
         (Filters(status="archived"), INSIDE),
         (Filters(label="kept"), INSIDE),
-        (Filters(issue_type="Bug"), OUTSIDE),
+        (Filters(subtype="Bug"), OUTSIDE),
         (Filters(updated_after=MOMENT), OUTSIDE),
         (Filters(updated_before=MOMENT), INSIDE),
         (Filters(created_after=MOMENT), OUTSIDE),
@@ -581,7 +578,7 @@ def test_a_document_put_again_is_replaced(written: Written) -> None:
 LONE = page(
     "1003",
     "Lone page",
-    space="OPS",
+    scope="space:OPS",
     labels=("alone",),
     people=(Mention(role="author", name=BO),),
 )
@@ -604,14 +601,14 @@ def test_a_document_removed_leaves_no_trace(written: Written) -> None:
             [RUNBOOK_PATH, UPGRADE_PATH]
         )
         assert reader.recent(Filters(), "updated", 0, 10)[0] == len(BOTH)
-        assert reader.values("space") == [("ENG", 1)]
+        assert reader.values("scope") == [("project:PROJ", 1), ("space:ENG", 1)]
         assert ("alone", 1) not in reader.values("label")
         assert reader.values("author") == [("A Person", 2)]
         assert reader.persons(people.name_key(BO)) == []
         summary = reader.index_status()
         assert summary.types == {"page": 1, "issue": 1}
         assert summary.sections == len(sections(RUNBOOK_BODY)) + len(sections(UPGRADE_BODY))
-        assert summary.spaces == {"ENG": 1}
+        assert summary.scopes == {"project:PROJ": 1, "space:ENG": 1}
         assert path not in reader.held().documents
 
 

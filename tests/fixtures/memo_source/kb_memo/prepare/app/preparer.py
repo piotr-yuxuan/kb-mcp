@@ -64,12 +64,12 @@ def prepare(run: SourceRun) -> Outcome[MemoCounts]:
             id=identifier,
             key=None,
             title=one_line(path.stem),
-            space=None,
-            project=None,
+            scope=f"folder:{SOURCE}",
             status="",
-            issue_type=None,
+            subtype=None,
             labels=(),
             people=(),
+            parent=None,
             links=(),
             created=when,
             updated=when,
@@ -77,7 +77,6 @@ def prepare(run: SourceRun) -> Outcome[MemoCounts]:
             revision=sha256(text.encode()).hexdigest(),
             url=None,
             breadcrumb=(),
-            fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
     changes = write_changed(run.settings.docs, wanted, owned, remove=True)

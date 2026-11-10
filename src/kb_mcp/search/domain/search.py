@@ -1,7 +1,7 @@
 """Search's pure rules, and what the index hands back.
 
 How a query becomes expressions for the index, how a body is cut into sections, and in
-which order a space or a project is browsed. Nothing here reads a file or the index:
+which order a scope is browsed. Nothing here reads a file or the index:
 ``search.adapters.sqlite_index`` runs the expressions and returns these types.
 """
 
@@ -267,16 +267,16 @@ class Score(Record):
 class Filters(Record):
     """What narrows a search, each value as the index holds it; None does not narrow.
 
-    A person, by their id: ``person`` in any role, each other in the role it names. The
-    comment dates narrow by one comment: the commenter's, when one is given.
+    A scope, as ``space:ENG``, or by its key alone, in any scope type. A person, by their
+    id: ``person`` in any role, each other in the role it names. The comment dates narrow
+    by one comment: the commenter's, when one is given.
     """
 
     source: str | None = None
-    space: str | None = None
-    project: str | None = None
+    scope: str | None = None
     status: str | None = None
     label: str | None = None
-    issue_type: str | None = None
+    subtype: str | None = None
     person: str | None = None
     author: str | None = None
     creator: str | None = None
@@ -325,10 +325,8 @@ class IndexStatus(Record):
     built_at: datetime
     skipped: int  # files of the mirror that could not be read
     types: dict[str, int]  # documents per type: page, blogpost, issue
-    spaces: dict[str, int]
-    projects: dict[str, int]
+    scopes: dict[str, int]  # documents per scope, as space:ENG
     sections: int
-    newest_fetch: datetime | None
     persons: PersonCounts
     model: str | None = None  # the model of the vectors, if any
     chunks: int = 0

@@ -207,7 +207,7 @@ def roles(name: str, held: Sequence[tuple[str, int, datetime | None]]) -> str:
 def facts(front: FrontMatter) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
-    Its issue type, its status unless current, its assignee (``unassigned`` for a document
+    Its subtype, its status unless current, its assignee (``unassigned`` for a document
     with a key, an issue, with none), its author, its creator when named otherwise than its
     author, and its created day, leaving out what it lacks.
     """
@@ -215,7 +215,7 @@ def facts(front: FrontMatter) -> str:
     unassigned = "unassigned" if front.key is not None else ""
     creator = front.creator
     shown = (
-        short(front.issue_type, LABEL) if front.issue_type else "",
+        short(front.subtype, LABEL) if front.subtype else "",
         "" if front.status == "current" else short(front.status, LABEL),
         f"assignee {short(front.assignee, LABEL)}" if front.assignee else unassigned,
         f"author {short(front.author, LABEL)}" if front.author else "",
@@ -226,12 +226,11 @@ def facts(front: FrontMatter) -> str:
 
 
 def dated(front: FrontMatter, held: str | None) -> str:
-    """Say when a ranked document was updated and mirrored, what it is, and who holds it.
+    """Say when a ranked document was updated, what it is, and who holds it.
 
     ``held``, unless None, ends it: a person's roles there, as ``roles`` says them.
     """
-    when = f"updated {stamp(front.updated)} | mirrored {front.fetched_at:%Y-%m-%d}"
-    return f"{when} | {facts(front)}" + (f" | {held}" if held else "")
+    return f"updated {stamp(front.updated)} | {facts(front)}" + (f" | {held}" if held else "")
 
 
 def hit(
@@ -272,8 +271,8 @@ def metadata(entry: IndexedDocument, *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
     ``whole`` gives every key that a reader needs, but the source, id, key, version and
-    revision that the ref and the dates stand for; otherwise the title, path and mirror
-    date alone. People
+    revision that the ref and the dates stand for; otherwise the title and path alone.
+    People
     come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
     the last. Links come by ref, one line per relation in the order of the relations:
@@ -282,17 +281,17 @@ def metadata(entry: IndexedDocument, *, whole: bool) -> str:
     name that a hit cuts comes whole.
     """
     front = entry.front
-    rows = [("title", front.title), ("path", entry.path), ("mirrored", stamp(front.fetched_at))]
+    rows = [("title", front.title), ("path", entry.path)]
     if whole:
         labels = ", ".join(short(label, LABEL) for label in front.labels[:LABELS])
         rows += [
             ("ref", ref_of(front.key, front.id)),
             ("type", front.type),
-            ("space", front.space),
-            ("project", front.project),
-            ("issue type", front.issue_type),
+            ("scope", front.scope),
+            ("subtype", front.subtype),
             ("status", front.status),
             ("labels", labels),
+            ("parent", front.parent),
             ("breadcrumb", " / ".join(front.breadcrumb)),
         ]
         for role in ROLES:
@@ -305,7 +304,11 @@ def metadata(entry: IndexedDocument, *, whole: bool) -> str:
             more = f"; {len(held) - NAMES} more" if len(held) > NAMES else ""
             rows.append((role, "; ".join(names) + more))
         for relation in RELATIONS:
-            refs = [short(link.ref) for link in front.links if link.relation == relation]
+            refs = [
+                short(link.document.partition(":")[2])
+                for link in front.links
+                if link.relation == relation
+            ]
             more = f"; {len(refs) - LABELS} more" if len(refs) > LABELS else ""
             rows.append((relation, "; ".join(refs[:LABELS]) + more))
         rows += [
@@ -335,8 +338,7 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) ->
         front = entry.front
         line = (
             f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
-            f" ({ref_of(front.key, front.id)}, updated {front.updated:%Y-%m-%d},"
-            f" mirrored {front.fetched_at:%Y-%m-%d})"
+            f" ({ref_of(front.key, front.id)}, updated {front.updated:%Y-%m-%d})"
         )
         if missing := ancestors[common:]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"
@@ -371,8 +373,7 @@ def status(state: IndexStatus, docs: Path) -> str:
             if state.model
             else "search by meaning: off, the index holds no vectors; run kb-mcp embed"
         ),
-        f"spaces: {counts(state.spaces)}",
-        f"projects: {counts(state.projects)}",
+        f"scopes: {counts(state.scopes)}",
         (
             f"persons: {persons.count}, {persons.across} in more than one source,"
             f" {persons.alone} by name alone"
@@ -380,7 +381,6 @@ def status(state: IndexStatus, docs: Path) -> str:
             + (f", and {rest} more" if rest > 0 else "")
         ),
         f"files skipped at build: {state.skipped}",
-        f"newest mirror date: {stamp(state.newest_fetch) if state.newest_fetch else 'none'}",
         f"mirror files: {docs}",
     ]
     return answer("The index of the offline mirror.", "\n".join(lines))

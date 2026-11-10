@@ -144,9 +144,9 @@ tree.
 [`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
 [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), the stored
 listings and `listed_at.json`, which are what a scope listed at its last whole read. On
-the serving side: [`SCOPES`](../../src/kb_mcp/mcp/app/surface.py) and
-[`Library.key_of`](../../src/kb_mcp/mcp/app/tools.py); the front matter's fields `space`
-and `project`, the filters of the same names, and `browse(space=, project=, parent=)`.
+the serving side: the front matter's field `scope`, as `space:ENG`, the filter of the
+same name, read by [`scope_of`](../../src/kb_mcp/mcp/app/tools.py), and
+`browse(scope=, parent=, source=)`.
 
 ### document
 
@@ -228,7 +228,7 @@ the same document at other stages,
 connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py), with
 [`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py);
 [`Link`](../../src/kb_mcp/mirror/domain/mirror.py),
-[`Link.ref`](../../src/kb_mcp/mirror/domain/mirror.py) and
+[`Link.document`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py);
 [`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
 which gives a page's and an issue's breadcrumb;
@@ -241,8 +241,8 @@ carry the absence; [`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py),
 [`Asked.sort`](../../src/kb_mcp/mcp/app/tools.py),
 [`metadata`](../../src/kb_mcp/mcp/app/responses.py) and
 [`facts`](../../src/kb_mcp/mcp/app/responses.py), which serve the properties; the front
-matter's keys `issue_type` and `url`, with the index's columns and the filter of the
-same names, which hold subtype and URL; the wrapper `<untrusted-reference-data>` of
+matter's keys `subtype`, `url` and `parent`, with the index's columns of the same names,
+and the filter `subtype`; the wrapper `<untrusted-reference-data>` of
 [`answer`](../../src/kb_mcp/mcp/app/responses.py) and the text
 [`UNTRUSTED`](../../src/kb_mcp/mcp/app/surface.py).
 

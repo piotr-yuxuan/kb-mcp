@@ -78,11 +78,12 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
-# section_words; 8 from plan 058, with identities.
-SCHEMA = "8"
+# section_words; 8 from plan 058, with identities; 9 from plan 057, with scopes, subtypes,
+# parents, and links by document id.
+SCHEMA = "9"
 # The former schemas whose mirror's files this version reads as they are: rebuilding the
 # index is enough, with no prepare first.
-SAME_MIRROR = frozenset({"6", "7"})
+SAME_MIRROR = frozenset({"6", "7", "8"})
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -97,10 +98,10 @@ CREATE TABLE documents (
   rowid INTEGER PRIMARY KEY,
   path TEXT NOT NULL UNIQUE, digest TEXT NOT NULL,
   source TEXT NOT NULL, type TEXT NOT NULL, id TEXT NOT NULL, key TEXT,
-  title TEXT NOT NULL, space TEXT, project TEXT, status TEXT NOT NULL, issue_type TEXT,
-  labels TEXT NOT NULL, people TEXT NOT NULL, links TEXT NOT NULL, created TEXT NOT NULL,
-  updated TEXT NOT NULL, version INTEGER, revision TEXT NOT NULL, url TEXT,
-  breadcrumb TEXT NOT NULL, fetched_at TEXT NOT NULL,
+  title TEXT NOT NULL, scope TEXT NOT NULL, status TEXT NOT NULL, subtype TEXT,
+  labels TEXT NOT NULL, people TEXT NOT NULL, parent TEXT, links TEXT NOT NULL,
+  created TEXT NOT NULL, updated TEXT NOT NULL, version INTEGER, revision TEXT NOT NULL,
+  url TEXT, breadcrumb TEXT NOT NULL,
   length INTEGER NOT NULL, first_section INTEGER NOT NULL, last_section INTEGER NOT NULL,
   UNIQUE (source, id)
 );
@@ -136,17 +137,17 @@ CREATE TABLE chunks (
   key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
-# The documents that pass a search's filters, as a JSON list of rowids. A person is
-# given by their id, in any role or in the role of the filter.
+# The documents that pass a search's filters, as a JSON list of rowids. A scope is given
+# whole, or by its key alone, which matches it in every scope type. A person is given by
+# their id, in any role or in the role of the filter.
 KEPT = """
 SELECT json_group_array(d.rowid) FROM documents d
 WHERE (:source IS NULL OR d.source = :source)
-  AND (:space IS NULL OR d.space = :space)
-  AND (:project IS NULL OR d.project = :project)
+  AND (:scope IS NULL OR :scope IN (d.scope, substr(d.scope, instr(d.scope, ':') + 1)))
   AND (:status IS NULL OR d.status = :status)
   AND (:label IS NULL
        OR EXISTS (SELECT 1 FROM labels l WHERE l.document = d.rowid AND l.label = :label))
-  AND (:issue_type IS NULL OR d.issue_type = :issue_type)
+  AND (:subtype IS NULL OR d.subtype = :subtype)
   AND (:person IS NULL OR d.rowid IN (SELECT p.document FROM people p WHERE p.person = :person))
   AND (:author IS NULL OR d.rowid IN
        (SELECT p.document FROM people p WHERE p.role = 'author' AND p.person = :author))
@@ -311,7 +312,8 @@ SUMMARY_LINKS = """
 SELECT t.rowid, m.rowid
 FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
 WHERE json_extract(l.value, '$.relation') = 'summary'
-  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref')
+  AND m.source = substr(l.value ->> '$.document', 1, instr(l.value ->> '$.document', ':') - 1)
+  AND m.id = substr(l.value ->> '$.document', instr(l.value ->> '$.document', ':') + 1)
 """
 # A person's documents per role, then per source with the newest update, the most first.
 PERSON_ROLES = """
@@ -358,13 +360,12 @@ ORDER BY 2 DESC, 1
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
-    "space": "SELECT space, count(*) FROM documents WHERE space IS NOT NULL"
-    " GROUP BY 1 ORDER BY 2 DESC, 1",
-    "project": "SELECT project, count(*) FROM documents WHERE project IS NOT NULL"
+    "scope": "SELECT scope, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
+    "scope key": "SELECT substr(scope, instr(scope, ':') + 1), count(*) FROM documents"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "status": "SELECT status, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
-    "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
+    "subtype": "SELECT subtype, count(*) FROM documents WHERE subtype IS NOT NULL"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     # By the documents other than transcripts first, as participant's below.
     "person": "SELECT p.name, count(DISTINCT p.document) FROM people p"
@@ -440,7 +441,6 @@ class Writer:
             "breadcrumb": json.dumps(front.breadcrumb, ensure_ascii=False),
             "created": moment(front.created),
             "updated": moment(front.updated),
-            "fetched_at": moment(front.fetched_at),
             "path": path,
             "digest": put.digest,
             "length": sum(len(section.text) for section in sections),
@@ -449,13 +449,12 @@ class Writer:
         }
         try:
             cursor = self._connection.execute(
-                "INSERT INTO documents (path, digest, source, type, id, key, title, space,"
-                " project, status, issue_type, labels, people, links, created, updated, version,"
-                " revision, url, breadcrumb, fetched_at, length, first_section, last_section)"
-                " VALUES (:path, :digest, :source, :type, :id, :key, :title, :space, :project,"
-                " :status, :issue_type, :labels, :people, :links, :created, :updated, :version,"
-                " :revision, :url, :breadcrumb, :fetched_at, :length, :first_section,"
-                " :last_section)",
+                "INSERT INTO documents (path, digest, source, type, id, key, title, scope,"
+                " status, subtype, labels, people, parent, links, created, updated, version,"
+                " revision, url, breadcrumb, length, first_section, last_section)"
+                " VALUES (:path, :digest, :source, :type, :id, :key, :title, :scope, :status,"
+                " :subtype, :labels, :people, :parent, :links, :created, :updated, :version,"
+                " :revision, :url, :breadcrumb, :length, :first_section, :last_section)",
                 values,
             )
         except sqlite3.IntegrityError:
@@ -739,10 +738,9 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         id=row["id"],
         key=row["key"],
         title=row["title"],
-        space=row["space"],
-        project=row["project"],
+        scope=row["scope"],
         status=row["status"],
-        issue_type=row["issue_type"],
+        subtype=row["subtype"],
         labels=tuple(json.loads(row["labels"])),
         people=tuple(
             Mention(
@@ -753,8 +751,10 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
             )
             for person in json.loads(row["people"])
         ),
+        parent=row["parent"],
         links=tuple(
-            Link(relation=link["relation"], ref=link["ref"]) for link in json.loads(row["links"])
+            Link(relation=link["relation"], document=link["document"])
+            for link in json.loads(row["links"])
         ),
         created=datetime.fromisoformat(row["created"]),
         updated=datetime.fromisoformat(row["updated"]),
@@ -762,7 +762,6 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         revision=row["revision"],
         url=row["url"],
         breadcrumb=tuple(json.loads(row["breadcrumb"])),
-        fetched_at=datetime.fromisoformat(row["fetched_at"]),
     )
     sections = row["last_section"] - row["first_section"] + 1
     return IndexedDocument(path=row["path"], front=front, length=row["length"], sections=sections)
@@ -771,7 +770,7 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
 class Reader:
     """Queries of one open index.
 
-    A list is bounded by a limit, or else by what one space, project or filter holds.
+    A list is bounded by a limit, or else by what one scope or filter holds.
     """
 
     def __init__(
@@ -869,7 +868,7 @@ class Reader:
         ]
 
     def listing(self, filters: Filters) -> list[IndexedDocument]:
-        """List every document that passes the filters, such as those of one space."""
+        """List every document that passes the filters, such as those of one scope."""
         rows = self._connection.execute(LISTING, {"kept": self.kept(filters)})
         return [indexed_document(row) for row in rows]
 
@@ -1074,7 +1073,6 @@ class Reader:
     def index_status(self) -> IndexStatus:
         """Say what the index holds and when it was built."""
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
-        newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         chunks = self._connection.execute("SELECT count(*) FROM chunks").fetchone()[0]
         persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
@@ -1086,10 +1084,8 @@ class Reader:
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
             types=dict(self.values("type")),
-            spaces=dict(self.values("space")),
-            projects=dict(self.values("project")),
+            scopes=dict(self.values("scope")),
             sections=sections,
-            newest_fetch=None if newest is None else datetime.fromisoformat(newest),
             persons=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
             chunks=chunks,

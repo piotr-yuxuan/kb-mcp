@@ -34,7 +34,6 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import ref_of
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     UNREADABLE,
@@ -134,9 +133,9 @@ class Placed(Record):
 
     @property
     def ref(self) -> str:
-        """Name the document as links and images do: its key for Jira, else its id."""
+        """Name the document as the site's links and images do: its key for Jira, else its id."""
         document = self.document
-        return ref_of(document.key if isinstance(document, Issue) else None, document.id)
+        return document.key if isinstance(document, Issue) else document.id
 
 
 def readable[T](items: Iterable[T | Problem], problems: list[Problem]) -> list[T]:
@@ -283,9 +282,7 @@ def document_file(
 ) -> bytes:
     """Return the bytes of one document's file: its front matter, then its Markdown."""
     snapshot, document = placed.stored.snapshot, placed.document
-    matter = front_matter(
-        placed.source, snapshot, placed.stored.fetched_at, catalogue, context.link_targets.site
-    )
+    matter = front_matter(placed.source, snapshot, catalogue, context.link_targets.site)
     attachments = [
         (each.filename, None if asset is None else context.relative(asset))
         for each in snapshot.attachments

@@ -218,12 +218,12 @@ def prepare(run: SourceRun) -> Outcome[NotesCounts]:
             id=identifier,
             key=None,
             title=one_line(path.stem),
-            space=None,
-            project=None,
+            scope=f"folder:{SOURCE}",
             status="",
-            issue_type=None,
+            subtype=None,
             labels=(),
             people=(),
+            parent=None,
             links=(),
             created=when,
             updated=when,
@@ -231,7 +231,6 @@ def prepare(run: SourceRun) -> Outcome[NotesCounts]:
             revision=sha256(text.encode()).hexdigest(),
             url=None,
             breadcrumb=(),
-            fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
     changes = write_changed(run.settings.docs, wanted, owned, remove=True)
@@ -435,5 +434,3 @@ The server's words for sources wait until a plan composes them from the declarat
 - **The `source` filter** takes `confluence`, `jira` or `worklog` alone
   ([`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py)), and the server's instructions name
   those three ([`CLOSING`](../../src/kb_mcp/mcp/app/surface.py)).
-- **Filters by space or project** read the front matter's Atlassian-shaped keys, which a new
-  source fills with `null`.

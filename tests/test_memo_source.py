@@ -209,7 +209,7 @@ def test_a_second_prepare_writes_nothing(
     before = files_of(docs)
     for path, (data, _) in before.items():
         matter, _ = load(data.decode(), str(path))
-        assert (matter.created, matter.updated, matter.fetched_at) == (NOTED, NOTED, NOTED)
+        assert (matter.created, matter.updated, matter.scope) == (NOTED, NOTED, "folder:memo")
     assert changes_of(prepare_memo(config, registry, capsys)) == {
         "written": 0,
         "unchanged": 2,

@@ -33,6 +33,7 @@ from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
+from kb_mcp.mirror.domain.mirror import Link
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -328,7 +329,12 @@ def test_front_matter_says_status_labels_and_place(
     document_type, title = document
     matter = run.by_title(title, document_type).matter
     assert (matter.status, matter.labels, matter.breadcrumb) == (status, labels, breadcrumb)
-    assert (matter.fetched_at, matter.key, matter.space, matter.url) == (MODIFIED, None, None, None)
+    assert (matter.scope, matter.key, matter.parent, matter.url) == (
+        "folder:worklog",
+        None,
+        None,
+        None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -400,7 +406,7 @@ def test_an_edited_undated_entry_keeps_its_creation(run: Run) -> None:
     run.edit("todo.org", "Nothing dated here yet.", "Nothing dated here, still.")
     run()
     matter = run.by_title("Tidy the runbooks folder").matter
-    assert (matter.created, matter.updated, matter.fetched_at) == (MODIFIED, LATER, LATER)
+    assert (matter.created, matter.updated) == (MODIFIED, LATER)
 
 
 def test_an_edit_elsewhere_leaves_an_undated_entry_and_its_file(run: Run) -> None:
@@ -817,7 +823,10 @@ def one_way(files: list[MirrorFile]) -> list[tuple[str, str, str]]:
     """
     back = {"transcript": "summary", "summary": "transcript"}
     links = {
-        each.matter.id: {(link.relation, link.ref) for link in each.matter.links} for each in files
+        each.matter.id: {
+            (link.relation, link.document.removeprefix("worklog:")) for link in each.matter.links
+        }
+        for each in files
     }
     return sorted(
         (identifier, relation, ref)
@@ -868,9 +877,10 @@ def test_a_document_that_fails_with_no_file_is_no_link_s_other_end(
     assert (run.by_id(written).matter.links, one_way(run.files())) == ((), [])
     assert failed not in {each.matter.id for each in run.files()}
     assert run().problems == ()
-    assert [(each.relation, each.ref) for each in run.by_id(written).matter.links] == [
-        ("transcript" if written == STANDUP else "summary", failed)
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:"))
+        for each in run.by_id(written).matter.links
+    ] == [("transcript" if written == STANDUP else "summary", failed)]
     assert one_way(run.files()) == []
 
 
@@ -900,9 +910,9 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     assert "one edited word only" in run.by_title("WAITING Notes").body
     standup = run.by_id(STANDUP)
     assert "My own edited note before" in standup.body
-    assert [(each.relation, each.ref) for each in standup.matter.links] == [
-        ("transcript", "t-20261027-1")
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:")) for each in standup.matter.links
+    ] == [("transcript", "t-20261027-1")]
     assert [each.name for each in standup.matter.people] == ["Alex Example", "Sam Sample"]
     assert one_way(run.files()) == []
     warned = [each for each in logged if each["event"] == "worklog.unlinked"]
@@ -1014,9 +1024,10 @@ def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path
         ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
     ]
     assert kept.read_bytes() == before
-    assert [(each.relation, each.ref) for each in run.by_id(STANDUP).matter.links] == [
-        ("transcript", "t-20261027-1")
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:"))
+        for each in run.by_id(STANDUP).matter.links
+    ] == [("transcript", "t-20261027-1")]
     warned = [each for each in logged if each["event"] == "worklog.unlinked"]
     assert [(each["meetings"], each["first"]) for each in warned] == [
         (1, "meetings/2026-10-27 Tue/2.org")
@@ -1045,7 +1056,10 @@ def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run
     settle(run.root / new)
     assert run().problems == ()
     pairs = {
-        identifier: [(each.relation, each.ref) for each in run.by_id(identifier).matter.links]
+        identifier: [
+            (each.relation, each.document.removeprefix("worklog:"))
+            for each in run.by_id(identifier).matter.links
+        ]
         for identifier in ("m-20261027-retro", "t-20261027-3")
     }
     assert pairs == {
@@ -1195,9 +1209,11 @@ def test_a_meeting_links_to_the_transcript_that_its_property_names(run: Run) -> 
     """To the quoted transcript, or to the file under meetings/; a missing file, to none."""
     run()
     links = run.by_id(STANDUP).matter.links
-    assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-1")]
+    assert links == (Link(relation="transcript", document="worklog:t-20261027-1"),)
     links = run.by_id("m-20261027-vendor-call").matter.links
-    assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-meeting-1")]
+    assert [(each.relation, each.document.removeprefix("worklog:")) for each in links] == [
+        ("transcript", "t-20261027-meeting-1")
+    ]
     assert run.by_id("m-20261027-rollout-planning").matter.links == ()
     assert run.by_id("m-20261027-ledger-review").matter.links == ()
 
@@ -1210,7 +1226,9 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
     run()
     pairs = {STANDUP: "t-20261027-1", "m-20261027-vendor-call": "t-20261027-meeting-1"}
     found = {
-        each.matter.id: [(link.relation, link.ref) for link in each.matter.links]
+        each.matter.id: [
+            (link.relation, link.document.removeprefix("worklog:")) for link in each.matter.links
+        ]
         for each in run.files()
         if each.matter.links
     }
@@ -1271,9 +1289,9 @@ def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) ->
         run()
     linked = run.by_id(STANDUP)
     assert (linked.matter.created, linked.matter.updated) == (day, day)
-    assert [(each.relation, each.ref) for each in linked.matter.links] == [
-        ("transcript", "t-20261027-1")
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:")) for each in linked.matter.links
+    ] == [("transcript", "t-20261027-1")]
     outcomes = {
         each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
     }

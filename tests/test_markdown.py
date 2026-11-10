@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
@@ -23,12 +24,12 @@ LAYOUT_KEYS = [
     "id",
     "key",
     "title",
-    "space",
-    "project",
+    "scope",
     "status",
-    "issue_type",
+    "subtype",
     "labels",
     "people",
+    "parent",
     "links",
     "created",
     "updated",
@@ -36,7 +37,6 @@ LAYOUT_KEYS = [
     "revision",
     "url",
     "breadcrumb",
-    "fetched_at",
 ]
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, 371000, tzinfo=UTC)
 PAGE = FrontMatter(
@@ -45,12 +45,12 @@ PAGE = FrontMatter(
     id="196845",
     key=None,
     title="Yes",
-    space="MFS",
-    project=None,
+    scope="space:MFS",
     status="current",
-    issue_type=None,
+    subtype=None,
     labels=("probe", "2026"),
     people=(Mention(role="author", name="A Person"),),
+    parent="confluence:196001",
     links=(),
     created=MOMENT,
     updated=MOMENT,
@@ -58,7 +58,6 @@ PAGE = FrontMatter(
     revision="000003",
     url="https://site.example.invalid/wiki/spaces/MFS/pages/196845",
     breadcrumb=("Home", "Probes"),
-    fetched_at=MOMENT,
 )
 
 
@@ -68,12 +67,12 @@ ENTRY = FrontMatter(
     id="e-0123456789abcdef-2",
     key=None,
     title="Retrospective notes",
-    space=None,
-    project=None,
+    scope="folder:worklog",
     status="WAITING",
-    issue_type=None,
+    subtype=None,
     labels=("review", "ARCHIVE"),
     people=(),
+    parent=None,
     links=(),
     created=MOMENT,
     updated=MOMENT,
@@ -81,7 +80,6 @@ ENTRY = FrontMatter(
     revision="0123456789abcdef",
     url=None,
     breadcrumb=("todo.org_archive",),
-    fetched_at=MOMENT,
 )
 
 
@@ -93,10 +91,9 @@ ISSUE = FrontMatter(
     id="10000",
     key="PRB-1",
     title="What are archived ideas?",
-    space=None,
-    project="PRB",
+    scope="project:PRB",
     status="Parking lot",
-    issue_type="Idea",
+    subtype="Idea",
     labels=(),
     people=(
         Mention(role="author", name="A Person", identity="atlassian:account-1"),
@@ -110,14 +107,14 @@ ISSUE = FrontMatter(
         ),
         Mention(role="commenter", name="A Person", identity="atlassian:account-1", at=(LATE,)),
     ),
+    parent="jira:10002",
     links=(),
     created=MOMENT,
     updated=MOMENT,
     version=None,
     revision="20261020T215241.371000Z",
     url=None,
-    breadcrumb=("PRB-3",),
-    fetched_at=MOMENT,
+    breadcrumb=("Ideas",),
 )
 # The people of ISSUE as the layout writes them: each entry one line, in flow style.
 PEOPLE = (
@@ -143,18 +140,18 @@ def test_front_matter_reads_back_as_written() -> None:
     """Writing then reading gives the same front matter and body, to the second."""
     front_matter, body = load(dump(PAGE, "# Yes\n\nBody.\n"), "page.md")
     second = MOMENT.replace(microsecond=0)
-    assert front_matter == replace(PAGE, created=second, updated=second, fetched_at=second)
+    assert front_matter == replace(PAGE, created=second, updated=second)
     assert body == "# Yes\n\nBody.\n"
 
 
 def test_people_in_every_role_read_back_byte_for_byte() -> None:
     """Each person on one line, by role, with an identity and a commenter's times."""
     text = dump(ISSUE, "# What are archived ideas?\n")
-    assert f"labels: []\n{PEOPLE}links: []\ncreated: " in text
+    assert f"labels: []\n{PEOPLE}parent: jira:10002\nlinks: []\ncreated: " in text
     front_matter, body = load(text, "issue.md")
     assert dump(front_matter, body) == text
     second = MOMENT.replace(microsecond=0)
-    assert front_matter == replace(ISSUE, created=second, updated=second, fetched_at=second)
+    assert front_matter == replace(ISSUE, created=second, updated=second)
     assert (front_matter.author, front_matter.creator, front_matter.assignee) == (
         "A Person",
         "Another Person",
@@ -179,8 +176,9 @@ def test_a_former_account_reads_as_an_atlassian_identity_and_is_written_as_one()
 
 def test_an_identity_and_people_are_left_out_when_the_source_has_none() -> None:
     """No identity where the source gives none, ``[]`` without people or links; nobody named."""
-    assert "people:\n- {role: author, name: A Person}\nlinks: []\ncreated: " in dump(PAGE, "")
-    assert "people: []\nlinks: []\n" in dump(ENTRY, "")
+    page = "people:\n- {role: author, name: A Person}\nparent: confluence:196001\nlinks: []\n"
+    assert page in dump(PAGE, "")
+    assert "people: []\nparent: null\nlinks: []\n" in dump(ENTRY, "")
     assert (ENTRY.author, ENTRY.creator, ENTRY.assignee) == (None, None, None)
     assert (PAGE.author, PAGE.creator, PAGE.assignee) == ("A Person", None, None)
 
@@ -296,7 +294,7 @@ MEETING = replace(
         Mention(role="participant", name=name)
         for name in ("Alex Example", "Sam Sample", "Kim (not in the header)")
     ),
-    links=(Link(relation="transcript", ref="t-20261027-meeting-1"),),
+    links=(Link(relation="transcript", document="worklog:t-20261027-meeting-1"),),
 )
 TRANSCRIPT = replace(
     ENTRY,
@@ -306,8 +304,8 @@ TRANSCRIPT = replace(
     labels=(),
     people=tuple(Mention(role="participant", name=name) for name in ("Alex Example", "Sam Sample")),
     links=(
-        Link(relation="summary", ref="m-20261027-payments-stand-up"),
-        Link(relation="summary", ref="m-20261027-payments-stand-up-2"),
+        Link(relation="summary", document="worklog:m-20261027-payments-stand-up"),
+        Link(relation="summary", document="worklog:m-20261027-payments-stand-up-2"),
     ),
 )
 # Their people and links as the layout writes them: each entry one line, in flow style.
@@ -316,18 +314,20 @@ MEETING_LINES = (
     "- {role: participant, name: Alex Example}\n"
     "- {role: participant, name: Sam Sample}\n"
     "- {role: participant, name: Kim (not in the header)}\n"
+    "parent: null\n"
     "links:\n"
-    "- {relation: transcript, ref: t-20261027-meeting-1}\n"
+    "- {relation: transcript, document: 'worklog:t-20261027-meeting-1'}\n"
 )
 TRANSCRIPT_LINKS = (
     "links:\n"
-    "- {relation: summary, ref: m-20261027-payments-stand-up}\n"
-    "- {relation: summary, ref: m-20261027-payments-stand-up-2}\n"
+    "- {relation: summary, document: 'worklog:m-20261027-payments-stand-up'}\n"
+    "- {relation: summary, document: 'worklog:m-20261027-payments-stand-up-2'}\n"
 )
 TRANSCRIPT_LINES = (
     "people:\n"
     "- {role: participant, name: Alex Example}\n"
     "- {role: participant, name: Sam Sample}\n"
+    "parent: null\n"
     f"{TRANSCRIPT_LINKS}"
 )
 
@@ -342,55 +342,55 @@ def test_participants_and_links_read_back_byte_for_byte(front: FrontMatter, line
     front_matter, body = load(text, "meeting.md")
     assert dump(front_matter, body) == text
     second = MOMENT.replace(microsecond=0)
-    assert front_matter == replace(front, created=second, updated=second, fetched_at=second)
+    assert front_matter == replace(front, created=second, updated=second)
 
 
 @pytest.mark.parametrize(
     ("old", "new", "refusal"),
     [
         (
-            "{relation: summary, ref: m-20261027-payments-stand-up}",
-            "{relation: mentions, ref: m-20261027-payments-stand-up}",
+            "{relation: summary, document: 'worklog:m-20261027-payments-stand-up'}",
+            "{relation: mentions, document: 'worklog:m-20261027-payments-stand-up'}",
             r"^transcript\.md\.links\[0\]: relation: not one of the relations$",
         ),
         (
-            "ref: m-20261027-payments-stand-up}",
-            "ref: m-20261027-payments-stand-up, title: x}",
-            r"^transcript\.md\.links\[0\]: fields other than relation, ref, or out of order$",
+            "document: 'worklog:m-20261027-payments-stand-up'}",
+            "document: 'worklog:m-20261027-payments-stand-up', title: x}",
+            r"^transcript\.md\.links\[0\]: fields other than relation, document, or out of order$",
         ),
         (
-            "{relation: summary, ref: m-20261027-payments-stand-up-2}",
-            "{ref: m-20261027-payments-stand-up-2, relation: summary}",
+            "{relation: summary, document: 'worklog:m-20261027-payments-stand-up-2'}",
+            "{document: 'worklog:m-20261027-payments-stand-up-2', relation: summary}",
             r"^transcript\.md\.links\[1\]: fields other",
         ),
         (
-            "{relation: summary, ref: m-20261027-payments-stand-up}",
+            "{relation: summary, document: 'worklog:m-20261027-payments-stand-up'}",
             "{relation: summary}",
-            r"^transcript\.md\.links\[0\]\.ref: missing$",
+            r"^transcript\.md\.links\[0\]\.document: missing$",
         ),
         (
-            "ref: m-20261027-payments-stand-up}",
-            "ref: 'm-20261027 stand-up'}",
-            r"^transcript\.md\.links\[0\]: ref: does not match",
+            "document: 'worklog:m-20261027-payments-stand-up'}",
+            "document: m-20261027-payments-stand-up}",
+            r"^transcript\.md\.links\[0\]: document: does not match",
         ),
         (
-            "ref: m-20261027-payments-stand-up}",
-            "ref: ../m-20261027-payments-stand-up.md}",
-            r"^transcript\.md\.links\[0\]: ref: does not match",
+            "document: 'worklog:m-20261027-payments-stand-up'}",
+            "document: 'worklog:../m-20261027-payments-stand-up.md'}",
+            r"^transcript\.md\.links\[0\]: document: does not match",
         ),
         (
-            "ref: m-20261027-payments-stand-up}",
-            "ref: 2026}",
-            r"^transcript\.md\.links\[0\]\.ref: expected a string$",
+            "document: 'worklog:m-20261027-payments-stand-up'}",
+            "document: 2026}",
+            r"^transcript\.md\.links\[0\]\.document: expected a string$",
         ),
         (
-            "ref: m-20261027-payments-stand-up-2}",
-            "ref: t-20261027-meeting-1}",
+            "document: 'worklog:m-20261027-payments-stand-up-2'}",
+            "document: 'worklog:t-20261027-meeting-1'}",
             r"^transcript\.md: links: a link to the document itself",
         ),
         (
-            "ref: m-20261027-payments-stand-up-2}",
-            "ref: m-20261027-payments-stand-up}",
+            "document: 'worklog:m-20261027-payments-stand-up-2'}",
+            "document: 'worklog:m-20261027-payments-stand-up'}",
             r"^transcript\.md: links: .* one given twice$",
         ),
         (
@@ -418,18 +418,87 @@ def test_participants_and_links_read_back_byte_for_byte(front: FrontMatter, line
 def test_links_and_participants_off_the_layout_are_refused_by_place(
     old: str, new: str, refusal: str
 ) -> None:
-    """A relation, field, ref, self-link or repeat off the layout's rules; the format of 041."""
+    """A relation, field, document, self-link or repeat off the layout's rules."""
     text = dump(TRANSCRIPT, "")
     assert text.count(old) == 1
     with pytest.raises(RepresentationError, match=refusal):
         load(text.replace(old, new), "transcript.md")
 
 
-@pytest.mark.parametrize("ref", ["10000", "PRB-1"])
-def test_a_link_to_the_document_itself_by_its_id_or_key_is_refused(ref: str) -> None:
-    """An issue's ref is its key, and its id names it too: neither links it to another."""
+def test_a_parent_or_a_link_that_is_the_document_itself_is_refused() -> None:
+    """A document names itself by its document id: neither its parent nor a link is it."""
     with pytest.raises(RefusedError, match=r"^links: a link to the document itself"):
-        replace(ISSUE, links=(Link(relation="summary", ref=ref),))
+        replace(ISSUE, links=(Link(relation="summary", document="jira:10000"),))
+    with pytest.raises(RefusedError, match=r"^parent: the document itself$"):
+        replace(ISSUE, parent="jira:10000")
+    assert replace(ISSUE, links=(Link(relation="summary", document="jira:PRB-1"),)).links
+
+
+# ISSUE, PAGE and the TRANSCRIPT, as the files of plan 058 wrote them.
+FORMER_ISSUE = """---
+source: jira
+type: issue
+id: '10000'
+key: PRB-1
+title: What are archived ideas?
+space: null
+project: PRB
+status: Parking lot
+issue_type: Idea
+labels: []
+people:
+- {role: author, name: A Person, identity: 'atlassian:account-1'}
+links: []
+created: '2026-10-20T21:52:41Z'
+updated: '2026-10-20T21:52:41Z'
+version: null
+revision: 20261020T215241.371000Z
+url: null
+breadcrumb:
+- PRB-3
+fetched_at: '2026-10-22T08:15:00Z'
+---
+
+# What are archived ideas?
+"""
+
+
+def test_a_front_matter_of_plan_058_reads_as_today_s() -> None:
+    """Its space or project is its scope, else the work log's; its issue type, its subtype.
+
+    It has no parent; a link's ref names a document of its own source; its time of fetch
+    is left out, and the file written again holds today's keys.
+    """
+    front_matter, body = load(FORMER_ISSUE, "issue.md")
+    assert (front_matter.scope, front_matter.subtype, front_matter.parent) == (
+        "project:PRB",
+        "Idea",
+        None,
+    )
+    assert front_matter.breadcrumb == ("PRB-3",)
+    assert body == "# What are archived ideas?\n"
+    assert list(yaml.safe_load(dump(front_matter, body).split("---\n")[1])) == LAYOUT_KEYS
+    page = (
+        FORMER_ISSUE.replace("source: jira", "source: confluence")
+        .replace("type: issue", "type: page")
+        .replace("key: PRB-1", "key: null")
+        .replace("space: null\nproject: PRB", "space: MFS\nproject: null")
+        .replace("issue_type: Idea", "issue_type: null")
+    )
+    assert load(page, "page.md")[0].scope == "space:MFS"
+    transcript = (
+        FORMER_ISSUE.replace("source: jira", "source: worklog")
+        .replace("project: PRB", "project: null")
+        .replace(
+            "links: []",
+            "links:\n- {relation: summary, ref: m-20261027-payments-stand-up}",
+        )
+    )
+    former, _ = load(transcript, "transcript.md")
+    assert former.scope == "folder:worklog"
+    assert former.links == (
+        Link(relation="summary", document="worklog:m-20261027-payments-stand-up"),
+    )
 
 
 def test_strings_that_look_like_other_types_are_quoted() -> None:
@@ -482,7 +551,7 @@ def test_work_log_front_matter_reads_back_as_written(changes: dict[str, object])
     written = replace(ENTRY, **changes)
     front_matter, _ = load(dump(written, "# Notes\n"), "entry.md")
     second = MOMENT.replace(microsecond=0)
-    assert front_matter == replace(written, created=second, updated=second, fetched_at=second)
+    assert front_matter == replace(written, created=second, updated=second)
 
 
 def test_a_document_of_a_source_that_no_registry_names_reads_back() -> None:
@@ -490,7 +559,7 @@ def test_a_document_of_a_source_that_no_registry_names_reads_back() -> None:
     written = replace(ENTRY, source="memo2", type="note", id="n-1_A", revision="r1.2_b-C")
     front_matter, _ = load(dump(written, "# Notes\n"), "memo2/n-1_A.md")
     second = MOMENT.replace(microsecond=0)
-    assert front_matter == replace(written, created=second, updated=second, fetched_at=second)
+    assert front_matter == replace(written, created=second, updated=second)
 
 
 def test_a_file_without_front_matter_is_refused() -> None:
@@ -509,7 +578,9 @@ def test_a_file_without_front_matter_is_refused() -> None:
         ({"revision": "000003/2"}, r"^revision: does not match"),
         ({"revision": ""}, r"^revision: does not match"),
         ({"key": "prb-1"}, r"^key: does not match"),
-        ({"space": "M F S"}, r"^space: does not match"),
+        ({"scope": "M F S"}, r"^scope: does not match"),
+        ({"scope": "space"}, r"^scope: does not match"),
+        ({"parent": "196001"}, r"^parent: does not match"),
         ({"title": "Two\nlines"}, r"^a text holds a line break$"),
         ({"title": "Two\u2028lines"}, r"^a text holds a line break$"),
         ({"labels": ("one\x85two",)}, r"^a text holds a line break$"),

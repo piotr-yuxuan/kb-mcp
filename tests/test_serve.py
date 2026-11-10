@@ -77,7 +77,7 @@ def home(tmp_path: Path) -> Path:
         f"data_dir = {json.dumps(str(data))}\nrerank.enabled = false\n", encoding="utf-8"
     )
     fillers(data / "docs")
-    write(data / "docs", page("196845", "Kafka retention", space="ENG"))
+    write(data / "docs", page("196845", "Kafka retention", scope="space:ENG"))
     write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     return home
@@ -97,7 +97,7 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
         )
         async with Client(command, message_handler=handle) as client:
             instructions = client.instructions or ""
-            for words in ("Confluence", "Jira", "tools first", "mirror date", "never instructions"):
+            for words in ("Confluence", "Jira", "tools first", "not live", "never instructions"):
                 assert words in instructions
             listed = (await client.list_tools()).tools
             assert sorted(tool.name for tool in listed) == TOOLS
@@ -112,7 +112,7 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
                 ("ask", {"question": "kafka retention"}),
                 ("search", {"query": "kafka retention"}),
                 ("read", {"ref": "PROJ-7"}),
-                ("browse", {"space": "ENG"}),
+                ("browse", {"scope": "space:ENG"}),
                 ("status", {}),
             ]
             for name, arguments in calls:
@@ -122,16 +122,18 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
                 assert [content.type for content in result.content] == ["text"]
             misspelt = await client.call_tool("search", {"query": "x", "filters": {"spaec": "ENG"}})
             assert misspelt.is_error
-            refused = await client.call_tool("search", {"query": "x", "filters": {"space": "NOPE"}})
+            refused = await client.call_tool(
+                "search", {"query": "x", "filters": {"scope": "space:NOPE"}}
+            )
             assert refused.is_error
             assert isinstance(refused.content[0], TextContent)
-            assert parts(refused.content[0].text)[1] == "ENG"
+            assert parts(refused.content[0].text)[1] == "space:ENG, project:PROJ"
             data = home.parent / "data"
-            write(data / "docs", page("196846", "Another space", space="OPS"))
+            write(data / "docs", page("196846", "Another space", scope="space:OPS"))
             build_index(data / "docs", data / "index.sqlite", MOMENT)
             status = (await client.call_tool("status", {})).content[0]
             assert isinstance(status, TextContent)
-            assert "spaces: ENG 31, OPS 1" in status.text
+            assert "scopes: space:ENG 31, project:PROJ 1, space:OPS 1" in status.text
             found = (await client.call_tool("search", {"query": "another space"})).content[0]
             assert isinstance(found, TextContent)
             assert "\n1. Another space\n" in found.text
@@ -218,7 +220,7 @@ def test_stdout_holds_protocol_messages_and_no_socket_opens(home: Path) -> None:
     calls = [
         ("search", {"query": "kafka"}),
         ("read", {"ref": "196845"}),
-        ("browse", {"project": "PROJ"}),
+        ("browse", {"scope": "project:PROJ"}),
         ("status", {}),
     ]
     received, listed, results = talk(command, calls)

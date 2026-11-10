@@ -279,12 +279,12 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         id="300",
         key=None,
         title="Leaf",
-        space="MFS",
-        project=None,
+        scope="space:MFS",
         status="archived",
-        issue_type=None,
+        subtype=None,
         labels=("probe",),
         people=(Mention(role="author", name="A Person", identity="atlassian:account-1"),),
+        parent="confluence:200",
         links=(),
         created=datetime(2026, 10, 20, 21, 27, 34, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC),
@@ -292,7 +292,6 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         revision="000002",
         url=f"{SITE}/wiki/spaces/MFS/pages/300/Leaf",
         breadcrumb=("Home", "Plans"),
-        fetched_at=FETCHED,
     )
     post, _ = load(sandbox.text("confluence/MFS/blog/600-news.md"), "post")
     assert (post.type, post.breadcrumb, post.url) == ("blogpost", (), f"{SITE}/wiki{POST_URL}")
@@ -303,10 +302,9 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         id="10000",
         key="PRB-1",
         title="What are archived ideas?",
-        space=None,
-        project="PRB",
+        scope="project:PRB",
         status="Parking lot",
-        issue_type="Idea",
+        subtype="Idea",
         labels=("probe",),
         # The comment without an author names nobody.
         people=(
@@ -319,6 +317,7 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
                 at=(datetime(2026, 10, 21, 8, tzinfo=UTC),),
             ),
         ),
+        parent="jira:10002",
         links=(),
         created=datetime(2026, 10, 20, 21, 33, 32, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 37, 58, tzinfo=UTC),
@@ -326,7 +325,6 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         revision="20261020T213758.027000Z",
         url=f"{SITE}/browse/PRB-1",
         breadcrumb=("Ideas",),
-        fetched_at=FETCHED,
     )
 
 

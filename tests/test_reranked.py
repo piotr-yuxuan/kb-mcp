@@ -324,7 +324,7 @@ def test_a_browse_cursor_carrying_an_order_is_refused(root: Path) -> None:
     served = library(root, Reranking(Scripted(), DEPTH))
     base = cursor_of(served.search(QUERY, limit=2)).partition(".")[0]
     with pytest.raises(UnanswerableError, match="cursor: "):
-        served.browse(space="ENG", cursor=f"{base}.BA")
+        served.browse(scope="space:ENG", cursor=f"{base}.BA")
 
 
 def test_a_cursor_writes_the_deepest_order_and_reads_it_back() -> None:

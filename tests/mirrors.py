@@ -74,12 +74,12 @@ def page(
         id=page_id,
         key=None,
         title=title,
-        space="ENG",
-        project=None,
+        scope="space:ENG",
         status="current",
-        issue_type=None,
+        subtype=None,
         labels=(),
         people=named(author),
+        parent=None,
         links=(),
         created=MOMENT,
         updated=MOMENT,
@@ -87,7 +87,6 @@ def page(
         revision="000001",
         url=None,
         breadcrumb=(),
-        fetched_at=MOMENT,
     )
     return replace(front, **changes)
 
@@ -112,12 +111,12 @@ def issue(
         id=str(10000 + int(number)),
         key=key,
         title=title,
-        space=None,
-        project=project,
+        scope=f"project:{project}",
         status="To Do",
-        issue_type="Task",
+        subtype="Task",
         labels=(),
         people=named(author, assignee),
+        parent=None,
         links=(),
         created=MOMENT,
         updated=updated,
@@ -125,15 +124,15 @@ def issue(
         revision=time_revision(updated),
         url=None,
         breadcrumb=(),
-        fetched_at=MOMENT,
     )
     return replace(front, **changes)
 
 
 def location(front: FrontMatter) -> str:
     """Name a document's file, relative to <data>/docs, as the data layout does."""
+    key = front.scope.partition(":")[2]
     if front.source == "jira":
-        return f"jira/{front.project}/{front.key}.md"
+        return f"jira/{key}/{front.key}.md"
     if front.type in {"day", "meeting"}:
         return f"worklog/{WORKLOG_FOLDERS[front.type]}/{front.id}.md"
     decomposed = unicodedata.normalize("NFKD", front.title).lower()
@@ -142,7 +141,7 @@ def location(front: FrontMatter) -> str:
     if front.source == "worklog":
         return f"worklog/{WORKLOG_FOLDERS[front.type]}/{name}"
     folder = "blog/" if front.type == "blogpost" else ""
-    return f"confluence/{front.space}/{folder}{name}"
+    return f"confluence/{key}/{folder}{name}"
 
 
 def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
@@ -200,7 +199,7 @@ PEOPLE = (
         "PROJ-1",
         "Broker crash",
         updated=CREATED + timedelta(hours=1),
-        issue_type="Bug",
+        subtype="Bug",
         status="Done",
         author="Bo Sample",
         assignee="Ada Example",
@@ -219,7 +218,7 @@ PEOPLE = (
         "PROJ-3",
         "Broker retention",
         updated=CREATED + timedelta(hours=2),
-        issue_type="Story",
+        subtype="Story",
         assignee="Ada Example",
         created=CREATED,
         labels=("resume",),
@@ -252,11 +251,11 @@ def worklog_document(
         page(document_id, title),
         source="worklog",
         type=document_type,
-        space=None,
+        scope="folder:worklog",
         version=None,
         revision="0123456789abcdef",
         people=tuple(Mention(role="participant", name=name) for name in names),
-        links=() if linked is None else (Link(relation=relation, ref=linked),),
+        links=() if linked is None else (Link(relation=relation, document=f"worklog:{linked}"),),
     )
 
 

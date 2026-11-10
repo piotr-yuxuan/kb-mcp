@@ -7,7 +7,7 @@ transcripts read from ``transcripts/`` and ``meetings/``. Read in place, it has 
 
 from __future__ import annotations
 
-from kb_mcp.kernel.names import WORKLOG_TYPES
+from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE, WORKLOG_TYPES
 from kb_mcp.sources.declaration import Connector, DocumentType, ScopeType
 
 WORKLOG = Connector(
@@ -15,7 +15,7 @@ WORKLOG = Connector(
     help="The user's work log: org files read in place, never written",
     scope_types=(
         ScopeType(
-            name="folder",
+            name=WORKLOG_SCOPE_TYPE,
             key=None,
             enumeration="in place",
             document_types=tuple(
