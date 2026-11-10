@@ -461,11 +461,12 @@ chunks, the model, its fingerprint, the chunking and a new `build`. On any failu
 new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
 which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
-`index.not_built`. A file skipped is named in `index`'s
-[`IndexReport`](../../src/kb_mcp/search/app/indexing.py), and a chunk refused in `embed`'s
-[`Filled`](../../src/kb_mcp/search/app/indexing.py); each run exits 0 only when its
-result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
-[`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
+`index.not_built`. A file skipped is a problem of `index`'s outcome
+([`outcome_of`](../../src/kb_mcp/search/app/indexing.py), its counts an
+[`IndexCounts`](../../src/kb_mcp/search/app/indexing.py)), and a chunk refused in `embed`'s
+[`Filled`](../../src/kb_mcp/search/app/indexing.py); `index` exits 0 only when its outcome
+has no problem, and `embed` only when its result is whole
+([`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
 
 ### 10. The result
 

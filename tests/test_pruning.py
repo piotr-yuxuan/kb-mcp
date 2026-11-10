@@ -660,7 +660,7 @@ def test_words_alone_leave_the_store_untouched(data: Path, capsys: CaptureFixtur
     store = data / "vectors.sqlite"
     before = (store.read_bytes(), store.stat().st_mtime_ns)
     status, result, err = command(data, capsys, "lexical")
-    assert (status, result["pruned"]) == (0, None)
+    assert (status, "pruned" in result["counts"]) == (0, False)
     assert (store.read_bytes(), store.stat().st_mtime_ns) == before
     assert "the vector cache keeps only" not in err
 

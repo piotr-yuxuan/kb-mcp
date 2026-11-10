@@ -335,15 +335,13 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
         assert (store.read_bytes(), index.read_bytes()) == (kept, built)
         out, err = capsys.readouterr()
         assert "then: documents added or changed have no vectors until kb-mcp embed" in err
-        assert "nothing written\nskipped: 0\nawaiting vectors: 0\n" in out
+        assert "nothing written\nawaiting vectors: 0\n" in out
         library = Library(SqliteIndex(index), data / "docs", Meaning(connect_scripted()), "hybrid")
         assert "search by meaning: tiny, " in parts(library.status())[1]
         write(data / "docs", page("196845", "Rollback"), BODY + "\nEdited.\n")
         assert main(["index", *options]) == 0
         assert len(scripted.asked) == asked
-        assert "replaced: 1\nremoved: 0\nskipped: 0\nawaiting vectors: 1\n" in (
-            capsys.readouterr().out
-        )
+        assert "replaced: 1\nremoved: 0\nawaiting vectors: 1\n" in (capsys.readouterr().out)
         with reading(index) as reader:
             assert 0 < reader.index_status().chunks < chunks
 
@@ -595,7 +593,7 @@ def test_a_sections_rebuild_after_a_windows_one_embeds_nothing(data: Path) -> No
         data / "docs", data / "index.sqlite", MOMENT, Embedding(again, data / "v.db")
     )
     assert again.texts == []
-    assert report.embedded == 0
+    assert report.counts.embedded == 0
 
 
 def test_a_chunking_that_the_kernel_does_not_name_is_refused(
@@ -666,7 +664,7 @@ def filled_by(
     data: Path, answers: Scripted | None = None, chunking: Chunking = "sections"
 ) -> Filled:
     """Update the index, as ``index`` does, then fill it, as ``embed`` does; give the fill."""
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     filled = fill_and_prune(indexing(data, answers, chunking))
     assert filled is not None
     return filled
@@ -846,7 +844,7 @@ def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
     as_schema_6(data / "index.sqlite")
     indexed = update_index(indexing(data), MOMENT)
     assert indexed is not None
-    assert (indexed.report.rebuilt, indexed.report.copied) == ("unavailable", 0)
+    assert (indexed.counts.rebuilt, indexed.counts.copied) == ("unavailable", 0)
     answers = Scripted()
     filled = fill_and_prune(indexing(data, answers, "windows"))
     assert filled is not None
@@ -965,7 +963,7 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
     """
     filled_by(data)
     write(data / "docs", page("196846", "Added"), BODY.replace("payout", "refund"))
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     fill = SqliteIndex.fill
     builds: list[str] = []
 
@@ -973,7 +971,7 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
         builds.append(expected)
         if len(builds) == 1:
             write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
-            assert update_index(indexing(data), MOMENT, rebuild=rebuild) is not None
+            assert update_index(indexing(data), MOMENT, rebuild=rebuild).counts is not None
         return fill(self, expected, *rest)
 
     monkeypatch.setattr(SqliteIndex, "fill", meanwhile)
@@ -985,11 +983,11 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
 
 def test_an_index_written_at_each_attempt_stops_embed(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Criterion 8: twice, ``embed`` stops, ``index.not_built`` naming the other run."""
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     fill = SqliteIndex.fill
 
     def meanwhile(self: SqliteIndex, *arguments: object) -> str | None:
-        assert update_index(indexing(data), MOMENT, rebuild=True) is not None
+        assert update_index(indexing(data), MOMENT, rebuild=True).counts is not None
         return fill(self, *arguments)
 
     monkeypatch.setattr(SqliteIndex, "fill", meanwhile)
@@ -1019,7 +1017,7 @@ def test_index_and_embed_started_together_take_turns(data: Path) -> None:
 def test_a_lock_held_too_long_stops_embed_naming_it(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Criterion 8: a wait past WAIT_S, shortened here: ``index.not_built`` naming the lock."""
     monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     before = (data / "index.sqlite").read_bytes()
     lock = data / "index.sqlite.lock"
     with lock.open("a") as file, capture_logs() as logs:
@@ -1034,7 +1032,7 @@ def test_a_fill_that_fails_before_its_rename_leaves_the_index_as_it_was(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Criterion 9: its bytes as they were, no build file left, and the lock free."""
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     before = (data / "index.sqlite").read_bytes()
 
     def fail(*_: object) -> dict[str, object]:
@@ -1107,12 +1105,12 @@ def test_the_prune_keeps_what_embed_wrote_when_an_index_ran_since(
     """
     filled_by(data)
     write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     prune = indexing_module.prune
 
     def meanwhile(*arguments: object, **options: object) -> Pruned:
         write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "agent"))
-        assert update_index(indexing(data), MOMENT) is not None
+        assert update_index(indexing(data), MOMENT).counts is not None
         return prune(*arguments, **options)
 
     monkeypatch.setattr(indexing_module, "prune", meanwhile)

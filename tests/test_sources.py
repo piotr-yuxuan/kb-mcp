@@ -1030,14 +1030,14 @@ def test_with_the_work_log_alone_the_index_still_holds_every_page(
     main(command(home, config, "prepare", "--yes"))
     capsys.readouterr()
     main(command(home, config, "index", "--yes", "--format", "json"))
-    first = json.loads(capsys.readouterr().out)["report"]["types"]
+    first = json.loads(capsys.readouterr().out)["counts"]["types"]
     assert {"page", "blogpost", "issue"} <= set(first)
     signed_in.asked.clear()
     assert main(command(home, config, "prepare", "--yes", "--format", "json", "worklog")) == 0
     rows = json.loads(capsys.readouterr().out)["sources"]
     assert [(row["source"], row["ending"]) for row in rows] == [("worklog", "done")]
     main(command(home, config, "index", "--yes", "--format", "json"))
-    assert json.loads(capsys.readouterr().out)["report"]["types"] == first
+    assert json.loads(capsys.readouterr().out)["counts"]["types"] == first
     assert not signed_in.asked
 
 

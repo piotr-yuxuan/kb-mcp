@@ -142,7 +142,7 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
 
 # What the first index of a mirror of one page says: none to update, so built whole.
 FIRST_SHORT = (
-    "documents: 1\nsections: 2\ncopied: 0\nadded: 1\nreplaced: 0\nremoved: 0\nskipped: 0\n"
+    "documents: 1\nsections: 2\ncopied: 0\nadded: 1\nreplaced: 0\nremoved: 0\n"
     "rebuilt whole: unavailable\n"
 )
 FIRST_DETAILED = (
@@ -176,9 +176,9 @@ def test_the_command_gives_its_report_index_and_model_as_json(
     options = ["--config", str(config), "--data-dir", str(data), "--format", "json"]
     assert main(["index", "--yes", *options]) == 0
     document = json.loads(capsys.readouterr().out)
-    assert document["report"]["types"] == {"page": 1}
-    assert document["index"] == str((data / "index.sqlite").resolve())
-    assert document["model"] is None
+    assert (document["ending"], document["counts"]["types"]) == ("done", {"page": 1})
+    assert document["counts"]["index"] == str((data / "index.sqlite").resolve())
+    assert (document["problems"], document["warnings"]) == ([], [])
 
 
 def test_embed_needs_the_endpoint_and_index_never_asks_it(
@@ -553,7 +553,7 @@ def test_a_file_of_plan_041_s_people_is_indexed_with_atlassian_identities(data: 
     text = file.read_text(encoding="utf-8")
     file.write_text(text.replace("identity: 'atlassian:", "account: '"), encoding="utf-8")
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
-    assert report.skipped == []
+    assert report.problems == ()
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         held = connection.execute("SELECT DISTINCT identity FROM people ORDER BY 1").fetchall()
     assert held == [("atlassian:account-1",), ("atlassian:account-2",)]
@@ -588,8 +588,8 @@ def test_people_are_not_embedded_so_a_rebuild_with_new_people_embeds_nothing(dat
     first = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
     write(data / "docs", COMMENTED)
     again = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
-    assert first.embedded > 0
-    assert again.embedded == 0
+    assert first.counts.embedded > 0
+    assert again.counts.embedded == 0
 
 
 # A meeting and its transcript of the work log, each naming the other, with their
@@ -755,7 +755,7 @@ def test_the_report_counts_the_persons_and_gives_what_the_join_left_apart(data: 
     for front in PERSONS:
         write(data / "docs", front)
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
-    assert report.persons == JoinOutcome(
+    assert report.counts.persons == JoinOutcome(
         count=len(JOINED),
         ambiguous=(
             Ambiguity(name="Robin", persons=frozenset({ROBIN, ROBIN_OTHER})),
@@ -775,9 +775,9 @@ def test_aliases_join_names_alone_and_one_that_changes_nothing_is_reported(data:
         write(data / "docs", front)
     aliases = {"Robin": "Robin Example", "Jo Placeholder": "Robin Example"}
     report = build_index(data / "docs", data / "index.sqlite", MOMENT, aliases=aliases)
-    assert report.persons.count == len(JOINED) - 1
-    assert [ambiguity.name for ambiguity in report.persons.ambiguous] == ["Sam Sample"]
-    unused = [(alias.name, alias.reason) for alias in report.persons.unused]
+    assert report.counts.persons.count == len(JOINED) - 1
+    assert [ambiguity.name for ambiguity in report.counts.persons.ambiguous] == ["Sam Sample"]
+    unused = [(alias.name, alias.reason) for alias in report.counts.persons.unused]
     assert unused == [("Jo Placeholder", UNHELD)]
     held, names, person_of = joined_rows(data / "index.sqlite")
     assert ROBIN_ALONE not in {person for person, _ in held}
@@ -823,7 +823,7 @@ def test_a_transcript_s_summary_of_no_meeting_names_no_meeting(data: Path) -> No
         worklog_document("transcript", "t-20261022-2", "Loop", ("Alex",), "t-20261022-1"),
     )
     report = build_index(data / "docs", data / "index.sqlite", MOMENT)
-    assert report.skipped == []
+    assert report.problems == ()
     assert joined_rows(data / "index.sqlite")[2] == PERSON_OF | {
         ("t-20261022-1", "Alex"): ALEX,
         ("t-20261022-2", "Alex"): ALEX,
@@ -993,9 +993,12 @@ def test_a_rebuild_embeds_nothing_with_or_without_new_aliases(data: Path) -> Non
     aliased = build_index(
         data / "docs", data / "index.sqlite", MOMENT, embedding, {"Robin": "Robin Example"}
     )
-    assert first.embedded > 0
-    assert (again.embedded, aliased.embedded) == (0, 0)
-    assert (again.persons.count, aliased.persons.count) == (len(JOINED), len(JOINED) - 1)
+    assert first.counts.embedded > 0
+    assert (again.counts.embedded, aliased.counts.embedded) == (0, 0)
+    assert (again.counts.persons.count, aliased.counts.persons.count) == (
+        len(JOINED),
+        len(JOINED) - 1,
+    )
 
 
 @pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5"])
@@ -1112,7 +1115,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     assert child.returncode == 0
     assert "━" not in shown
     assert piped.stdout == out == quiet
-    assert json.loads(out)["report"]["types"] == {"page": FILLERS}
+    assert json.loads(out)["counts"]["types"] == {"page": FILLERS}
 
 
 def test_an_index_that_cannot_be_written_exits_1_and_keeps_the_one_in_place(
@@ -1184,7 +1187,9 @@ def test_each_file_skipped_is_recorded_with_its_digest_and_why(data: Path) -> No
         "not readable (PermissionError)",
         "another document has the same source and id",
     ]
-    assert sorted(report.skipped) == [(path, reason) for path, _, reason in rows]
+    assert sorted((each.where, each.reason) for each in report.problems) == [
+        (path, reason) for path, _, reason in rows
+    ]
     assert rows_of(data / "index.sqlite", "SELECT path FROM documents") == [(kept,)]
     with reading(data / "index.sqlite") as reader:
         assert reader.index_status().skipped == len(rows)
@@ -1664,7 +1669,7 @@ def test_what_a_whole_build_joins_of_a_small_mirror_is_pinned_under_words(data: 
         )
         == PINNED_PEOPLE
     ), WORDS_CHANGED
-    assert report.persons.ambiguous == (
+    assert report.counts.persons.ambiguous == (
         Ambiguity(name="Jo Two", persons=frozenset({JO_2, JO_3})),
     ), WORDS_CHANGED
 
@@ -1740,7 +1745,7 @@ def test_nothing_changed_writes_nothing_and_says_so(
     before = snapshot(data / "index.sqlite")
     status, out, _ = index(data, capsys)
     assert status == 0
-    assert out == f"documents: {PAGES}\nsections: {2 * PAGES}\nnothing written\nskipped: 0\n"
+    assert out == f"documents: {PAGES}\nsections: {2 * PAGES}\nnothing written\n"
     assert snapshot(data / "index.sqlite") == before
     (unchanged,) = logged_as(data.parent / "home", "index.unchanged")
     assert unchanged["documents"] == PAGES
@@ -1763,7 +1768,7 @@ def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
     write(data / "docs", KAFKA, BODY.replace("Seven days.", "Fourteen days."))
     status, out, _ = index(data, capsys)
     assert status == 0
-    assert f"copied: {PAGES}\nadded: 0\nreplaced: 1\nremoved: 0\nskipped: 0\n" in out
+    assert f"copied: {PAGES}\nadded: 0\nreplaced: 1\nremoved: 0\n" in out
     assert out.endswith("awaiting vectors: 1\n")
     assert rows_by(data / "index.sqlite", KEPT_ROWS, KAFKA_PATH) == kept
     assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH)[4] == []

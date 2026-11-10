@@ -607,8 +607,8 @@ settings, secrets masked. The outcome:
 [`Outcome`](../../src/kb_mcp/kernel/outcome.py), with
 [`OutcomeWarning`](../../src/kb_mcp/kernel/outcome.py), whose counts are each
 stage's record, such as
-[`FetchCounts`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py); the index's
-[`IndexReport`](../../src/kb_mcp/search/app/indexing.py) and
+[`FetchCounts`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
+[`IndexCounts`](../../src/kb_mcp/search/app/indexing.py); embed's
 [`Filled`](../../src/kb_mcp/search/app/indexing.py). The ending:
 [`Ending`](../../src/kb_mcp/kernel/exit_status.py) and
 [`folded`](../../src/kb_mcp/kernel/exit_status.py),
@@ -616,8 +616,7 @@ stage's record, such as
 [`Check.state`](../../src/kb_mcp/sources/stages.py),
 [`ExitStatus`](../../src/kb_mcp/kernel/exit_status.py) and
 [`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py). The problem:
-[`Problem`](../../src/kb_mcp/kernel/outcome.py), and the index's
-[`IndexReport.skipped`](../../src/kb_mcp/search/app/indexing.py).
+[`Problem`](../../src/kb_mcp/kernel/outcome.py).
 
 ### store
 
