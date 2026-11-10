@@ -317,7 +317,7 @@ class Logged(BaseModel):
     arguments: dict[str, object]
     tokens: int = Field(ge=0)
     seconds: float = Field(ge=0)
-    status: Literal["answered", "refused", "timeout", "failed"]
+    status: Literal["answered", "refused", "timeout", "failed", "unconsented"]
 
 
 def logged(directory: Path, run: AgentRun) -> list[Logged]:
@@ -353,9 +353,10 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
     ``consented``, this call's consent to remote embeddings, reaches its server alone,
     and only when the runs need it.
     Refused, before any server starts: a run not there, arguments not one JSON object, a
-    tool not of the run's surface, runs that need the consent without it, a call past
-    the run's bound. The log line holds the tool, the arguments, the answer's estimated
-    tokens, the seconds and the status.
+    tool not of the run's surface, a call past the run's bound, and runs that need the
+    consent without it, which is logged, ``unconsented``, so that the run gives no
+    result. The log line holds the tool, the arguments, the answer's estimated tokens,
+    the seconds and the status.
 
     The call is the span ``eval.agent.call``, which holds the client's; it is counted by
     status in ``kb_mcp.eval.agent.calls``, its seconds and tokens measured, and
@@ -373,18 +374,21 @@ def call(directory: Path, name: str, tool: str, given: str, *, consented: bool) 
     if tool not in run.tools:
         message = f"tool: not served on this run's surface, whose tools are {', '.join(run.tools)}"
         raise AgentsError(message)
-    if runs.remote_embeddings and not consented:
-        # Said to the agent, which must not give the consent itself: no flag is named.
-        message = (
-            "consent: this call lacks the consent of the person running the evaluation to"
-            " send the mirror's text to an embedding endpoint off this machine; stop, and"
-            ' answer with "found": false'
-        )
-        raise AgentsError(message)
     log = directory / "calls" / f"{run.id}.jsonl"
     with locked(directory, run):
         if len(logged(directory, run)) >= runs.calls:
             message = f"calls: this run's {runs.calls} are spent; give your answer now"
+            raise AgentsError(message)
+        if runs.remote_embeddings and not consented:
+            line = Logged(tool=tool, arguments=arguments, tokens=0, seconds=0, status="unconsented")
+            with log.open("a", encoding="utf-8") as kept:
+                kept.write(line.model_dump_json() + "\n")
+            # Said to the agent, which must not give the consent itself: no flag is named.
+            message = (
+                "consent: this call lacks the consent of the person running the evaluation"
+                " to send the mirror's text to an embedding endpoint off this machine; stop,"
+                ' and answer with "found": false'
+            )
             raise AgentsError(message)
         started = time.monotonic()
         server = [
@@ -476,6 +480,14 @@ class AgentRunOutcome(Record):
     prompt_sha256: str
 
 
+# The calls' statuses that leave a run without a result, and the reason that it says.
+BROKEN = {
+    "timeout": "a call timeout",
+    "failed": "a call failed",
+    "unconsented": "a call lacked the consent",
+}
+
+
 def judged(
     directory: Path,
     run: AgentRun,
@@ -486,9 +498,9 @@ def judged(
     """Judge a run from its harness file, its call log and its answer.
 
     Without a harness file, the run is pending. ``failed`` or ``invalid``, or a call
-    that timed out or whose server failed, gives no result. Returned without an answer
-    accepted is the agent's failure; with one, it is graded. Raises AgentsError for a
-    harness file, a call log or an answer not as written, naming the file and the field.
+    that ``BROKEN`` names, gives no result. Returned without an answer accepted is the
+    agent's failure; with one, it is graded. Raises AgentsError for a harness file, a
+    call log or an answer not as written, naming the file and the field.
     The run is counted by its outcome in ``kb_mcp.eval.agent.runs``, and ``eval.agent.run``
     says it at DEBUG.
     """
@@ -513,14 +525,14 @@ def judged(
         message = f"{named.parent.name}/{named.name}: {refusal(error)}"
         raise AgentsError(message) from None
     calls = logged(directory, run)
-    broken = next((each.status for each in calls if each.status in {"timeout", "failed"}), "")
+    broken = next((BROKEN[each.status] for each in calls if each.status in BROKEN), "")
     graded = grade(answer, question, resolve, body) if answer and not broken else None
     if harness is None:
         result, reason = "pending", ""
     elif not returned:
         result, reason = "no result", harness.status
     elif broken:
-        result, reason = "no result", f"a call {broken}"
+        result, reason = "no result", broken
     elif graded is None:
         result, reason = "failure", "no answer accepted"
     else:

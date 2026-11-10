@@ -681,6 +681,30 @@ def test_runs_that_failed_broke_a_rule_or_lost_their_server_give_no_result(
     assert (results["pairs"], results["left_out"]) == (0, len(("q", "q")))
 
 
+def test_a_call_without_the_consent_leaves_its_run_without_a_result(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """Logged, the forced "found": false is no honest failure: its question is left out."""
+    remote(world)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
+    unconsented, other = (run["id"] for run in runs_of(out))
+    assert main(bridged(out, unconsented, "search", {"query": "kafka"})) == REFUSED
+    (line,) = (out / "calls" / f"{unconsented}.jsonl").read_text("utf-8").splitlines()
+    logged = json.loads(line)
+    assert (logged["status"], logged["tokens"], logged["seconds"]) == ("unconsented", 0, 0)
+    assert answering(out, unconsented, json.dumps({"found": False, "answer": "Stopped."})) == 0
+    assert answering(out, other, json.dumps(VALID)) == 0
+    for run in (unconsented, other):
+        harness(out, run, status="returned")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    results = json.loads(capsys.readouterr().out)
+    judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
+    assert judged[unconsented] == ("no result", "a call lacked the consent")
+    assert (results["pairs"], results["left_out"]) == (0, 1)
+
+
 def test_a_run_without_a_call_says_its_seconds_as_the_integer_0(
     world: World, capsys: CaptureFixture[str]
 ) -> None:
