@@ -1160,7 +1160,7 @@ def test_a_meeting_names_its_participants_as_written_in_order(run: Run) -> None:
     """:PARTICIPANTS: split at commas, the annotation kept; a day names nobody."""
     run()
     people = run.by_id("m-20261027-ledger-review").matter.people
-    assert [(each.role, each.name, each.account, each.at) for each in people] == [
+    assert [(each.role, each.name, each.identity, each.at) for each in people] == [
         ("participant", "Robin Example", None, ()),
         ("participant", "Kim (not in the header)", None, ()),
         ("participant", "Sam Sample", None, ()),
@@ -1375,6 +1375,6 @@ def test_a_transcript_names_its_speakers_in_order_of_first_speech(
     """Quoted: not the XQ: note outside, nor the continuity marker; bare: not #+TITLE."""
     run()
     people = run.by_id(identifier).matter.people
-    assert [(each.role, each.name, each.account, each.at) for each in people] == [
+    assert [(each.role, each.name, each.identity, each.at) for each in people] == [
         ("participant", name, None, ()) for name in names
     ]

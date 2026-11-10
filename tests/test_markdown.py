@@ -99,11 +99,16 @@ ISSUE = FrontMatter(
     issue_type="Idea",
     labels=(),
     people=(
-        Mention(role="author", name="A Person", account="account-1"),
-        Mention(role="creator", name="Another Person", account="account-2"),
-        Mention(role="assignee", name="A Person", account="account-1"),
-        Mention(role="commenter", name="Another Person", account="account-2", at=(EARLY, LATE)),
-        Mention(role="commenter", name="A Person", account="account-1", at=(LATE,)),
+        Mention(role="author", name="A Person", identity="atlassian:account-1"),
+        Mention(role="creator", name="Another Person", identity="atlassian:account-2"),
+        Mention(role="assignee", name="A Person", identity="atlassian:account-1"),
+        Mention(
+            role="commenter",
+            name="Another Person",
+            identity="atlassian:account-2",
+            at=(EARLY, LATE),
+        ),
+        Mention(role="commenter", name="A Person", identity="atlassian:account-1", at=(LATE,)),
     ),
     links=(),
     created=MOMENT,
@@ -117,12 +122,13 @@ ISSUE = FrontMatter(
 # The people of ISSUE as the layout writes them: each entry one line, in flow style.
 PEOPLE = (
     "people:\n"
-    "- {role: author, name: A Person, account: account-1}\n"
-    "- {role: creator, name: Another Person, account: account-2}\n"
-    "- {role: assignee, name: A Person, account: account-1}\n"
-    "- {role: commenter, name: Another Person, account: account-2,"
+    "- {role: author, name: A Person, identity: 'atlassian:account-1'}\n"
+    "- {role: creator, name: Another Person, identity: 'atlassian:account-2'}\n"
+    "- {role: assignee, name: A Person, identity: 'atlassian:account-1'}\n"
+    "- {role: commenter, name: Another Person, identity: 'atlassian:account-2',"
     " at: ['2026-10-20T09:12:00Z', '2026-10-21T08:00:00Z']}\n"
-    "- {role: commenter, name: A Person, account: account-1, at: ['2026-10-21T08:00:00Z']}\n"
+    "- {role: commenter, name: A Person, identity: 'atlassian:account-1',"
+    " at: ['2026-10-21T08:00:00Z']}\n"
 )
 
 
@@ -142,7 +148,7 @@ def test_front_matter_reads_back_as_written() -> None:
 
 
 def test_people_in_every_role_read_back_byte_for_byte() -> None:
-    """Each person on one line, by role, with an account id and a commenter's times."""
+    """Each person on one line, by role, with an identity and a commenter's times."""
     text = dump(ISSUE, "# What are archived ideas?\n")
     assert f"labels: []\n{PEOPLE}links: []\ncreated: " in text
     front_matter, body = load(text, "issue.md")
@@ -156,8 +162,8 @@ def test_people_in_every_role_read_back_byte_for_byte() -> None:
     )
 
 
-def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
-    """No account without an account id, ``[]`` without people or links; nobody named."""
+def test_an_identity_and_people_are_left_out_when_the_source_has_none() -> None:
+    """No identity where the source gives none, ``[]`` without people or links; nobody named."""
     assert "people:\n- {role: author, name: A Person}\nlinks: []\ncreated: " in dump(PAGE, "")
     assert "people: []\nlinks: []\n" in dump(ENTRY, "")
     assert (ENTRY.author, ENTRY.creator, ENTRY.assignee) == (None, None, None)
@@ -168,7 +174,11 @@ def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
     ("old", "new", "refusal"),
     [
         ("role: creator", "role: reviewer", r"people\[1\]: role: not one of the roles"),
-        ("account: account-2}", "account: account-2, email: x}", r"people\[1\]: fields other"),
+        (
+            "identity: 'atlassian:account-2'}",
+            "identity: 'atlassian:account-2', email: x}",
+            r"people\[1\]: fields other",
+        ),
         (
             "{role: creator, name: Another Person",
             "{name: Another Person, role: creator",
@@ -178,33 +188,37 @@ def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
         ("role: assignee", "role: creator", r"^issue\.md: people: a second author"),
         ("role: creator", "role: assignee", r"^issue\.md: people: a second author"),
         (
-            "name: A Person, account: account-1, at",
-            "name: Another Person, account: account-2, at",
+            "name: A Person, identity: 'atlassian:account-1', at",
+            "name: Another Person, identity: 'atlassian:account-2', at",
             r"^issue\.md: people: .* a commenter or a participant twice",
         ),
         (
             (
-                "- {role: author, name: A Person, account: account-1}\n"
-                "- {role: creator, name: Another Person, account: account-2}\n"
+                "- {role: author, name: A Person, identity: 'atlassian:account-1'}\n"
+                "- {role: creator, name: Another Person, identity: 'atlassian:account-2'}\n"
             ),
             (
-                "- {role: creator, name: Another Person, account: account-2}\n"
-                "- {role: author, name: A Person, account: account-1}\n"
+                "- {role: creator, name: Another Person, identity: 'atlassian:account-2'}\n"
+                "- {role: author, name: A Person, identity: 'atlassian:account-1'}\n"
             ),
             r"^issue\.md: people: .* out of the order of the roles$",
         ),
         (
-            "account: account-1}",
-            "account: account-1, at: ['2026-10-20T09:12:00Z']}",
+            "identity: 'atlassian:account-1'}",
+            "identity: 'atlassian:account-1', at: ['2026-10-20T09:12:00Z']}",
             r"people\[0\]: at: only and always for a commenter",
         ),
         (
-            "account: account-1, at: ['2026-10-21T08:00:00Z']}",
-            "account: account-1}",
+            "identity: 'atlassian:account-1', at: ['2026-10-21T08:00:00Z']}",
+            "identity: 'atlassian:account-1'}",
             r"people\[4\]: at: only and always for a commenter",
         ),
         ("at: ['2026-10-21T08:00:00Z']}", "at: []}", r"people\[4\]\.at: empty"),
-        ("account: account-1}", "account: account-1, at: []}", r"people\[0\]\.at: empty"),
+        (
+            "identity: 'atlassian:account-1'}",
+            "identity: 'atlassian:account-1', at: []}",
+            r"people\[0\]\.at: empty",
+        ),
         (
             "'2026-10-21T08:00:00Z']}",
             "'2026-10-21T10:00:00+02:00']}",
@@ -221,16 +235,25 @@ def test_an_account_and_people_are_left_out_when_the_source_has_none() -> None:
             r"people\[4\]\.at\[0\]: expected an ISO 8601 time",
         ),
         (
-            "name: Another Person, account: account-2}",
-            'name: "Another\\nPerson", account: account-2}',
-            r"people\[1\]: name, account: empty, or with a line break",
+            "name: Another Person, identity: 'atlassian:account-2'}",
+            "name: \"Another\\nPerson\", identity: 'atlassian:account-2'}",
+            r"people\[1\]: name, identity: empty, or with a line break",
         ),
         (
-            "name: Another Person, account: account-2}",
-            "name: '', account: account-2}",
-            r"people\[1\]: name, account: empty",
+            "name: Another Person, identity: 'atlassian:account-2'}",
+            "name: '', identity: 'atlassian:account-2'}",
+            r"people\[1\]: name, identity: empty",
         ),
-        ("account: account-1}", "account: null}", r"people\[0\]\.account: expected a string"),
+        (
+            "identity: 'atlassian:account-1'}",
+            "identity: null}",
+            r"people\[0\]\.identity: expected a string",
+        ),
+        (
+            "identity: 'atlassian:account-1'}",
+            "identity: account-1}",
+            r"people\[0\]: identity: does not match",
+        ),
         (
             PEOPLE,
             "author: A Person\nassignee: A Person\n",

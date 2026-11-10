@@ -255,26 +255,26 @@ PERSONS = (
     page(
         "300001",
         "Ledger runbook",
-        people=(Mention(role="author", name="Robin Example", account="acct-0001"),),
+        people=(Mention(role="author", name="Robin Example", identity="atlassian:acct-0001"),),
     ),
     issue(
         "PAY-1",
         "Ledger export",
         updated=MOMENT + timedelta(days=1),
         people=(
-            Mention(role="author", name="Sam Sample", account="acct-0002"),
-            Mention(role="creator", name="Robin Sample", account="acct-0001"),
+            Mention(role="author", name="Sam Sample", identity="atlassian:acct-0002"),
+            Mention(role="creator", name="Robin Sample", identity="atlassian:acct-0001"),
         ),
     ),
     issue(
         "PAY-2",
         "Ledger rounding",
         people=(
-            Mention(role="author", name="Sam Sample", account="acct-0003"),
+            Mention(role="author", name="Sam Sample", identity="atlassian:acct-0003"),
             Mention(
                 role="commenter",
                 name="Robin Example",
-                account="acct-0001",
+                identity="atlassian:acct-0001",
                 at=(MOMENT, MOMENT + timedelta(hours=1)),
             ),
         ),

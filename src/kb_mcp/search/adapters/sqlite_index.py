@@ -78,8 +78,8 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
-# section_words.
-SCHEMA = "7"
+# section_words; 8 from plan 058, with identities.
+SCHEMA = "8"
 # The former schemas whose mirror's files this version reads as they are: rebuilding the
 # index is enough, with no prepare first.
 SAME_MIRROR = frozenset({"6"})
@@ -108,7 +108,7 @@ CREATE INDEX documents_key ON documents (key);
 CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
-  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, account TEXT, at TEXT,
+  document INTEGER NOT NULL, role TEXT NOT NULL, name TEXT NOT NULL, identity TEXT, at TEXT,
   person TEXT
 );
 CREATE INDEX people_role_name ON people (role, name);
@@ -282,8 +282,8 @@ COPY = (
     WHERE document IN (SELECT rowid FROM main.documents)
     """,
     """
-    INSERT INTO main.people (document, role, name, account, at)
-    SELECT document, role, name, account, at FROM old.people
+    INSERT INTO main.people (document, role, name, identity, at)
+    SELECT document, role, name, identity, at FROM old.people
     WHERE document IN (SELECT rowid FROM main.documents)
     """,
     """
@@ -301,7 +301,7 @@ COPY = (
 # order, each transcript, its links, then the meeting by its source and id, so that the
 # work grows with the links, not with the square of one source's documents.
 PEOPLE_ROWS = """
-SELECT p.rowid, p.document, p.role, p.name, p.account, d.updated
+SELECT p.rowid, p.document, p.role, p.name, p.identity, d.updated
 FROM people p JOIN documents d ON d.rowid = p.document
 """
 # Each document's place by its path's text, which numbers it for the join: ties go to the
@@ -463,13 +463,13 @@ class Writer:
         )
         # One row per person and role, and a commenter's one per comment.
         self._connection.executemany(
-            "INSERT INTO people (document, role, name, account, at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO people (document, role, name, identity, at) VALUES (?, ?, ?, ?, ?)",
             [
                 (
                     document,
                     person.role,
                     person.name,
-                    person.account,
+                    person.identity,
                     None if at is None else moment(at),
                 )
                 for person in front.people
@@ -545,10 +545,10 @@ class Writer:
                 document=places[document],
                 role=role,
                 name=name,
-                account=account,
+                identity=identity,
                 updated=datetime.fromisoformat(updated),
             )
-            for rowid, document, role, name, account, updated in self._connection.execute(
+            for rowid, document, role, name, identity, updated in self._connection.execute(
                 PEOPLE_ROWS
             )
         }
@@ -739,7 +739,7 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
             Mention(
                 role=person["role"],
                 name=person["name"],
-                account=person["account"],
+                identity=person["identity"],
                 at=tuple(datetime.fromisoformat(at) for at in person["at"]),
             )
             for person in json.loads(row["people"])

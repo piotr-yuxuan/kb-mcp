@@ -300,13 +300,13 @@ INSIDE = page(
     created=MOMENT - timedelta(days=9),
     updated=MOMENT - timedelta(days=2),
     people=(
-        Mention(role="author", name=ADA, account=ACCOUNT),
-        Mention(role="creator", name=ADA, account=ACCOUNT),
-        Mention(role="assignee", name=ADA, account=ACCOUNT),
+        Mention(role="author", name=ADA, identity=f"atlassian:{ACCOUNT}"),
+        Mention(role="creator", name=ADA, identity=f"atlassian:{ACCOUNT}"),
+        Mention(role="assignee", name=ADA, identity=f"atlassian:{ACCOUNT}"),
         Mention(
             role="commenter",
             name=ADA,
-            account=ACCOUNT,
+            identity=f"atlassian:{ACCOUNT}",
             at=(COMMENTED, COMMENTED + timedelta(hours=1)),
         ),
     ),
@@ -709,7 +709,11 @@ SYNC_PATH = location(SYNC)
 
 def sam_of(account: str, key: str) -> FilledDocument:
     """Give an issue authored by an account of Sam Sample's name."""
-    front = issue(key, f"Issue {key}", people=(Mention(role="author", name=SAM, account=account),))
+    front = issue(
+        key,
+        f"Issue {key}",
+        people=(Mention(role="author", name=SAM, identity=f"atlassian:{account}"),),
+    )
     return FilledDocument(front=front, body=f"# Issue {key}\n")
 
 

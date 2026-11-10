@@ -277,7 +277,7 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         status="archived",
         issue_type=None,
         labels=("probe",),
-        people=(Mention(role="author", name="A Person", account="account-1"),),
+        people=(Mention(role="author", name="A Person", identity="atlassian:account-1"),),
         links=(),
         created=datetime(2026, 10, 20, 21, 27, 34, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC),
@@ -303,12 +303,12 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         labels=("probe",),
         # The comment without an author names nobody.
         people=(
-            Mention(role="author", name="A Person", account="account-1"),
-            Mention(role="creator", name="Another Person", account="account-2"),
+            Mention(role="author", name="A Person", identity="atlassian:account-1"),
+            Mention(role="creator", name="Another Person", identity="atlassian:account-2"),
             Mention(
                 role="commenter",
                 name="Another Person",
-                account="account-2",
+                identity="atlassian:account-2",
                 at=(datetime(2026, 10, 21, 8, tzinfo=UTC),),
             ),
         ),

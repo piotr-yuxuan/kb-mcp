@@ -37,7 +37,7 @@ class Dumper(yaml.SafeDumper):
     def represent_person(self, person: Mention) -> yaml.MappingNode:
         """Write a person in flow style, its fields in ``Mention``'s order, as ``load`` asks.
 
-        A field without a value, an account of None or no times, is left out, as ``load``
+        A field without a value, an identity of None or no times, is left out, as ``load``
         reads its absence.
         """
         values: dict[str, object] = {}
@@ -126,7 +126,7 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
                 Mention(
                     role=person.text("role"),
                     name=person.text("name"),
-                    account=person.text("account") if "account" in person.value else None,
+                    identity=person.text("identity") if "identity" in person.value else None,
                     at=tuple(times.time(name) for name in times.value),
                 )
             )

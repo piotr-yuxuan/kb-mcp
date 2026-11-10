@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict, Field
 
+from kb_mcp.kernel.names import ATLASSIAN_ISSUER
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
@@ -94,16 +95,19 @@ def first_word(name: str) -> str:
 
 
 def person_id(anchor: str, value: str) -> str:
-    """Give the id of the person that an account id, or a name's key, anchors.
+    """Give the id of the person that an identity, or a name's key, anchors.
 
     ``anchor`` is BY_ACCOUNT or BY_NAME. The id is ``p-`` and the first 16 hex digits of the
-    SHA-256 of the anchor, a line feed and the value: an opaque id, stable while what
-    anchors the person stays, so that no account id is served. It protects nothing:
-    hashing a known account id finds it again. A second note on a name, which parts its
-    annotated spellings by ``Joining.compared_key``, anchors each of them anew; the bare name
-    keeps the id, which then names fewer documents.
+    SHA-256 of the anchor, a line feed and the value, an identity of ATLASSIAN_ISSUER's
+    by its value alone, as before identities had an issuer, so that no id changed: an
+    opaque id, stable while what anchors the person stays, so that no identity is
+    served. It protects nothing: hashing a known identity finds it again. A second note
+    on a name, which parts its annotated spellings by ``Joining.compared_key``, anchors
+    each of them anew; the bare name keeps the id, which then names fewer documents.
     """
-    return "p-" + hashlib.sha256(f"{anchor}\n{value}".encode()).hexdigest()[:16]
+    issuer, _, bare = value.partition(":")
+    hashed = bare if anchor == BY_ACCOUNT and issuer == ATLASSIAN_ISSUER else value
+    return "p-" + hashlib.sha256(f"{anchor}\n{hashed}".encode()).hexdigest()[:16]
 
 
 def aliases_digest(aliases: Mapping[str, str]) -> str:
@@ -115,16 +119,16 @@ def aliases_digest(aliases: Mapping[str, str]) -> str:
 
 
 class PersonRow(Record):
-    """A person in a role of a document, as a row of the index's people holds it.
+    """A mention, as a row of the index's people holds it.
 
-    ``account`` is the source's account id, None for a name alone; ``updated`` is when
-    the document was last updated, by which an account's person is named.
+    ``identity`` is None for a name alone; ``updated`` is when the document was last
+    updated, by which an identity's person is named.
     """
 
     document: int  # the document's number, by which rows are ordered
     role: str
     name: str
-    account: str | None
+    identity: str | None
     updated: datetime
 
 
@@ -236,7 +240,7 @@ class Joining:
         for row in rows:
             self.rows.setdefault(row.document, []).append(row)
             written = written_key(row.name)
-            account = None if row.account is None else person_id(BY_ACCOUNT, row.account)
+            account = None if row.identity is None else person_id(BY_ACCOUNT, row.identity)
             spelt.setdefault(ANNOTATION.sub("", written), set()).add((written, account))
         # The name keys that names, of an account or not, write with two annotations or more.
         self.split = {
@@ -379,7 +383,7 @@ def joined(
             row.document,
             row.role,
             row.name,
-            row.account or "",
+            row.identity or "",
             row.updated,
         ),
     )
@@ -387,8 +391,8 @@ def joined(
     members: dict[str, list[tuple[PersonRow, str]]] = {}  # each person's rows, and how each joined
     ambiguous: dict[str, Ambiguity] = {}  # by key
     for row in ordered:
-        if row.account is not None:
-            how, found = BY_ACCOUNT, person_id(BY_ACCOUNT, row.account)
+        if row.identity is not None:
+            how, found = BY_ACCOUNT, person_id(BY_ACCOUNT, row.identity)
         else:
             answers = ((how, rule(row, joining)) for how, rule in RULES)
             how, found = next(
@@ -434,7 +438,7 @@ def joined(
     }
     persons = []
     for person, joins in sorted(members.items()):
-        own = [row for row, _ in joins if row.account is not None]
+        own = [row for row, _ in joins if row.identity is not None]
         if own:
             name = max(own, key=lambda row: row.updated).name
         else:

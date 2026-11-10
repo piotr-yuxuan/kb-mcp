@@ -65,7 +65,7 @@ def day(number: int) -> datetime:
 def named(document: int, name: str) -> PersonRow:
     """Give a row of the work log's: a participant or a speaker, without an account."""
     return PersonRow(
-        document=document, role="participant", name=name, account=None, updated=day(20)
+        document=document, role="participant", name=name, identity=None, updated=day(20)
     )
 
 
@@ -83,14 +83,32 @@ LINKED, UNLINKED, OTHER_UNLINKED, PLANNED, STOOD = 21, 22, 23, 24, 25
 LINKS = {LINKED: {REVIEW}, PLANNED: {PLANNING}, STOOD: {STAND_UP}}
 ACCOUNTS = (
     PersonRow(
-        document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)
+        document=1,
+        role="author",
+        name="Robin Example",
+        identity="atlassian:acct-0001",
+        updated=day(20),
     ),
     PersonRow(
-        document=2, role="creator", name="Robin Sample", account="acct-0001", updated=day(21)
+        document=2,
+        role="creator",
+        name="Robin Sample",
+        identity="atlassian:acct-0001",
+        updated=day(21),
     ),
-    PersonRow(document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)),
     PersonRow(
-        document=4, role="commenter", name="Sam Sample", account="acct-0003", updated=day(19)
+        document=3,
+        role="author",
+        name="Sam Sample",
+        identity="atlassian:acct-0002",
+        updated=day(19),
+    ),
+    PersonRow(
+        document=4,
+        role="commenter",
+        name="Sam Sample",
+        identity="atlassian:acct-0003",
+        updated=day(19),
     ),
 )
 ROWS = (
@@ -142,6 +160,35 @@ def account(person: str, *names: str) -> Person:
             Spelling(name=name, name_key=name_key(name), how="account") for name in names
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("identity", "former"),
+    [
+        ("atlassian:acct-0001", "p-32fd96c11bada084"),
+        ("atlassian:557058:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0", "p-73e4d5e8d3110c05"),
+    ],
+    ids=["an account id", "an account id with a colon"],
+)
+def test_an_atlassian_identity_keeps_the_id_that_its_account_had(
+    identity: str, former: str
+) -> None:
+    """Plan 058, criterion 2: each literal is the id that the former code gave the account.
+
+    Computed by ``person_id("account", value)`` before identities had an issuer.
+    """
+    row = PersonRow(document=1, role="author", name="Robin", identity=identity, updated=day(20))
+    assert joined((row,), {}, {}).of[row] == former
+
+
+def test_another_issuer_s_identity_of_an_equal_value_is_another_person() -> None:
+    """Equal values of two issuers never collide: the other's hashes its issuer too."""
+    rows = tuple(
+        PersonRow(document=1, role="commenter", name="Robin", identity=identity, updated=day(20))
+        for identity in ("atlassian:acct-0001", "elsewhere:acct-0001")
+    )
+    result = joined(rows, {}, {})
+    assert [result.of[row] for row in rows] == [ROBIN, anchored("account\nelsewhere:acct-0001")]
 
 
 def test_a_key_ignores_case_accents_and_spaces() -> None:
@@ -412,7 +459,11 @@ def test_two_notes_of_an_account_s_name_part_it_from_the_account_and_are_reporte
     """
     rows = (
         PersonRow(
-            document=3, role="author", name="Sam Sample", account="acct-0002", updated=day(19)
+            document=3,
+            role="author",
+            name="Sam Sample",
+            identity="atlassian:acct-0002",
+            updated=day(19),
         ),
         named(STAND_UP, "Sam Sample (not in the header)"),
         named(REVIEW, "Sam Sample (late)"),
@@ -460,10 +511,18 @@ def test_a_name_written_as_one_account_s_annotated_name_joins_that_account() -> 
     ops, sales = anchored("account\nacct-0005"), anchored("account\nacct-0006")
     rows = (
         PersonRow(
-            document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)
+            document=5,
+            role="creator",
+            name="Robin (Ops)",
+            identity="atlassian:acct-0005",
+            updated=day(20),
         ),
         PersonRow(
-            document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)
+            document=6,
+            role="creator",
+            name="Robin (Sales)",
+            identity="atlassian:acct-0006",
+            updated=day(20),
         ),
         named(STAND_UP, "robin  (OPS)"),
         named(REVIEW, "Robin"),
@@ -484,7 +543,7 @@ def test_a_name_annotated_otherwise_than_its_one_account_joins_no_account() -> N
             document=5,
             role="creator",
             name="Robin Example (Sales)",
-            account="acct-0007",
+            identity="atlassian:acct-0007",
             updated=day(20),
         ),
         named(STAND_UP, "Robin Example (Ops)"),
@@ -498,10 +557,18 @@ def test_an_account_named_on_two_documents_of_one_date_takes_the_first() -> None
     """Ties between an account's newest documents go to the first row in order."""
     rows = (
         PersonRow(
-            document=2, role="author", name="Robin Sample", account="acct-0001", updated=day(20)
+            document=2,
+            role="author",
+            name="Robin Sample",
+            identity="atlassian:acct-0001",
+            updated=day(20),
         ),
         PersonRow(
-            document=1, role="author", name="Robin Example", account="acct-0001", updated=day(20)
+            document=1,
+            role="author",
+            name="Robin Example",
+            identity="atlassian:acct-0001",
+            updated=day(20),
         ),
     )
     assert joined(rows, {}, {}).persons[0].name == "Robin Example"
@@ -592,7 +659,9 @@ def test_an_alias_to_the_id_of_a_speaker_left_apart_joins_it() -> None:
     """
     rows = (
         *ROWS,
-        PersonRow(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        PersonRow(
+            document=5, role="author", name="Robin", identity="atlassian:acct-0004", updated=day(20)
+        ),
         named(UNLINKED, "R."),
     )
     result = joined(rows, LINKS, {"R.": ROBIN_ALONE})
@@ -726,7 +795,9 @@ def test_a_speaker_whom_its_meeting_and_an_account_tell_apart_is_ambiguous() -> 
     retro, linked_to_retro = 14, 26
     rows = (
         *ROWS,
-        PersonRow(document=5, role="author", name="Robin", account="acct-0004", updated=day(20)),
+        PersonRow(
+            document=5, role="author", name="Robin", identity="atlassian:acct-0004", updated=day(20)
+        ),
         named(retro, "Robin"),
         named(retro, "Robin Other"),
         named(linked_to_retro, "Robin"),
@@ -751,10 +822,18 @@ def test_a_speaker_of_two_accounts_name_is_reported_with_its_meeting_s_person() 
     rows = (
         *ACCOUNTS,
         PersonRow(
-            document=5, role="creator", name="Robin (Ops)", account="acct-0005", updated=day(20)
+            document=5,
+            role="creator",
+            name="Robin (Ops)",
+            identity="atlassian:acct-0005",
+            updated=day(20),
         ),
         PersonRow(
-            document=6, role="creator", name="Robin (Sales)", account="acct-0006", updated=day(20)
+            document=6,
+            role="creator",
+            name="Robin (Sales)",
+            identity="atlassian:acct-0006",
+            updated=day(20),
         ),
         named(REVIEW, "Robin Example"),
         named(LINKED, "Robin"),

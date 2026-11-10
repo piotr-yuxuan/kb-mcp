@@ -56,7 +56,7 @@ TABLES = {
         ORDER BY 1, 2
     """,
     "people": """
-        SELECT d.path, p.role, p.name, p.account, p.at, p.person
+        SELECT d.path, p.role, p.name, p.identity, p.at, p.person
         FROM people p JOIN documents d ON d.rowid = p.document ORDER BY 1, 2, 3, 4, 5, 6
     """,
     "persons": "SELECT id, name FROM persons ORDER BY id",
@@ -229,9 +229,9 @@ SAM = "Sam Sample"
 SYNC = worklog_document("meeting", "m-20261020-sync", "Sync", (SAM,))
 
 
-def authored(key: str, name: str, account: str | None) -> tuple[FrontMatter, str]:
-    """Give the front matter and body of an issue authored by a name, with its account."""
-    author = Mention(role="author", name=name, account=account)
+def authored(key: str, name: str, identity: str | None) -> tuple[FrontMatter, str]:
+    """Give the front matter and body of an issue authored by a name, with its identity."""
+    author = Mention(role="author", name=name, identity=identity)
     return issue(key, f"Issue {key}", people=(author,)), f"# Issue {key}\n"
 
 
@@ -244,9 +244,9 @@ def test_a_name_alone_follows_the_accounts_of_its_name_as_a_whole_build(data: Pa
     step = Step(data)
     write(docs, SYNC, "# Sync\n")
     step.equal()
-    first = write(docs, *authored("PROJ-2", SAM, "acct-0002"))
+    first = write(docs, *authored("PROJ-2", SAM, "atlassian:acct-0002"))
     step.equal()
-    second = write(docs, *authored("PROJ-3", SAM, "acct-0003"))
+    second = write(docs, *authored("PROJ-3", SAM, "atlassian:acct-0003"))
     step.equal()
     (docs / second).unlink()
     step.equal()
@@ -262,8 +262,8 @@ def test_a_speaker_follows_its_meeting_s_participant_as_a_whole_build(data: Path
     transcript = worklog_document("transcript", "t-1", "Meeting", ("Alex",), "m-20261021-review")
     write(docs, meeting, "# Review\n")
     write(docs, transcript, "# Meeting\n")
-    write(docs, *authored("PROJ-4", "Alex Example", "acct-0004"))
-    write(docs, *authored("PROJ-5", "Alex Other", "acct-0005"))
+    write(docs, *authored("PROJ-4", "Alex Example", "atlassian:acct-0004"))
+    write(docs, *authored("PROJ-5", "Alex Other", "atlassian:acct-0005"))
     step.equal()
     write(
         docs,
@@ -273,9 +273,9 @@ def test_a_speaker_follows_its_meeting_s_participant_as_a_whole_build(data: Path
     step.equal()
 
 
-@pytest.mark.parametrize("account", ["acct-0006", None])
+@pytest.mark.parametrize("identity", ["atlassian:acct-0006", None])
 def test_tied_spellings_serve_a_whole_build_s_name_whichever_file_was_edited(
-    data: Path, account: str | None
+    data: Path, identity: str | None
 ) -> None:
     """Criterion 15: two spellings of one person, of one update time; the first file edited.
 
@@ -284,10 +284,10 @@ def test_tied_spellings_serve_a_whole_build_s_name_whichever_file_was_edited(
     """
     docs = data / "docs"
     step = Step(data)
-    names = ("Robin Tied", "Robin Tie") if account else ("Jo Twice", "JO TWICE")
-    first = authored("PROJ-6", names[0], account)
+    names = ("Robin Tied", "Robin Tie") if identity else ("Jo Twice", "JO TWICE")
+    first = authored("PROJ-6", names[0], identity)
     write(docs, *first)
-    write(docs, *authored("PROJ-7", names[1], account))
+    write(docs, *authored("PROJ-7", names[1], identity))
     step.equal()
     write(docs, first[0], f"{first[1]}\nEdited, the time kept.\n")
     step.equal()
@@ -301,8 +301,8 @@ def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data:
     docs = data / "docs"
     step = Step(data)
     write(docs, SYNC, "# Sync\n")
-    write(docs, *authored("PROJ-2", "Sam Sample", "acct-0002"))
-    write(docs, *authored("PROJ-3", "Sam Sample", "acct-0003"))
+    write(docs, *authored("PROJ-2", "Sam Sample", "atlassian:acct-0002"))
+    write(docs, *authored("PROJ-3", "Sam Sample", "atlassian:acct-0003"))
     step.equal()
     held = rows(data / "index.sqlite")
     alias = f'"Sam Sample" = "{SAM_2}"\n'  # the account acct-0002's person

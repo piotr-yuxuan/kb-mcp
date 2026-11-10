@@ -342,8 +342,8 @@ person and by role. Sources, scopes and sign-ins do not partition persons. A doc
 `people` are its mentions; a count of persons is never called "people".
 
 **In the code.** [`Mention`](../../src/kb_mcp/mirror/domain/mirror.py),
-with [`Mention.account`](../../src/kb_mcp/mirror/domain/mirror.py), an identity's
-value, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
+with [`Mention.identity`](../../src/kb_mcp/mirror/domain/mirror.py), an identity
+written `<issuer>:<value>`, and [`ROLES`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`SOLE`](../../src/kb_mcp/mirror/domain/mirror.py);
 [`Person`](../../src/kb_mcp/search/domain/people.py),
 [`Spelling`](../../src/kb_mcp/search/domain/people.py),

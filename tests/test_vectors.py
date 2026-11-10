@@ -814,14 +814,14 @@ def test_a_chunk_s_vector_key_stays_what_it_was(chunking: Chunking) -> None:
     assert (first, last) == KEYS[chunking]
 
 
-def test_an_index_holds_the_tables_chunks_and_section_words_at_schema_7(data: Path) -> None:
+def test_an_index_holds_the_tables_chunks_and_section_words_since_schema_7(data: Path) -> None:
     """Plan 054, criterion 3: the tables and the schema row of an index built now."""
     filled_by(data)
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
         schema = connection.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone()
     assert ({"chunks", "section_words"} <= tables, "pieces" in tables) == (True, False)
-    assert schema == ("7",)
+    assert schema == ("8",)
 
 
 def as_schema_6(index: Path) -> None:

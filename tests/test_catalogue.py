@@ -130,7 +130,9 @@ def test_a_page_front_matter_follows_the_layout_table() -> None:
     assert (matter.source, matter.type, matter.id, matter.key) == ("confluence", "page", "30", None)
     assert (matter.space, matter.project, matter.issue_type) == ("MFS", None, None)
     assert (matter.status, matter.author, matter.assignee) == ("archived", "A Person", None)
-    assert matter.people == (Mention(role="author", name="A Person", account="account-1"),)
+    assert matter.people == (
+        Mention(role="author", name="A Person", identity="atlassian:account-1"),
+    )
     assert (matter.version, matter.revision) == (3, "000003")
     assert matter.created == datetime(2026, 10, 20, 21, 52, 41, 371000, tzinfo=UTC)
     assert matter.fetched_at == datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
@@ -219,22 +221,25 @@ COMMENTS = (
 
 
 def test_an_issue_names_its_people_in_the_order_of_the_roles() -> None:
-    """Author, creator, assignee, then each commenter once, their times in UTC, ascending."""
+    """Author, creator, assignee, then each commenter once, their times in UTC, ascending.
+
+    Each by the identity that the Atlassian issuer gave: their account id.
+    """
     matter = front_matter(FILED, COMMENTS, FETCHED, CATALOGUE, SITE)
     assert matter.people == (
-        Mention(role="author", name="A Person", account="account-1"),
-        Mention(role="creator", name="Another Person", account="account-2"),
-        Mention(role="assignee", name="account-3", account="account-3"),
+        Mention(role="author", name="A Person", identity="atlassian:account-1"),
+        Mention(role="creator", name="Another Person", identity="atlassian:account-2"),
+        Mention(role="assignee", name="account-3", identity="atlassian:account-3"),
         Mention(
             role="commenter",
             name="Another Person",
-            account="account-2",
+            identity="atlassian:account-2",
             at=(datetime(2026, 10, 21, 8, tzinfo=UTC), datetime(2026, 10, 22, 8, tzinfo=UTC)),
         ),
         Mention(
             role="commenter",
             name="A Person",
-            account="account-1",
+            identity="atlassian:account-1",
             at=(datetime(2026, 10, 21, 9, 30, tzinfo=UTC),),
         ),
     )
@@ -249,8 +254,8 @@ def test_commenters_come_by_their_first_comment_in_whatever_order_given() -> Non
     assert reversed_.people == given.people
 
 
-def test_a_commenter_is_one_name_with_one_account() -> None:
-    """Namesakes of two accounts are two commenters; one account under two names, two."""
+def test_a_commenter_is_one_name_with_one_identity() -> None:
+    """Namesakes of two identities are two commenters; one identity under two names, two."""
     namesake = SiteUser(account_id="account-4", display_name="Another Person")
     renamed = SiteUser(account_id="account-2", display_name="A Person")
     comments = (
@@ -261,10 +266,10 @@ def test_a_commenter_is_one_name_with_one_account() -> None:
     )
     matter = front_matter(FILED, comments, FETCHED, CATALOGUE, SITE)
     commenters = [person for person in matter.people if person.role == "commenter"]
-    assert [(person.name, person.account, len(person.at)) for person in commenters] == [
-        ("Another Person", "account-2", 1),
-        ("Another Person", "account-4", 2),
-        ("A Person", "account-2", 1),
+    assert [(person.name, person.identity, len(person.at)) for person in commenters] == [
+        ("Another Person", "atlassian:account-2", 1),
+        ("Another Person", "atlassian:account-4", 2),
+        ("A Person", "atlassian:account-2", 1),
     ]
 
 

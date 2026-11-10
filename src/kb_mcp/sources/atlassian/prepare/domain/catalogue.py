@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import model_validator
 
-from kb_mcp.kernel.names import RefusedError, require
+from kb_mcp.kernel.names import ATLASSIAN_ISSUER, RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, Mention
 from kb_mcp.mirror.domain.mirror_text import one_line
@@ -176,6 +176,11 @@ class Catalogue(Record):
         return "".join(html)
 
 
+def identity(person: SiteUser) -> str:
+    """Give a site user's identity: the Atlassian issuer and their account id."""
+    return f"{ATLASSIAN_ISSUER}:{person.account_id}"
+
+
 def front_matter(
     document: ConfluenceDocument | Issue,
     comments: Iterable[Comment],
@@ -193,14 +198,14 @@ def front_matter(
     issue = document if isinstance(document, Issue) else None
     confluence = document if isinstance(document, ConfluenceDocument) else None
     space = None if confluence is None else catalogue.spaces.get(confluence.space_id)
-    # Each commenter's comment times, by name and account, the first comment first.
+    # Each commenter's comment times, by name and identity, the first comment first.
     said: dict[tuple[str, str], list[datetime]] = {}
     for comment in sorted(comments, key=lambda each: each.created):
         if comment.author is not None:
-            commenter = (catalogue.name(comment.author), comment.author.account_id)
+            commenter = (catalogue.name(comment.author), identity(comment.author))
             said.setdefault(commenter, []).append(comment.created.astimezone(UTC))
     sole = [
-        Mention(role=role, name=catalogue.name(person), account=person.account_id)
+        Mention(role=role, name=catalogue.name(person), identity=identity(person))
         for role, person in (
             ("author", document.author),
             ("creator", None if issue is None else issue.creator),
@@ -209,8 +214,8 @@ def front_matter(
         if person is not None
     ]
     commenters = [
-        Mention(role="commenter", name=name, account=account, at=tuple(at))
-        for (name, account), at in said.items()
+        Mention(role="commenter", name=name, identity=held, at=tuple(at))
+        for (name, held), at in said.items()
     ]
     return AtlassianFrontMatter(
         source=document.source,
