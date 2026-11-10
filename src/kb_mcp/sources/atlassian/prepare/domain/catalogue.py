@@ -15,7 +15,7 @@ from functools import cached_property
 from html import escape
 from typing import TYPE_CHECKING, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER, RefusedError, require
 from kb_mcp.kernel.record import Record
@@ -76,16 +76,18 @@ class AtlassianFrontMatter(FrontMatter):
 
 
 class Catalogue(Record):
-    """The spaces, the site users' names, and the documents and folders last listed.
+    """The spaces, the site users' names, the documents and folders last listed, the issues.
 
     ``spaces`` are by id, ``names`` by account id, ``listed`` pages and blog posts by id,
-    and ``folders`` by the id of the space that listed them.
+    ``folders`` by the id of the space that listed them, and ``issues``, those of the
+    raw store, by id.
     """
 
     spaces: Mapping[str, Space]
     names: Mapping[str, str]
     listed: Mapping[str, Page | BlogPost]
     folders: Mapping[str, Sequence[Folder]]
+    issues: Mapping[str, Issue] = Field(default_factory=dict)
 
     @cached_property
     def nodes(self) -> dict[str, Page | Folder]:
@@ -108,13 +110,21 @@ class Catalogue(Record):
         return (listed or document).status
 
     def breadcrumb(self, document: ConfluenceDocument | Issue) -> tuple[str, ...]:
-        """Return the titles above a page, root first; an issue's parent key; else none.
+        """Return the titles above a page or an issue, root first; else none.
 
-        A page's parent comes from its listing when it is listed. The walk stops at a
-        parent that is not listed, or at a loop.
+        A page's parent comes from its listing when it is listed, and the walk stops at a
+        parent that is not listed. An issue's parent's title is its own response's, and
+        each further one its parent's, so that the walk stops above a parent not in
+        ``issues``. Either stops at a loop.
         """
         if isinstance(document, Issue):
-            return (document.parent,) if document.parent else ()
+            titles: list[str] = []
+            seen, issue = {document.id}, document
+            while issue is not None and issue.parent is not None and issue.parent.id not in seen:
+                titles.append(one_line(issue.parent.title))
+                seen.add(issue.parent.id)
+                issue = self.issues.get(issue.parent.id)
+            return tuple(reversed(titles))
         listed = self.listed.get(document.id)
         page = listed if isinstance(listed, Page) else document
         parent = page.parent_id if isinstance(page, Page) else None

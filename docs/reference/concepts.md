@@ -230,7 +230,8 @@ connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py)
 [`Link`](../../src/kb_mcp/mirror/domain/mirror.py),
 [`Link.ref`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py);
-[`tree_paths`](../../src/kb_mcp/search/domain/search.py), which gives the breadcrumb;
+[`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
+which gives a page's and an issue's breadcrumb;
 the work log's [`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py);
 [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py),
 [`CONFIRM_AFTER`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py),

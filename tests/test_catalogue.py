@@ -15,6 +15,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Comment,
     Folder,
     Issue,
+    IssueParent,
     Page,
     SiteUser,
     Snapshot,
@@ -78,7 +79,7 @@ ISSUE = Issue(
     issue_type="Idea",
     status="Parking lot",
     assignee=None,
-    parent="PRB-3",
+    parent=IssueParent(id="10002", title="Ideas"),
 )
 CATALOGUE = Catalogue(
     spaces={"1": Space(id="1", key="MFS", name="A space")},
@@ -116,11 +117,27 @@ def test_a_listed_page_takes_its_status_from_the_listing() -> None:
 
 
 def test_breadcrumbs_climb_pages_and_folders_root_first() -> None:
-    """A page's ancestors, a blog post's none, an issue's parent key."""
+    """A page's ancestors, a blog post's none, an issue's parent's title."""
     assert CATALOGUE.breadcrumb(LEAF) == ("Root", "A folder")
     assert CATALOGUE.breadcrumb(ROOT) == ()
     assert CATALOGUE.breadcrumb(POST) == ()
-    assert CATALOGUE.breadcrumb(ISSUE) == ("PRB-3",)
+    assert CATALOGUE.breadcrumb(ISSUE) == ("Ideas",)
+
+
+def test_an_issue_breadcrumb_climbs_the_parents_of_the_store() -> None:
+    """The titles along the parents, root first, as far as one is in the store or loops.
+
+    The parent's title is the child's response's, a later rename of the parent included.
+    """
+    epic = replace(ISSUE, id="1", key="PRB-1", title="Epic", parent=None)
+    story = replace(ISSUE, id="2", key="PRB-2", parent=IssueParent(id="1", title="Epic, old"))
+    task = replace(ISSUE, id="3", key="PRB-3", parent=IssueParent(id="2", title="Story"))
+    climbed = replace(CATALOGUE, issues={each.id: each for each in (epic, story, task)})
+    assert climbed.breadcrumb(task) == ("Epic, old", "Story")
+    assert CATALOGUE.breadcrumb(task) == ("Story",)
+    back = replace(story, parent=IssueParent(id="3", title="Task"))
+    looping = replace(CATALOGUE, issues={"2": back})
+    assert looping.breadcrumb(task) == ("Story",)
 
 
 def test_a_breadcrumb_stops_at_an_unlisted_parent_or_a_loop() -> None:
@@ -169,7 +186,7 @@ def test_an_issue_front_matter_is_one_line_texts() -> None:
     assert (matter.space, matter.version, matter.issue_type) == (None, None, "Idea")
     assert matter.title == "What are archived ideas?"
     assert matter.author == "Another Person"
-    assert matter.breadcrumb == ("PRB-3",)
+    assert matter.breadcrumb == ("Ideas",)
     assert matter.revision == "20261020T215241.371000Z"
 
 

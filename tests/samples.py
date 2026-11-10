@@ -73,7 +73,11 @@ def v3_issue(**changes: object) -> dict[str, object]:
             # Someone else filed it for the reporter.
             "creator": {"accountId": "account-2", "displayName": "Another Person"},
             "assignee": None,
-            "parent": {"id": "10002", "key": "PRB-3"},
+            "parent": {
+                "id": "10002",
+                "key": "PRB-3",
+                "fields": {"summary": "Ideas", "status": {"name": "Open"}},
+            },
             "attachment": [
                 {
                     "id": "10000",

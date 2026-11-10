@@ -482,26 +482,6 @@ def sections(body: str) -> list[Section]:
     ]
 
 
-def tree_paths(fronts: Sequence[FrontMatter]) -> list[tuple[str, ...]]:
-    """Name where each document sits in its space or project: its ancestors, then itself.
-
-    A Confluence breadcrumb names every ancestor by title, so a page is named by its
-    title. A Jira breadcrumb names only the parent, by key, so an issue is named by its
-    key and its chain of parents is followed among ``fronts``, a cycle stopping it.
-    """
-    parents = {front.key: front.breadcrumb[0] for front in fronts if front.key and front.breadcrumb}
-    paths: list[tuple[str, ...]] = []
-    for front in fronts:
-        if not front.key:
-            paths.append((*front.breadcrumb, front.title))
-            continue
-        chain = [front.key]
-        while chain[-1] in parents and parents[chain[-1]] not in chain:
-            chain.append(parents[chain[-1]])
-        paths.append(tuple(reversed(chain)))
-    return paths
-
-
 def tree_key(path: tuple[str, ...]) -> tuple[tuple[str | int, ...], ...]:
     """Order tree paths depth first, names without regard to case, numbers as numbers."""
     return tuple(

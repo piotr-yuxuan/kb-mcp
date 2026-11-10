@@ -54,7 +54,6 @@ from kb_mcp.search.domain.search import (
     plan_query,
     rank,
     tree_key,
-    tree_paths,
 )
 
 if TYPE_CHECKING:
@@ -907,7 +906,8 @@ class Library:
             top = None if parent is None else self._find(reader, parent)
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
-        paths = tree_paths([entry.front for entry in listed])
+        # Where each document sits: the titles along its parents, then its own.
+        paths = [(*entry.front.breadcrumb, entry.front.title) for entry in listed]
         # Ties go by path: pages of results need one order from call to call.
         pairs = sorted(
             zip(paths, listed, strict=True), key=lambda pair: (tree_key(pair[0]), pair[1].path)

@@ -385,7 +385,7 @@ order or type, by name.
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
-| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
+| `breadcrumb` | list of strings | the titles along the parents, root first: a page's ancestor pages and folders; an issue's parent, by the title that the issue's response gives it, then each further parent of the raw store, by its own response's; or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
 Images: an image in the rendered HTML names its attachment by

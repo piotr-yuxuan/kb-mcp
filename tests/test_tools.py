@@ -1325,28 +1325,29 @@ def test_a_page_of_results_names_the_ancestors_of_its_first_line(tmp_path: Path)
     assert tree_lines(second)[1] == "    - Child (105)"
 
 
-def test_a_project_is_browsed_by_parent_chains(tmp_path: Path) -> None:
-    """An epic, its story and the story's sub-task nest, whatever their numbers."""
+def test_a_project_is_browsed_by_the_titles_along_parents(tmp_path: Path) -> None:
+    """An epic, its story and the story's sub-task nest; a parent not mirrored is context."""
     library = built(
         tmp_path,
         [
             (issue("PROJ-10", "Epic"), None),
-            (issue("PROJ-2", "Story", breadcrumb=("PROJ-10",)), None),
-            (issue("PROJ-1", "Sub-task", breadcrumb=("PROJ-2",)), None),
-            (issue("PROJ-3", "Orphan", breadcrumb=("OTHER-1",)), None),
+            (issue("PROJ-2", "Story", breadcrumb=("Epic",)), None),
+            (issue("PROJ-1", "Sub-task", breadcrumb=("Epic", "Story")), None),
+            (issue("PROJ-3", "Orphan", breadcrumb=("Other epic",)), None),
             (issue("PROJ-20", "Late"), None),
             (issue("PROJ-9", "Early"), None),
         ],
     )
     assert tree_lines(library.browse(project="PROJ")) == [
-        "- [OTHER-1]",
-        "  - Orphan (PROJ-3)",
         "- Early (PROJ-9)",
         "- Epic (PROJ-10)",
         "  - Story (PROJ-2)",
         "    - Sub-task (PROJ-1)",
         "- Late (PROJ-20)",
+        "- [Other epic]",
+        "  - Orphan (PROJ-3)",
     ]
+    assert tree_lines(library.browse(project="PROJ", parent="PROJ-2")) == ["- Sub-task (PROJ-1)"]
 
 
 def test_a_deep_chain_still_moves_on(tmp_path: Path) -> None:

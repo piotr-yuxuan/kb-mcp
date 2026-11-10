@@ -18,9 +18,8 @@ from kb_mcp.search.domain.search import (
     rank,
     sections,
     tree_key,
-    tree_paths,
 )
-from tests.mirrors import MOMENT, issue, page
+from tests.mirrors import MOMENT
 
 LIMIT = 26
 # The plan's length of a chunk, in characters.
@@ -149,28 +148,6 @@ def test_trees_list_depth_first_with_numbers_in_order() -> None:
         ("PROJ-2",),
         ("PROJ-2", "PROJ-11"),
         ("PROJ-10",),
-    ]
-
-
-def test_jira_trees_follow_parents_and_confluence_trees_breadcrumbs() -> None:
-    """A sub-task sits under its story under its epic; a missing parent stays a name."""
-    fronts = [
-        page("1", "Child", breadcrumb=("Home", "Folder")),
-        issue("PROJ-3", "Sub-task", breadcrumb=("PROJ-12",)),
-        issue("PROJ-12", "Story", breadcrumb=("PROJ-1",)),
-        issue("PROJ-1", "Epic"),
-        issue("PROJ-7", "Orphan", breadcrumb=("OTHER-1",)),
-        issue("PROJ-8", "Loop", breadcrumb=("PROJ-9",)),
-        issue("PROJ-9", "Loop", breadcrumb=("PROJ-8",)),
-    ]
-    assert tree_paths(fronts) == [
-        ("Home", "Folder", "Child"),
-        ("PROJ-1", "PROJ-12", "PROJ-3"),
-        ("PROJ-1", "PROJ-12"),
-        ("PROJ-1",),
-        ("OTHER-1", "PROJ-7"),
-        ("PROJ-9", "PROJ-8"),
-        ("PROJ-8", "PROJ-9"),
     ]
 
 

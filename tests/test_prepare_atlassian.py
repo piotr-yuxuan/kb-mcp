@@ -325,9 +325,26 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         version=None,
         revision="20261020T213758.027000Z",
         url=f"{SITE}/browse/PRB-1",
-        breadcrumb=("PRB-3",),
+        breadcrumb=("Ideas",),
         fetched_at=FETCHED,
     )
+
+
+def test_an_issue_breadcrumb_climbs_its_parents_in_the_store(sandbox: Sandbox) -> None:
+    """PRB-1's parent PRB-3 is stored, under an epic that is not: both titles lead."""
+    parent = v3_issue(id="10002", key="PRB-3")
+    fields = parent["fields"]
+    assert isinstance(fields, dict)
+    fields.update(
+        summary="Ideas, renamed",
+        attachment=[],
+        parent={"id": "10009", "key": "PRB-9", "fields": {"summary": "Epic"}},
+    )
+    with sandbox.jira.writing():
+        sandbox.jira.put(Issue, {jira_v3.ISSUE: parent, jira_v3.COMMENTS: []}, FETCHED, {})
+    sandbox.run(sources=("jira",))
+    issue, _ = load(sandbox.text("jira/PRB/PRB-1.md"), "issue")
+    assert issue.breadcrumb == ("Epic", "Ideas")
 
 
 def test_without_a_site_no_address_is_absolute(sandbox: Sandbox) -> None:

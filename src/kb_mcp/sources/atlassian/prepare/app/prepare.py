@@ -353,6 +353,15 @@ def prepare_atlassian(
     with TRACER.start_as_current_span("prepare.read"):
         catalogue, damaged, times = read_catalogue(RawStore(store.root, lister), found[lister])
         placed, retired = place(store, placing, catalogue, times, found)
+        # The source's issues, whose titles name their children's parents.
+        catalogue = replace(
+            catalogue,
+            issues={
+                issue.id: issue
+                for issue in (each.document for each in placed if each.source == source)
+                if isinstance(issue, Issue)
+            },
+        )
         linked, assets = link_targets(placed, store, site)
     own = [each for each in placed if each.source == source]
     _, files = link_targets(own, store, site)

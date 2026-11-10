@@ -168,6 +168,19 @@ class Page(ConfluenceDocument):
     parent_type: str | None = None
 
 
+class IssueParent(Record):
+    """An issue's parent issue, as the issue's response names it: its id and its title."""
+
+    id: str
+    title: str
+
+    @model_validator(mode="after")
+    def check_parent(self) -> Self:
+        """Refuse an id that could not name a document."""
+        require(IDENTIFIER, self.id, "id")
+        return self
+
+
 class Issue(FetchedDocument):
     """A Jira issue; its id stays when it moves, its key does not."""
 
@@ -179,7 +192,7 @@ class Issue(FetchedDocument):
     status: str
     creator: SiteUser | None = None  # who created it; its author is its reporter
     assignee: SiteUser | None = None
-    parent: str | None = None  # the parent issue's key
+    parent: IssueParent | None = None
 
     @model_validator(mode="after")
     def check_issue(self) -> Self:
