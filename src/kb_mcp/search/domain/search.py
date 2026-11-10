@@ -314,8 +314,8 @@ class PersonCounts(Record):
     count: int
     across: int  # persons with documents in more than one source
     alone: int  # persons by name alone, of no identity
-    # Each name whose key two identities or more hold, as one of them writes it, with the
-    # persons holding that key, the most first, ties by name.
+    # Each name whose key the identities of two persons or more hold, as one of them writes
+    # it, with the persons holding that key, the most first, ties by name.
     shared: tuple[tuple[str, int], ...]
 
 
