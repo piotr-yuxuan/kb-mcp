@@ -26,7 +26,7 @@ from kb_mcp.search.adapters.embedding import (
     SINGLE,
     EmbeddingRefusedError,
     connect,
-    embed,
+    embeddings,
 )
 from kb_mcp.search.adapters.model_api import endpoint
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -305,7 +305,7 @@ def test_an_embedding_is_a_client_span_by_the_genai_conventions_holding_its_atte
     """
     opened = replace(scripted(Scripted(statuses=[503])), sleep=lambda _: None)
     with opened:
-        embed(opened, "tiny", ["undo"], DOCUMENTS)
+        embeddings(opened, "tiny", ["undo"], DOCUMENTS)
     busy, answered, embedding = telemetry.spans.get_finished_spans()
     assert (embedding.name, embedding.kind) == ("embeddings tiny", SpanKind.CLIENT)
     assert dict(embedding.attributes or {}) == {**EMBEDDING, "gen_ai.usage.input_tokens": 21}
@@ -329,7 +329,7 @@ def test_an_embedding_that_fails_is_an_error_typed_as_its_exception(telemetry: I
     """Refused, its text sent back with 400: the class qualified by its module; its POST's, 400."""
     opened = scripted(Scripted(statuses=[400]))
     with opened, pytest.raises(EmbeddingRefusedError):
-        embed(opened, "tiny", ["undo"], SINGLE)
+        embeddings(opened, "tiny", ["undo"], SINGLE)
     refused, embedding = telemetry.spans.get_finished_spans()
     failed = "kb_mcp.search.adapters.embedding.EmbeddingRefusedError"
     assert dict(embedding.attributes or {}) == {**EMBEDDING, "error.type": failed}

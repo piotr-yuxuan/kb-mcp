@@ -39,7 +39,6 @@ from kb_mcp.search.adapters.embedding import (
     Prefixes,
     connect,
     digest,
-    embed,
     embeddings,
 )
 from kb_mcp.search.adapters.model_api import (
@@ -204,7 +203,7 @@ def test_an_answer_that_is_not_one_vector_per_text_is_refused(
     """Too few items, a repeated index, ragged or non-numeric rows, a zero or NaN vector."""
     opened = answering(lambda _: answer)
     with pytest.raises(ModelError, match=re.escape(named)):
-        embed(opened, "tiny", ["one", "two"], SINGLE)
+        embeddings(opened, "tiny", ["one", "two"], SINGLE)
 
 
 def test_a_row_of_another_length_than_the_probe_s_is_refused() -> None:
@@ -233,7 +232,7 @@ def test_an_answer_past_its_size_is_refused() -> None:
 
     opened = answering(lambda _: httpx.Response(200, content=endless()))
     with pytest.raises(ModelError, match="too large or too slow"):
-        embed(opened, "tiny", ["one"], SINGLE)
+        embeddings(opened, "tiny", ["one"], SINGLE)
     assert len(reads) == MAX_ANSWER_BYTES // 2**20 + 1
 
 
@@ -250,7 +249,7 @@ def test_an_answer_trickled_past_its_deadline_is_given_up() -> None:
     ticks = iter(range(0, 10**6, int(TICK_S)))
     opened = replace(opened, clock=lambda: float(next(ticks)))
     with pytest.raises(ModelError, match="too large or too slow"):
-        embed(opened, "tiny", ["one"], SINGLE)
+        embeddings(opened, "tiny", ["one"], SINGLE)
     assert len(reads) < READS
 
 
@@ -259,7 +258,7 @@ def test_a_busy_endpoint_is_tried_again_after_waits() -> None:
     opened, waits = recorded()
     answers = Scripted(statuses=[503])
     opened = replace(opened, http=scripted(answers).http)
-    assert embed(opened, "tiny", ["undo"], DOCUMENTS).shape == (1, DIMENSIONS)
+    assert embeddings(opened, "tiny", ["undo"], DOCUMENTS).vectors.shape == (1, DIMENSIONS)
     assert waits == [1.0]
 
 
@@ -287,13 +286,13 @@ def test_three_failures_give_up_and_a_refusal_is_not_retried() -> None:
     opened, waits = recorded()
     opened = replace(opened, http=scripted(answers).http)
     with pytest.raises(ModelError, match="answered 503") as failed:
-        embed(opened, "tiny", ["undo"], DOCUMENTS)
+        embeddings(opened, "tiny", ["undo"], DOCUMENTS)
     assert not isinstance(failed.value, EmbeddingRefusedError)
     assert (len(answers.asked), waits) == (DOCUMENTS.attempts, [1.0, 4.0])
     with pytest.raises(EmbeddingRefusedError, match="answered 500"):
-        embed(opened, "tiny", ["undo"], DOCUMENTS)
+        embeddings(opened, "tiny", ["undo"], DOCUMENTS)
     with pytest.raises(EmbeddingRefusedError, match="answered 400"):
-        embed(opened, "tiny", ["undo"], DOCUMENTS)
+        embeddings(opened, "tiny", ["undo"], DOCUMENTS)
     assert len(answers.asked) == 2 * DOCUMENTS.attempts + 1
 
 
@@ -323,7 +322,7 @@ def test_a_redirect_is_not_followed() -> None:
         return httpx.Response(307, headers={"location": "https://elsewhere.example/v1/embeddings"})
 
     with pytest.raises(ModelError, match="answered 307"):
-        embed(answering(redirect), "tiny", ["undo"], SINGLE)
+        embeddings(answering(redirect), "tiny", ["undo"], SINGLE)
     assert asked == [f"{URL}/embeddings"]
 
 
@@ -340,7 +339,7 @@ def test_the_key_is_sent_only_when_set_and_never_said() -> None:
             URL, key, EMBEDDINGS, remote_allowed=False, transport=httpx.MockTransport(refuse)
         )
         with pytest.raises(ModelError, match=embedding.KEY_VARIABLE) as refused:
-            embed(opened, "tiny", ["undo"], SINGLE)
+            embeddings(opened, "tiny", ["undo"], SINGLE)
         assert "a-secret-key" not in str(refused.value)
     assert headers == ["Bearer a-secret-key", None]
 
@@ -649,7 +648,7 @@ def test_an_answer_nested_too_deep_is_no_crash() -> None:
     """A hostile answer is refused, or read as a server listing no digest; never a crash."""
     deep = b"[" * 100_000 + b"]" * 100_000
     with pytest.raises(ModelError, match="not embeddings"):
-        embed(answering(lambda _: httpx.Response(200, content=deep)), "tiny", ["one"], SINGLE)
+        embeddings(answering(lambda _: httpx.Response(200, content=deep)), "tiny", ["one"], SINGLE)
     assert digest(over(lambda _: httpx.Response(200, content=deep)), "tiny") == ""
 
 
@@ -730,7 +729,7 @@ def test_an_allowed_remote_endpoint_goes_through_the_environment_s_proxy(
                 ) as opened,
                 pytest.raises(ModelError),
             ):
-                embed(opened, "tiny", ["undo"], Bounds(deadline_s=LISTENED_S, attempts=1))
+                embeddings(opened, "tiny", ["undo"], Bounds(deadline_s=LISTENED_S, attempts=1))
             thread.join(timeout=LISTENED_S)
         finally:
             REACHABLE.discard(port)
@@ -983,4 +982,4 @@ def test_the_embedding_s_span_and_measure_say_the_tokens_counted_if_any(
 def test_a_count_of_tokens_that_is_not_one_refuses_the_answer(value: object) -> None:
     """Negative, fractional, not a number, or a usage that is no object: the answer is refused."""
     with pytest.raises(ModelError, match="the endpoint's usage is not a count of tokens"):
-        embed(usage(value), "tiny", ["one"], SINGLE)
+        embeddings(usage(value), "tiny", ["one"], SINGLE)
