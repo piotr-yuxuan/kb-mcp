@@ -292,16 +292,16 @@ class Joining:
 
         It holds a name's key, or an identity that a mention holds. Its value is a
         person's id; an identity that a mention holds, which means that identity's own
-        person; or a name, which means the one identity's person of its key, as rule 3
-        finds it with ``moved``, else the person by name alone of a key that a name
-        without an identity holds.
+        person, or the one that ``moved`` gives it; or a name, which means the one
+        identity's person of its key, as rule 3 finds it with ``moved``, else the person
+        by name alone of a key that a name without an identity holds.
         """
         if PERSON_ID.fullmatch(value):
             means: Meant = value
         else:
-            compared = self.compared_key(value)
+            compared, own = self.compared_key(value), self.owned.get(value)
             means = (
-                self.owned.get(value)
+                moved.get(own, own)
                 or self.identified(value, moved)
                 or (person_id(NAME_ANCHOR, compared) if compared in self.held else None)
             )

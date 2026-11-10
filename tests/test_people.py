@@ -801,6 +801,19 @@ def test_an_alias_of_a_name_names_a_person_by_an_identity() -> None:
     assert result.unused == ()
 
 
+def test_an_alias_of_a_name_to_an_identity_follows_where_an_alias_moved_it() -> None:
+    """Sam names acct-0003, which an alias of its own makes acct-0002's person: Sam joins it.
+
+    The identity's own person is made by nothing then, but the value names the identity,
+    which is that person's, as rule 1 says.
+    """
+    sam = named(UNLINKED, "Sam")
+    aliases = {"atlassian:acct-0003": "atlassian:acct-0002", "Sam": "atlassian:acct-0003"}
+    result = joined((SAM_2_ROW, SAM_3_ROW, sam), {}, aliases)
+    assert result.of[sam] == SAM_2
+    assert result.unused == ()
+
+
 def test_aliases_of_identities_are_not_chained() -> None:
     """acct-0003 names acct-0002, which an alias of its own moves to acct-0001.
 
