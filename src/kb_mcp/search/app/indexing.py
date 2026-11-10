@@ -127,13 +127,7 @@ class IndexCounts(Record):
         return persons.count
 
     def text(self, detail: Detail) -> str:
-        """Write the documents and sections held, then what changed, or that nothing did.
-
-        Short gives each count, the documents awaiting vectors when the index names a
-        model, and why it was rebuilt whole, if it was. Detailed says it in a line, with
-        the documents by type and the index: nothing changed, updated with each count, or
-        rebuilt whole and why; then the documents awaiting vectors.
-        """
+        """Write what the index holds and what changed of it: a line each, or one in detail."""
         if detail == "short":
             lines = [f"documents: {self.types.total()}", f"sections: {self.sections}"]
             lines += (
@@ -159,11 +153,7 @@ class IndexCounts(Record):
 
 
 def outcome_of(counts: IndexCounts, problems: Iterable[Problem]) -> Outcome[IndexCounts]:
-    """Give a build's outcome: failed by each file or chunk left out, warned of each person.
-
-    The warnings are what the join left apart: each name that could be several persons,
-    and each alias that changed nothing.
-    """
+    """Give a build's outcome, warned of what the join left apart."""
     return Outcome.of(
         counts,
         problems,
@@ -589,12 +579,7 @@ class Filled(Record):
     pruned: Pruned | None = None
 
     def text(self, detail: Detail) -> str:
-        """Write the chunks that the index holds and what changed of them, then the prune.
-
-        Short gives the chunks, those added and removed, or that nothing was written, and
-        the texts embedded now; detailed, the texts found in the vector cache, the index,
-        and the model with its prefixes too.
-        """
+        """Write the chunks that the index holds and what changed of them, then the prune."""
         if detail == "short":
             written = f"chunks: {self.chunks}\n"
             written += (
@@ -624,11 +609,7 @@ def prefixes_said(model: str) -> str:
 def filled_outcome(
     filled: Filled, refused: Iterable[str], warned: Iterable[OutcomeWarning], held: Held
 ) -> Outcome[Filled]:
-    """Give a fill's outcome, its warnings those given.
-
-    Its problems are each document with a chunk refused, then each file of the mirror
-    that the index lacks, which holds the prune back.
-    """
+    """Give a fill's outcome: a problem by each document refused and each file lacking."""
     problems = [Problem(where=path, reason=REFUSED) for path in refused]
     problems += [
         Problem(where=path, reason=f"not in the index: {each.reason}")

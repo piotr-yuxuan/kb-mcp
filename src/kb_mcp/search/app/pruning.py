@@ -123,12 +123,7 @@ class Pruned(Record):
     file: str | None = None
 
     def text(self, detail: Detail) -> str:
-        """Say what the prune that followed the build did.
-
-        Short gives the vectors deleted and the vector cache's size. Detailed gives the
-        vectors kept, of which for the evaluation alone, those deleted, the vector cache's
-        size before and after, and whether it gives space back; or why it did not prune.
-        """
+        """Say what the prune did, or why it did not prune."""
         if detail == "short":
             if self.outcome != "pruned":
                 return f"vectors pruned: none, {self.outcome}\n"
