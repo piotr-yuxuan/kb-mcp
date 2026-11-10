@@ -19,13 +19,13 @@ if TYPE_CHECKING:
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome[Filled]]:
-    """Fill the index's chunks; exit as the outcome ends, 1 for a chunk refused or none written.
+    """Fill the index's chunks; exit as the outcome ends, 1 for a problem or none written.
 
     The endpoint must answer with the setting's model, whatever ``search_mode`` says,
     which this run does not read; when it does not, the index in place stays, with its
     vectors. Nothing filled is an error, the index named by ``kb-mcp index``; each
-    document with a chunk that the endpoint refused is a problem. A mirror changed since
-    the index, and each file that the index lacks, is a warning, whose exit status stays.
+    document with a chunk that the endpoint refused, and each file that the index lacks,
+    is a problem. A mirror changed since the index is a warning, whose exit status stays.
     """
     settings = loaded.settings
     opening = partial(open_endpoint, arguments, settings)

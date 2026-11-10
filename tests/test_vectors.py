@@ -1198,10 +1198,10 @@ def test_no_warning_for_a_mirror_unchanged_a_skipped_file_or_an_alias_file(
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
     with serving(Scripted()) as url:
         main(["index", "--yes", *config(data, "tiny", url)])
-        assert embedded_at(data, url, capsys)[0] == 0  # the index lacks a file: a warning
+        assert embedded_at(data, url, capsys)[0] == FAILED  # the index lacks a file
         (data / "aliases.toml").write_text('"Jo" = "A Person"\n', encoding="utf-8")
         status, err = embedded_at(data, url, capsys)
-    assert status == 0
+    assert status == FAILED
     assert mirror_changed(err) == []
 
 
@@ -1248,3 +1248,18 @@ def test_each_key_that_index_s_and_embed_s_help_names_is_one_of_their_json(
         named = set(re.findall(r"`([a-z_]+)`", capsys.readouterr().out))
         assert named, stage
         assert sorted(named - keys) == [], stage
+
+
+def test_each_file_that_the_index_lacks_is_a_problem_of_embed(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """It holds the prune back, so it fails embed, by its path and why the index lacks it."""
+    broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
+    broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
+    with serving(Scripted()) as url:
+        assert chained(data, capsys, url, "--format", "json") == FAILED
+    document = json.loads(capsys.readouterr().out)
+    assert (document["ending"], document["warnings"]) == ("failed", [])
+    (problem,) = document["problems"]
+    assert problem["where"] == "confluence/ENG/1-broken.md"
+    assert problem["reason"].startswith("not in the index: front matter without exactly")

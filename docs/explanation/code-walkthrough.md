@@ -465,8 +465,8 @@ which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
 ([`outcome_of`](../../src/kb_mcp/search/app/indexing.py), its counts an
 [`IndexCounts`](../../src/kb_mcp/search/app/indexing.py)), and a document with a chunk
 refused one of `embed`'s ([`filled_outcome`](../../src/kb_mcp/search/app/indexing.py), its
-counts a [`Filled`](../../src/kb_mcp/search/app/indexing.py)), whose warnings are a mirror
-changed since the index and each file that the index lacks; each exits 0 only when its
+counts a [`Filled`](../../src/kb_mcp/search/app/indexing.py)), as is each file that the
+index lacks, and a mirror changed since the index a warning; each exits 0 only when its
 outcome has no problem.
 
 ### 10. The result

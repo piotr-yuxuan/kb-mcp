@@ -624,16 +624,17 @@ def prefixes_said(model: str) -> str:
 def filled_outcome(
     filled: Filled, refused: Iterable[str], warned: Iterable[OutcomeWarning], held: Held
 ) -> Outcome[Filled]:
-    """Give a fill's outcome: failed by each document with a chunk refused, warned beside.
+    """Give a fill's outcome, its warnings those given.
 
-    The warnings are those given, then each file of the mirror that the index lacks.
+    Its problems are each document with a chunk refused, then each file of the mirror
+    that the index lacks, which holds the prune back.
     """
-    problems = tuple(Problem(where=path, reason=REFUSED) for path in refused)
-    lacking = (
-        OutcomeWarning(where=path, reason=f"not in the index: {each.reason}")
+    problems = [Problem(where=path, reason=REFUSED) for path in refused]
+    problems += [
+        Problem(where=path, reason=f"not in the index: {each.reason}")
         for path, each in sorted(held.skipped.items())
-    )
-    return Outcome.of(filled, problems, (*warned, *lacking))
+    ]
+    return Outcome.of(filled, problems, warned)
 
 
 def to_fill(index: SearchIndex) -> tuple[Held, Embedded | None, list[IndexedBody], set[Chunk]]:
@@ -668,7 +669,7 @@ def filling(index: SearchIndex, indexing: Indexing) -> Outcome[Filled]:
     add. Another run that wrote the index meanwhile starts the fill again, once, then
     raises ChangedMeanwhileError.
     Raises ModelError when the model fails. Each document with a chunk refused is a
-    problem and a warning event; each file that the index lacks a warning of the outcome;
+    problem and a warning event; each file that the index lacks a problem;
     ``embed.filled`` or ``embed.unchanged`` says what it did, and
     ``kb_mcp.index.chunks`` counts the chunks added, removed and refused.
     """

@@ -385,8 +385,7 @@ def test_embed_records_as_documented(
     broken.unlink()
     write(data / "docs", page("196846", "Refund"), body.replace("payout", "refund"))
     with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
-        # The index lacks a file, and the mirror changed: warnings, which fail nothing.
-        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
+        assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     assert main(["index", "--yes", *by_meaning(data, URL)]) == ExitStatus.OK
     other = tmp_path / "other.sqlite"  # another run's index, with no chunks
     build_index(data / "docs", other, MOMENT)

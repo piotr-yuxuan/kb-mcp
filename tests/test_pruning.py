@@ -632,12 +632,12 @@ def test_a_file_that_is_no_index_holds_the_prune_back(
 def test_a_build_that_skipped_a_file_holds_the_prune_back(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Its index lacks a document of the mirror, whose vectors stay; a warning, exit 0."""
+    """Its index lacks a document of the mirror, whose vectors stay; a problem, exit 1."""
     broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
     broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
     status, result, err = held_back(data, capsys)
     assert (status, result["outcome"], result["file"], result["reason"]) == (
-        0,
+        1,
         "held back",
         None,
         SKIPPED,

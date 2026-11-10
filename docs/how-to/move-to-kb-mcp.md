@@ -270,9 +270,9 @@ What reads a run's output follows:
   `persons`, how many the join made; its `skipped` files are its `problems`, and what
   `persons` left apart, each ambiguous name and each unused alias, its `warnings`; its
   `model` and `pruned` are gone; its `chunks` was `pieces` before schema 7. `embed`'s
-  result is its `counts`, `chunks` formerly `pieces`; its `refused` documents are its
-  `problems`, and a mirror changed since the index and each file that the index lacks
-  are its `warnings`, which leave it done, exit 0, where a file lacking failed it.
+  result is its `counts`, `chunks` formerly `pieces`; its `refused` documents, and each
+  file that the index lacks, `skipped` counting them, are its `problems`, and a mirror
+  changed since the index is its `warnings`.
   `eval`'s result and results file give each evaluated index under `indexes`, formerly
   `runs`, with its `costs.chunks`, formerly `costs.pieces`; results files already
   written keep `runs`.
