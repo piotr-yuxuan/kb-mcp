@@ -399,7 +399,7 @@ people:
 |---|---|
 | `role` | one of `mirror.domain.mirror.ROLES`, a closed set: `author`, `creator`, `assignee`, `commenter`, `participant` |
 | `name` | the name as the source gives it, one line, never empty: Jira's as it was when the issue was fetched, Confluence's from `users()`, else the account id |
-| `identity` | the issuer, a colon, then the value that the issuer gave, when the source gives one: `atlassian:` and the account id for Confluence and Jira, whose sites share the issuer `atlassian` (058); absent otherwise. Plan 041's `account`, the account id alone, which the Atlassian connectors alone wrote, reads as `atlassian:` and that id (`mirror.adapters.markdown.load`), until the next `prepare` writes the file again |
+| `identity` | the issuer, a colon, then the value that the issuer gave, when the source gives one: `atlassian:` and the account id for Confluence and Jira, whose sites share the issuer `atlassian` (058); absent otherwise. Plan 041's `account`, the account id alone, which the Atlassian connectors alone wrote, reads as `atlassian:` and that id (`mirror.adapters.markdown.load`), until every file has been prepared once after the upgrade; a later plan removes that reader |
 | `at` | a commenter's comment times, written as `created` is, ascending; absent for any other role |
 
 | Role | Who |

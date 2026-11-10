@@ -93,8 +93,8 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
     person's field other than ``Mention``'s, out of their order, or an empty ``at``,
     and a link's field other than ``Link``'s, or out of their order. A person's
     ``account``, which plan 041's files hold in place of ``identity`` and the Atlassian
-    connectors alone wrote, reads as an identity of ATLASSIAN_ISSUER's, until the next
-    ``prepare`` writes the file again.
+    connectors alone wrote, reads as an identity of ATLASSIAN_ISSUER's: until every file
+    has been prepared once after the upgrade; a later plan removes it.
     """
     end = text.find(CLOSING, len(OPENING) - 1)
     if not text.startswith(OPENING) or end < 0:
