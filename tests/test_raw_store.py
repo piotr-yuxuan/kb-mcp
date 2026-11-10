@@ -375,10 +375,14 @@ def test_coverage_and_tombstones_read_back_as_written(store: RawStore) -> None:
     assert store.tombstones() == {("pages", "1001"): stone}
 
 
-def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: RawStore) -> None:
-    """Its four keys as they were, ``exact`` only on an exact entry: old versions read it.
+def test_a_coverage_record_keeps_plan_034_s_keys_beside_the_scope_type_and_its_times(
+    store: RawStore,
+) -> None:
+    """Its four keys as they were, ``exact`` only on an exact entry, a time only when known.
 
-    A record from before plan 034, without ``exact``, reads as inexact.
+    Plan 056 adds the scope type, the as-of time and the last whole read: old versions,
+    which read the four keys and ``exact``, still read it. A record from before plan 034,
+    without ``exact``, reads as inexact.
     """
     start = datetime(2026, 10, 15, 9, tzinfo=UTC)
     period = Period(start, start + timedelta(days=7))
@@ -387,17 +391,63 @@ def test_a_coverage_record_keeps_the_format_of_before_034_beside_exact(store: Ra
         Scope(source="jira", type=names.PROJECT, key="PRB"),
     )
     store.put_coverage(
-        Coverage(periods={space: period, project: period}, exact=frozenset({project}))
+        Coverage(
+            periods={space: period, project: period},
+            exact=frozenset({project}),
+            as_of={project: period.end},
+            whole_read_at={space: period.end},
+        )
     )
     written = json.loads((store.root / "coverage.json").read_text("utf-8"))
     times = {"start": "2026-10-15T09:00:00+00:00", "end": "2026-10-22T09:00:00+00:00"}
     assert written == [
-        {"source": "confluence", "key": "MFS", **times},
-        {"source": "jira", "key": "PRB", **times, "exact": True},
+        {
+            "source": "confluence",
+            "type": "space",
+            "key": "MFS",
+            **times,
+            "whole_read_at": times["end"],
+        },
+        {
+            "source": "jira",
+            "type": "project",
+            "key": "PRB",
+            **times,
+            "exact": True,
+            "as_of": times["end"],
+        },
     ]
-    old = [{key: value for key, value in entry.items() if key != "exact"} for entry in written]
+    old = [{"source": each["source"], "key": each["key"], **times} for each in written]
     (store.root / "coverage.json").write_text(json.dumps(old), "utf-8")
     assert store.coverage() == Coverage(periods={space: period, project: period})
+
+
+def test_a_coverage_record_written_at_pre_kb_mcp_reads_as_it_was_written(
+    store: RawStore,
+) -> None:
+    """The user's other machine: each entry's scope type is its source's, and nothing is lost.
+
+    The record as the tag's ``put_coverage`` writes it: no type, ``exact`` on a project's
+    entry alone, no time.
+    """
+    (store.root / "coverage.json").write_text(
+        '[{"source": "confluence", "key": "MFS", "start": "2026-10-15T09:00:00+00:00",'
+        ' "end": "2026-10-22T09:00:00+00:00"},'
+        ' {"source": "jira", "key": "PRB", "start": "2026-10-14T09:00:00+00:00",'
+        ' "end": "2026-10-22T09:00:00+00:00", "exact": true}]',
+        "utf-8",
+    )
+    end = datetime(2026, 10, 22, 9, tzinfo=UTC)
+    project = Scope(source="jira", type=names.PROJECT, key="PRB")
+    assert store.coverage() == Coverage(
+        periods={
+            Scope(source="confluence", type=names.SPACE, key="MFS"): Period(
+                end - timedelta(7), end
+            ),
+            project: Period(end - timedelta(8), end),
+        },
+        exact=frozenset({project}),
+    )
 
 
 def test_a_space_s_entry_marked_exact_is_read_as_inexact(store: RawStore) -> None:

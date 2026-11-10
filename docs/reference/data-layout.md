@@ -232,10 +232,13 @@ Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
 Two more of the store's own records, each replaced whole:
 
 - `<data>/raw/coverage.json`, read by `coverage()` and written by `put_coverage()`: for
-  each scope (a space key or a project key,
-  `sources.atlassian.fetch.domain.coverage.Scope`), the one period over which every
-  document updated is stored (`sources.atlassian.fetch.domain.coverage.Coverage`), and
-  `"exact": true` on a project's entry written since plan 034. A run that listed a
+  each scope, by its `source`, its scope `type` (`space` or `project`) and its `key`
+  (`sources.atlassian.fetch.domain.coverage.Scope`), the one period over which every
+  change was asked for, `start` and `end` (`sources.atlassian.fetch.domain.coverage.Coverage`),
+  `"exact": true` on a project's entry written since plan 034, `as_of`, the period's end
+  when a run last left it exact, and `whole_read_at`, when a run last listed it whole; each
+  time only once known. An entry without `type`, as plan 056 found them, is of its
+  source's scope type, its source being its connector's name. A run that listed a
   scope whole joins its fetch window to that period when the two overlap or touch. A space's
   period ends at the fetch window's end whatever failed, since a run without `--since` starts
   at its covered start and asks again for whatever failed inside. A project's ends at
@@ -246,7 +249,7 @@ Two more of the store's own records, each replaced whole:
   without `--since` searches an exact project from a day before its covered end, and an
   entry without `exact` from its covered start, which replaces it with an exact one.
   `exact` on a space's entry is read as false. Versions before plan 034 read the record,
-  and ignore `exact`.
+  and ignore `exact`; those before plan 056 ignore `type` and the times.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each Confluence document absent from its space's listing
   (`sources.atlassian.fetch.domain.deletions.Tombstone`), pending until a probe answers,

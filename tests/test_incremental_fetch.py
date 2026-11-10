@@ -667,8 +667,8 @@ def two_issues() -> dict[str, dict[str, object]]:
 
 
 def exactly(start: datetime, end: datetime) -> Coverage:
-    """Return PRB covered exactly from ``start`` to ``end``."""
-    return Coverage(periods={PRB: Period(start, end)}, exact=frozenset({PRB}))
+    """Return PRB covered exactly from ``start`` to ``end``, as of its end."""
+    return Coverage(periods={PRB: Period(start, end)}, exact=frozenset({PRB}), as_of={PRB: end})
 
 
 def said_coverage(events: list[dict[str, object]]) -> list[tuple[object, ...]]:
@@ -1125,6 +1125,31 @@ def test_a_run_apart_from_what_is_covered_leaves_it_and_says_why(
         run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
     assert RawStore(chosen.raw).coverage() == exactly(START, RUN)
     assert said_coverage(events) == [("project PRB", "held", "apart from what is covered")]
+
+
+def test_a_coverage_record_of_pre_kb_mcp_is_written_anew_by_the_next_fetch(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 056: read as the tag wrote it, it is written with each scope's type, periods kept.
+
+    The fetch, of the project apart from its covered period, holds every period as it was,
+    Confluence's too, which it did not fetch.
+    """
+    chosen = settings(tmp_path)
+    chosen.raw.mkdir(parents=True)
+    period = {"start": START.isoformat(), "end": RUN.isoformat()}
+    former = [
+        {"source": "confluence", "key": "MFS", **period},
+        {"source": "jira", "key": "PRB", **period, "exact": True},
+    ]
+    (chosen.raw / "coverage.json").write_text(json.dumps(former), "utf-8")
+    apart = Purview(scopes=[PRB], max_file_bytes=CAP, since=RUN + timedelta(days=1))
+    run(chosen, monkeypatch, RefreshSite(issues={}), apart, RUN + timedelta(days=2))
+    written = json.loads((chosen.raw / "coverage.json").read_text("utf-8"))
+    assert written == [
+        {"source": "confluence", "type": "space", "key": "MFS", **period},
+        {"source": "jira", "type": "project", "key": "PRB", **period, "exact": True},
+    ]
 
 
 def test_an_issue_that_the_search_names_twice_is_fetched_once(

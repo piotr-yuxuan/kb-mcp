@@ -868,7 +868,8 @@ def run_fetch(
     The scopes are one source's, whose name ends the record's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
     another fetch. Each scope is fetched over its window. The coverage of every
-    scope listed whole grows as ``Coverage.extended`` rules. The tombstones are
+    scope listed or searched whole grows as ``Coverage.extended`` rules, and each listed
+    whole was read whole when the run started. The tombstones are
     Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
     the run stops, and a fetch of projects neither reads nor rewrites them.
     ``fetch.coverage`` says at INFO what became of each finished scope's coverage,
@@ -923,7 +924,14 @@ def run_fetch(
                     for scope, why in run.held.items():
                         extensions[scope] = "held"
                         log.info("fetch.coverage", scope=str(scope), outcome="held", reason=why)
-                    store.put_coverage(coverage)
+                    # Each scope listed whole was read whole as the run started.
+                    store.put_coverage(
+                        replace(
+                            coverage,
+                            whole_read_at=coverage.whole_read_at
+                            | {s: started for s in run.covered if s.type.enumeration == "listed"},
+                        )
+                    )
                 ending = found  # once the coverage is stored, else an error stopped it
         except SignInNeededError:  # from the client: no session was saved
             ending = "sign in again"

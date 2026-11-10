@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -90,7 +91,7 @@ def test_a_catch_up_that_would_start_at_or_after_the_end_skips_the_target() -> N
 def test_a_first_run_covers_its_period() -> None:
     """--since 7d on a new target covers the last seven days; a project's, exactly."""
     fetched = Period(NOW - timedelta(days=7), NOW)
-    exact = Coverage(periods={PROJECT: fetched}, exact=frozenset({PROJECT}))
+    exact = Coverage(periods={PROJECT: fetched}, exact=frozenset({PROJECT}), as_of={PROJECT: NOW})
     assert Coverage().extended(PROJECT, fetched) == (exact, "extended")
     assert Coverage().extended(SPACE, fetched) == (Coverage(periods={SPACE: fetched}), "extended")
 
@@ -118,6 +119,21 @@ def test_a_run_that_reaches_the_covered_start_joins_it() -> None:
     assert covered().extended(SPACE, fetched)[0].periods[SPACE] == Period(fetched.start, NOW)
 
 
+def test_a_run_that_leaves_a_coverage_exact_sets_its_as_of_time_to_its_end() -> None:
+    """The concepts' as-of time: the coverage's end, when the run leaves it exact."""
+    fetched = Period(END - DAY, NOW)
+    after, _ = exactly(COVERED, END).extended(PROJECT, fetched)
+    assert after.as_of == {PROJECT: NOW}
+
+
+def test_a_run_that_leaves_a_coverage_inexact_leaves_its_as_of_time() -> None:
+    """Joined inside an inexact entry, or held apart from it: the as-of time stays."""
+    old = replace(before_034(COVERED, END), as_of={PROJECT: END - DAY})
+    joined, _ = old.extended(PROJECT, Period(END - 2 * DAY, NOW))
+    held, _ = old.extended(PROJECT, Period(NOW + DAY, NOW + 2 * DAY))
+    assert joined.as_of == held.as_of == {PROJECT: END - DAY}
+
+
 def test_a_run_inside_the_covered_period_keeps_it() -> None:
     """A catch-up never moves the covered start forward, nor the end back."""
     fetched = Period(COVERED + timedelta(days=3), NOW - timedelta(days=1))
@@ -130,8 +146,10 @@ DAY = timedelta(days=1)
 
 
 def exactly(start: datetime, end: datetime) -> Coverage:
-    """Return the project covered exactly from ``start`` to ``end``."""
-    return Coverage(periods={PROJECT: Period(start, end)}, exact=frozenset({PROJECT}))
+    """Return the project covered exactly from ``start`` to ``end``, as of its end."""
+    return Coverage(
+        periods={PROJECT: Period(start, end)}, exact=frozenset({PROJECT}), as_of={PROJECT: end}
+    )
 
 
 def before_034(start: datetime, end: datetime) -> Coverage:
@@ -203,10 +221,13 @@ def test_an_entry_from_before_034_replaced_ends_at_the_run_even_before_its_old_e
 
 
 def test_a_failure_at_the_start_of_an_exact_entry_makes_it_inexact() -> None:
-    """Nothing is claimed of that moment: the next catch-up searches the period whole."""
+    """Nothing is claimed of that moment: the next catch-up searches the period whole.
+
+    Its as-of time stays where the last run that left it exact set it.
+    """
     fetched = Period(COVERED, NOW)
     after = exactly(COVERED, END).extended(PROJECT, fetched, COVERED)
-    assert after == (before_034(COVERED, END), "capped")
+    assert after == (replace(before_034(COVERED, END), as_of={PROJECT: END}), "capped")
     assert fetch_window(after[0], PROJECT, None, NOW) == FetchWindow(
         period=Period(COVERED, NOW), reason="covered start"
     )

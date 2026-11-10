@@ -56,8 +56,12 @@ COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
 # The store's own record, beside a space's listings, of when they were listed.
 LISTED_AT = "listed_at.json"
-# The scope type of a coverage's entry, by its source, which is its connector's name.
-SCOPE_TYPES = {CONFLUENCE: SPACE, JIRA: PROJECT}
+# The scope types of the coverage's entries, by name; an entry written before plan 056
+# names none, and its source, then always its connector's name, gives it.
+SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
+FORMER_TYPES = {CONFLUENCE: SPACE.name, JIRA: PROJECT.name}
+# The times that a coverage's entry may hold beside its period, each a field of Coverage.
+COVERAGE_TIMES = ("as_of", "whole_read_at")
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -472,23 +476,28 @@ class RawStore:
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
-        """Read each scope's covered period, none when never written, and which are exact.
+        """Read each scope's coverage, none when never written: its period, and more if given.
 
-        An entry without ``exact``, as every entry was before plan 034, is not; nor is a
-        space's, whatever it says, since a space is listed whole.
+        Whether it is exact, its as-of time and the time of its last whole read. An entry
+        without ``type``, as every entry was before plan 056, is of its connector's one
+        scope type; one without ``exact``, as before plan 034, is not exact, nor is a
+        space's, whatever it says, since a space is listed whole; one without a time has
+        none.
         """
         path = self.root / COVERAGE
         if not path.exists():
             return Coverage()
         periods: dict[Scope, Period] = {}
         exact: set[Scope] = set()
+        times: dict[str, dict[Scope, datetime]] = {name: {} for name in COVERAGE_TIMES}
         for item in Fields.each(_record_json(path), COVERAGE):
             with item.refusals():
                 source = item.text("source")
-                if source not in SCOPE_TYPES:
-                    message = "source: neither confluence nor jira"
+                named = item.optional_text("type", absent=True) or FORMER_TYPES.get(source, "")
+                if named not in SCOPE_TYPES:
+                    message = "type: not a scope type of Confluence or Jira"
                     raise RefusedError(message)
-                scope = Scope(source=source, type=SCOPE_TYPES[source], key=item.text("key"))
+                scope = Scope(source=source, type=SCOPE_TYPES[named], key=item.text("key"))
             try:
                 periods[scope] = Period(item.time("start"), item.time("end"))
             except PeriodError:
@@ -497,24 +506,36 @@ class RawStore:
             searched = scope.type.enumeration == "searched"
             if searched and "exact" in item.value and item.flag("exact"):
                 exact.add(scope)
-        return Coverage(periods=periods, exact=frozenset(exact))
+            for name in COVERAGE_TIMES:
+                if item.optional_text(name, absent=True):
+                    times[name][scope] = item.time(name)
+        return Coverage(periods=periods, exact=frozenset(exact), **times)
 
     def put_coverage(self, coverage: Coverage) -> None:
-        """Replace the record of coverage, whole; an exact entry says so, beside the rest.
+        """Replace the record of coverage, whole; each entry with what it holds beside its period.
 
-        The other keys are as before plan 034, so that its versions still read the record.
+        Its scope type, whether it is exact, and its times. The keys of plan 034's record
+        keep their meaning, so that its versions still read the record.
         """
         self._check_writing()
+        times = {name: getattr(coverage, name) for name in COVERAGE_TIMES}
         entries = [
             {
                 "source": scope.source,
+                "type": scope.type.name,
                 "key": scope.key,
                 "start": covered.start.astimezone(UTC).isoformat(),
                 "end": covered.end.astimezone(UTC).isoformat(),
                 **({"exact": True} if scope in coverage.exact else {}),
+                **{
+                    name: held[scope].astimezone(UTC).isoformat()
+                    for name, held in times.items()
+                    if scope in held
+                },
             }
             for scope, covered in sorted(
-                coverage.periods.items(), key=lambda item: (item[0].source, item[0].key)
+                coverage.periods.items(),
+                key=lambda item: (item[0].source, item[0].type.name, item[0].key),
             )
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))

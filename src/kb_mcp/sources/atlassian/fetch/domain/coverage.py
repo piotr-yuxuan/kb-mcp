@@ -10,8 +10,9 @@ listing is read whole anyway; a scope never covered, its last week.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import timedelta
-from typing import TYPE_CHECKING, Literal, Self
+from copy import replace
+from datetime import datetime, timedelta
+from typing import Literal, Self
 
 from pydantic import Field, InstanceOf, field_serializer, model_validator
 
@@ -31,9 +32,6 @@ type Reason = Literal["given", "since the last fetch", "covered start", "first f
 # and an issue saved while its search pages through moves in it. A day survives a laptop's
 # clock off after sleep; it costs no request, since the search reads whole days.
 CATCH_UP_MARGIN = timedelta(days=1)
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 
 class Scope(Record):
@@ -74,11 +72,15 @@ class Coverage(Record):
     without --since starts at its covered start, and asks for the whole period again. A
     project is searched by update time: its period ends at its first failure, so that a
     search from its end asks for that again. Such an entry is ``exact``; one written
-    before plan 034 is not, and its end may hide a failure.
+    before plan 034 is not, and its end may hide a failure. ``as_of`` holds each scope's
+    as-of time, the end of its coverage when a run last left it exact; ``whole_read_at``
+    the time of its last whole read.
     """
 
     periods: Mapping[Scope, Period] = Field(default_factory=dict)
     exact: frozenset[Scope] = frozenset()
+    as_of: Mapping[Scope, datetime] = Field(default_factory=dict)
+    whole_read_at: Mapping[Scope, datetime] = Field(default_factory=dict)
 
     def extended(
         self, scope: Scope, fetched: Period, failed: datetime | None = None
@@ -94,13 +96,13 @@ class Coverage(Record):
         ``failed``, even below the old end, ``capped``, or leaves it as it was when the
         period would then be empty, inexact if it starts at the failure, so that the next
         run searches it whole. Any other run over an inexact entry joins it, as a space's
-        does, and leaves it inexact.
+        does, and leaves it inexact. A run that leaves it exact sets its as-of time to its
+        end; any other leaves that as it was.
         """
         covered = self.periods.get(scope)
         exact = scope.type.enumeration == "searched" and (
             covered is None or scope in self.exact or fetched.start <= covered.start
         )
-        marked = self.exact | {scope} if exact else self.exact
         if covered is not None and (fetched.start > covered.end or fetched.end < covered.start):
             return self, "held"
         if covered is None or (exact and scope not in self.exact):
@@ -108,17 +110,20 @@ class Coverage(Record):
         else:
             start, end = min(covered.start, fetched.start), max(covered.end, fetched.end)
         if not exact or failed is None:
-            return Coverage(
-                periods={**self.periods, scope: Period(start, end)}, exact=marked
-            ), "extended"
+            return self.covering(scope, Period(start, end), exact=exact), "extended"
         if failed <= start:
             inside = covered is not None and covered.start <= failed
-            return Coverage(
-                periods=self.periods, exact=self.exact - {scope} if inside else self.exact
-            ), "capped"
-        return Coverage(
-            periods={**self.periods, scope: Period(start, failed)}, exact=marked
-        ), "capped"
+            return replace(self, exact=self.exact - {scope} if inside else self.exact), "capped"
+        return self.covering(scope, Period(start, failed), exact=True), "capped"
+
+    def covering(self, scope: Scope, period: Period, *, exact: bool) -> Coverage:
+        """Return this coverage with the scope covered over ``period``, as of its end if exact."""
+        return replace(
+            self,
+            periods={**self.periods, scope: period},
+            exact=self.exact | {scope} if exact else self.exact,
+            as_of={**self.as_of, scope: period.end} if exact else self.as_of,
+        )
 
 
 class FetchWindow(Record):
