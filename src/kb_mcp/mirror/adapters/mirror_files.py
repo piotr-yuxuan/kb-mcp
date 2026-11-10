@@ -3,10 +3,6 @@
 This is the only code that writes there. A file is written through a hidden file
 renamed into place, so that a reader never sees half of it, and only when its bytes
 differ, so that a run that changes nothing leaves every file and its time as they were.
-Each preparer removes only the files it owns, as its source's ``owned`` finds them:
-Confluence's those under ``confluence/``, Jira's those under ``jira/``, each the attached
-files under ``assets/`` that no document wants or links, the work log's those under
-``worklog/``.
 """
 
 from __future__ import annotations
@@ -46,7 +42,7 @@ def write_changed(
     """Write each wanted file whose bytes differ, then remove the files not wanted.
 
     Each wanted file is given by its bytes, or by the path of a file to copy. The files
-    removed are among those that ``owner`` (``owned`` or ``worklog_owned``) finds under
+    removed are among those that ``owner``, the files the caller owns, finds under
     ``docs``; without ``remove``, only the ``retired`` files not wanted are: those of
     documents known to be gone or moved. A folder left empty by a removal goes too.
     """
