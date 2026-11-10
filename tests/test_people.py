@@ -1,8 +1,9 @@
-"""Persons: names joined by account, alias, exact name and meeting, as plan 043 rules.
+"""Persons: mentions joined by identity, alias, name key, attendance and name.
 
-The names are made up: Robin Example, an account under two names; Sam Sample, the name
-of two accounts; Alex Example, a name alone; the work log's first names. Every expected
-person is written by hand from the plan's rules, its id from the plan's definition. The
+The rules are those of the concepts page, as plans 043 and 058 build them. The names are
+made up: Robin Example, an identity under two names; Sam Sample, the name of two
+identities; Alex Example, a name alone; the work log's first names. Every expected
+person is written by hand from the rules, its id from the plans' definition. The
 alias file is read from a scratch folder, and refused by the plan's list; ``index`` reads
 it from a scratch data directory, over the mirror of ``tests.mirrors.PERSONS``.
 """

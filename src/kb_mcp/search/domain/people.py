@@ -1,24 +1,11 @@
-"""Persons: the names of every source joined into people, as each build of the index does.
+"""Persons: every mention joined into one person, as each build of the index does.
 
-A person is an account, or else a name. ``joined`` takes every row of the index's
-people, the meetings that each transcript links to and the user's aliases, and gives
-each row a person, by the first of these rules that answers:
-
-1. an identity is a person, under each of its names, but for one that an alias of it
-   names another: two identities are one person only when an alias says so;
-2. a name without an account whose key an alias holds goes to the person that the alias
-   means, but for a transcript's speaker whom rule 4 gives one other person;
-3. a name of the key of exactly one account's name joins that account's person;
-4. a transcript's speaker of one word joins the one person among its meetings'
-   participants whose key's first word, whole, is that word;
-5. any other name is a person by name alone, shared by every name of its key.
-
-A name that could be several persons, by rule 3 or 4, or a speaker whom they give
-different persons, is ambiguous: it is reported with every person that it could be, and
-goes by rule 5, whose person by name may be one of them. Every rule compares names by
-their key, which keeps an annotation that tells two names apart; a key whose annotated
-names go by rule 5 to several persons is reported too, as the annotations may be notes
-rather than names. Nothing here reads the index or the alias file.
+``joined`` gives each mention, as a row of the index's people, the person of the first of
+the joining rules of the concepts page that answers (docs/reference/concepts.md#person):
+by identity, by alias, by name key, by attendance, by name. Beyond the page, a key whose
+annotated names go by rule 5 to several persons is reported as ambiguous too, as the
+annotations may be notes rather than names. Nothing here reads the index or the alias
+file.
 """
 
 from __future__ import annotations
@@ -49,13 +36,13 @@ if TYPE_CHECKING:
 ANNOTATION = re.compile(r"(?<=\S) ?\(([^()]*)\)\Z")
 # A person's id, as an alias's value may give it.
 PERSON_ID = re.compile(r"p-[0-9a-f]{16}")
-# How a name joined its person.
+# How a mention joined its person, as ``person_names.joined`` stores it.
 BY_IDENTITY = "identity"
 BY_ALIAS = "alias"
 BY_ATTENDANCE = "attendance"
 BY_NAME = "name"
-# What a person's id hashes before an identity, the word of the accounts that came before
-# identities, and before a name's key.
+# What a person's id hashes before an identity, the word of the accounts that identities
+# replaced, so that no id changed, and before a name's key.
 IDENTITY_ANCHOR = "account"
 NAME_ANCHOR = "name"
 # Why an alias changes nothing.
@@ -92,10 +79,10 @@ def name_key(name: str) -> str:
 
 
 def first_word(name: str) -> str:
-    """Give the first word of a name's key: a speaker of that word may be its person.
+    """Give the first word of a name's key: a participant of that word may be its person.
 
-    Rule 4 joins such a speaker within its meeting; elsewhere, an answer shows them as
-    perhaps the same.
+    Rule 4 joins such a participant by its document's summaries; elsewhere, an answer
+    shows them as perhaps the same.
     """
     return name_key(name).partition(" ")[0]
 
@@ -140,10 +127,11 @@ class PersonRow(Record):
 
 
 class Ambiguity(Record):
-    """A name that could be several persons, none of whom is given it.
+    """A name that could be several persons, which rule 5 gives the person by name of its key.
 
-    Or a key whose names annotations part among persons by name alone, such as
-    "Kim (not in the header)" and "Kim (late)", which may be one Kim's notes.
+    That person may be one of those it could be. Or a key whose names annotations part
+    among persons by name alone, such as "Kim (not in the header)" and "Kim (late)",
+    which may be one Kim's notes.
     """
 
     name: str  # as the first of its rows in order writes it
@@ -166,7 +154,7 @@ class Alias(Record):
     key: str  # the name's key, or the identity that a mention holds, as written
     value: str = Field(serialization_alias="target")  # a name, an identity or a person's id
     means: Meant  # the person its value names, several, or nobody
-    held: bool  # whether a name without an account has its key, or a mention its identity
+    held: bool  # whether a name without an identity has its key, or a mention its identity
 
     @property
     def reason(self) -> str | None:
@@ -214,10 +202,10 @@ class JoinOutcome(Record):
 class Joining:
     """What the rules read, and the person of each row joined so far.
 
-    The names of the accounts, the aliases, each document's summaries and each
-    document's rows. Names compare by ``compared_key``: by their key, but for the names of a key
-    written with two annotations or more, by a source or the user, such as "Alex (Ops)"
-    and "Alex (Sales)", which were written apart, and which then keep them.
+    The names of the identities, the aliases, each document's summaries and each
+    document's rows. Names compare by ``compared_key``: by their key, but for the names
+    of a key written with two annotations or more, by a source or the user, such as
+    "Alex (Ops)" and "Alex (Sales)", which were written apart, and which then keep them.
     """
 
     def __init__(
@@ -230,12 +218,12 @@ class Joining:
 
         An alias holds a name's key, or an identity that a mention holds. Its value is a
         person's id; an identity that a mention holds, which means that identity's own
-        person; or a name, which means the one account of its key, as rule 3 finds it,
-        else the person by name alone of a key that a name without an account holds.
-        ``joined`` keeps any of them when an account or a name makes that person: aliases
-        are not chained. Raise ValueError, naming them, for
-        documents that are summaries and have summaries themselves, as one that is its
-        own would: rule 4 needs each summary joined before.
+        person; or a name, which means the one identity of its key, as rule 3 finds it,
+        else the person by name alone of a key that a name without an identity holds.
+        ``joined`` keeps any of them when an identity or a name makes that person:
+        aliases are not chained. Raise ValueError, naming them, for documents that are
+        summaries and have summaries themselves, as one that is its own would: rule 4
+        needs each summary joined before.
         """
         if chained := sorted(set(summaries).intersection(chain.from_iterable(summaries.values()))):
             message = f"documents {chained} have summaries and are summaries"
@@ -243,8 +231,8 @@ class Joining:
         self.summaries = summaries
         self.persons: dict[PersonRow, str] = {}
         self.rows: dict[int, list[PersonRow]] = {}  # each document's
-        # Each name key's names, by their written key, with their account's person, None
-        # for a name without an account.
+        # Each name key's names, by their written key, with their identity's own person,
+        # None for a name without an identity.
         spelt: dict[str, set[tuple[str, str | None]]] = {}
         for row in rows:
             self.rows.setdefault(row.document, []).append(row)
@@ -258,16 +246,16 @@ class Joining:
             for row in each
             if row.identity is not None
         }
-        # The name keys that names, of an account or not, write with two annotations or more.
+        # The name keys that names, of an identity or not, write with two annotations or more.
         self.split = {
             key
             for key, names in spelt.items()
             if len({written for written, _ in names} - {key}) > 1
         }
-        # Each ``compared_key``'s accounts' persons, and each name key's: a bare name could be any
-        # account of its key, an annotated one is the account of its annotation.
+        # Each ``compared_key``'s identities' own persons, and each name key's: a bare name
+        # could be any identity of its key, an annotated one is that of its annotation.
         self.identities: dict[str, set[str]] = {}
-        self.held: set[str] = set()  # the ``compared_key`` of each name without an account
+        self.held: set[str] = set()  # the ``compared_key`` of each name without an identity
         for key, names in spelt.items():
             for written, own in names:
                 compared = written if key in self.split else key
@@ -276,7 +264,9 @@ class Joining:
                 else:
                     for each in {key, compared}:
                         self.identities.setdefault(each, set()).add(own)
-        # Each identity's own person that an alias names another, with that other.
+        # Each identity's own person that an alias names another, with that other: none
+        # while the aliases are read, so that their values name persons as the mentions
+        # alone make them.
         self.moved: dict[str, str] = {}
         self.aliases: dict[str, Alias] = {}
         for name, value in aliases.items():
@@ -309,10 +299,11 @@ class Joining:
         return written if key in self.split else key
 
     def identified(self, name: str) -> Meant:
-        """Find the person of the one account with a name of this name's ``key``.
+        """Find the person of the one identity with a name of this name's ``key``.
 
-        A name of several accounts' key is ambiguous, as is a bare name whose key's
-        accounts annotations tell apart; one of none, None.
+        Identities that ``moved`` makes one are one. A name of several identities' key is
+        ambiguous, as is a bare name whose key's identities annotations tell apart; one
+        of none, None.
         """
         found = self.identities.get(self.compared_key(name), set())
         persons = {self.moved.get(person, person) for person in found}
@@ -322,7 +313,7 @@ class Joining:
 
 
 def by_alias(row: PersonRow, joining: Joining) -> Meant:
-    """Give a name without an account to the person its alias means (rule 2).
+    """Give a name without an identity to the person its alias means (rule 2).
 
     An alias whose value names nobody, or several, changes nothing; nor does it take a
     participant whom rule 4 gives one other person: the user wrote the summaries'
@@ -336,12 +327,12 @@ def by_alias(row: PersonRow, joining: Joining) -> Meant:
 
 
 def by_name(row: PersonRow, joining: Joining) -> Meant:
-    """Join a name without an account to the one account of its key (rule 3).
+    """Join a name without an identity to the one identity of its key (rule 3).
 
-    A name of several accounts' key is ambiguous; so is a participant whom rule 4 gives
-    persons that do not hold that account: the site's name and the summaries'
-    participants then disagree. A participant of several accounts' key could be any of
-    them or rule 4's persons.
+    A name of several identities' key is ambiguous; so is a participant whom rule 4
+    gives persons that do not hold that identity: the origin's name and the summaries'
+    participants then disagree. A participant of several identities' key could be any
+    of them or rule 4's persons.
     """
     found = joining.identified(row.name)
     attended = by_attendance(row, joining)
@@ -388,19 +379,19 @@ RULES: tuple[tuple[str, Callable[[PersonRow, Joining], Meant]], ...] = (
 def joined(
     rows: Iterable[PersonRow], summaries: Mapping[int, Collection[int]], aliases: Mapping[str, str]
 ) -> Joined:
-    """Join every row into its person: by its account, by RULES in order, or by its name.
+    """Join every row into its person: by its identity, by RULES in order, or by its name.
 
     ``summaries`` gives each document's summaries, by number, as its ``summary`` links
     name them, none of which has summaries (``Joining`` refuses one); ``aliases`` each
     alias's name and value, of distinct keys, as the alias file's reader checks. Rows go
-    in order of document, role, name and account, those of documents with summaries
+    in order of document, role, name and identity, those of documents with summaries
     last, so that their summaries' persons are known; the same rows in any order give
-    the same result. A person is served by the name on its account's most
-    recently updated document; else by the value of the alias that made it, when that
-    is a name; else by its most frequent spelling: ties go to the first row in order.
-    An alias whose value, a person's id or a name, means a person that no account or
-    name makes, but aliases or attendance alone, names nobody: the join is made again
-    without it, each pass with fewer aliases.
+    the same result. A person is served by the name on its identities' most recently
+    updated document; else by the value of the alias that made it, when that is a name;
+    else by its most frequent spelling: ties go to the first row in order. An alias whose
+    value means a person that no identity or name makes, but aliases or attendance
+    alone, names nobody: the join is made again without it, each pass with fewer
+    aliases.
     """
     ordered = sorted(
         set(rows),
@@ -418,16 +409,16 @@ def joined(
     ambiguous: dict[str, Ambiguity] = {}  # by key
     for row in ordered:
         if row.identity is not None:
-            own = person_id(IDENTITY_ANCHOR, row.identity)
-            found = joining.moved.get(own, own)
-            how = BY_IDENTITY if found == own else BY_ALIAS
+            itself = person_id(IDENTITY_ANCHOR, row.identity)
+            found = joining.moved.get(itself, itself)
+            how = BY_IDENTITY if found == itself else BY_ALIAS
         else:
             answers = ((how, rule(row, joining)) for how, rule in RULES)
             how, found = next(
                 ((how, each) for how, each in answers if each is not None), (BY_NAME, None)
             )
-        # The persons that the row could be, none of whom is given it; and, for a name
-        # alone that its annotation keeps from the other names of its key, its own.
+        # The persons that the row could be, of whom rule 5 may give it one; and, for a
+        # name alone that its annotation keeps from the other names of its key, its own.
         could = found.persons if isinstance(found, Ambiguity) else frozenset()
         if not isinstance(found, str):
             compared = joining.compared_key(row.name)
@@ -440,7 +431,7 @@ def joined(
             ambiguous[key] = replace(known, persons=known.persons | could)
         joining.persons[row] = found
         members.setdefault(found, []).append((row, how))
-    # The persons that an account or a name makes, whatever rule joined that name to its
+    # The persons that an identity or a name makes, whatever rule joined that name to its
     # own person, but not an alias or attendance alone, which join a name to another's.
     made = {
         person
