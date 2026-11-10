@@ -50,6 +50,7 @@ LEGACY_ANCHOR = "account"
 # Why an alias changes nothing.
 UNHELD = "no name without an identity has its key"
 UNOWNED = "no mention holds this identity"
+ITSELF = "its value names the identity's own person"
 NOBODY = "its value names nobody"
 SEVERAL = "its value names several persons"
 
@@ -160,7 +161,8 @@ class Alias(Record):
     means: Meant  # the person its value names, several, or nobody
     held: bool  # whether a name without an identity has its key, or a mention its identity
     # Why it changes nothing, where the line alone cannot say: an identity of a known
-    # issuer that no mention holds. Not written in ``index``'s JSON.
+    # issuer that no mention holds, or one that names its own person. Not written in
+    # ``index``'s JSON.
     why: str | None = Field(default=None, exclude=True)
 
     @property
@@ -313,7 +315,8 @@ class Joining:
         key = name if name in self.owned else name_key(name)
         held = name in self.owned or key in self.alone
         issued = IDENTITY.fullmatch(name) and name.partition(":")[0] in self.issuers
-        why = UNOWNED if issued and not held else None
+        itself = name in self.owned and means == self.owned[name]
+        why = UNOWNED if issued and not held else (ITSELF if itself else None)
         return Alias(name=name, key=key, value=value, means=means, held=held, why=why)
 
     def compared_key(self, name: str) -> str:

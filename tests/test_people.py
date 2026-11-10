@@ -23,6 +23,7 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from kb_mcp.search.domain.people import (
+    ITSELF,
     NOBODY,
     SEVERAL,
     UNHELD,
@@ -833,6 +834,16 @@ def test_an_alias_of_an_identity_moves_no_name_written_as_it() -> None:
     result = joined((SAM_2_ROW, SAM_3_ROW, written), {}, aliases)
     assert result.of[SAM_3_ROW] == SAM_2
     assert result.of[written] == anchored("name\natlassian:acct-0003")
+
+
+@pytest.mark.parametrize("value", ["atlassian:acct-0003", SAM_3], ids=["identity", "id"])
+def test_an_alias_of_an_identity_to_its_own_person_is_reported(value: str) -> None:
+    """acct-0003 named by its own identity, or its own person's id: it changes nothing."""
+    result = joined(ACCOUNTS, {}, {"atlassian:acct-0003": value})
+    assert [(alias.key, alias.reason) for alias in result.unused] == [
+        ("atlassian:acct-0003", ITSELF)
+    ]
+    assert replace(result, unused=()) == joined(ACCOUNTS, {}, {})
 
 
 def test_aliases_of_identities_are_not_chained() -> None:
