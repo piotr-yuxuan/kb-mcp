@@ -98,11 +98,12 @@ class IndexCounts(Record):
     """What a build indexed, whom it joined, and, for an update, what it changed.
 
     ``persons`` is the join's whole outcome, what it left apart the build's warnings too;
-    ``index`` is the index written, once ``update_index`` names it.
+    ``index`` is the index written.
     """
 
     model_config = ConfigDict(frozen=False)
 
+    index: Path
     types: Counter[str] = Field(default_factory=Counter)  # documents indexed per type
     sections: int = 0
     chunks: int = 0  # chunks with a vector
@@ -118,7 +119,6 @@ class IndexCounts(Record):
     awaiting: int | None = None
     unchanged: bool = False  # nothing written, the index holding the mirror as it is
     rebuilt: Whole | None = None  # why an update kept nothing of the index in place
-    index: Path | None = None
 
     def text(self, detail: Detail) -> str:
         """Write what the index holds and what changed of it: a line each, or one in detail."""
@@ -408,19 +408,20 @@ def change_of(
 
 
 def updated(
-    index: WordsIndex,
+    path: Path,
     files: Mapping[str, Path],
     aliases: Mapping[str, str],
     built_at: datetime,
     whole: Whole | None,
 ) -> Outcome[IndexCounts]:
-    """Update the index to the mirror's files, or rebuild it whole; give its outcome.
+    """Update the index at ``path`` to the mirror's files, or rebuild it whole; give its outcome.
 
     Whole when ``whole`` says why, or when there is no index that this version reads,
     one written by another ``WORDS`` or before it was recorded, or one damaged, which
     the copy too may find. Another run that wrote the index meanwhile starts the update
     again, once, ``index.restarted`` saying so, then raises ChangedMeanwhileError.
     """
+    index: WordsIndex = sqlite_index.SqliteIndex(path)
     restarted = False
     while True:
         held = state = None
@@ -437,6 +438,7 @@ def updated(
         change = change_of(files, held, aliases, built_at)
         if change is None and held is not None and state is not None:  # nothing changed
             unchanged = IndexCounts(
+                index=path,
                 types=Counter(state.types),
                 sections=state.sections,
                 persons=JoinOutcome(count=state.persons.count),
@@ -457,6 +459,7 @@ def updated(
             continue
         if done is not None:
             written = IndexCounts(
+                index=path,
                 types=Counter(done.types),
                 sections=done.sections,
                 persons=done.persons,
@@ -496,8 +499,8 @@ def update_index(
     try:
         aliases = read_aliases(indexing.aliases)
         files = document_files(indexing.docs)
-        index = sqlite_index.SqliteIndex(indexing.index)
-        outcome = updated(index, files, aliases, built_at, "--rebuild" if rebuild else None)
+        whole = "--rebuild" if rebuild else None
+        outcome = updated(indexing.index, files, aliases, built_at, whole)
     except (
         MirrorMissingError,
         AliasFileError,
@@ -541,7 +544,7 @@ def update_index(
         )
     for alias in report.persons.unused:
         log.warning("index.alias_unused", alias=alias.name, key=alias.key, reason=alias.reason)
-    return replace(outcome, counts=replace(report, index=indexing.index))
+    return outcome
 
 
 # The texts of the chunks wanted, each by its chunk, and what the index already holds.
