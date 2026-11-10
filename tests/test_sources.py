@@ -407,7 +407,7 @@ def test_json_is_one_document_with_a_row_per_source(
         ("jira", "done"),
     ]
     assert all(list(row) == ROW_KEYS for row in document["sources"])
-    assert "counts" in document["sources"][0]["counts"]
+    assert "confluence pages: fetched" in document["sources"][0]["counts"]
     assert signed_in.asked
     assert main(command(home, config, "prepare", "--yes", "--format", "json")) == ExitStatus.OK
     document = json.loads(capsys.readouterr().out)
@@ -753,8 +753,8 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
         ("jira", "not run"),
     ]
     fetched = [row["counts"] for row in rows]
-    assert "confluence pages: to fetch" in fetched[0]["counts"]
-    assert "jira issues: to fetch" in fetched[1]["counts"]
+    assert "confluence pages: to fetch" in fetched[0]
+    assert "jira issues: to fetch" in fetched[1]
     windows = [each for each_fetched in fetched for each in each_fetched["windows"]]
     assert [(each["target"]["key"], each["reason"], each["coverage"]) for each in windows] == [
         ("MFS", "given", None),

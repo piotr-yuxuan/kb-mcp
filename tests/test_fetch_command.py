@@ -250,8 +250,8 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
         ("jira", "done"),
     ]
     confluence, jira = (row["counts"] for row in rows)
-    assert confluence["counts"]["confluence pages: fetched"] == len(["1001", "1002"])
-    assert jira["counts"]["jira issues: fetched"] == 1
+    assert confluence["confluence pages: fetched"] == len(["1001", "1002"])
+    assert jira["jira issues: fetched"] == 1
     assert [row["problems"] for row in rows] == [
         [{"where": "file att3", "reason": "status 404"}],
         [],

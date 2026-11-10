@@ -23,7 +23,7 @@ import structlog
 from opentelemetry import metrics, trace
 from opentelemetry.context import Context
 from opentelemetry.trace import StatusCode
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_serializer
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
@@ -68,6 +68,8 @@ from kb_mcp.sources.atlassian.fetch.domain.period import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
+
+    from pydantic import SerializerFunctionWrapHandler
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.exit_status import Ending
@@ -123,7 +125,8 @@ class FetchCounts(Record):
     """What a fetch did, by count, and each target's window; it names nothing that the site served.
 
     ``windows`` holds each target's window, and what became of its coverage, once the
-    fetch ends; ``dry_run`` says whether the fetch only planned.
+    fetch ends; ``dry_run`` says whether the fetch only planned. Written, each count is a
+    key beside them, its name holding a colon, which theirs do not.
     """
 
     model_config = ConfigDict(frozen=False)
@@ -131,6 +134,12 @@ class FetchCounts(Record):
     counts: Counter[str] = Field(default_factory=Counter)
     windows: tuple[TargetFetchWindow, ...] = ()
     dry_run: bool = False
+
+    @model_serializer(mode="wrap")
+    def flat(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        """Write each count by its name, then the windows and whether a dry run."""
+        written = handler(self)
+        return {**written.pop("counts"), **written}
 
     def add(self, what: str, number: int = 1) -> None:
         """Count something that happened."""
