@@ -140,7 +140,7 @@ Signed in; the session is saved.
 
 Four commands, each one stage, make the mirror and its index: `fetch` brings the space
 into a store, `prepare` turns what the store holds into Markdown, `index` builds the search
-index of its words, and `embed` gives the index's pieces their vectors. A space that no
+index of its words, and `embed` gives the index's chunks their vectors. A space that no
 run has fetched yet takes its last 7 days without `--since`; `--since all` takes the
 whole space. First, a dry run, which reads the site, says what it would fetch, and writes
 nothing:
@@ -228,16 +228,16 @@ skipped: 0
 rebuilt whole: unavailable
 ```
 
-and `embed` with the pieces that the index holds, those it added and removed, the texts
-that the model embedded, and the vector store:
+and `embed` with the chunks that the index holds, those it added and removed, the texts
+that the model embedded, and the vector cache:
 
 ```text
-pieces: 45
+chunks: 45
 added: 45
 removed: 0
 embedded now: 45
 vectors pruned: 0
-vector store: 0.2 MB
+vector cache: 0.2 MB
 ```
 
 Run again, `index` reads only the files whose bytes changed, and `embed` embeds only the

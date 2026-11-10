@@ -50,7 +50,7 @@ Some choices are not obvious:
   and say is pure, in `cli/domain/sources.py`, so that their declarations stay light, and
   reads the registry that the entry is given, so that it names no source.
 - **The index is two interfaces**, declared as protocols in `search/domain/indexes.py`:
-  `WordsIndex`, the documents by their words, and `VectorIndex`, their pieces by their
+  `WordsIndex`, the documents by their words, and `VectorIndex`, their chunks by their
   vectors, each opening one use by `reading()` and changing all or nothing, by `update`
   and `fill`, with `SearchIndex`, the two together, which a search reads in one use.
   They name domain types alone, so contract C holds, and

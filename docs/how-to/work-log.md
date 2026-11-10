@@ -184,7 +184,7 @@ a transcript's lines stay apart.
 
 `index` then brings the index of the mirror's words up to the mirror, without a model,
 reading only the files that changed. For search by meaning, `kb-mcp embed`, after it,
-gives the index's pieces their vectors, which needs the embedding model, served by
+gives the index's chunks their vectors, which needs the embedding model, served by
 Ollama on this machine or any other OpenAI-compatible API
 ([embeddings](embeddings.md)): without it, `embed` exits 1 and the index in place stays.
 Its first run embeds the whole mirror.
@@ -229,10 +229,10 @@ Its first run embeds the whole mirror.
   `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is
   counted in the warning.
 - Search: `index` reads each file whose bytes changed and leaves out each file gone, so
-  a document's old text, its pieces with it, leaves search, and a document removed
+  a document's old text, its chunks with it, leaves search, and a document removed
   leaves search; until `embed`, an edited document is found by its words alone. Each
-  piece's vector is kept in `<data>/vectors.sqlite` by its model and its text, so
-  `embed` embeds again only the pieces whose text changed, then prunes the vectors of
+  chunk's vector is kept in `<data>/vectors.sqlite` by its model and its text, so
+  `embed` embeds again only the chunks whose text changed, then prunes the vectors of
   text no longer in the mirror, unless an evaluation's index reads them.
 
 ## 6. Search it

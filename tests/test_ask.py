@@ -402,18 +402,18 @@ def by_meaning(
 def test_by_meaning_each_chunking_quotes_its_unit(
     tmp_path: Path, chunking: Chunking, text: str
 ) -> None:
-    """The piece itself; the window, here the whole body; small-to-big, its section whole."""
+    """The chunk itself; the window, here the whole body; small-to-big, its section whole."""
     library = by_meaning(tmp_path, chunking, HOLIDAY)
     (first, *_) = passages(library.ask("vacation lunch"))
     assert (first["ref"], first["section"], first["text"]) == ("4002", "1", text)
 
 
-def test_small_to_big_quotes_2400_characters_of_a_long_section_about_its_piece(
+def test_small_to_big_quotes_2400_characters_of_a_long_section_about_its_chunk(
     tmp_path: Path,
 ) -> None:
-    """Of a section of 5,600 characters, 2,400 about the piece near the question.
+    """Of a section of 5,600 characters, 2,400 about the chunk near the question.
 
-    The title, embedded with each piece, is near nothing, so the piece alone decides.
+    The title, embedded with each chunk, is near nothing, so the chunk alone decides.
     """
     filler = "lorem ipsum dolor sit amet\n\n" * 100
     near = "Leave for a meal.\n\n"

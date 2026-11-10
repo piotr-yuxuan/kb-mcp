@@ -1,7 +1,7 @@
 # Chunking
 
-An index by meaning holds a vector per piece of each document, and a search by meaning
-finds the pieces nearest the question. How documents are cut into pieces, and what text
+An index by meaning holds a vector per chunk of each document, and a search by meaning
+finds the chunks nearest the question. How documents are cut into chunks, and what text
 each vector stands for, is the chunking: the setting `chunking`, which `embed` cuts by
 and records in the index, so that `search`, `ask` and `status` follow the index, not the
 setting. Plan 019 compared four, on plan 002's sandbox questions, by a rule set before
@@ -11,12 +11,12 @@ since plan 025, by the user's choice:
 
 ## The four chunkings
 
-| Chunking | The pieces | The text embedded | What `ask` quotes of a piece found |
+| Chunking | The chunks | The text embedded | What `ask` quotes of a chunk found |
 |---|---|---|---|
-| `sections` | each section's body, its paragraphs packed up to 1,200 characters | the title, the section's heading, the piece | the piece |
+| `sections` | each section's body, its paragraphs packed up to 1,200 characters | the title, the section's heading, the chunk | the chunk |
 | `windows` | the whole body, 300 tokens a window, each starting 240 after the last one's start, cut back to a white space in its last tenth | the title, the window | the window |
-| `section-paths` | as `sections` | the title, the breadcrumb, the heading path (`A > B`), each cut to 200 characters, the piece | the piece |
-| `small-to-big` | as `sections`, up to 128 tokens | as `section-paths` | its section, whole up to 2,400 characters, else 2,400 of it centred on the piece |
+| `section-paths` | as `sections` | the title, the breadcrumb, the heading path (`A > B`), each cut to 200 characters, the chunk | the chunk |
+| `small-to-big` | as `sections`, up to 128 tokens | as `section-paths` | its section, whole up to 2,400 characters, else 2,400 of it centred on the chunk |
 
 - **`sections`** is plan 011's, the control: every other is measured against it.
 - **`windows`** ignores the headings: 300 tokens is the user's figure and a fifth
@@ -26,18 +26,17 @@ since plan 025, by the user's choice:
   exactly 240 tokens after the last one's start, inside a word if one is there, the
   window before holding that word whole. Across 1,080 characters of white space alone
   the next window starts at the next word instead, so that none is blank.
-- **`section-paths`** keeps 011's pieces, and says where each sits: the page's place in
+- **`section-paths`** keeps 011's chunks, and says where each sits: the page's place in
   its space and the headings above it, the sense of "hierarchical" that tells the model
   the context. The heading of level 1 at the body's start is the title, as the mirror
   writes it, and is not said twice.
-- **`small-to-big`** finds by small pieces, 128 tokens as LlamaIndex's hierarchical
+- **`small-to-big`** finds by small chunks, 128 tokens as LlamaIndex's hierarchical
   leaves are ([automerge]), and returns a larger unit, the other sense of
-  "hierarchical": the passage that `ask` quotes is the piece's section, or 2,400
+  "hierarchical": the passage that `ask` quotes is the chunk's section, or 2,400
   characters of it.
 
-A piece belongs to the section that holds its middle, with a span relative to that
-section's body, so that a window across sections needs no other schema; an index built
-before plan 019 has no chunking recorded, and was cut by `sections`.
+A chunk belongs to the section that holds its middle, and its range is in the document's
+body, so that a window may cross sections; an index built before plan 019 has no chunking recorded, and was cut by `sections`.
 
 ## Tokens without a tokeniser
 
@@ -56,7 +55,7 @@ first call meets it ([golden questions](../how-to/golden-questions.md)): `search
 011's measures, and `ask` by Found@ask and Evidence@ask, the share of expected
 documents among its passages and the share whose evidence their passage holds, within
 its fixed budget. The costs are the characters of the texts that each index embeds,
-whatever the vector store held, and their tokens; the texts embedded in the run, its
+whatever the vector cache held, and their tokens; the texts embedded in the run, its
 seconds and the tokens reported; the index's bytes; and the times of `search` and `ask`.
 Vectors are kept by model and text, so a text that two chunkings share is embedded once.
 
@@ -65,7 +64,7 @@ model: a challenger qualifies when it beats `sections` on Evidence@ask with a p-
 below 0.05 once adjusted by Holm over the six tests of three challengers on MRR@10 and
 Evidence@ask, loses at most 0.02 of MRR@10, and costs at most three times `sections`'
 tokens; the best Evidence@ask wins, and within 0.01 the cheaper; else `sections` stays.
-Three times, because `small-to-big` repeats each piece's context, about 2.1 times
+Three times, because `small-to-big` repeats each chunk's context, about 2.1 times
 `sections`' tokens; only a cold build three times as long is refused. The work set
 should decide again.
 
@@ -89,7 +88,7 @@ Found@ask 0.795, Evidence@ask 0.276.
 | `small-to-big` | semantic | 0.905 | 0.594 | 0.658 | 0.410 | 0.933 | 0.362 |
 | `small-to-big` | hybrid | 0.852 | 0.579 | 0.650 | 0.419 | 0.890 | 0.324 |
 
-| Chunking | Pieces | Characters embedded | Tokens, at 4 | Index | `search`, median by meaning |
+| Chunking | Chunks | Characters embedded | Tokens, at 4 | Index | `search`, median by meaning |
 |---|---|---|---|---|---|
 | `sections` | 6,729 | 2,628,524 | 657,131 | 38 MB | 178 ms |
 | `windows` | 2,974 | 2,920,227 | 730,056 | 21 MB | 201 ms |
@@ -107,7 +106,7 @@ Holm over the six:
 
 **The rule keeps `sections`**: no challenger beat it on Evidence@ask in hybrid mode.
 `windows` ranked better, significantly once adjusted (MRR@10 0.639 against 0.578),
-with half the pieces, a smaller index and 1.11 times the tokens, and by meaning alone
+with half the chunks, a smaller index and 1.11 times the tokens, and by meaning alone
 its passages held the evidence more often (0.500 against 0.329); in hybrid mode the
 evidence quoted barely moved (0.357 against 0.333), perhaps because a document that
 words rank higher there gets its section, not its window. With `windows`, hybrid search
@@ -146,7 +145,7 @@ verdict on any set of questions.
 
 What the choice gains, on the sandbox: the first expected document comes sooner
 (MRR@10 0.639, against 0.578 for hybrid search over `sections` and 0.539 for words
-alone), both gains significant once adjusted, with half the pieces and an index of 21
+alone), both gains significant once adjusted, with half the chunks and an index of 21
 MB against 38 MB. What it costs:
 
 - **Speed.** A hybrid query asks the model to embed the question first: its 95th
@@ -167,7 +166,7 @@ MB against 38 MB. What it costs:
   section shows.
 - **The first `embed` after upgrading** embeds every window of the mirror: no window's
   text is a section's, and vectors are kept by text, so none is found in the vector
-  store (unless an `eval` of `windows` with the same model embedded them already). On the
+  cache (unless an `eval` of `windows` with the same model embedded them already). On the
   sandbox that is 1.11 times the tokens of `sections`. The prune after it deletes the
   sections' vectors from `<data>/vectors.sqlite`, unless an evaluation's index cut by
   `sections` keeps them (plan 023).
@@ -178,48 +177,48 @@ To go back to either rule's choice: `chunking = "sections"`, then `embed`; or
 ## When pages change
 
 `index` reads into the index only the files whose bytes changed, their documents without
-pieces; `embed` then cuts the index's documents again, adds the pieces that the index
+chunks; `embed` then cuts the index's documents again, adds the chunks that the index
 lacks and removes those that no section wants. It embeds only the texts that
 `<data>/vectors.sqlite` lacks: vectors are kept by model and text, never by page. So
 what a change costs is the number of texts it makes new, and that depends on the
 chunking:
 
 - **A cut that shifts re-embeds more than what changed.** `sections`, `section-paths`
-  and `small-to-big` cut each section on its own, so an edit re-embeds the pieces of
+  and `small-to-big` cut each section on its own, so an edit re-embeds the chunks of
   the section it touches. `windows` cut the whole body at fixed steps: an edit shifts
   every window after it, which are all new texts.
 - **A name in the embedded text re-embeds everything under it.** A title that changes
-  re-embeds every piece of the page, by any chunking; a heading renamed re-embeds the
-  pieces under it by `section-paths` and `small-to-big`, whose texts carry the heading
+  re-embeds every chunk of the page, by any chunking; a heading renamed re-embeds the
+  chunks under it by `section-paths` and `small-to-big`, whose texts carry the heading
   path, its section's alone by `sections`, and the windows after it by `windows`.
 - **`small-to-big`'s unit costs nothing to embed**: the section that `ask` returns is
   read from the index when asked, never embedded.
 - **A text that two chunkings share is embedded once**, and what an evaluation embeds
   for the chunkings not in use stays in `vectors.sqlite` while its index under
   `<data>/eval/indexes/` exists, which each prune keeps (plan 023): deleting the store
-  costs nothing at the next `embed`, whose index holds each piece's vector, but a full
+  costs nothing at the next `embed`, whose index holds each chunk's vector, but a full
   embedding of the chunking in use by the model once a whole rebuild of the index has
-  dropped its pieces, and of each evaluation's at its next `eval`; it downloads nothing.
+  dropped its chunks, and of each evaluation's at its next `eval`; it downloads nothing.
 
 Counted on the sandbox's mirror, offline, with the tests' scripted model (the counts
 depend on the cuts alone, not on the model), after editing one page of 17 sections,
 `code-review-guidelines`:
 
-| Chunking | Pieces of the mirror | A sentence added mid-section | A heading renamed, its body empty, two sections under it |
+| Chunking | Chunks of the mirror | A sentence added mid-section | A heading renamed, its body empty, two sections under it |
 |---|---|---|---|
 | `sections` | 6,729 | 1 | 0 |
 | `windows` | 2,974 | 7 | 13 |
 | `section-paths` | 6,729 | 1 | 2 |
 | `small-to-big` | 9,149 | 2 | 4 |
 
-A vector stays in the vector store when its text leaves the mirror, read by nothing until the
+A vector stays in the vector cache when its text leaves the mirror, read by nothing until the
 prune after the next `embed` deletes it. Once `index` has run, the index holds no vector
-whose text the mirror no longer has, as a document changed or gone loses its pieces;
-until then, an edited page keeps its old text in the index, pieces included.
+whose text the mirror no longer has, as a document changed or gone loses its chunks;
+until then, an edited page keeps its old text in the index, chunks included.
 
 ## Not compared
 
-Contextual retrieval, a summary of the document written before each piece by a chat model
+Contextual retrieval, a summary of the document written before each chunk by a chat model
 (35% fewer retrieval failures in Anthropic's measure, [contextual]), and a reranker
 both need a model that the embedding endpoint does not reach: later plans, measured by
 this `eval`.

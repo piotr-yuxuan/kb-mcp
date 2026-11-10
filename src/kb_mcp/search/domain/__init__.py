@@ -1,1 +1,1 @@
-"""Search's rules: pieces, passages and fusion."""
+"""Search's rules: chunks, passages and fusion."""

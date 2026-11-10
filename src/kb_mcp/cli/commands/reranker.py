@@ -1,6 +1,6 @@
 """``reranker check``: check that the reranking server ranks with its model, or say what to run.
 
-It never starts the server nor downloads a model: the user does, as the guide shows.
+It never starts the server nor downloads a model: the user does, as the how-to page shows.
 """
 
 from __future__ import annotations

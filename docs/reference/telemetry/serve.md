@@ -34,7 +34,7 @@ no task.
 | `prompts/list` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `error.type`, `rpc.response.status_code` | The SDK's: the prompts that the tools served allow |
 | `prompts/get <prompt>` | server | `mcp.method.name`, `mcp.protocol.version`, `jsonrpc.request.id`, `gen_ai.prompt.name`, `error.type`, `rpc.response.status_code` | The SDK's: a prompt written, `brief`, `changes` or `overview`; `error.type` `-32602` when an argument is refused |
 | `search.lexical` | internal | | A search by words, the documents named first |
-| `search.semantic` | internal | | A search by meaning: the model connected once an index, the query embedded, the nearest pieces |
+| `search.semantic` | internal | | A search by meaning: the model connected once an index, the query embedded, the nearest chunks |
 | `embeddings <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type`, `gen_ai.usage.input_tokens` | An embedding by the GenAI conventions, its attempts included, and the tokens that the endpoint counted, if it did |
 | `rerank <model>` | client | `gen_ai.operation.name`, `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, `server.port`, `error.type`, `gen_ai.usage.input_tokens`, `kb_mcp.rerank.texts`, `kb_mcp.rerank.characters` | A reranking, its operation `rerank`, a name of this project's, as the GenAI conventions name none for reranking; how many texts, how long in all, and the tokens that the server counted, if it did |
 | `GET` | client | `http.request.method`, `server.address`, `server.port`, `url.full`, `http.response.status_code`, `error.type` | The endpoint's list of models, by the HTTP conventions |

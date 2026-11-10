@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import structlog
 from opentelemetry import metrics, trace
+from pydantic import Field
 
 from kb_mcp.config.domain.settings import SearchMode as Mode
 from kb_mcp.kernel.names import WORKLOG_ID
@@ -43,6 +44,7 @@ from kb_mcp.search.domain.reranking import (
 from kb_mcp.search.domain.search import (
     MAX_WORDS,
     Filters,
+    Matched,
     Passage,
     Plan,
     Sort,
@@ -145,8 +147,8 @@ class Ranking(Record):
 
     paths: list[str]
     whole: bool  # every document matching the words is counted
-    meaning: dict[str, tuple[int, int, int]]  # for each document shown by meaning, the
-    # section number of its best piece, and the piece's start and end in the body
+    # Each document that meaning placed, and the chunk that matched.
+    matched: dict[str, Matched] = Field(default_factory=dict)
     counted: str = "found"  # what the count line calls the documents counted
     note: str = ""  # the sentences saying why meaning, or reranking, was not used
     pinned: int = 0  # the documents that the query names, first, by identifier
@@ -184,7 +186,7 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_date:
-        return Ranking(paths=words, whole=whole, meaning={}, pinned=len(first))
+        return Ranking(paths=words, whole=whole, pinned=len(first))
     with TRACER.start_as_current_span("search.semantic"):
         near = (
             meaning.nearest(reader, asked.query, filters)
@@ -195,14 +197,14 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         FALLBACKS.add(1, {"kb_mcp.mode": asked.mode})
         structlog.get_logger().warning("search.fallback", mode=asked.mode, reason=near.reason)
         note = f" Ranked by words alone: {near.reason}."
-        return Ranking(paths=words, whole=whole, meaning={}, note=note, pinned=len(first))
-    scores = {path: score for path, (score, *_) in near.found.items()}
+        return Ranking(paths=words, whole=whole, note=note, pinned=len(first))
+    scores = {path: score for path, (score, _) in near.found.items()}
     by_meaning = rank([scores], first, sort="relevance")
-    shown = {path: tuple(where) for path, (_, *where) in near.found.items()}
+    matched = {path: chunk for path, (_, chunk) in near.found.items()}
     if asked.mode == "semantic":
         counted = "nearest in meaning"
         return Ranking(
-            paths=by_meaning, whole=True, meaning=shown, counted=counted, pinned=len(first)
+            paths=by_meaning, whole=True, matched=matched, counted=counted, pinned=len(first)
         )
     updated = {path: s.updated for one, _ in found for path, s in one.items()}
     updated |= {path: score.updated for path, score in scores.items()}
@@ -211,10 +213,10 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     # A document that words do not find is ranked by meaning alone: shown by meaning.
     places = {path: at for at, path in enumerate(words)}
     higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
-    by_higher = {path: shown[path] for path in higher if path in shown}
+    placed = {path: matched[path] for path in higher}
     counted = "found by words or meaning"
     return Ranking(
-        paths=[*first, *fused], whole=whole, meaning=by_higher, counted=counted, pinned=len(first)
+        paths=[*first, *fused], whole=whole, matched=placed, counted=counted, pinned=len(first)
     )
 
 
@@ -226,10 +228,12 @@ def snippet_of(
     A document shown by words opens at its best section for the query's words; one
     without them, at its start, with a lead that leaves out the title's heading.
     """
-    if entry.path in ranked.meaning:
-        number, start, end = ranked.meaning[entry.path]
-        lead = reader.text(entry.path, start, min(end, start + 2 * responses.SNIPPET))
-        return Passage(number=number, heading=reader.heading(entry.path, number), text=lead)
+    if chunk := ranked.matched.get(entry.path):
+        end = min(chunk.end, chunk.start + 2 * responses.SNIPPET)
+        lead = reader.text(entry.path, chunk.start, end)
+        return Passage(
+            number=chunk.number, heading=reader.heading(entry.path, chunk.number), text=lead
+        )
     passage = reader.snippet(entry.path, planned.match) if planned.words else None
     lead = "" if passage else reader.text(entry.path, 0, 2 * responses.SNIPPET)
     return passage or Passage(number=1, heading="", text=lead.partition("\n")[2])
@@ -248,18 +252,17 @@ def folded(text: str) -> str:
 def place_of(
     reader: SearchReader, ranked: Ranking, planned: Plan, path: str
 ) -> tuple[int, tuple[int, int]]:
-    """Give a document's section, by its number, and its best place there, as a span of the body.
+    """Give a document's section, by its number, and its best place there, as a range of the body.
 
-    A document ranked by meaning gives its best piece. One ranked by words gives the
+    A document ranked by meaning gives its best chunk. One ranked by words gives the
     occurrence of the question's rarest word with the most other words within UNIT / 2
     of it, in its best section for the question's words, or the start of its first.
     Words are found as the index finds them: without regard to case or accents, between
     characters that are no letter nor digit. Candidates being the rarest word's
     occurrences, a section of many hits costs as many bisections.
     """
-    if path in ranked.meaning:
-        number, start, end = ranked.meaning[path]
-        return number, (start, end)
+    if chunk := ranked.matched.get(path):
+        return chunk.number, (chunk.start, chunk.end)
     alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
     words = re.compile("|".join(alone), re.IGNORECASE)
     best = reader.snippet(path, planned.match) if planned.words else None
@@ -285,18 +288,18 @@ def passages(
     """Give the passage that ask quotes of each document, verbatim, in the order given.
 
     About each document's best place (``place_of``): by meaning, the unit of its best
-    piece, by the index's chunking; by words, its section whole up to UNIT characters,
+    chunk, by the index's chunking; by words, its section whole up to UNIT characters,
     else UNIT of it about the place, by ``around``, then cut to whole lines where a line
     break falls in the half that the cut shortens.
     """
     embedded = reader.embedded()
-    quoted_span = CHUNKERS[embedded.chunking].quoted_span if embedded else None
+    quoted = CHUNKERS[embedded.chunking].quoted if embedded else None
     found = []
     for path in paths:
         number, place = place_of(reader, ranked, planned, path)
         first, last = reader.bounds(path)[number - 1]
-        if quoted_span and path in ranked.meaning:
-            start, end = quoted_span(place, (first, last))
+        if quoted and path in ranked.matched:
+            start, end = quoted(place, (first, last))
             text = reader.text(path, start, end)
         else:
             start, end = around(place, (first, last))
@@ -638,7 +641,7 @@ class Library:
             kept = narrowed(reader, given)
             if not planned.words and sort == "relevance":
                 return responses.answer(NO_WORDS)
-            ranked = Ranking(paths=[], whole=True, meaning={})
+            ranked = Ranking(paths=[], whole=True)
             if planned.words:
                 asked = Asked(
                     query=query,
@@ -736,7 +739,7 @@ class Library:
                 order=order,
             )
             if not planned.words:
-                return responses.answer(NO_QUESTION), [], Ranking(paths=[], whole=True, meaning={})
+                return responses.answer(NO_QUESTION), [], Ranking(paths=[], whole=True)
             ranked = reranked(reader, asked, ranking(reader, self._meaning, asked), self._reranking)
             paths = ranked.paths[offset : offset + ASK_DOCUMENTS]
             indexed = {entry.path: entry for entry in reader.indexed_documents(paths=paths)}

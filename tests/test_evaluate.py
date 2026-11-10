@@ -224,10 +224,11 @@ def test_the_command_keeps_numbers_and_ids_but_no_question(
         kept = results.read_text(encoding="utf-8")
         assert "vacation" not in kept
         assert "release" not in kept
-        assert json.loads(kept)["runs"][0]["ranks"]["semantic"]["q1"] == [1]
+        assert "runs" not in json.loads(kept)
+        assert json.loads(kept)["indexes"][0]["ranks"]["semantic"]["q1"] == [1]
         assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 0
     second = max((data / "eval" / "results").glob("*.json"))
-    assert json.loads(second.read_text(encoding="utf-8"))["runs"][0]["embedded"] == 0
+    assert json.loads(second.read_text(encoding="utf-8"))["indexes"][0]["embedded"] == 0
 
 
 def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_file(
@@ -287,8 +288,9 @@ def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
     assert "release" not in out
     document = json.loads(out)
     assert document["results"] == str(results)
-    assert [run["chunking"] for run in document["runs"]] == list(CHUNKINGS)
-    run = document["runs"][0]
+    assert "runs" not in document
+    assert [run["chunking"] for run in document["indexes"]] == list(CHUNKINGS)
+    run = document["indexes"][0]
     assert run["model"] == "tiny"
     assert run["ranks"]["semantic"]["q1"] == [1]
     assert document["choices"]["tiny"]["chunking"] in CHUNKINGS
@@ -533,7 +535,7 @@ def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     assert run.asked["lexical"]["q1"] == Quoted(found=0.0, evidence=0.0)
     assert run.asked["lexical"]["q3"].found == 1.0
     assert set(run.ask_times) == {"lexical", "semantic", "hybrid"}
-    assert run.costs.pieces > 0
+    assert run.costs.chunks > 0
     assert run.costs.estimated == run.costs.characters // 4
     assert (
         run.costs.bytes == (data / "eval" / "indexes" / "sections" / "tiny.sqlite").stat().st_size

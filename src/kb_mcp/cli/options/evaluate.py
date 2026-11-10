@@ -39,7 +39,7 @@ def register(
         "eval",
         help="measure search and ask on golden questions, by mode, model and chunking",
         epilog=(
-            "With --format json: runs, each model's and chunking's measures of search and"
+            "With --format json: indexes, each model's and chunking's measures of search and"
             " ask by mode and group, with its ranks, times, costs and tests; choices, each"
             " model's default chunking by the rule; results, the file that keeps them."
         ),

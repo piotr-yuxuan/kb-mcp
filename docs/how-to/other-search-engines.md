@@ -93,8 +93,8 @@ qmd embed --timeout 0
   documents: `qmd embed` again resumes it.
 - After a change of model, `qmd embed -f` embeds everything again. Without `-f`, a
   model of other dimensions makes `qmd embed` exit 1, saying so.
-- Here, embeddinggemma embedded 893 pieces of the 277 documents in 3 min 45 s, at a
-  peak of 2.3 GB; Qwen3, 886 pieces in 17 min 31 s, at a peak of 2.7 GB.
+- Here, embeddinggemma embedded 893 chunks of the 277 documents in 3 min 45 s, at a
+  peak of 2.3 GB; Qwen3, 886 chunks in 17 min 31 s, at a peak of 2.7 GB.
 - Every command that loads a model says "QMD Warning: no GPU acceleration, running on
   CPU (slow)" on a machine without a GPU, and runs all the same.
 
@@ -115,7 +115,7 @@ qmd get qmd://confluence/QM/231569-reverting-a-bad-release.md:40:20
 - Given a question without `lex:` or `vec:`, `query` first has a 1.7B model rewrite
   it, unless words alone match strongly; without `--no-rerank`, it then reranks the
   candidates with a third model. One question took 38 s here, at a peak of 3.6 GB, 37 s
-  of it reranking 20 pieces; in the trial, 98 s a question at the median, 89 s of it
+  of it reranking 20 chunks; in the trial, 98 s a question at the median, 89 s of it
   reranking, which ranked no better for it (MRR@10 0.588, against 0.616 without).
   `vsearch` too has the question rewritten first, and drops results that score below
   0.3: `query --no-rerank 'vec: ...'` is the search by meaning alone.

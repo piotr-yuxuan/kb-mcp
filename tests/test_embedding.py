@@ -598,7 +598,7 @@ def quiet(answers: Scripted) -> ApiEmbedder:
 
 
 def test_every_text_of_several_refused_alone_is_the_endpoint_s_fault() -> None:
-    """An endpoint whose limit is shorter than the pieces refuses them all: no index of holes.
+    """An endpoint whose limit is shorter than the chunks refuses them all: no index of holes.
 
     Its probe, short, would pass: it is not asked. The first batch stops the build.
     """

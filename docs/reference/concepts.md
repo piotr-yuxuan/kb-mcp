@@ -262,8 +262,8 @@ placed the document.
 
 **In the code.** [`Section`](../../src/kb_mcp/search/domain/search.py),
 [`sections`](../../src/kb_mcp/search/domain/search.py) and
-[`Pieces`](../../src/kb_mcp/search/domain/search.py);
-[`Piece`](../../src/kb_mcp/search/domain/indexes.py), a chunk;
+[`ChunkVectors`](../../src/kb_mcp/search/domain/search.py), the chunks with their vectors;
+[`Chunk`](../../src/kb_mcp/search/domain/search.py);
 [`Chunker`](../../src/kb_mcp/search/domain/chunking.py),
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py),
 [`Cut`](../../src/kb_mcp/search/domain/chunking.py) and
@@ -271,8 +271,8 @@ placed the document.
 [`place_of`](../../src/kb_mcp/mcp/app/tools.py),
 [`snippet_of`](../../src/kb_mcp/mcp/app/tools.py) and
 [`around`](../../src/kb_mcp/search/domain/chunking.py), which place the other ranges at
-a section. The index's table `pieces` holds the chunks, and its table `chunks` the
-sections' words.
+a section. The index's table `chunks` holds the chunks, and its table `section_words`
+the sections' words.
 
 ### person
 
@@ -384,10 +384,15 @@ and reranking are calls to services; a reranker reads each candidate's title, he
 and the text about its best place. The evaluation scores rankings (MRR@10, Section@10).
 
 **In the code.** [`Ranking`](../../src/kb_mcp/mcp/app/tools.py), which holds the
-documents' paths and, for those that meaning placed, the section, start and end of the
-chunk; [`ranking`](../../src/kb_mcp/mcp/app/tools.py),
+documents' paths and, for those that meaning placed, the chunk that matched
+([`Matched`](../../src/kb_mcp/search/domain/search.py));
+[`ranking`](../../src/kb_mcp/mcp/app/tools.py),
 [`reranked`](../../src/kb_mcp/mcp/app/tools.py) and
-[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py).
+[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py). Where the code
+differs: the section by words of a document is found as a page or the reranker reads it
+([`snippet_of`](../../src/kb_mcp/mcp/app/tools.py),
+[`place_of`](../../src/kb_mcp/mcp/app/tools.py)), not held by the ranking, since finding
+it for every document ranked would cost a query of the words per document.
 
 ### tool
 
@@ -429,10 +434,10 @@ and when it was built.
 [`passage`](../../src/kb_mcp/mcp/app/responses.py);
 [`BUDGET`](../../src/kb_mcp/mcp/app/responses.py),
 [`PASSAGE_CHARS`](../../src/kb_mcp/search/domain/chunking.py) and
-[`Chunker.quoted_span`](../../src/kb_mcp/search/domain/chunking.py);
+[`Chunker.quoted`](../../src/kb_mcp/search/domain/chunking.py);
 [`Surface`](../../src/kb_mcp/mcp/app/surface.py),
 [`ServedPrompt`](../../src/kb_mcp/mcp/app/surface.py) and
-[`guides`](../../src/kb_mcp/mcp/app/surface.py), the prompts; the command `serve`; the
+[`prompts`](../../src/kb_mcp/mcp/app/surface.py); the command `serve`; the
 telemetry attributes `kb_mcp.hits`, which counts the documents that a ranking holds, for
 `search` and `ask` alike, and `kb_mcp.passages`, the quotes of `ask`.
 
@@ -670,7 +675,7 @@ as it was, and the conversion cache.
 [`SqliteIndex`](../../src/kb_mcp/search/adapters/sqlite_index.py) and
 [`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py);
 [`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py) and
-[`VectorStore`](../../src/kb_mcp/search/adapters/vector_store.py); the locks
+[`VectorCache`](../../src/kb_mcp/search/adapters/vector_cache.py); the locks
 `raw/.lock`, `index.sqlite.lock` and `vectors.sqlite.lock`. The fingerprints are
 [`WORDS`](../../src/kb_mcp/search/domain/search.py), for sections, words and persons;
 [`Embedded.chunking`](../../src/kb_mcp/search/domain/search.py);
@@ -679,7 +684,7 @@ as it was, and the conversion cache.
 converter name, version line and arguments
 ([`Pandoc.html_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py),
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)). The cache keys
-are [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py) and the conversion
+are [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py) and the conversion
 cache's key, each the SHA-256 of a fingerprint, a NUL and the input. A server that lists
 no digest of its model leaves the embedding's fingerprint blind to new weights under one
 name.
@@ -820,8 +825,8 @@ the documents, their sections and words, the persons and the vectors. Not the
 The memo [store](#store) of the embedding derivation, under `<data>/vectors.sqlite`:
 each vector under its cache key, from the embedding's fingerprint and the text embedded.
 
-- **In the code.** [`VectorStore`](../../src/kb_mcp/search/adapters/vector_store.py) and
-  [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py).
+- **In the code.** [`VectorCache`](../../src/kb_mcp/search/adapters/vector_cache.py) and
+  [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py).
 
 ### golden question
 

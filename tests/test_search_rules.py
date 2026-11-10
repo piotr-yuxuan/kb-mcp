@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-from kb_mcp.search.domain.chunking import pieces, section_pieces
+from kb_mcp.search.domain.chunking import chunks, section_chunks
 from kb_mcp.search.domain.search import (
     MAX_WORDS,
     Score,
@@ -23,7 +23,7 @@ from kb_mcp.search.domain.search import (
 from tests.mirrors import MOMENT, issue, page
 
 LIMIT = 26
-# The plan's length of a piece, in characters.
+# The plan's length of a chunk, in characters.
 LONGEST = 1200
 
 
@@ -227,45 +227,45 @@ def test_a_score_by_meaning_cannot_be_sorted_by_created_date() -> None:
         rank([{"a.md": Score(relevance=0.9, updated=MOMENT)}], [], sort="created")
 
 
-def test_pieces_end_at_the_last_blank_line_that_fits() -> None:
-    """Paragraphs are packed while they fit; white space never starts a piece."""
+def test_chunks_end_at_the_last_blank_line_that_fits() -> None:
+    """Paragraphs are packed while they fit; white space never starts a chunk."""
     text = "\n\nfirst para\n\nsecond para\n\nthird paragraph here\n"
-    spans = pieces(text, limit=LIMIT)
-    assert [text[start:end].strip() for start, end in spans] == [
+    ranges = chunks(text, limit=LIMIT)
+    assert [text[start:end].strip() for start, end in ranges] == [
         "first para\n\nsecond para",
         "third paragraph here",
     ]
-    assert all(end - start <= LIMIT and not text[start].isspace() for start, end in spans)
+    assert all(end - start <= LIMIT and not text[start].isspace() for start, end in ranges)
 
 
 def test_a_long_paragraph_is_cut_at_a_line_break_then_a_space_then_anywhere() -> None:
-    """Each piece fits the limit, and together they hold every word in order."""
+    """Each chunk fits the limit, and together they hold every word in order."""
     lines = "one two\nthree four"
-    assert [lines[a:b] for a, b in pieces(lines, limit=12)] == ["one two", "three four"]
+    assert [lines[a:b] for a, b in chunks(lines, limit=12)] == ["one two", "three four"]
     words = "alpha beta gamma delta"
-    assert [words[a:b] for a, b in pieces(words, limit=10)] == ["alpha beta", "gamma", "delta"]
+    assert [words[a:b] for a, b in chunks(words, limit=10)] == ["alpha beta", "gamma", "delta"]
     solid = "x" * 25
-    assert [b - a for a, b in pieces(solid, limit=10)] == [10, 10, 5]
+    assert [b - a for a, b in chunks(solid, limit=10)] == [10, 10, 5]
 
 
-def test_a_blank_line_beyond_the_limit_ends_no_piece_before_it() -> None:
-    """Only a blank line within the limit can end a piece; a later one waits its turn."""
+def test_a_blank_line_beyond_the_limit_ends_no_chunk_before_it() -> None:
+    """Only a blank line within the limit can end a chunk; a later one waits its turn."""
     text = "one two three four five six\n\nseven"
-    spans = pieces(text, limit=10)
-    assert [text[a:b].strip() for a, b in spans] == ["one two", "three four", "five six", "seven"]
+    ranges = chunks(text, limit=10)
+    assert [text[a:b].strip() for a, b in ranges] == ["one two", "three four", "five six", "seven"]
 
 
-def test_a_piece_holds_at_most_1200_characters_by_default() -> None:
+def test_a_chunk_holds_at_most_1200_characters_by_default() -> None:
     """The plan's limit, below 512 tokens of the smaller models with the title."""
     text = "word " * 600
-    first_start, first_end = pieces(text)[0]
+    first_start, first_end = chunks(text)[0]
     assert LONGEST - 10 < first_end - first_start <= LONGEST
 
 
-def test_a_blank_text_has_no_piece() -> None:
+def test_a_blank_text_has_no_chunk() -> None:
     """Nothing to embed in white space alone."""
-    assert pieces("") == []
-    assert pieces("  \n\n\t") == []
+    assert chunks("") == []
+    assert chunks("  \n\n\t") == []
 
 
 def both_at(rank: int) -> list[str]:
@@ -292,28 +292,29 @@ def test_fusion_ties_go_to_the_newest_then_the_path() -> None:
     assert fuse([["a"], ["b"], ["c"]], updated) == ["b", "a", "c"]
 
 
-def test_each_piece_is_embedded_with_its_title_and_heading() -> None:
-    """The title, cut, then the heading unless it is the title, then the piece's text."""
+def test_each_chunk_is_embedded_with_its_title_and_heading() -> None:
+    """The title, cut, then the heading unless it is the title, then the chunk's text."""
     title = "T" * 250
-    cut = sections(f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n")
-    found = section_pieces(title, cut)
+    body = f"# {title}\n\nFirst.\n\n## Second\n\nMore.\n\n## Empty\n"
+    cut = sections(body)
+    found = section_chunks(title, cut)
     assert [(index, text) for index, _, _, text in found] == [
         (0, f"{'T' * 200}\nFirst."),
         (1, f"{'T' * 200}\nSecond\nMore."),
     ]
     index, start, end, _ = found[1]
-    assert cut[index].body[start:end].strip() == "More."
+    assert (index, body[start:end].strip()) == (1, "More.")
 
 
-def test_a_blank_line_ending_right_at_the_limit_ends_the_piece() -> None:
-    """The limit counts the blank line in: a piece ends after it, exactly at the limit."""
-    assert pieces("aaaa\n\nbbb\n\ncc", limit=11) == [(0, 11), (11, 13)]
+def test_a_blank_line_ending_right_at_the_limit_ends_the_chunk() -> None:
+    """The limit counts the blank line in: a chunk ends after it, exactly at the limit."""
+    assert chunks("aaaa\n\nbbb\n\ncc", limit=11) == [(0, 11), (11, 13)]
 
 
 def test_a_paragraph_is_kept_whole_rather_than_cut_at_a_line_break() -> None:
-    """The blank line that fits ends the piece; the next paragraph's line break does not."""
+    """The blank line that fits ends the chunk; the next paragraph's line break does not."""
     text = "First paragraph.\n\nSecond paragraph, line one\nline two continues"
-    assert [text[a:b].strip() for a, b in pieces(text, limit=50)] == [
+    assert [text[a:b].strip() for a, b in chunks(text, limit=50)] == [
         "First paragraph.",
         "Second paragraph, line one\nline two continues",
     ]

@@ -27,7 +27,7 @@ positional arguments:
     check        validate the settings and where the data directory is
     completion   print the code that completes the command in bash and zsh
     doctor       check the machine and each sign-in
-    embed        give the index's pieces their vectors, then prune the vector store
+    embed        give the index's chunks their vectors, then prune the vector cache
     eval         measure search and ask on golden questions, by mode, model and
                  chunking
     eval-agents  evaluate ask through agents: prepare their runs, bridge their calls,
@@ -145,11 +145,11 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
 
-With --format json: index, its path; model, the one that embedded; pieces, those that
+With --format json: index, its path; model, the one that embedded; chunks, those that
 the index holds; documents, its documents; skipped, the files that it lacks; added and
-removed, the pieces; embedded, the texts embedded now; found, those that the vector
-store held; refused, the documents with a piece refused; unchanged, whether nothing
-was written; pruned, what the prune of the vector store kept and deleted, or why it
+removed, the chunks; embedded, the texts embedded now; found, those that the vector
+cache held; refused, the documents with a chunk refused; unchanged, whether nothing
+was written; pruned, what the prune of the vector cache kept and deleted, or why it
 did not prune.
 ```
 
@@ -187,7 +187,7 @@ options:
   --chunking {sections,windows,section-paths,small-to-big}
                         a chunking to evaluate; by default, every one
 
-With --format json: runs, each model's and chunking's measures of search and ask by
+With --format json: indexes, each model's and chunking's measures of search and ask by
 mode and group, with its ranks, times, costs and tests; choices, each model's default
 chunking by the rule; results, the file that keeps them.
 ```

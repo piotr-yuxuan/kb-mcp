@@ -4,7 +4,7 @@ A vector is keyed by the SHA-256 of its model's fingerprint and the text embedde
 text is embedded once per model however often the index is rebuilt, and a vector is
 never reused for another model or another version of one. Each ``put`` commits, so an
 interrupted build keeps what it embedded, until a prune finds that no index reads it.
-Deleting the file costs no embedding while the index holds its pieces, each with its
+Deleting the file costs no embedding while the index holds its chunks, each with its
 vector; once the index is rebuilt whole, the next ``embed`` embeds the mirror again by
 the model, and downloads nothing.
 
@@ -78,7 +78,7 @@ class Swept(Record):
     unreclaimed: str = ""
 
 
-class VectorStore:
+class VectorCache:
     """Vectors by key, in an open store."""
 
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -180,7 +180,7 @@ class VectorStore:
 
 
 @contextmanager
-def opened(path: Path) -> Iterator[VectorStore]:
+def opened(path: Path) -> Iterator[VectorCache]:
     """Open the store at ``path``, creating it when there is none; close it after use.
 
     Two runs may use the store at once, an index and an evaluation: in WAL mode, reads
@@ -199,7 +199,7 @@ def opened(path: Path) -> Iterator[VectorStore]:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.execute(CREATE)
         connection.commit()
-        yield VectorStore(connection)
+        yield VectorCache(connection)
     finally:
         connection.close()
 
@@ -241,7 +241,7 @@ def shared(store: Path) -> Iterator[None]:
     ``vectors.lock_wait``, then waits, and raises TimeoutError, naming the lock, once
     WAIT_S seconds have passed.
     """
-    with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector store"):
+    with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector cache"):
         yield
 
 

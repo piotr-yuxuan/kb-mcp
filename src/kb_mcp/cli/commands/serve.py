@@ -163,17 +163,17 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             tools=tools,
             log_level="WARNING",
         )
-        for guide in offered.guides:
+        for prompt in offered.prompts:
             wanted = [
                 PromptArgument(name=name, description=said, required=True)
-                for name, said in guide.arguments
+                for name, said in prompt.arguments
             ]
             server.add_prompt(
                 Prompt(
-                    name=guide.name,
-                    description=guide.description,
+                    name=prompt.name,
+                    description=prompt.description,
                     arguments=wanted,
-                    fn=checking(guide.render),
+                    fn=checking(prompt.render),
                 )
             )
         server.run("stdio")

@@ -11,7 +11,7 @@ tells whether to turn it on there, and at which depth.
 
 ## Two ways a model can read a question
 
-An index by meaning holds a vector per piece of each document, made once when `embed`
+An index by meaning holds a vector per chunk of each document, made once when `embed`
 runs; a search embeds the question alone, about ten words, and finds the nearest
 vectors. The model that made them, a **bi-encoder**, never reads the question and a
 document together: each is reduced to a vector of its own, before the other is known.
@@ -50,8 +50,8 @@ stage chooses, and the reranker reorders the first `rerank.depth` documents it f
 - **A short text for each.** The reranker reads at most 1,502 characters a document:
   its title and the heading of the section that `search` shows, each cut to 150
   characters, then 1,200 characters of that section about the place the first ranking
-  chose, by meaning its best piece, by words where the question's words gather (the
-  place `ask` quotes). 1,200 is plan 011's piece, and plan 019's 300-token window at
+  chose, by meaning its best chunk, by words where the question's words gather (the
+  place `ask` quotes). 1,200 is plan 011's chunk, and plan 019's 300-token window at
   four characters a token, so a search costs at most N such pairs whatever the
   chunking. With the prompt and the question, a pair is 225 to 400 tokens.
 - **The cost grows with N.** On a laptop's GPU, by an estimate scaled from published
@@ -181,7 +181,7 @@ reads is the mirror's, and no flag allows another ("No remote reranker.").
 
 ## Not done
 
-- **Scoring several pieces of a document** and keeping the best ([maxp]): N times the
+- **Scoring several chunks of a document** and keeping the best ([maxp]): N times the
   cost again, where the first ranking already chose the place.
 - **Fusing the scores** with the first ranking's, or a threshold on them: they are not
   calibrated across questions, and a fusion tuned on the sandbox's 105 questions would

@@ -18,7 +18,7 @@ flowchart LR
     worklog["work log, org files"]
     raw[("raw store")]
     docs[("Markdown mirror")]
-    vectors[("vector store")]
+    vectors[("vector cache")]
     index[("index")]
     endpoint["embedding endpoint"]
     reranker["reranking server, when on"]
@@ -43,7 +43,7 @@ flowchart LR
 | `prepare` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
 | `prepare`, of the work log | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed but the old one of a document written again under another title's path |
 | `index` | the index; the mirror, each file digested and those changed read; the user's alias file, if any | `<data>/index.sqlite`, only when something changed | the index built aside, what did not change copied from the old, then renamed into place under the index's lock | the file is skipped and named; a name that could be several people is joined to none, and named; with an alias file refused, the old index stays |
-| `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its pieces or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector store pruned under its own lock, its deletions one transaction | a piece refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
+| `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its chunks or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector cache pruned under its own lock, its deletions one transaction | a chunk refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
 ## The stages, each one command
@@ -56,7 +56,7 @@ Confluence's and Jira's,
 [`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
 `index`, the words of the mirror's files that changed, whichever sources were prepared
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); and `embed`, the vectors of
-the pieces that the index lacks, then the prune
+the chunks that the index lacks, then the prune
 ([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
 use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/concepts.md#connector)'s declaration
 names its table, its fetcher and its preparers ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
@@ -222,17 +222,17 @@ compares it with what the index holds
 changed, cuts each body into sections before each heading
 ([`sections`](../../src/kb_mcp/search/domain/search.py)), and indexes them by words.
 [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py), `embed`'s, reads the index alone,
-cuts each document's body again into pieces by the setting `chunking`
+cuts each document's body again into chunks by the setting `chunking`
 ([`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py)), and gives a vector to each
-piece that the index lacks
+chunk that the index lacks
 ([`filling`](../../src/kb_mcp/search/app/indexing.py)).
 
 - **Writes** a new `<data>/index.sqlite` in a file beside the old one, renamed into
   place once complete ([`aside`](../../src/kb_mcp/search/adapters/sqlite_index.py)); on
   any failure, the old index stays. `index` copies into it, from the old one attached
-  read-only, every document whose file did not change, with its sections and pieces, and
+  read-only, every document whose file did not change, with its sections and chunks, and
   adds those read ([`Writer.update`](../../src/kb_mcp/search/adapters/sqlite_index.py));
-  `embed` copies the old one whole, by SQLite's backup, and adds and removes pieces
+  `embed` copies the old one whole, by SQLite's backup, and adds and removes chunks
   ([`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py)). With nothing
   changed, neither writes. Each holds the index's lock, `<data>/index.sqlite.lock`, from
   its check that the index is still the build it read until the rename, and starts again
@@ -240,12 +240,12 @@ piece that the index lacks
   ([`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). Each write
   has a random id, its meta row `build`. Vectors are kept in `<data>/vectors.sqlite`,
   committed 256 texts at a time
-  ([`VectorStore.vectors`](../../src/kb_mcp/search/adapters/vector_store.py)), so that
+  ([`VectorCache.vectors`](../../src/kb_mcp/search/adapters/vector_cache.py)), so that
   an interrupted `embed` loses little; in SQLite's WAL mode, an `embed` and an `eval`
   can share it, a write waiting for the other's
-  ([`opened`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` holds the
+  ([`opened`](../../src/kb_mcp/search/adapters/vector_cache.py)). `embed` holds the
   store's lock shared from its read of the vectors until its index is in place
-  ([`shared`](../../src/kb_mcp/search/adapters/vector_store.py)); then `fill_and_prune` prunes
+  ([`shared`](../../src/kb_mcp/search/adapters/vector_cache.py)); then `fill_and_prune` prunes
   the store (below).
 - **Joins** the documents' people into persons, at each write of `index`, over every
   document, those copied included, in the same transaction
@@ -264,14 +264,14 @@ piece that the index lacks
 - **One document's failure**, a file not UTF-8, front matter refused, or a second
   document of the same source and id, skips that file and names it, with a reason that
   holds no content, at each run, as the index records it; the update completes and
-  exits 1. A piece whose text the endpoint refuses is left without a vector, its
+  exits 1. A chunk whose text the endpoint refuses is left without a vector, its
   document named, and asked again at the next `embed`. A name that could be several
   persons, or an alias that changes nothing, is a warning, once a build, and the exit
   status stays. Only an alias file that cannot be read or is refused stops `index`, and
   an endpoint that does not answer, or lacks the model, or an index that another
   version of `WORDS` wrote or that is damaged, stops `embed`: the old index stays.
 - **Offline**, the words and the persons: the index is updated from the mirror and the
-  alias file alone. Meaning needs the endpoint, but only for texts that the vector store
+  alias file alone. Meaning needs the endpoint, but only for texts that the vector cache
   lacks (below).
 
 ## Serve: from the index to agents
@@ -301,11 +301,11 @@ a document's score is the sum of its scores
 
 ### By meaning
 
-The query is embedded, with the model's query prefix, and compared with every piece of
-the index: the vectors are of unit length, so one product of the matrix of pieces by the
+The query is embedded, with the model's query prefix, and compared with every chunk of
+the index: the vectors are of unit length, so one product of the matrix of chunks by the
 query gives every cosine, exactly, with no approximate index
-([`Pieces.nearest`](../../src/kb_mcp/search/domain/search.py)). A document
-scores by its best piece, and the 100 nearest are kept
+([`ChunkVectors.nearest`](../../src/kb_mcp/search/domain/search.py)). A document
+scores by its best chunk, and the 100 nearest are kept
 ([`Meaning.nearest`](../../src/kb_mcp/search/app/meaning.py)). The model
 is the one the index names, never the setting, and only while the endpoint's fingerprint
 for it is the index's: vectors of other weights would not compare with the query's.
@@ -423,21 +423,21 @@ with the digest that the index records
 gone, and the same alias file, it writes nothing. Else it reads the files added or
 changed, then builds a new index beside the old one
 ([`Writer.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)): every document
-whose file did not change is copied with its sections and pieces, and so with its
+whose file did not change is copied with its sections and chunks, and so with its
 vectors; the edited page is read again, and put in place of its old document, with no
-pieces; a deleted page's document is left out, its sections and pieces with it, and a
+chunks; a deleted page's document is left out, its sections and chunks with it, and a
 renamed file is one document removed and one added. FTS5's index is rebuilt from the
 sections, persons are joined again over every document, and the file is renamed into
 place under the index's lock
 ([`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). So nothing
 stale is left in the index, and a run that fails leaves the old one whole. An index that
 cannot be updated, written before plan 035 or by another version of `WORDS`, damaged,
-or on `index --rebuild`, is rebuilt whole, with no pieces.
+or on `index --rebuild`, is rebuilt whole, with no chunks.
 
 Until `embed` runs, the edited page has no vectors: search finds its new text by words,
 and misses it by meaning, and `index` counts the documents awaiting vectors. `embed`
 reads the index in one use ([`to_fill`](../../src/kb_mcp/search/app/indexing.py)), cuts
-each document's body again into the pieces that the run's chunking and model want, and
+each document's body again into the chunks that the run's chunking and model want, and
 compares them with those that the index holds
 ([`filling`](../../src/kb_mcp/search/app/indexing.py)): it adds the edited page's,
 removes those that no section wants, and writes them into a copy of the index, renamed
@@ -451,13 +451,13 @@ say why).
 
 ### 4. Vectors reused by the key of model and text
 
-Each piece is embedded as a text that its chunking composes: by `windows`, the default,
+Each chunk is embedded as a text that its chunking composes: by `windows`, the default,
 the document's title and the window
 ([`windows`](../../src/kb_mcp/search/domain/chunking.py)). Its vector is
 kept under a key, the SHA-256 of the model's fingerprint and that text
-([`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py)). `embed` asks
-the vector store for the key of each piece that the index lacks, and the endpoint for
-the texts that the store lacks alone. So a piece whose text did not change is never
+([`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py)). `embed` asks
+the vector cache for the key of each chunk that the index lacks, and the endpoint for
+the texts that the store lacks alone. So a chunk whose text did not change is never
 embedded again, and one that the index holds is not even looked up: a page moved to
 another space keeps its vectors, unless its chunking embeds the breadcrumb that the move
 changed. What widens the texts embedded again:
@@ -465,14 +465,14 @@ changed. What widens the texts embedded again:
 - **A chunking whose cuts shift.** `windows` cut the whole body at fixed steps from its
   start, so an edit shifts every window after it, all new texts, while the windows
   before it are reused. `sections`, `section-paths` and `small-to-big` cut each section
-  apart, so an edit re-embeds the pieces of its own section. Closing a work-log entry
-  writes its `CLOSED:` line just under its heading, so by `windows` nearly every piece
+  apart, so an edit re-embeds the chunks of its own section. Closing a work-log entry
+  writes its `CLOSED:` line just under its heading, so by `windows` nearly every chunk
   of that entry is new, and no other entry's.
-- **A renamed title or heading.** Each piece's text begins with the title, so a new
+- **A renamed title or heading.** Each chunk's text begins with the title, so a new
   title re-embeds the whole page. A renamed heading re-embeds the windows from it on by
-  `windows`; its section's pieces by `sections`; and by `section-paths` and
-  `small-to-big`, whose texts carry the breadcrumb and the path of headings, the pieces
-  of its section and of every section under it, and every piece of a page whose
+  `windows`; its section's chunks by `sections`; and by `section-paths` and
+  `small-to-big`, whose texts carry the breadcrumb and the path of headings, the chunks
+  of its section and of every section under it, and every chunk of a page whose
   breadcrumb changes.
 - **Another chunking**, which cuts other texts: the first `embed` after changing
   `chunking` embeds the whole mirror, unless an `eval` of that chunking with the same
@@ -482,8 +482,8 @@ changed. What widens the texts embedded again:
   holds the model's name, the digest that Ollama lists for it, its dimensions, its
   prefixes and the adapter's format, so a change to any of them makes every key new. A
   server other than Ollama, any other OpenAI-compatible one, lists no digest: after
-  changing the weights behind a name there, delete the vector store, then run
-  `index --rebuild` and `embed`, as the index holds each piece under the same key.
+  changing the weights behind a name there, delete the vector cache, then run
+  `index --rebuild` and `embed`, as the index holds each chunk under the same key.
 
 [Chunking](chunking.md#when-pages-change) counts what one edit costs by each chunking on
 the sandbox's mirror.
@@ -502,23 +502,23 @@ of new weights, a server that connects finds the fingerprint changed and answers
 until `embed` runs, while one connected before the pull goes on with the new weights
 against the old vectors until the index's next build.
 
-### 6. The vector store pruned
+### 6. The vector cache pruned
 
 After each `embed`,
 [`prune`](../../src/kb_mcp/search/app/pruning.py) keeps in
 `<data>/vectors.sqlite` the vectors that the indexes on disk read, by the keys their
-pieces record: the index in place, the one that `embed` wrote, should an `index` have
+chunks record: the index in place, the one that `embed` wrote, should an `index` have
 renamed another in meanwhile, and those that `eval` keeps under
 `<data>/eval/indexes/`, so that the next evaluation embeds nothing again. The vectors of
 deleted pages, of texts since edited, and of chunkings and models that no index uses
-go. It takes the vector store's lock exclusive, or waits for the next `embed` while a build
+go. It takes the vector cache's lock exclusive, or waits for the next `embed` while a build
 holds it, so that no build loses what it embedded; and it deletes nothing while the
 index lacks a file of the mirror or holds no document, or while an index there cannot
 say what it reads. A store made from plan 023 on gives the space freed back to the file
-system ([`VectorStore.prune`](../../src/kb_mcp/search/adapters/vector_store.py));
+system ([`VectorCache.prune`](../../src/kb_mcp/search/adapters/vector_cache.py));
 one made before is converted at its first prune, by one `VACUUM`. A vector of the
 default model takes about 4.7 KB on disk. Deleting `<data>/vectors.sqlite` costs
 nothing at the next `embed`, as the index holds its own copy of each vector, but one
 embedding of the mirror, by the model, once a whole rebuild of the index has dropped its
-pieces; it downloads nothing, and the server goes on answering meanwhile.
+chunks; it downloads nothing, and the server goes on answering meanwhile.
 [The data layout](../reference/data-layout.md) gives the rules.

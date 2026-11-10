@@ -1,4 +1,4 @@
-"""The chunkings that an index's pieces may be cut by, named once for every context.
+"""The chunkings that an index's chunks may be cut by, named once for every context.
 
 Standard library only, so that the settings, search's table of cuts and the command
 line's choices all take their names from here.

@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 class IndexesEvaluated(Record):
     """What each evaluated index measured, each model's chunking, and the results file."""
 
-    runs: list[IndexMeasures]
+    indexes: list[IndexMeasures]
     choices: dict[str, Choice]
     results: Path
 
@@ -73,30 +73,30 @@ def run(
     built_at = datetime.now(UTC)
     try:
         with open_endpoint(arguments, settings) as opened:
-            indexes = [
+            to_evaluate = [
                 EvaluatedIndex(connect(opened, name), chunking)
                 for name in arguments.model or [settings.model]
                 for chunking in arguments.chunking or CHUNKINGS
             ]
-            runs = evaluate(settings, questions, indexes, time.perf_counter, built_at)
+            measured = evaluate(settings, questions, to_evaluate, time.perf_counter, built_at)
     except (ModelError, EvaluationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    choices = compared(runs, questions)
-    kept = record(runs, golden, built_at, choices)
+    choices = compared(measured, questions)
+    kept = record(measured, golden, built_at, choices)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, IndexesEvaluated(runs=runs, choices=choices, results=results)
+    return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)
 
 
 def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
-    """Write each run's measures, each model's choice of chunking, then the results file.
+    """Write each evaluated index's measures, each model's chunking, then the results file.
 
-    Short gives each run's row of all the questions, mode by mode, for search and for
+    Short gives each index's row of all the questions, mode by mode, for search and for
     ask, and its costs; detailed, its tables of every group and the tests of each mode
     against words. Both end with each model's default chunking by the rule, and its
-    tests against the control. Lexical search's rows come with the first run alone.
+    tests against the control. Lexical search's rows come with the first index alone.
     """
     choices = [
         line
@@ -113,15 +113,21 @@ def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
     ]
     closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
     if summary == "detailed":
-        return f"{table(evaluated.runs)}\n{closing}"
+        return f"{table(evaluated.indexes)}\n{closing}"
     lines = []
-    for run in evaluated.runs:
-        modes = [mode for mode in run.groups if mode != "lexical" or run is evaluated.runs[0]]
-        lines += [heading(run), "", built(run), "", HEADER, DIVIDER]
-        lines += [row(mode, "all", run.groups[mode]["all"], run.times[mode]) for mode in modes]
+    for of_index in evaluated.indexes:
+        modes = [
+            mode
+            for mode in of_index.groups
+            if mode != "lexical" or of_index is evaluated.indexes[0]
+        ]
+        lines += [heading(of_index), "", built(of_index), "", HEADER, DIVIDER]
+        lines += [
+            row(mode, "all", of_index.groups[mode]["all"], of_index.times[mode]) for mode in modes
+        ]
         lines += ["", ASK_HEADER, ASK_DIVIDER]
         lines += [
-            ask_row(mode, "all", run.asked_groups[mode]["all"], run.ask_times[mode])
+            ask_row(mode, "all", of_index.asked_groups[mode]["all"], of_index.ask_times[mode])
             for mode in modes
         ]
         lines.append("")

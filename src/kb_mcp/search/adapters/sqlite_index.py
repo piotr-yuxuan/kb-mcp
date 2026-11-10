@@ -3,10 +3,10 @@
 Only this module knows SQL. ``building`` writes a new index beside the old one and
 renames it into place once complete; ``reading`` opens one read-only for one use, so
 that a replaced file is read from the next use on. An index built with a model also
-holds the vector of each piece of each section, with its key in the vector store, and
+holds the vector of each chunk of each section, with its key in the vector cache, and
 names the model. ``SqliteIndex`` is one file as ``search.domain.indexes`` declares an
 index: an update builds the new file beside it too, copying what it keeps of the old,
-and a fill copies it whole beside it to add and remove pieces, each under a lock beside
+and a fill copies it whole beside it to add and remove chunks, each under a lock beside
 it that only they take.
 """
 
@@ -31,14 +31,13 @@ from opentelemetry import trace
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, PersonRole
-from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
     DamagedIndexError,
     Held,
     IndexedBody,
-    Piece,
     Skipped,
     UnavailableIndexError,
     Updated,
@@ -46,13 +45,14 @@ from kb_mcp.search.domain.indexes import (
 from kb_mcp.search.domain.search import (
     WORDS,
     Activity,
+    Chunk,
+    ChunkVectors,
     Embedded,
     Filters,
     IndexedDocument,
     IndexStatus,
     Passage,
     PersonCounts,
-    Pieces,
     Score,
     sections,
 )
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.domain.indexes import Change, Put
-    from kb_mcp.search.domain.search import Sort
+    from kb_mcp.search.domain.search import Matched, Sort
 
 TRACER = trace.get_tracer(__name__)
 # What the file of a build begins with, beside its index, until it is renamed into place.
@@ -77,8 +77,12 @@ DUPLICATE = "another document has the same source and id"
 WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
-# plan 043, with persons.
-SCHEMA = "6"
+# plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
+# section_words.
+SCHEMA = "7"
+# The former schemas whose mirror's files this version reads as they are: rebuilding the
+# index is enough, with no prepare first.
+SAME_MIRROR = frozenset({"6"})
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -121,14 +125,14 @@ CREATE TABLE sections (
   heading TEXT NOT NULL, body TEXT NOT NULL
 );
 CREATE INDEX sections_document ON sections (document, number);
-CREATE VIRTUAL TABLE chunks USING fts5(
+CREATE VIRTUAL TABLE section_words USING fts5(
   title, labels, breadcrumb, heading, body,
   content = 'sections', content_rowid = 'rowid',
   tokenize = 'unicode61 remove_diacritics 2'
 );
-CREATE TABLE pieces (
+CREATE TABLE chunks (
   rowid INTEGER PRIMARY KEY,
-  section INTEGER NOT NULL, start INTEGER NOT NULL, stop INTEGER NOT NULL,
+  section INTEGER NOT NULL, start INTEGER NOT NULL, "end" INTEGER NOT NULL,
   key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
@@ -168,8 +172,8 @@ WHERE (:source IS NULL OR d.source = :source)
 SCORES = """
 WITH matched AS MATERIALIZED (
   SELECT rowid AS section,
-         -bm25(chunks, :title, :labels, :breadcrumb, :heading, :body) AS relevance
-  FROM chunks WHERE chunks MATCH :expression
+         -bm25(section_words, :title, :labels, :breadcrumb, :heading, :body) AS relevance
+  FROM section_words WHERE section_words MATCH :expression
 )
 SELECT d.path, d.updated, d.created, max(m.relevance) AS relevance
 FROM matched m JOIN sections s ON s.rowid = m.section JOIN documents d ON d.rowid = s.document
@@ -177,12 +181,12 @@ WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 GROUP BY d.rowid ORDER BY relevance DESC, d.path LIMIT :limit
 """
 PASSAGE = """
-SELECT s.number, s.heading, snippet(chunks, 4, '', '', '…', :tokens) AS snippet
-FROM chunks JOIN sections s ON s.rowid = chunks.rowid
-WHERE chunks MATCH :match
-  AND chunks.rowid BETWEEN (SELECT first_section FROM documents WHERE path = :path)
+SELECT s.number, s.heading, snippet(section_words, 4, '', '', '…', :tokens) AS snippet
+FROM section_words JOIN sections s ON s.rowid = section_words.rowid
+WHERE section_words MATCH :match
+  AND section_words.rowid BETWEEN (SELECT first_section FROM documents WHERE path = :path)
                        AND (SELECT last_section FROM documents WHERE path = :path)
-ORDER BY bm25(chunks, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
+ORDER BY bm25(section_words, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
 """
 ENTRIES = """
 SELECT d.* FROM documents d
@@ -213,19 +217,12 @@ FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 ORDER BY s.number
 """
-# Every piece with its document, its section, and its span within the document's body; by
-# what no rowid changes, so that an updated index and a whole build give one matrix.
-PIECES = """
-SELECT d.rowid AS document, d.path, d.updated, s.number,
-       s.start + length(s.head) + p.start AS offset,
-       s.start + length(s.head) + p.stop AS finish, p.vector
-FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
-ORDER BY d.path, s.number, p.start
-"""
-# Every piece that has its vector, where it is and its key: what ``embed`` compares.
-HELD_PIECES = """
-SELECT d.path, s.number, p.start, p.stop, p.key
-FROM pieces p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
+# Every chunk, where it is, with the columns asked: by what no rowid changes, so that an
+# updated index and a whole build give one matrix. What a search reads, and what
+# ``embed`` compares.
+CHUNKS = """
+SELECT d.path, s.number, p.start, p."end", {columns}
+FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
 """
 # Each section's heading line and body, which give a document's body back in order.
@@ -233,19 +230,19 @@ BODIES = """
 SELECT d.path, s.head || s.body FROM sections s JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number
 """
-# What a fill writes into its copy: a piece, its section named by path and number, which
+# What a fill writes into its copy: a chunk, its section named by path and number, which
 # the copy resolves to a rowid; or the removal of one.
 FILL_ADD = """
-INSERT INTO pieces (section, start, stop, key, vector)
-SELECT s.rowid, :start, :stop, :vector_key, :vector
+INSERT INTO chunks (section, start, "end", key, vector)
+SELECT s.rowid, :start, :end, :vector_key, :vector
 FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path AND s.number = :number
 """
 FILL_REMOVE = """
-DELETE FROM pieces WHERE rowid IN (
-  SELECT p.rowid FROM pieces p JOIN sections s ON s.rowid = p.section
+DELETE FROM chunks WHERE rowid IN (
+  SELECT p.rowid FROM chunks p JOIN sections s ON s.rowid = p.section
   JOIN documents d ON d.rowid = s.document
-  WHERE d.path = :path AND s.number = :number AND p.start = :start AND p.stop = :stop
+  WHERE d.path = :path AND s.number = :number AND p.start = :start AND p."end" = :end
     AND p.key = :vector_key
 )
 """
@@ -256,11 +253,11 @@ ORDER BY s.number
 """
 # What ``reading`` checks before it reads an index.
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
-# The documents that hold a section but no piece: those that may await their vectors.
+# The documents that hold a section but no chunk: those that may await their vectors.
 UNFILLED = """
 SELECT d.* FROM documents d
 WHERE d.last_section >= d.first_section
-  AND d.rowid NOT IN (SELECT s.document FROM pieces p JOIN sections s ON s.rowid = p.section)
+  AND d.rowid NOT IN (SELECT s.document FROM chunks p JOIN sections s ON s.rowid = p.section)
 """
 # A document's body, as its sections' heading lines and bodies give it back in order.
 BODY = "SELECT head || body FROM sections WHERE document = ? ORDER BY number"
@@ -273,7 +270,7 @@ WHERE path NOT IN (SELECT value FROM json_each(:left))
 """
 # What an update copies from the index in place, attached as ``old``, which has this
 # schema and ``WORDS``: every document but those of :left, with its labels, people,
-# sections and pieces, their rowids kept, so that each piece still names its section.
+# sections and chunks, their rowids kept, so that each chunk still names its section.
 # Each row's person is joined again.
 COPY = (
     """
@@ -294,7 +291,7 @@ COPY = (
     WHERE document IN (SELECT rowid FROM main.documents)
     """,
     """
-    INSERT INTO main.pieces SELECT p.* FROM old.pieces p
+    INSERT INTO main.chunks SELECT p.* FROM old.chunks p
     JOIN main.sections s ON s.rowid = p.section
     """,
 )
@@ -397,7 +394,7 @@ def moment(value: datetime) -> str:
 
 
 def awaiting(connection: sqlite3.Connection, chunking: Chunking) -> int:
-    """Count the documents that hold no piece and want one, as ``chunking`` cuts them.
+    """Count the documents that hold no chunk and want one, as ``chunking`` cuts them.
 
     One whose body gives no text to embed by that chunking, such as a page of a title
     alone cut by sections, or of white space alone, wants none, and never awaits.
@@ -501,7 +498,7 @@ class Writer:
             ],
         )
         self._connection.executemany(
-            "INSERT INTO chunks (rowid, title, labels, breadcrumb, heading, body)"
+            "INSERT INTO section_words (rowid, title, labels, breadcrumb, heading, body)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             rows,
         )
@@ -509,14 +506,14 @@ class Writer:
         self._next_section += len(sections)
         return first
 
-    def add_pieces(self, pieces: Iterable[tuple[int, int, int, str, bytes]]) -> None:
-        """Add pieces: each its section's rowid, its span in the section's body, its vector.
+    def add_chunks(self, chunks: Iterable[tuple[int, int, int, str, bytes]]) -> None:
+        """Add chunks: each its section's rowid, its range in the body, its vector.
 
-        Each vector comes with its key in the vector store, which only pruning reads.
+        Each vector comes with its key in the vector cache, which only pruning reads.
         """
         self._connection.executemany(
-            "INSERT INTO pieces (section, start, stop, key, vector) VALUES (?, ?, ?, ?, ?)",
-            pieces,
+            'INSERT INTO chunks (section, start, "end", key, vector) VALUES (?, ?, ?, ?, ?)',
+            chunks,
         )
 
     def skip(self, skipped: Skipped) -> None:
@@ -611,7 +608,7 @@ class Writer:
                     skipped.append(Skipped(path=holder, digest=held[holder], reason=DUPLICATE))
             for statement in COPY:
                 connection.execute(statement, {"left": json.dumps(sorted(left))})
-            connection.execute("INSERT INTO chunks (chunks) VALUES ('rebuild')")
+            connection.execute("INSERT INTO section_words (section_words) VALUES ('rebuild')")
             self._next_section += (
                 connection.execute("SELECT max(rowid) FROM sections").fetchone()[0] or 0
             )
@@ -692,7 +689,7 @@ def aside(path: Path) -> Iterator[Path]:
 def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -> Iterator[Writer]:
     """Build a new index at ``path``, in one transaction, into a file beside it.
 
-    ``embedded`` names the model of its pieces' vectors, if any. The file is renamed
+    ``embedded`` names the model of its chunks' vectors, if any. The file is renamed
     into place once complete. On any failure the index already at ``path`` stays, and
     the new file is removed.
     """
@@ -703,7 +700,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
             connection.executescript(CREATE)
             writer = Writer(connection, embedded)
             yield writer
-            connection.execute("INSERT INTO chunks (chunks) VALUES ('optimize')")
+            connection.execute("INSERT INTO section_words (section_words) VALUES ('optimize')")
             skipped = connection.execute("SELECT count(*) FROM skipped").fetchone()[0]
             connection.executemany(
                 "INSERT INTO meta (name, value) VALUES (?, ?)",
@@ -769,7 +766,7 @@ class Reader:
     """
 
     def __init__(
-        self, connection: sqlite3.Connection, searched: Callable[[Reader], Pieces]
+        self, connection: sqlite3.Connection, searched: Callable[[Reader], ChunkVectors]
     ) -> None:
         """Read through an open, read-only connection; ``searched`` gives what meaning searches."""
         self._connection = connection
@@ -993,7 +990,7 @@ class Reader:
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         if not meta["model"]:
             return None
-        # Indexes of 011 and 018 have no chunking: their pieces were cut by sections.
+        # Indexes of 011 and 018 have no chunking: their chunks were cut by sections.
         chunking = cast("Chunking", meta.get("chunking", "sections"))
         return Embedded(
             model=meta["model"],
@@ -1003,56 +1000,52 @@ class Reader:
         )
 
     def keys(self) -> set[str]:
-        """Give the vector store's keys of the pieces' vectors: what the index reads of it.
+        """Give the vector cache's keys of the chunks' vectors: what the index reads of it.
 
-        An index built by words alone names no vector, and one of this schema built before
-        pieces recorded their keys reads as any other: neither can say which vectors a
-        prune must keep, so raise UnavailableIndexError.
+        An index built by words alone names no vector, and cannot say which vectors a prune
+        must keep: raise UnavailableIndexError.
         """
-        columns = {row["name"] for row in self._connection.execute("PRAGMA table_info(pieces)")}
         model = self._connection.execute("SELECT value FROM meta WHERE name = 'model'").fetchone()
-        if not model or not model[0] or "key" not in columns:
-            message = "built by words alone, or before pieces recorded their keys"
+        if not model or not model[0]:
+            message = "built by words alone"
             raise UnavailableIndexError(message)
-        return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM pieces")}
+        return {row[0] for row in self._connection.execute("SELECT DISTINCT key FROM chunks")}
 
-    def pieces(self) -> list[Piece]:
-        """Give every piece that has its vector, by path, section number and start."""
+    def chunks(self) -> list[Chunk]:
+        """Give every chunk that has its vector, by path, section number and start."""
         return [
-            Piece(path=path, number=number, start=start, stop=stop, vector_key=key)
-            for path, number, start, stop, key in self._connection.execute(HELD_PIECES)
+            Chunk(path=path, number=number, start=start, end=end, vector_key=key)
+            for path, number, start, end, key in self._connection.execute(
+                CHUNKS.format(columns="p.key")
+            )
         ]
 
-    def vectors(self) -> Pieces:
-        """Read every piece's vector, with where the piece is: what meaning searches."""
-        rows = self._connection.execute(PIECES).fetchall()
-        dimensions = len(rows[0]["vector"]) // vector_store.LAYOUT.itemsize if rows else 0
-        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_store.LAYOUT)
-        return Pieces(
+    def vectors(self) -> ChunkVectors:
+        """Read every chunk's vector, with where the chunk is: what meaning searches."""
+        columns = "d.rowid AS document, d.updated, p.vector"
+        rows = self._connection.execute(CHUNKS.format(columns=columns)).fetchall()
+        dimensions = len(rows[0]["vector"]) // vector_cache.LAYOUT.itemsize if rows else 0
+        matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_cache.LAYOUT)
+        return ChunkVectors(
             documents=tuple(row["document"] for row in rows),
+            sections=tuple(row["number"] for row in rows),
+            starts=tuple(row["start"] for row in rows),
+            ends=tuple(row["end"] for row in rows),
+            matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
             paths={row["document"]: row["path"] for row in rows},
             updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
-            sections=tuple(row["number"] for row in rows),
-            offsets=tuple(row["offset"] for row in rows),
-            ends=tuple(row["finish"] for row in rows),
-            matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
         )
 
     def nearest(
         self, vector: NDArray[np.float32], filters: Filters, depth: int
-    ) -> dict[str, tuple[Score, int, int, int]]:
+    ) -> dict[str, tuple[Score, Matched]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
-        Each path comes with its score, then its best piece's section number, and its
-        start and end in the body.
+        Each path comes with its score, then its best chunk.
         """
         kept = self.kept(filters)
         allowed = None if kept is None else set(json.loads(kept))
-        pieces = self._searched(self)
-        return {
-            path: (score, pieces.sections[index], pieces.offsets[index], pieces.ends[index])
-            for path, (score, index) in pieces.nearest(vector, allowed, depth).items()
-        }
+        return self._searched(self).nearest(vector, allowed, depth)
 
     def heading(self, path: str, number: int) -> str:
         """Give the heading of a document's section."""
@@ -1068,7 +1061,7 @@ class Reader:
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
-        pieces = self._connection.execute("SELECT count(*) FROM pieces").fetchone()[0]
+        chunks = self._connection.execute("SELECT count(*) FROM chunks").fetchone()[0]
         persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
         across = self._connection.execute(ACROSS).fetchone()[0]
         shared = tuple((row[0], row[1]) for row in self._connection.execute(SHARED))
@@ -1084,21 +1077,23 @@ class Reader:
             newest_fetch=None if newest is None else datetime.fromisoformat(newest),
             people=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
-            pieces=pieces,
+            chunks=chunks,
             chunking=embedded.chunking if embedded else None,
             awaiting=wanting,
         )
 
 
 @contextmanager
-def reading(path: Path, searched: Callable[[Reader], Pieces] = Reader.vectors) -> Iterator[Reader]:
+def reading(
+    path: Path, searched: Callable[[Reader], ChunkVectors] = Reader.vectors
+) -> Iterator[Reader]:
     """Open the index at ``path`` read-only, for one use; never write to it.
 
     ``searched`` gives ``Reader.nearest`` what it searches: by default, read at each search.
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
     Another schema names ``prepare``, then ``index``, not ``index`` alone: a new schema
     can come with a new format of the mirror's files, which ``index`` would skip, and
-    ``prepare`` writes them first.
+    ``prepare`` writes them first; one of SAME_MIRROR names ``index`` alone.
     """
     unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
@@ -1113,10 +1108,12 @@ def reading(path: Path, searched: Callable[[Reader], Pieces] = Reader.vectors) -
         except sqlite3.DatabaseError:
             meta = {}
         if meta.get("schema") != SCHEMA:
-            message = (
-                f"{unread} `kb-mcp prepare`, which writes the mirror again first,"
-                " then `kb-mcp index`, then `kb-mcp embed`"
+            prepare = (
+                ""
+                if meta.get("schema") in SAME_MIRROR
+                else " `kb-mcp prepare`, which writes the mirror again first, then"
             )
+            message = f"{unread}{prepare} `kb-mcp index`, then `kb-mcp embed`"
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:
@@ -1138,7 +1135,7 @@ class SqliteIndex:
         """Name the index at ``path``, which need not be there yet."""
         self._path = path
         self._lock = threading.Lock()  # the SDK runs tools in worker threads
-        self._kept: tuple[str, Pieces] | None = None  # a build and its vectors
+        self._kept: tuple[str, ChunkVectors] | None = None  # a build and its vectors
 
     @contextmanager
     def reading(self) -> Iterator[Reader]:
@@ -1165,8 +1162,8 @@ class SqliteIndex:
         of it found damaged raises DamagedIndexError. A failure leaves the index in place,
         and removes the new file.
         """
-        lock = vector_store.lock_of(self._path)
-        with vector_store.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
+        lock = vector_cache.lock_of(self._path)
+        with vector_cache.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
             embedded = None
             if not change.whole:
                 try:
@@ -1191,17 +1188,17 @@ class SqliteIndex:
         self,
         expected_build: str,
         model: Embedded,
-        add: Mapping[Piece, NDArray[np.float32]],
-        remove: Collection[Piece],
+        add: Mapping[Chunk, NDArray[np.float32]],
+        remove: Collection[Chunk],
     ) -> str | None:
-        """Fill the index's pieces as ``VectorIndex.fill`` says: in a copy, renamed into place.
+        """Fill the index's chunks as ``VectorIndex.fill`` says: in a copy, renamed into place.
 
         Under its lock, as an update: SQLite's backup copies the index beside it, the copy
-        removes and adds the pieces, each resolving its section to a rowid, and names the
+        removes and adds the chunks, each resolving its section to a rowid, and names the
         model and a new build; the index's time stays its update's.
         """
-        lock = vector_store.lock_of(self._path)
-        with vector_store.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
+        lock = vector_cache.lock_of(self._path)
+        with vector_cache.locked(lock, fcntl.LOCK_EX, "index.lock_wait", WRITER):
             try:
                 with reading(self._path) as reader:
                     if reader.build() != expected_build:
@@ -1218,17 +1215,17 @@ class SqliteIndex:
                 ):
                     old.backup(copy)
                     removed = copy.executemany(
-                        FILL_REMOVE, [piece.model_dump() for piece in remove]
+                        FILL_REMOVE, [chunk.model_dump() for chunk in remove]
                     ).rowcount
                     added = copy.executemany(
                         FILL_ADD,
                         [
-                            piece.model_dump() | {"vector": vector_store.as_bytes(vector)}
-                            for piece, vector in add.items()
+                            chunk.model_dump() | {"vector": vector_cache.as_bytes(vector)}
+                            for chunk, vector in add.items()
                         ],
                     ).rowcount
                     if (removed, added) != (len(remove), len(add)):
-                        message = f"{self._path}: a piece names a section that the index lacks"
+                        message = f"{self._path}: a chunk names a section that the index lacks"
                         raise ValueError(message)
                     copy.executemany(
                         "UPDATE meta SET value = ? WHERE name = ?",
@@ -1250,7 +1247,7 @@ class SqliteIndex:
                 raise DamagedIndexError(message) from None
             return build
 
-    def _vectors(self, reader: Reader) -> Pieces:
+    def _vectors(self, reader: Reader) -> ChunkVectors:
         """Give the vectors of the build that ``reader`` reads, from memory once read."""
         with self._lock:
             build = reader.build()

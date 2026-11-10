@@ -30,7 +30,7 @@ from mcp.client.stdio import StdioServerParameters
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
-from kb_mcp.search.adapters import vector_store
+from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
@@ -347,7 +347,7 @@ def test_index_records_as_documented(telemetry: InMemory, tmp_path: Path) -> Non
 def test_embed_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No index; a piece refused during a prune; no endpoint; the mirror changed; then whole.
+    """No index; a chunk refused during a prune; no endpoint; the mirror changed; then whole.
 
     The mirror holds a few pages, one with a front matter refused, which the index lacks,
     and one whose second section the endpoint refuses to embed, cut by sections. The
@@ -368,7 +368,7 @@ def test_embed_records_as_documented(
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     assert main(["index", "--yes", *by_meaning(data, URL)]) == ExitStatus.FAILED
     store, index = data / "vectors.sqlite", data / "index.sqlite"
-    pruning = held_meanwhile(vector_store.lock_of(store), "vectors.lock_wait", emitted, list)
+    pruning = held_meanwhile(vector_cache.lock_of(store), "vectors.lock_wait", emitted, list)
     with serving(Scripted(refused={refused})) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     pruning.join()
@@ -379,15 +379,15 @@ def test_embed_records_as_documented(
     with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.FAILED
     assert main(["index", "--yes", *by_meaning(data, URL)]) == ExitStatus.OK
-    other = tmp_path / "other.sqlite"  # another run's index, with no pieces
+    other = tmp_path / "other.sqlite"  # another run's index, with no chunks
     build_index(data / "docs", other, MOMENT)
-    lock = vector_store.lock_of(index)
+    lock = vector_cache.lock_of(index)
     writing = held_meanwhile(lock, "index.lock_wait", emitted, lambda: other.replace(index))
     with serving(Scripted()) as url, emitted.gathering(telemetry, "embed"):
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
     writing.join()
     with (
-        vector_store.shared(store),
+        vector_cache.shared(store),
         serving(Scripted()) as url,
         emitted.gathering(telemetry, "embed"),
     ):

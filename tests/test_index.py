@@ -23,7 +23,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, PersonRole
-from kb_mcp.search.adapters import sqlite_index, vector_store
+from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app import indexing as indexing_module
 from kb_mcp.search.app.indexing import (
@@ -157,7 +157,7 @@ FIRST_DETAILED = (
 def test_by_words_alone_the_command_shows_documents_and_sections(
     data: Path, capsys: CaptureFixture[str], summary: str, shown: str
 ) -> None:
-    """Short gives the counts; detailed, the documents by type and the index too; no pieces."""
+    """Short gives the counts; detailed, the documents by type and the index too; no chunks."""
     write(data / "docs", page("196845", "Kafka"), BODY)
     config = data.parent / "config.toml"
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
@@ -566,7 +566,7 @@ def test_people_are_a_row_per_person_and_role_and_a_commenter_s_per_comment(data
 
 
 def test_people_are_not_embedded_so_a_rebuild_with_new_people_embeds_nothing(data: Path) -> None:
-    """A piece embeds its document's title, breadcrumb and text alone, never its people."""
+    """A chunk embeds its document's title, breadcrumb and text alone, never its people."""
     write(data / "docs", issue("PROJ-9", "Broker rebalance"))
     embedding = Embedding(tiny(), data / "v.db")
     first = build_index(data / "docs", data / "index.sqlite", MOMENT, embedding)
@@ -906,6 +906,19 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     )
     with refused, reading(data / "index.sqlite"):
         pass
+
+
+def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path) -> None:
+    """Plan 054: the mirror's files of schema 6 are read as they are, so no prepare first."""
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with sqlite3.connect(data / "index.sqlite") as connection:
+        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
+    connection.close()
+    with pytest.raises(UnavailableIndexError) as refused, reading(data / "index.sqlite"):
+        pass
+    assert str(refused.value).endswith("rebuild it with `kb-mcp index`, then `kb-mcp embed`")
+    assert "prepare" not in str(refused.value)
 
 
 def child_environment(data: Path) -> dict[str, str]:
@@ -1438,7 +1451,9 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     pinned = [(path, reason[: len(PINNED_SKIPPED[0][1])]) for path, reason in skipped]
     assert pinned == PINNED_SKIPPED, WORDS_CHANGED
     with closing(sqlite3.connect(index)) as connection:
-        connection.execute("CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, chunks, row)")
+        connection.execute(
+            "CREATE VIRTUAL TABLE temp.terms USING fts5vocab(main, section_words, row)"
+        )
         terms = connection.execute("SELECT term, doc, cnt FROM terms ORDER BY term").fetchall()
     assert terms == PINNED_TERMS, WORDS_CHANGED
 
@@ -1572,7 +1587,7 @@ KEPT_ROWS = (
     WHERE d.path <> :path ORDER BY s.rowid
     """,
     """
-    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    SELECT p.* FROM chunks p JOIN sections s ON s.rowid = p.section
     JOIN documents d ON d.rowid = s.document WHERE d.path <> :path ORDER BY p.rowid
     """,
 )
@@ -1583,7 +1598,7 @@ ITS_ROWS = (
     "SELECT p.* FROM people p JOIN documents d ON d.rowid = p.document WHERE d.path = :path",
     "SELECT s.* FROM sections s JOIN documents d ON d.rowid = s.document WHERE d.path = :path",
     """
-    SELECT p.* FROM pieces p JOIN sections s ON s.rowid = p.section
+    SELECT p.* FROM chunks p JOIN sections s ON s.rowid = p.section
     JOIN documents d ON d.rowid = s.document WHERE d.path = :path
     """,
 )
@@ -1618,9 +1633,9 @@ def test_nothing_changed_writes_nothing_and_says_so(
 def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Criterion 3: 1 replaced; every other document's rows, rowids and pieces as they were.
+    """Criterion 3: 1 replaced; every other document's rows, rowids and chunks as they were.
 
-    The edited document has no pieces, awaiting vectors, and its new words find it; the
+    The edited document has no chunks, awaiting vectors, and its new words find it; the
     index stays in SQLite's rollback journal.
     """
     embedded(data)
@@ -1643,7 +1658,7 @@ def test_an_edited_file_is_replaced_and_every_other_document_keeps_its_rows(
 def test_a_removed_file_leaves_no_row_and_full_text_search_whole(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Criterion 4: its document, labels, people, sections and pieces gone; FTS5 checks out.
+    """Criterion 4: its document, labels, people, sections and chunks gone; FTS5 checks out.
 
     A word that it alone held finds nothing, and its label is no value any more.
     """
@@ -1654,12 +1669,14 @@ def test_a_removed_file_leaves_no_row_and_full_text_search_whole(
     assert status == 0
     assert f"copied: {PAGES}\nadded: 0\nreplaced: 0\nremoved: 1\n" in out
     assert rows_by(data / "index.sqlite", ITS_ROWS, KAFKA_PATH) == [[]] * len(ITS_ROWS)
-    orphans = "SELECT count(*) FROM pieces WHERE section NOT IN (SELECT rowid FROM sections)"
+    orphans = "SELECT count(*) FROM chunks WHERE section NOT IN (SELECT rowid FROM sections)"
     assert rows_of(data / "index.sqlite", orphans) == [(0,)]
     checked = data.parent / "checked.sqlite"
     checked.write_bytes((data / "index.sqlite").read_bytes())
     with closing(sqlite3.connect(checked)) as connection:
-        connection.execute("INSERT INTO chunks (chunks, rank) VALUES ('integrity-check', 1)")
+        connection.execute(
+            "INSERT INTO section_words (section_words, rank) VALUES ('integrity-check', 1)"
+        )
     with reading(data / "index.sqlite") as reader:
         assert reader.scores('"retention"', Filters()) == ({}, True)
         assert ("streaming", 1) not in reader.values("label")
@@ -1707,7 +1724,7 @@ def test_an_index_that_cannot_be_updated_is_rebuilt_whole_saying_why(
     """Criterion 7: without digests, at another schema, cut otherwise, or --rebuild: whole.
 
     ``index.whole`` says why, the summary too; nothing is copied; exit 0; the index then
-    holds every document with its digest, under this code's ``WORDS``, and no pieces.
+    holds every document with its digest, under this code's ``WORDS``, and no chunks.
     """
     embedded(data)
     if made is not None:
@@ -1816,7 +1833,7 @@ def test_a_lock_held_too_long_fails_naming_it(
     data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
 ) -> None:
     """Criterion 8: a wait past WAIT_S, shortened here, said first: exit 1, the index in place."""
-    monkeypatch.setattr(vector_store, "WAIT_S", 0.3)
+    monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
     fillers(data / "docs", PAGES)
     assert index(data, capsys)[0] == 0
     before = (data / "index.sqlite").read_bytes()

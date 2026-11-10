@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 type Vectors = NDArray[np.float32]
 # The environment variable that holds the endpoint's API key, if it needs one.
 KEY_VARIABLE = "KB_MCP_EMBEDDING_API_KEY"
-# Texts sent in one request; a piece is at most about 1,500 characters.
+# Texts sent in one request; a chunk is at most about 1,500 characters.
 BATCH = 32
 MAX_DIMENSIONS = 8192
 PROBE = "probe"

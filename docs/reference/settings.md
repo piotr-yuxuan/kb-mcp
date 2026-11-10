@@ -38,7 +38,7 @@ A path that starts with `~` starts in the home directory.
 | `data_dir` | `KB_MCP_DATA_DIR` | path | `"~/kb-mcp"` | Where the data lives, ~ being the home directory: never under a synchronised folder, nor inside a git working tree. |
 | `model` | `KB_MCP_MODEL` | text | `"qwen3-embedding:0.6b"` | The embedding model that embed embeds with, as the endpoint names it. |
 | `search_mode` | `KB_MCP_SEARCH_MODE` | one of `lexical`, `semantic`, `hybrid` | `"hybrid"` | How search ranks: by words (lexical), by meaning (semantic), or both (hybrid), the default; all but lexical need the embedding endpoint. |
-| `chunking` | `KB_MCP_CHUNKING` | one of `sections`, `windows`, `section-paths`, `small-to-big` | `"windows"` | How embed cuts documents into the pieces it embeds: sections, windows, section-paths, small-to-big; search follows the index. By default windows, which ranked best when the chunkings were compared. |
+| `chunking` | `KB_MCP_CHUNKING` | one of `sections`, `windows`, `section-paths`, `small-to-big` | `"windows"` | How embed cuts documents into the chunks it embeds: sections, windows, section-paths, small-to-big; search follows the index. By default windows, which ranked best when the chunkings were compared. |
 | `embedding_url` | `KB_MCP_EMBEDDING_URL` | text | `"http://127.0.0.1:11434/v1"` | The OpenAI-compatible API that embeds, up to /embeddings, excluded. |
 | `embedding_api_key` | `KB_MCP_EMBEDDING_API_KEY` | secret | unset | The embedding endpoint's API key, if it needs one, a secret: from the environment alone. |
 | `accounts.atlassian.site` | `KB_MCP_ACCOUNTS__ATLASSIAN__SITE` | text | unset | The Atlassian site, for Confluence and Jira alike: https://\<name>.atlassian.net. |

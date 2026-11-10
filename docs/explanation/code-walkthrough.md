@@ -353,7 +353,7 @@ something was reported of this source, it removes only
 the files of documents confirmed gone, and the old file of a document that moved once
 its new file is built, so that the last good copy of every other stays.
 
-### 8. Words, then pieces and their embeddings
+### 8. Words, then chunks and their embeddings
 
 `index`'s [`run`](../../src/kb_mcp/cli/commands/index.py) takes the
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py) that
@@ -388,8 +388,8 @@ endpoint, and [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) calls
 [`filling`](../../src/kb_mcp/search/app/indexing.py). It reads the index first, in one
 use ([`to_fill`](../../src/kb_mcp/search/app/indexing.py)): what it holds of the mirror,
 the model it names, each document's front matter and body
-([`Reader.documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and the pieces
-it holds ([`Reader.pieces`](../../src/kb_mcp/search/adapters/sqlite_index.py)); it stops
+([`Reader.documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and the chunks
+it holds ([`Reader.chunks`](../../src/kb_mcp/search/adapters/sqlite_index.py)); it stops
 there on an index that this code's cut did not write. It digests the mirror's files and
 compares them with the index, to warn when they differ, and reads nothing else of them.
 Only then does it open the embedding endpoint, by
@@ -422,47 +422,47 @@ API](../how-to/embeddings.md#use-another-openai-compatible-api)).
 
 [`filling`](../../src/kb_mcp/search/app/indexing.py) then cuts each document's body
 again into sections ([`sections`](../../src/kb_mcp/search/domain/search.py)), as `index`
-cut it, and into pieces by the chunking that
+cut it, and into chunks by the chunking that
 [`CHUNKERS`](../../src/kb_mcp/search/domain/chunking.py) names: by default
 [`windows`](../../src/kb_mcp/search/domain/chunking.py) of about 300 tokens,
 starting 240 apart, so that two in a row overlap, each embedded with the title. Each
-piece's text gets a [`vector_key`](../../src/kb_mcp/search/adapters/vector_store.py),
-the SHA-256 of the fingerprint and the text. The pieces wanted that the index does not
+chunk's text gets a [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py),
+the SHA-256 of the fingerprint and the text. The chunks wanted that the index does not
 hold are to add, every one at this first run, and those it holds that none wants, to
 remove.
 
-[`VectorStore.vectors`](../../src/kb_mcp/search/adapters/vector_store.py)
+[`VectorCache.vectors`](../../src/kb_mcp/search/adapters/vector_cache.py)
 then gives each key to add its vector: from `<data>/vectors.sqlite` when it holds it,
 else embedded by
 [`ApiEmbedder.documents`](../../src/kb_mcp/search/adapters/embedding.py),
 with the model's document prefix, [`BATCH`](../../src/kb_mcp/search/adapters/embedding.py)
-texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_store.py)
+texts a request, and kept, [`BATCH`](../../src/kb_mcp/search/adapters/vector_cache.py)
 texts a commit, so that an interrupted build loses little. The digest is read again
 before and after ([`ApiEmbedder.check`](../../src/kb_mcp/search/adapters/embedding.py)),
 so that no vector of other weights is kept under this fingerprint. Only the texts that
-the vector store lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
+the vector cache lacks reach the endpoint: [the internals](internals.md#4-vectors-reused-by-the-key-of-model-and-text)
 say which an edit changes.
 [`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py)
-copies the vectors into the index, each piece naming its section by path and number.
+copies the vectors into the index, each chunk naming its section by path and number.
 
 ### 9. The index swapped in
 
 Each command writes into a new file beside the old index, which readers and the prune
 skip ([`aside`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and renames it over
 `<data>/index.sqlite` once complete, under the index's lock
-([`locked`](../../src/kb_mcp/search/adapters/vector_store.py)). `index`'s is made by
+([`locked`](../../src/kb_mcp/search/adapters/vector_cache.py)). `index`'s is made by
 [`building`](../../src/kb_mcp/search/adapters/sqlite_index.py), which yields its
 [`Writer`](../../src/kb_mcp/search/adapters/sqlite_index.py) and writes in the same
 transaction the meta rows (a random `build` id, `words`, the alias file's digest, the
 model's rows of the old index, none here). `embed`'s is a copy of the index by SQLite's
 backup, into which
 [`SqliteIndex.fill`](../../src/kb_mcp/search/adapters/sqlite_index.py) writes the
-pieces, the model, its fingerprint, the chunking and a new `build`. On any failure the
+chunks, the model, its fingerprint, the chunking and a new `build`. On any failure the
 new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
 which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
 `index.not_built`. A file skipped is named in `index`'s
-[`IndexReport`](../../src/kb_mcp/search/app/indexing.py), and a piece refused in `embed`'s
+[`IndexReport`](../../src/kb_mcp/search/app/indexing.py), and a chunk refused in `embed`'s
 [`Filled`](../../src/kb_mcp/search/app/indexing.py); each run exits 0 only when its
 result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
@@ -552,9 +552,9 @@ spans:
   index's vectors, which the index's handle
   ([`SqliteIndex`](../../src/kb_mcp/search/adapters/sqlite_index.py)) reads once a
   build ([`Reader.vectors`](../../src/kb_mcp/search/adapters/sqlite_index.py)):
-  [`Pieces.nearest`](../../src/kb_mcp/search/domain/search.py) multiplies
-  the matrix of the pieces' unit vectors by the query's, which gives every cosine
-  exactly, and keeps the documents whose best piece is nearest, at most
+  [`ChunkVectors.nearest`](../../src/kb_mcp/search/domain/search.py) multiplies
+  the matrix of the chunks' unit vectors by the query's, which gives every cosine
+  exactly, and keeps the documents whose best chunk is nearest, at most
   [`DEPTH`](../../src/kb_mcp/search/app/meaning.py).
 
 When meaning cannot be searched (no vectors, other weights, an endpoint that does not

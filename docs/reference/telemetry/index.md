@@ -3,14 +3,15 @@
 What `index` records, besides what every command does ([README](README.md)). A run is
 one trace: its root `index`, a span to read the mirror's files that changed and one to
 join their people into persons. It asks no endpoint, whatever `search_mode` says, and
-leaves the vector store as it is. It reads the alias file, `aliases.toml` in the data
+leaves the vector cache as it is. It reads the alias file, `aliases.toml` in the data
 directory, if there is one, then digests every file of the mirror and compares them with
 what the index holds: with nothing changed, nothing is written. Else it builds the new
 index beside the old one, copying the documents whose file did not change with their
-pieces, reading those added or changed, leaving out those gone, and joining every
+chunks, reading those added or changed, leaving out those gone, and joining every
 document's people into persons through the alias file; or it rebuilds the index whole.
 It holds the index's lock, beside it, from its check that the index is still the one it
-read until the new one is in place. A build with vectors is [`embed`](embed.md)'s.
+read until the new one is in place. A build with vectors is [`embed`](embed.md)'s. Its
+task `files` reports each file that it reads, by its path, as the README says of tasks.
 
 ## Events
 
