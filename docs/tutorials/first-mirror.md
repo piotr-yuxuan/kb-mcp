@@ -162,10 +162,9 @@ After a progress bar, it ends with Confluence's row: the fetch window of the spa
 start of 2000 to now, and what it would fetch:
 
 ```text
-confluence: done
+confluence: not run
   space <KEY>: from 2000-01-01T00:00:00+00:00 to <now>, given
   confluence pages: to fetch: 13
-  failures: 0
 ```
 
 ## 6. Run the chain
@@ -190,7 +189,6 @@ pages takes a minute or so. `fetch` ends with Confluence's row, and its counts:
 confluence: done
   confluence pages: fetched: 13
   files: downloaded: 10
-  failures: 0
 ```
 
 `prepare` ends with a row for each source that keeps a store, Jira holding nothing yet:

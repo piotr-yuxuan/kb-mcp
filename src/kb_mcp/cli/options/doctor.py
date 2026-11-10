@@ -57,8 +57,8 @@ def register(
         "doctor",
         help="check the machine and each sign-in",
         epilog=(
-            "With --format json: a list of verdicts, each a check's name, what it found, and"
-            " its state: well, failed, or sign in."
+            "With --format json: a list of checks, each with its name, what it found, and"
+            " its state: well, failed, or sign in again."
         ),
     )
     actions, flags = add_settings_options(parser)

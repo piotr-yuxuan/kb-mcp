@@ -420,6 +420,42 @@ def test_json_is_one_document_with_a_row_per_source(
     assert document["sources"][2]["counts"]["documents"] == WORKLOG_DOCUMENTS
 
 
+def keys_of(document: object) -> set[str]:
+    """Give every key of a JSON document, at every depth."""
+    if isinstance(document, dict):
+        return set(document) | {key for value in document.values() for key in keys_of(value)}
+    if isinstance(document, list):
+        return {key for value in document for key in keys_of(value)}
+    return set()
+
+
+@pytest.mark.usefixtures("signed_in")
+def test_each_key_that_the_help_names_is_one_of_the_json(
+    home: Path, worklog: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Fetch's and prepare's --help name, in backquotes, keys that their --format json writes.
+
+    A run and a dry run of each, over the scripted site and the work log, write every key
+    that the help names, so that the help cannot tell a script of a key that is gone.
+    """
+    config = settings_file(home, worklog, atlassian=True)
+    written: set[str] = set()
+    for stage, options in (
+        ("fetch", ("--since", "2026-10-02")),
+        ("fetch", ("--since", "2026-10-02", "--dry-run")),
+        ("prepare", ()),
+        ("prepare", ("--dry-run",)),
+    ):
+        main(command(home, config, stage, "--yes", "--format", "json", *options))
+        written |= keys_of(json.loads(capsys.readouterr().out))
+    for stage in ("fetch", "prepare"):
+        with pytest.raises(SystemExit):
+            main([stage, "--help"])
+        named = set(re.findall(r"`([a-z_]+)`", capsys.readouterr().out))
+        assert named, stage
+        assert sorted(named - written) == [], stage
+
+
 def test_an_until_before_since_exits_2_by_name_before_any_get(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:

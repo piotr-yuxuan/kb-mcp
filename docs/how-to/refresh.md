@@ -173,9 +173,10 @@ writes anything, nor asks. `index` and `embed` take none.
 
 ## 7. Read the result
 
-A row per source says how it ended: `done`, `failed`, `sign in`, `interrupted` or `not run`,
-then its counts; `--detail detailed` gives all of them, a fetch's beginning with each
-target's fetch window and what became of its coverage. A fetch counts what it fetches: with
+A row per source says how it ended: `done`, `failed`, `sign in again`, `interrupted` or
+`not run`, then what matters of its counts, and each problem and warning by its place and
+reason; `--detail detailed` gives every count, a fetch's beginning with each target's fetch
+window and what became of its coverage. A fetch counts what it fetches: with
 `--since`, the documents in the period and those already stored; without, those new or
 changed since the last fetch. `--format json` writes one document: `exit_status`, and
-`sources`, each with its `source`, `outcome` and `result`.
+`sources`, each with its `source`, `ending`, `counts`, `problems` and `warnings`.
