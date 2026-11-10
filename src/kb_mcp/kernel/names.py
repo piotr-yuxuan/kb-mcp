@@ -49,10 +49,7 @@ class WorklogType(NamedTuple):
     named_by_id: bool
 
 
-# The work log's document types, as the front matter names them, each with its own: an
-# entry's id is its digest, numbered from the second entry of one digest; a transcript's,
-# its day and name, or its digest; a day's, its date; a meeting's, its day and title's
-# slug, numbered after -- from the second meeting of one day and slug.
+# The work log's document types, as the front matter names them, each with its own.
 ENTRY_TYPE, TRANSCRIPT_TYPE, DAY_TYPE, MEETING_TYPE = "entry", "transcript", "day", "meeting"
 WORKLOG_TYPES = {
     ENTRY_TYPE: WorklogType(

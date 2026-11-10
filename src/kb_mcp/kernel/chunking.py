@@ -1,8 +1,4 @@
-"""The chunkings that an index's chunks may be cut by, named once for every context.
-
-Standard library only, so that the settings, search's table of cuts and the command
-line's choices all take their names from here.
-"""
+"""The chunkings that an index's chunks may be cut by. Standard library only."""
 
 from __future__ import annotations
 

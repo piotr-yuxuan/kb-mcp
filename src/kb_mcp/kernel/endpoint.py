@@ -1,7 +1,6 @@
 """A service's address: its host, whether it is this machine, and the service's rule.
 
-Standard library only, and light, since the settings and the command's declarations
-check an address alike.
+Standard library only, and light, since the command's declarations check addresses too.
 """
 
 from __future__ import annotations
@@ -44,7 +43,7 @@ EMBEDDINGS = Service(
     flag="--allow-remote-embeddings",
     start="With Ollama: ollama serve",
 )
-# Local only, by the user's word (plan 022): no flag lets a run rerank off this machine.
+# Local only, by the user's word: no flag lets a run rerank off this machine.
 RERANKING = Service(
     name="the reranking server",
     setting="rerank.url",
