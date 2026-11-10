@@ -204,7 +204,8 @@ def test_a_stopped_fetch_says_why_in_short(
         "confluence: failed\n"
         "  confluence pages: fetched: 3\n"
         "  runs: stopped, too many failures in a row: 1\n"
-        + "".join(f"  problem: confluence pages {n}: status 503\n" for n in range(5))
+        + "".join(f"  problem: confluence pages {n}: status 503\n" for n in range(3))
+        + "  and 2 more problems\n"
         + "  problems: 5\n"
     )
 

@@ -18,6 +18,10 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.output import Detail
 
 
+# How many problems, and how many warnings, the short text names; the rest it counts.
+SHOWN = 3
+
+
 class Problem(Record):
     """An item that a unit left undone: where it is, and why, never its content."""
 
@@ -69,16 +73,20 @@ class Outcome[C: Counts](Record):
         return self
 
     def text(self, detail: Detail) -> str:
-        """Write the counts, then each problem and warning by place and reason, then each total.
+        """Write the counts, then the problems and the warnings, by place and reason, then totals.
 
-        Problems and warnings are few, so the short text names them too; a total of none
-        is not written, so that a unit that gave nothing writes nothing.
+        Short names the first ``SHOWN`` problems and warnings of each, then how many more;
+        detailed names them all. A total of none is not written, so that a unit that gave
+        nothing writes nothing.
         """
-        said = [("problem", each) for each in self.problems]
-        said += [("warning", each) for each in self.warnings]
+        shown = len(self.problems) + len(self.warnings) if detail == "detailed" else SHOWN
+        said = ""
+        for kind, items in (("problem", self.problems), ("warning", self.warnings)):
+            said += "".join(f"{kind}: {each.where}: {each.reason}\n" for each in items[:shown])
+            said += f"and {len(items) - shown} more {kind}s\n" if len(items) > shown else ""
         totals = {"problems": len(self.problems), "warnings": len(self.warnings)}
         return (
             ("" if self.counts is None else self.counts.text(detail))
-            + "".join(f"{kind}: {each.where}: {each.reason}\n" for kind, each in said)
+            + said
             + "".join(f"{name}: {count}\n" for name, count in totals.items() if count)
         )

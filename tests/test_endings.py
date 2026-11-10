@@ -10,14 +10,18 @@ command line.
 from __future__ import annotations
 
 from itertools import product
+from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
 
 from kb_mcp.kernel.exit_status import ExitStatus, folded
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
+
+if TYPE_CHECKING:
+    from kb_mcp.kernel.output import Detail
 
 # Each ending and its status, most severe first, as the page lists them.
 SEVERITY = (
@@ -73,3 +77,28 @@ def test_counts_that_cannot_write_themselves_are_refused() -> None:
     """The counts are a stage's record that writes itself as text, short or detailed."""
     with pytest.raises(ValidationError, match="instance of Counts"):
         Outcome(ending="done", counts=Untold(documents=1))
+
+
+class Counted(Record):
+    """Counts that write themselves, whichever the detail."""
+
+    documents: int
+
+    def text(self, _detail: Detail) -> str:
+        """Write the documents counted."""
+        return f"documents: {self.documents}\n"
+
+
+def test_short_names_three_problems_and_warnings_of_each_and_counts_the_rest() -> None:
+    """Short stays short; detailed names every one; both give each total."""
+    problems = tuple(Problem(where=f"page {n}", reason="status 503") for n in range(5))
+    warnings = (OutcomeWarning(where="meeting 1", reason="no transcript"),)
+    outcome = Outcome(
+        ending="failed", counts=Counted(documents=2), problems=problems, warnings=warnings
+    )
+    named = [f"problem: page {n}: status 503\n" for n in range(5)]
+    said = "warning: meeting 1: no transcript\nproblems: 5\nwarnings: 1\n"
+    assert outcome.text("short") == "documents: 2\n" + "".join(named[:3]) + (
+        "and 2 more problems\n" + said
+    )
+    assert outcome.text("detailed") == "documents: 2\n" + "".join(named) + said
