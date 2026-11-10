@@ -45,7 +45,7 @@ from kb_mcp.sources.atlassian.fetch.domain.names import (
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Collection, Iterable, Iterator
 
     from kb_mcp.sources.atlassian.fetch.domain.content import FetchedDocument
 
@@ -54,8 +54,10 @@ RECORD = "store.json"
 # The store's own records of what runs covered, and of documents that answered as gone.
 COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
-# The store's own record, beside a space's listings, of when they were listed.
+# The store's own records, beside a space's listings, of when they were listed, and of the
+# documents that joined the space and are not stored yet.
 LISTED_AT = "listed_at.json"
+PENDING = "pending.json"
 # The site's users, merged, where Confluence's one source keeps its documents: they are
 # the site's, which plan 059 keys by site.
 USERS = Path(CONFLUENCE, "users.json")
@@ -399,6 +401,30 @@ class RawStore:
         if listed_at is not None:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
             _replace_synced(space_folder / LISTED_AT, _encode(moment))
+
+    def put_pending(self, space_id: str, pending: Collection[str]) -> None:
+        """Keep the ids that joined a space and are not stored yet; none removes the record."""
+        self._check_writing()
+        path = self._space(space_id) / PENDING
+        if pending:
+            _replace_synced(path, _encode(sorted(pending)))
+        else:
+            path.unlink(missing_ok=True)
+
+    def pending(self, space_id: str) -> set[str]:
+        """Give the ids that joined a space and were not stored when it was last listed.
+
+        None when the record is missing or cannot be read: those are then asked for by
+        their update time alone.
+        """
+        path = self._space(space_id) / PENDING
+        try:
+            values = _decode(path) if path.exists() else []
+        except UNREADABLE:
+            return set()
+        if type(values) is not list or not all(type(each) is str for each in values):
+            return set()
+        return {each for each in values if IDENTIFIER.fullmatch(each)}
 
     def was_listed(self, space_id: str) -> bool:
         """Say whether a space's listings are stored, by an earlier run."""

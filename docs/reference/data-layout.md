@@ -216,7 +216,10 @@ users are the site's, kept at one path whatever the sources' names.
 
 `put_space(space, pages, blog_posts, folders, listed_at=...)` replaces one space's
 listings, each file whole, one after another, and records in `listed_at.json` when they
-were listed (`listed_at(space_id)`); other spaces' are kept. Of each listing entry it
+were listed (`listed_at(space_id)`); other spaces' are kept. `put_pending(space_id, ids)`
+keeps in `pending.json`, beside them, the ids of the documents that joined the space and
+are not stored yet, or removes the file when none (`pending(space_id)`); a fetch writes it
+just before the listings, after its documents. Of each listing entry it
 reads only the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
@@ -247,10 +250,10 @@ Two more of the store's own records, each replaced whole:
   scope whole joins its fetch window to that period when the two overlap or touch, or
   replaces an inexact period that the window starts at or before. Without a failure, such a
   run leaves the period exact. A space's period ends at the fetch window's end whatever
-  failed, and a failure leaves it inexact, so that a run without `--since` starts at its
-  covered start and asks again for whatever failed inside; each run of a space also
-  fetches what its listing names that its stored listing did not, whatever its update
-  time, as a page moved in keeps its own. A project's ends at
+  failed, and a failure leaves it inexact, so that a run without `--since` starts at its covered start and
+  asks again for whatever failed inside; each run of a space also fetches what its
+  listing names that its stored listing did not, and what `pending.json` holds, whatever
+  its update time, as a page moved in keeps its own. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
   snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
   even below the old end, else at the fetch window's end; a search entry that the adapter

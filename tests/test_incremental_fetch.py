@@ -223,6 +223,35 @@ def test_a_page_that_joined_and_failed_is_asked_for_again_by_the_next_run(
     assert stored_pages(chosen)["1003"] == "000003"
 
 
+def test_a_space_whose_joined_page_failed_still_follows_a_deletion_and_keeps_it_pending(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The listing is stored after every whole read; what joined and failed waits, pending.
+
+    So a page deleted in the run that failed the joined one is tracked as absent, and the
+    next run fetches the joined page whatever its update time.
+    """
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(listing=without("1003")), first_week(["MFS"], []), FIRST)
+    deleted = {key: value for key, value in PAGES.items() if key != "1001"}
+    failing = RefreshSite(listing=deleted, gone={"1001"}, pages_fail=True)
+    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), SECOND) == "failed"
+    store = RawStore(chosen.raw, "confluence")
+    assert store.listed_ids(SPACE, Page) == {"1002", "1003"}
+    assert store.pending(SPACE) == {"1003"}
+    assert list(store.tombstones()) == [("confluence", "page", "1001")]
+    later = SECOND + timedelta(hours=1)
+    run(
+        chosen,
+        monkeypatch,
+        RefreshSite(listing=deleted, gone={"1001"}),
+        catch_up(["MFS"], []),
+        later,
+    )
+    assert stored_pages(chosen)["1003"] == "000003"
+    assert store.pending(SPACE) == set()
+
+
 def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

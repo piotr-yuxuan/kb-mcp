@@ -321,8 +321,9 @@ class Fetching:
         """List a space whole, store its listings, and fetch what changed in its window.
 
         And what joined it since its stored listing, whatever its update time, as a page
-        moved in keeps its own; a space never listed before has none. The listing stored
-        is replaced once each document that joined is stored, not before. The task
+        moved in keeps its own, with what joined before and is not stored yet; a space
+        never listed before has none. The listing is stored once its documents are
+        fetched, with the joined that are still not stored, which the next run takes. The task
         ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
         documents. Return whether the space was listed whole. All is the span
         ``fetch.space``, an error when the space could not be listed.
@@ -351,7 +352,7 @@ class Fetching:
                 named = {
                     i for each in CONFLUENCE_CLASSES for i in self.store.listed_ids(space.id, each)
                 }
-                joined = {document.id for document in documents} - named
+                joined = {each.id for each in documents} - named | self.store.pending(space.id)
             if not self.plan:
                 # By id alone, as the last listing is read: an entry refused for its other
                 # fields still names its document, which is then not absent.
@@ -362,9 +363,12 @@ class Fetching:
                 self.track(scope, space.id, listed)
                 folders = self.folders(pages)
             self.fetch_listed(scope, documents, window, joined)
-            # Replaced once what joined is stored, so that a run that failed it, or
-            # stopped, finds it joined again.
-            if not self.plan and all(self.store.has(d) for d in documents if d.id in joined):
+            if not self.plan:
+                pending = {each.id for each in documents if each.id in joined} - {
+                    each.id for each in documents if self.store.has(each)
+                }
+                # Pending first: a run that stops between keeps the former listing.
+                self.store.put_pending(space.id, pending)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
             return True
 
