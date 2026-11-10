@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Problem
@@ -521,6 +522,26 @@ def test_a_record_naming_a_key_that_is_a_path_is_refused(store: RawStore) -> Non
     )
     with pytest.raises(RepresentationError, match=r"coverage\.json\[0\]: key: does not match"):
         store.coverage()
+
+
+def test_a_former_tombstone_of_a_space_not_listed_keeps_its_id_and_says_so_once(
+    store: RawStore,
+) -> None:
+    """Not a refusal of the file, which would stop every fetch of spaces and bring gone pages back.
+
+    Its scope's key is the space's id, until a whole read of the space finds it.
+    """
+    (store.root / "tombstones.json").write_text(
+        '[{"kind": "pages", "id": "1", "space": "999", "first_gone": null, "confirmed": false},'
+        ' {"kind": "pages", "id": "2", "space": "999", "first_gone": null, "confirmed": false}]',
+        "utf-8",
+    )
+    with capture_logs() as events:
+        stones = store.tombstones()
+    assert {stone.scope.key for stone in stones.values()} == {"999"}
+    assert [(each["event"], each["spaces"]) for each in events] == [
+        ("raw.spaces_unresolved", ["999"])
+    ]
 
 
 def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:

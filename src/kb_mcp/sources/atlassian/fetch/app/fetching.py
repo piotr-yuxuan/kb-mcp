@@ -390,7 +390,12 @@ class Fetching:
         written before the listing is replaced, so that no absent document is lost to a
         run that stops; they are probed once every space of the run is listed.
         """
-        known = {key: stone for key, stone in self.tombstones.items() if stone.scope == scope}
+        # A former entry of an unresolved space keeps its id as its key: found now.
+        known = {
+            key: replace(stone, scope=scope)
+            for key, stone in self.tombstones.items()
+            if stone.scope in {scope, replace(scope, key=space_id)}
+        }
         absent: dict[DocumentKey, Scope] = {}
         stored = 0
         for document_class in CONFLUENCE_CLASSES:
@@ -405,7 +410,7 @@ class Fetching:
                 for each in (before | again) - listed[document_class]
             }
         self.absent[scope] = (absent, stored, known)
-        others = {key: stone for key, stone in self.tombstones.items() if stone.scope != scope}
+        others = {key: stone for key, stone in self.tombstones.items() if key not in known}
         self.tombstones = {**others, **after_probes(known, absent, {}, self.now())}
         self.store.put_tombstones(self.tombstones.values())
 

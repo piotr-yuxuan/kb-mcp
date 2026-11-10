@@ -252,6 +252,22 @@ def test_a_space_whose_joined_page_failed_still_follows_a_deletion_and_keeps_it_
     assert store.pending(SPACE) == set()
 
 
+def test_a_former_tombstone_of_a_space_not_yet_listed_is_found_by_its_whole_read(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Kept under its space's id, it joins the space's scope once the space is listed."""
+    chosen = settings(tmp_path)
+    chosen.raw.mkdir(parents=True)
+    (chosen.raw / "tombstones.json").write_text(
+        f'[{{"kind": "pages", "id": "1009", "space": "{SPACE}", "first_gone": null,'
+        ' "confirmed": false}]',
+        "utf-8",
+    )
+    run(chosen, monkeypatch, RefreshSite(gone={"1009"}), first_week(["MFS"], []), FIRST)
+    [stone] = RawStore(chosen.raw, "confluence").tombstones().values()
+    assert (stone.scope, stone.id, stone.first_gone) == (MFS, "1009", FIRST)
+
+
 def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

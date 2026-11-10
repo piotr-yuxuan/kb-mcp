@@ -16,6 +16,8 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
+
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
 from kb_mcp.kernel.outcome import Problem
@@ -579,22 +581,27 @@ class RawStore:
 
         An entry written before plan 056 names the plural of its type as ``kind``, and
         its space by id as ``space``: it is Confluence's, and of the space that Confluence's
-        view of the store lists under that id, whichever view reads it.
+        view of the store lists under that id, whichever view reads it. One whose space no
+        stored listing names keeps the id as its scope's key, until a whole read of that
+        space finds it, and ``raw.spaces_unresolved`` says so once a read.
         """
         path = self.root / TOMBSTONES
         if not path.exists():
             return {}
         stones: dict[DocumentKey, Tombstone] = {}
-        keys: dict[str, str] = {}  # each space's key by its id, for an entry of before 056
+        keys: dict[str, str] | None = None  # each space's key by its id, for a former entry
+        unresolved: set[str] = set()
         for item in Fields.each(_record_json(path), TOMBSTONES):
             former = "kind" in item.value
-            if former and not keys:
+            if former and keys is None:
                 spaces = RawStore(self.root, CONFLUENCE).spaces()
                 keys = {each.id: each.key for each in spaces if isinstance(each, Space)}
             with item.refusals():
                 if former:
                     source, named = CONFLUENCE, FORMER_KINDS.get(item.text("kind"), "")
-                    scope_key = keys.get(item.text("space"), "")
+                    space_id = item.text("space")
+                    scope_key = (keys or {}).get(space_id, space_id)
+                    unresolved |= {space_id} - (keys or {}).keys()
                 else:
                     source, named, scope_key = (
                         item.text(key) for key in ("source", "type", "scope")
@@ -611,6 +618,8 @@ class RawStore:
                     confirmed=item.flag("confirmed"),
                 )
             stones[stone.key] = stone
+        if unresolved:
+            structlog.get_logger().warning("raw.spaces_unresolved", spaces=sorted(unresolved))
         return stones
 
     def put_tombstones(self, tombstones: Iterable[Tombstone]) -> None:
