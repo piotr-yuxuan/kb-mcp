@@ -315,6 +315,21 @@ def test_an_upgraded_space_fetches_what_its_tag_listing_named_inside_its_covered
     assert store.coverage().exact == {MFS}
 
 
+def test_a_pending_page_that_the_next_listing_omits_leaves_pending(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Pending is of what the space lists: a page gone from it is no longer to fetch."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(listing=without("1003")), first_week(["MFS"], []), FIRST)
+    run(chosen, monkeypatch, RefreshSite(pages_fail=True), catch_up(["MFS"], []), SECOND)
+    store = RawStore(chosen.raw, "confluence")
+    assert store.pending(SPACE) == {"1003"}
+    gone = RefreshSite(listing=without("1003"), gone={"1003"})
+    run(chosen, monkeypatch, gone, catch_up(["MFS"], []), SECOND + timedelta(hours=1))
+    assert store.pending(SPACE) == set()
+    assert "1003" not in stored_pages(chosen)
+
+
 def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
