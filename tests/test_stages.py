@@ -530,6 +530,19 @@ def test_a_record_of_confluence_s_stops_no_run_without_confluence(
     assert stones.read_text("utf-8") == "not json"
 
 
+def test_a_damaged_pending_record_refuses_a_fetch_of_spaces_before_any_request(
+    settings: Settings, site: FakeSite
+) -> None:
+    """Truncated: named by the preflight, as the store's other records are."""
+    store = RawStore(settings.raw, "confluence")
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), [], [], [])
+    (settings.raw / "confluence" / "spaces" / SPACE_ID / "pending.json").write_text("[", "utf-8")
+    refusal = fetcher_of(CONFLUENCE).preflight(run_of(CONFLUENCE, signed_in(settings), SINCE))
+    assert refusal == "pending.json: not JSON"
+    assert site.asked == []
+
+
 @pytest.mark.parametrize(
     ("damaged", "options", "said"),
     [

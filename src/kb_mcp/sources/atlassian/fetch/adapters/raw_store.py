@@ -414,19 +414,21 @@ class RawStore:
             path.unlink(missing_ok=True)
 
     def pending(self, space_id: str) -> set[str]:
-        """Give the ids that joined a space and were not stored when it was last listed.
+        """Give the ids that joined a space and were not stored whole when it was last listed.
 
-        None when the record is missing or cannot be read: those are then asked for by
-        their update time alone.
+        None when the record is missing. A record that cannot be read is refused by name,
+        as the store's other records are, since the ids it held would otherwise be lost.
         """
         path = self._space(space_id) / PENDING
-        try:
-            values = _decode(path) if path.exists() else []
-        except UNREADABLE:
+        if not path.exists():
             return set()
-        if type(values) is not list or not all(type(each) is str for each in values):
-            return set()
-        return {each for each in values if IDENTIFIER.fullmatch(each)}
+        values = _record_json(path)
+        if type(values) is not list or not all(
+            type(each) is str and IDENTIFIER.fullmatch(each) for each in values
+        ):
+            message = f"{PENDING}: expected a list of ids"
+            raise RepresentationError(message)
+        return set(values)
 
     def was_listed(self, space_id: str) -> bool:
         """Say whether a space's listings are stored, by an earlier run."""

@@ -544,6 +544,15 @@ def test_a_former_tombstone_of_a_space_not_listed_keeps_its_id_and_says_so_once(
     ]
 
 
+@pytest.mark.parametrize("text", ['["1001", "10', '{"pending": []}', '["../x"]'])
+def test_a_pending_record_that_does_not_read_is_refused_by_name(store: RawStore, text: str) -> None:
+    """Truncated, of another shape, or naming no id: refused, not read as no id at all."""
+    store.put_space(v2_space(), [], [], [])
+    (store.root / "confluence" / "spaces" / "196613" / "pending.json").write_text(text, "utf-8")
+    with pytest.raises(RepresentationError, match=r"^pending\.json: "):
+        store.pending("196613")
+
+
 def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:
     """A damaged record is refused by name, rather than hiding a page for no reason."""
     (store.root / "tombstones.json").write_text(

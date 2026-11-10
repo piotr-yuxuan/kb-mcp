@@ -18,6 +18,7 @@ from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
 from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
+from kb_mcp.sources.atlassian.fetch.domain.content import Space
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.atlassian.fetch.domain.files import MEBIBYTE
 from kb_mcp.sources.atlassian.fetch.domain.names import SPACE
@@ -70,8 +71,8 @@ def preflight(run: SourceRun) -> str | None:
     """Say why the fetch cannot start: an --until before --since, or a store's record not read.
 
     Those are the records that a fetch reads before its first request: what is
-    covered, and for a fetch of spaces what answered as gone, which is Confluence's. So
-    that one stops no fetch of projects.
+    covered, and for a fetch of spaces what answered as gone and each space's joined
+    documents still to fetch. So that these stop no fetch of projects.
     """
     store = RawStore(run.settings.raw, run.source.name)
     try:
@@ -79,6 +80,9 @@ def preflight(run: SourceRun) -> str | None:
         purview.windows(store.coverage(), run.now())
         if SPACE in run.source.connector.scope_types:
             store.tombstones()
+            for space in store.spaces():
+                if isinstance(space, Space):
+                    store.pending(space.id)
     except (PeriodError, RepresentationError) as error:
         return str(error)
     return None

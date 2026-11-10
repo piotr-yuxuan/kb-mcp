@@ -218,8 +218,9 @@ users are the site's, kept at one path whatever the sources' names.
 listings, each file whole, one after another, and records in `listed_at.json` when they
 were listed (`listed_at(space_id)`); other spaces' are kept. `put_pending(space_id, ids)`
 keeps in `pending.json`, beside them, the ids of the documents that joined the space and
-are not stored yet, or removes the file when none (`pending(space_id)`); a fetch writes it
-just before the listings, after its documents. Of each listing entry it
+are not stored whole yet, or removes the file when none (`pending(space_id)`, which
+refuses by name a file that does not read, as the store's other records); a fetch writes
+it just before the listings, after its documents. Of each listing entry it
 reads only the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
