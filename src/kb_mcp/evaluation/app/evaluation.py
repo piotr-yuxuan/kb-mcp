@@ -180,8 +180,8 @@ class IndexMeasures(Record):
     fingerprint: str
     embedded: int  # texts that the model embedded for this index
     seconds: float  # how long the index took to build, embedding included
-    chunking: str = CONTROL
-    costs: Costs = Costs(chunks=0, characters=0, tokens=None, bytes=0)
+    chunking: str
+    costs: Costs
     per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
     groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
     ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question
@@ -333,7 +333,11 @@ def prepared(
     # The model that the index names is this embedder's.
     meaning = Meaning({name: embedder}.__getitem__)
     library = Library(SqliteIndex(index), settings.docs, meaning, "lexical")
-    refs = ((question.id, path) for question in questions for path in question.paths)
+    refs = (
+        (question.id, path)
+        for question in questions
+        for path in (*question.expected, *question.partial)
+    )
     missing = next(((id_, path) for id_, path in refs if not library.resolve(path)), None)
     if missing:
         message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run embed again"

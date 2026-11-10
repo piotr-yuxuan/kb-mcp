@@ -51,11 +51,6 @@ class Question(Record):
     groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
     evidence: Mapping[str, str] = Field(default_factory=dict)  # a phrase of an expected path
 
-    @property
-    def paths(self) -> tuple[str, ...]:
-        """Every document the question names, expected or partial."""
-        return (*self.expected, *self.partial)
-
 
 class Measures(Record):
     """How one ranking answers one question, or many on average."""
@@ -205,24 +200,22 @@ def default_chunking(scored: Mapping[str, Scored]) -> Choice:
     return Choice(chunking=chosen, pvalues=pvalues, adjusted=adjusted)
 
 
-def paired_test(
-    before: Sequence[float], after: Sequence[float], samples: int = SAMPLES, seed: int = SEED
-) -> float:
+def paired_test(before: Sequence[float], after: Sequence[float], seed: int = SEED) -> float:
     """Give the two-sided p-value that ``after`` differs from ``before``, question by question.
 
     A paired randomisation test: under the hypothesis of no difference, each question's
     difference is as likely to have either sign, so the observed mean difference is
-    compared with the means of ``samples`` random sign flips. The same seed gives the
+    compared with the means of SAMPLES random sign flips. The same seed gives the
     same p-value; two equal runs give 1.
     """
     differences = [b - a for a, b in zip(before, after, strict=True)]
     observed = abs(fmean(differences)) if differences else 0.0
     if observed == 0.0:
         return 1.0
-    signs = np.random.default_rng(seed).choice((-1.0, 1.0), size=(samples, len(differences)))
+    signs = np.random.default_rng(seed).choice((-1.0, 1.0), size=(SAMPLES, len(differences)))
     flipped = np.abs((signs * np.array(differences)).mean(axis=1))
     beyond = int((flipped >= observed * (1 - 1e-12)).sum())
-    return (beyond + 1) / (samples + 1)
+    return (beyond + 1) / (SAMPLES + 1)
 
 
 def percentile(values: Sequence[float], share: float) -> float:
