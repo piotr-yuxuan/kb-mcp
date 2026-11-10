@@ -333,7 +333,11 @@ def prepared(
     # The model that the index names is this embedder's.
     meaning = Meaning({name: embedder}.__getitem__)
     library = Library(SqliteIndex(index), settings.docs, meaning, "lexical")
-    refs = ((question.id, path) for question in questions for path in question.paths)
+    refs = (
+        (question.id, path)
+        for question in questions
+        for path in (*question.expected, *question.partial)
+    )
     missing = next(((id_, path) for id_, path in refs if not library.resolve(path)), None)
     if missing:
         message = f"{name}: {missing[0]}: {missing[1]} is not in its index; run embed again"

@@ -51,11 +51,6 @@ class Question(Record):
     groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
     evidence: Mapping[str, str] = Field(default_factory=dict)  # a phrase of an expected path
 
-    @property
-    def paths(self) -> tuple[str, ...]:
-        """Every document the question names, expected or partial."""
-        return (*self.expected, *self.partial)
-
 
 class Measures(Record):
     """How one ranking answers one question, or many on average."""

@@ -198,11 +198,6 @@ class Asking(Record):
     home: Path
 
 
-def surfaces(tools: Sequence[Tool]) -> dict[str, tuple[Tool, ...]]:
-    """Give each surface's tools: B every tool, A every tool but ``ask``."""
-    return {"A": tuple(tool for tool in tools if tool != "ask"), "B": tuple(tools)}
-
-
 def chosen(questions: Sequence[Question], sample: int | None, seed: int) -> list[Question]:
     """Choose ``sample`` questions by the seed, in their order, or every one without it."""
     if sample is None:
@@ -229,7 +224,7 @@ def prepare(
     if problem or (directory.exists() and any(directory.iterdir())):
         message = f"--out: {problem or 'not empty'}"
         raise AgentsError(message)
-    served = surfaces(tools)
+    served = {"A": tuple(tool for tool in tools if tool != "ask"), "B": tuple(tools)}
     # prepare's own consent, which its run was refused without, reaches its servers alone.
     consent = [EMBEDDINGS.flag] if asking.remote_embeddings else []
     said = {
