@@ -321,7 +321,8 @@ class Fetching:
         """List a space whole, store its listings, and fetch what changed in its window.
 
         And what joined it since its stored listing, whatever its update time, as a page
-        moved in keeps its own; a space never listed before has none. The task
+        moved in keeps its own; a space never listed before has none. The listing stored
+        is replaced once each document that joined is stored, not before. The task
         ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
         documents. Return whether the space was listed whole. All is the span
         ``fetch.space``, an error when the space could not be listed.
@@ -360,8 +361,11 @@ class Fetching:
                 }
                 self.track(scope, space.id, listed)
                 folders = self.folders(pages)
-                self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
             self.fetch_listed(scope, documents, window, joined)
+            # Replaced once what joined is stored, so that a run that failed it, or
+            # stopped, finds it joined again.
+            if not self.plan and all(self.store.has(d) for d in documents if d.id in joined):
+                self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
             return True
 
     def track(

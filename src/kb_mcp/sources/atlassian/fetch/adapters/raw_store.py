@@ -552,8 +552,8 @@ class RawStore:
         """Read the documents that answered as gone, by source, document type and id.
 
         An entry written before plan 056 names the plural of its type as ``kind``, and
-        its space by id as ``space``: it is Confluence's, and of the space that the store
-        lists under that id.
+        its space by id as ``space``: it is Confluence's, and of the space that Confluence's
+        view of the store lists under that id, whichever view reads it.
         """
         path = self.root / TOMBSTONES
         if not path.exists():
@@ -563,7 +563,8 @@ class RawStore:
         for item in Fields.each(_record_json(path), TOMBSTONES):
             former = "kind" in item.value
             if former and not keys:
-                keys = {each.id: each.key for each in self.spaces() if isinstance(each, Space)}
+                spaces = RawStore(self.root, CONFLUENCE).spaces()
+                keys = {each.id: each.key for each in spaces if isinstance(each, Space)}
             with item.refusals():
                 if former:
                     source, named = CONFLUENCE, FORMER_KINDS.get(item.text("kind"), "")

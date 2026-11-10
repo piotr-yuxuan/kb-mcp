@@ -209,6 +209,43 @@ def test_a_page_that_joined_a_space_since_its_listing_comes_whatever_its_update_
     assert RawStore(chosen.raw, "confluence").coverage().exact == {MFS}
 
 
+def test_a_page_that_joined_and_failed_is_asked_for_again_by_the_next_run(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The listing is replaced once what joined is stored: a failed run finds it joined again."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(listing=without("1003")), first_week(["MFS"], []), FIRST)
+    failing = RefreshSite(pages_fail=True)
+    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), SECOND) == "failed"
+    assert "1003" not in stored_pages(chosen)
+    later = SECOND + timedelta(hours=1)
+    assert run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), later) == "done"
+    assert stored_pages(chosen)["1003"] == "000003"
+
+
+def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 056's limit: older history than the coverage is fetched by --since, not by a catch-up.
+
+    Only what joined the space since its stored listing is taken whatever its update time.
+    """
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    assert run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), SECOND) == "done"
+    assert "1003" not in stored_pages(chosen)
+
+
+def test_a_fetch_of_spaces_records_each_one_s_whole_read_and_one_of_projects_none(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """For plan 061: a space listed whole is read whole when the run starts; a search is not."""
+    chosen = settings(tmp_path)
+    run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
+    run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST)
+    assert RawStore(chosen.raw, "confluence").coverage().whole_read_at == {MFS: FIRST}
+
+
 def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

@@ -114,7 +114,9 @@ def run(
 
     The counts are how many it converted, then how many it reused.
     """
-    with conversions.opened(path, scripted.converter, scripted.convert, source=source) as cache:
+    with conversions.opened(
+        path, scripted.converter, scripted.convert, source=source, adopted=()
+    ) as cache:
         markdown = [cache.markdown(text) for text in texts]
         return markdown, cache.converted, cache.reused
 
@@ -143,7 +145,9 @@ def test_another_converter_or_one_byte_changed_is_a_miss(path: Path, name: str, 
 def test_a_text_that_fails_to_convert_raises_and_keeps_no_row(path: Path) -> None:
     """Criterion 2: neither converted nor reused, so that the next run converts it again."""
     failing = Scripted(fails_at=1)
-    with conversions.opened(path, failing.converter, failing.convert, source=SOURCE) as cache:
+    with conversions.opened(
+        path, failing.converter, failing.convert, source=SOURCE, adopted=()
+    ) as cache:
         with pytest.raises(PandocFailedError, match="exit status 3"):
             cache.markdown(TEXTS[0])
         assert (cache.converted, cache.reused) == (0, 0)
@@ -166,7 +170,9 @@ def test_a_converter_that_cannot_be_named_fails_each_conversion_and_is_asked_aga
 ) -> None:
     """Criterion 3: unnamed twice, two conversions fail, converting nothing; then it is named."""
     scripted = Scripted(unnamed=2)
-    with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
+    with conversions.opened(
+        path, scripted.converter, scripted.convert, source=SOURCE, adopted=()
+    ) as cache:
         for text in TEXTS[:2]:
             with pytest.raises(PandocFailedError, match="exit status 2"):
                 cache.markdown(text)
@@ -181,7 +187,9 @@ def test_a_prune_keeps_exactly_the_conversions_that_its_run_used(path: Path) -> 
     """Criterion 4: a, b and c kept; then a run uses b, c and d, and its prune deletes a."""
     scripted = Scripted()
     run(path, scripted, TEXTS[:3])
-    with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
+    with conversions.opened(
+        path, scripted.converter, scripted.convert, source=SOURCE, adopted=()
+    ) as cache:
         for text in TEXTS[1:]:
             cache.markdown(text)
         assert cache.drop_unused(remove=True) == 1
@@ -192,7 +200,9 @@ def test_a_prune_told_not_to_remove_deletes_nothing(path: Path) -> None:
     """Criterion 4: as a run that reports a problem removes no file, it removes no row."""
     scripted = Scripted()
     run(path, scripted, TEXTS[:3])
-    with conversions.opened(path, scripted.converter, scripted.convert, source=SOURCE) as cache:
+    with conversions.opened(
+        path, scripted.converter, scripted.convert, source=SOURCE, adopted=()
+    ) as cache:
         cache.markdown(TEXTS[3])
         assert cache.drop_unused(remove=False) == 0
     assert stored(path) == {key(NAME, text) for text in TEXTS}
@@ -211,7 +221,7 @@ def test_a_text_that_two_sources_convert_is_a_row_of_each_that_neither_prune_tak
     assert run(path, Scripted(), TEXTS[1:3], "jira")[1:] == (2, 0)
     scripted = Scripted()
     with conversions.opened(
-        path, scripted.converter, scripted.convert, source="confluence"
+        path, scripted.converter, scripted.convert, source="confluence", adopted=()
     ) as cache:
         cache.markdown(TEXTS[0])
         assert cache.drop_unused(remove=True) == 1
@@ -421,7 +431,9 @@ def test_damage_found_during_a_run_raises_and_deletes_the_file(
     damaging = Scripted(meanwhile=lambda: damage(path))
 
     def prepare() -> None:
-        with conversions.opened(path, damaging.converter, damaging.convert, source=SOURCE) as cache:
+        with conversions.opened(
+            path, damaging.converter, damaging.convert, source=SOURCE, adopted=()
+        ) as cache:
             for text in TEXTS[1:3]:
                 cache.markdown(text)
             cache.drop_unused(remove=True)

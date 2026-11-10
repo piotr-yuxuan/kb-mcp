@@ -390,8 +390,8 @@ def test_a_tombstone_record_written_at_pre_kb_mcp_reads_as_confluence_s_and_is_w
 ) -> None:
     """Plan 056: ``kind`` names the plural, ``space`` the id of a space that the store lists.
 
-    Read as Confluence's, of that space's scope; written back with its source, type and
-    scope, by key.
+    Read as Confluence's, of that space's scope, whichever source's view reads it; written
+    back with its source, type and scope, by key.
     """
     store.put_space(v2_space(), [], [], [])
     (store.root / "tombstones.json").write_text(
@@ -406,6 +406,7 @@ def test_a_tombstone_record_written_at_pre_kb_mcp_reads_as_confluence_s_and_is_w
         first_gone=datetime(2026, 10, 22, 9, tzinfo=UTC),
     )
     assert store.tombstones() == {("confluence", "blogpost", "600"): stone}
+    assert RawStore(store.root, "jira").tombstones() == store.tombstones()
     store.put_tombstones(store.tombstones().values())
     assert json.loads((store.root / "tombstones.json").read_text("utf-8")) == [
         {

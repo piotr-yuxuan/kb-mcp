@@ -153,7 +153,7 @@ def opened(
     convert: Callable[[str], str],
     *,
     source: str,
-    adopted: Collection[str] = (),
+    adopted: Collection[str],
 ) -> Iterator[Conversions]:
     """Open the file at ``path`` for the rows of ``source``; close it after use.
 

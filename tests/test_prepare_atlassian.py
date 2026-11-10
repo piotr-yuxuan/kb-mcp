@@ -840,7 +840,9 @@ def test_a_source_prepared_for_some_of_its_types_keeps_the_files_of_the_others(
     before = {path: data for path, data in sandbox.files().items() if other in path}
     path = sandbox.docs.parent / "conversions.sqlite"
     sources = {**ATLASSIAN, "confluence": document_classes}
-    with conversions.opened(path, lambda: "a writer", str, source="confluence") as cache:
+    with conversions.opened(
+        path, lambda: "a writer", str, source="confluence", adopted=()
+    ) as cache:
         prepare_atlassian(
             RawStore(sandbox.store.root, "confluence"), sandbox.docs, None, cache, sources
         )
@@ -856,7 +858,7 @@ def test_a_source_that_the_sources_given_lack_is_refused_before_anything_is_read
     before = sandbox.files()
     path = sandbox.docs.parent / "conversions.sqlite"
     with (
-        conversions.opened(path, lambda: "a writer", str, source="confluence") as cache,
+        conversions.opened(path, lambda: "a writer", str, source="confluence", adopted=()) as cache,
         pytest.raises(KeyError),
     ):
         prepare_atlassian(
