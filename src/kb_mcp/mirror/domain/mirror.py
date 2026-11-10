@@ -75,11 +75,6 @@ class Mention(Record):
         return self
 
 
-def ref_of(key: str | None, identifier: str) -> str:
-    """Name a document as ``read`` takes it: its key, else its id."""
-    return key or identifier
-
-
 def document_id(source: str, identifier: str) -> str:
     """Write a document id as a parent and a link name a document: ``<source>:<id>``."""
     return f"{source}:{identifier}"
@@ -184,6 +179,11 @@ class FrontMatter(Record):
             message = "links: a link to the document itself, or one given twice"
             raise RefusedError(message)
         return self
+
+    @property
+    def ref(self) -> str:
+        """Name the document as answers cite it: ``<source>:<key>``, else ``<source>:<id>``."""
+        return f"{self.source}:{self.key or self.id}"
 
     @property
     def author(self) -> str | None:

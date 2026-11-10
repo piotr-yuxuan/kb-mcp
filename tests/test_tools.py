@@ -54,13 +54,14 @@ if TYPE_CHECKING:
     from kb_mcp.mirror.domain.mirror import FrontMatter
 
 NEWER = MOMENT + timedelta(days=1)
-HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)
-# A hit's ref, and what ends its second line after the mirror date.
-FACTS = re.compile(r"^ {3}(\S+) \| \S+ \| updated [^|]* UTC \| (.*)$", re.MULTILINE)
+# A hit's ref, its source then its key or id, of which the key or id is kept.
+HIT = re.compile(r"^\d+\. .*\n {3}[a-z][a-z0-9]*:(\S+) \|", re.MULTILINE)
+# A hit's key or id, and what ends its second line after the update time.
+FACTS = re.compile(r"^ {3}[a-z][a-z0-9]*:(\S+) \| \S+ \| updated [^|]* UTC \| (.*)$", re.MULTILINE)
 
 
 def refs(answer: str) -> list[str]:
-    """List the refs of a search's hits, in order."""
+    """List the keys or ids of a search's hits, in order, each cited after its source."""
     return HIT.findall(parts(answer)[1])
 
 
@@ -101,14 +102,14 @@ def test_a_page_with_many_matching_sections_is_one_hit(tmp_path: Path) -> None:
     library = built(tmp_path, [(page("196845", "Coordination"), body)])
     answer = library.search("zookeeper quorum")
     assert refs(answer) == ["196845"]
-    assert 'section 22 Quorum: read(ref="196845", section=22)' in answer
+    assert 'section 22 Quorum: read(ref="confluence:196845", section=22)' in answer
 
 
 def test_a_match_on_the_title_alone_opens_the_first_section(tmp_path: Path) -> None:
     """When no section holds the words, the document opens at its start."""
     body = f"# Grafana dashboards\n\n{LOREM}\n\n## Panels\n\n{LOREM}\n"
     library = built(tmp_path, [(page("196845", "Grafana dashboards"), body)])
-    assert 'section 1: read(ref="196845", section=1)' in library.search("grafana")
+    assert 'section 1: read(ref="confluence:196845", section=1)' in library.search("grafana")
 
 
 @pytest.mark.parametrize(
@@ -193,14 +194,18 @@ def test_the_best_section_is_judged_without_the_title(tmp_path: Path) -> None:
     """A title word that a later section holds too opens that section, not the first."""
     body = f"# Rollback plan\n\n## Overview\n\n{LOREM}\n\n## Steps\n\nRoll the release back.\n"
     library = built(tmp_path, [(page("196845", "Rollback plan"), body)])
-    assert 'section 3 Steps: read(ref="196845", section=3)' in library.search("release rollback")
+    assert 'section 3 Steps: read(ref="confluence:196845", section=3)' in library.search(
+        "release rollback"
+    )
 
 
 def test_a_later_heading_like_the_title_stays_a_heading(tmp_path: Path) -> None:
     """Only the first section's heading, the title, is left out of the headings."""
     body = f"# Rollback\n\n{LOREM}\n\n## Rollback\n\nSteps.\n"
     library = built(tmp_path, [(page("196845", "Rollback"), body)])
-    assert 'section 2 Rollback: read(ref="196845", section=2)' in library.search("rollback")
+    assert 'section 2 Rollback: read(ref="confluence:196845", section=2)' in library.search(
+        "rollback"
+    )
 
 
 def test_a_page_id_names_confluence_documents_only(tmp_path: Path) -> None:
@@ -208,6 +213,35 @@ def test_a_page_id_names_confluence_documents_only(tmp_path: Path) -> None:
     library = built(tmp_path, [(issue("PROJ-7", "Kafka upgrade"), None)])
     assert issue("PROJ-7", "Kafka upgrade").id == "10007"
     assert refs(library.search("10007")) == []
+
+
+def test_a_ref_is_cited_by_its_source_and_read_alone_only_where_unique(tmp_path: Path) -> None:
+    """Plan 057, criterion 4: hits cite ``<source>:<key or id>``, which read takes.
+
+    PROJ-8 alone holds its key, which read takes with or without its source, as its id;
+    PROJ-7 is a key of two sources, which read refuses alone, giving each ref. A parent
+    is read as its ref when it is mirrored, else as its document id.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PROJ-7", "Kafka upgrade"), None),
+            (replace(issue("PROJ-7", "Kafka elsewhere"), source="tracker"), None),
+            (issue("PROJ-8", "Kafka story", parent="jira:10007"), None),
+            (issue("PROJ-9", "Kafka task", parent="jira:99999"), None),
+        ],
+    )
+    found = re.findall(r"^ {3}(\S+) \|", parts(library.search("kafka"))[1], re.MULTILINE)
+    assert sorted(found) == ["jira:PROJ-7", "jira:PROJ-8", "jira:PROJ-9", "tracker:PROJ-7"]
+    one = parts(library.read("jira:PROJ-8"))[1]
+    assert parts(library.read("PROJ-8"))[1] == parts(library.read("10008"))[1] == one
+    assert "\nref: jira:PROJ-8\n" in one
+    assert "\nparent: jira:PROJ-7\n" in one
+    assert "\nparent: jira:99999\n" in parts(library.read("PROJ-9"))[1]
+    assert "\nref: tracker:PROJ-7\n" in parts(library.read("tracker:PROJ-7"))[1]
+    with pytest.raises(UnanswerableError) as refused:
+        library.read("PROJ-7")
+    assert parts(str(refused.value))[1] == "jira:PROJ-7, tracker:PROJ-7"
 
 
 def test_a_decomposed_query_is_composed_first(tmp_path: Path) -> None:
@@ -772,11 +806,11 @@ def test_read_shows_a_meeting_s_participants_and_its_transcript_and_back(met: Li
     expected = {
         "m-20261027-payments-stand-up": [
             "participant: Alex Example; Sam Sample",
-            "transcript: t-20261027-1",
+            "transcript: worklog:t-20261027-1",
         ],
         "t-20261027-1": [
             "participant: Alex Example; Sam Sample; You",
-            "summary: m-20261027-payments-stand-up",
+            "summary: worklog:m-20261027-payments-stand-up",
         ],
     }
     for ref, lines in expected.items():
@@ -793,7 +827,8 @@ def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: P
     links = tuple(Link(relation="summary", document=f"worklog:{each}") for each in meetings)
     front = replace(worklog("transcript", "t-20261027-1", "Stand-up"), links=links)
     read = parts(built(tmp_path, [(front, None)]).read("t-20261027-1"))[1]
-    assert f"\nsummary: {'; '.join(meetings[:10])}; 2 more\n" in read
+    shown = "; ".join(f"worklog:{each}" for each in meetings[:10])
+    assert f"\nsummary: {shown}; 2 more\n" in read
     assert "\ntranscript:" not in read
 
 
@@ -1214,7 +1249,7 @@ def test_a_section_starts_at_its_heading_and_stops_at_the_next(tmp_path: Path) -
     library = built(tmp_path, [(page("196845", "Kafka"), body)])
     answer = library.read("196845", section=2)
     assert parts(answer)[1].split("\n\n", 1)[1] == "## Retention\n\nSeven days.\n\n"
-    assert answer.endswith('Next section: read(ref="196845", section=3)')
+    assert answer.endswith('Next section: read(ref="confluence:196845", section=3)')
     assert continuation(library.read("196845", section=3)) is None
 
 
@@ -1264,8 +1299,11 @@ def test_a_later_slice_carries_the_title_and_path(tmp_path: Path) -> None:
 
 
 def tree_lines(answer: str) -> list[str]:
-    """List the lines of a browse answer's block, without their dates."""
-    return [re.sub(r", updated .*\)$", ")", line) for line in parts(answer)[1].splitlines()]
+    """List the lines of a browse answer's block, each ref without its source or dates."""
+    return [
+        re.sub(r"\([a-z][a-z0-9]*:(\S+), updated .*\)$", r"(\1)", line)
+        for line in parts(answer)[1].splitlines()
+    ]
 
 
 def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
@@ -1376,7 +1414,7 @@ def test_a_deep_chain_still_moves_on(tmp_path: Path) -> None:
     answer: str | None = library.browse(scope="space:DOC", limit=1)
     seen = []
     while answer is not None:
-        seen += re.findall(r"\((\d+), updated", answer)
+        seen += re.findall(r"\(confluence:(\d+), updated", answer)
         answer = follow(library, answer)
     assert seen == ["200", "201", "202"]
 

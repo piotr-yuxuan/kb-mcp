@@ -14,11 +14,11 @@ import re
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
-from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, ref_of
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES
 from kb_mcp.search.domain import people
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
     from pathlib import Path
 
@@ -240,7 +240,7 @@ def hit(
     front = entry.front
     lines = [
         f"{number}. {short(front.title)}",
-        f"   {ref_of(front.key, front.id)} | {entry.path} | {dated(front, held)}",
+        f"   {front.ref} | {entry.path} | {dated(front, held)}",
     ]
     if front.breadcrumb:
         lines.append(f"   in {short(' / '.join(front.breadcrumb))}")
@@ -261,37 +261,38 @@ def passage(
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
-        f"{number}. {short(front.title)} | {ref_of(front.key, front.id)} | section"
+        f"{number}. {short(front.title)} | {front.ref} | section"
         f" {passage.number}{heading} | {dated(front, held)}"
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.text}"
 
 
-def metadata(entry: IndexedDocument, *, whole: bool) -> str:
+def metadata(entry: IndexedDocument, refs: Mapping[str, str], *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
     ``whole`` gives every key that a reader needs, but the source, id, key, version and
     revision that the ref and the dates stand for; otherwise the title and path alone.
-    People
+    The parent and each link name another document by its ref, as ``refs`` gives it by
+    document id, else by its document id, which a document not mirrored keeps. People
     come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
-    the last. Links come by ref, one line per relation in the order of the relations:
-    LABELS refs at most, then how many more. A role's or a relation's line is not cut as a
-    value is, so that the count of the rest stays; each name or ref in it is, so that a
-    name that a hit cuts comes whole.
+    the last. Links come one line per relation in the order of the relations: LABELS refs
+    at most, then how many more. A role's or a relation's line is not cut as a value is,
+    so that the count of the rest stays; each name or ref in it is, so that a name that a
+    hit cuts comes whole.
     """
     front = entry.front
     rows = [("title", front.title), ("path", entry.path)]
     if whole:
         labels = ", ".join(short(label, LABEL) for label in front.labels[:LABELS])
         rows += [
-            ("ref", ref_of(front.key, front.id)),
+            ("ref", front.ref),
             ("type", front.type),
             ("scope", front.scope),
             ("subtype", front.subtype),
             ("status", front.status),
             ("labels", labels),
-            ("parent", front.parent),
+            ("parent", front.parent and refs.get(front.parent, front.parent)),
             ("breadcrumb", " / ".join(front.breadcrumb)),
         ]
         for role in ROLES:
@@ -304,13 +305,13 @@ def metadata(entry: IndexedDocument, *, whole: bool) -> str:
             more = f"; {len(held) - NAMES} more" if len(held) > NAMES else ""
             rows.append((role, "; ".join(names) + more))
         for relation in RELATIONS:
-            refs = [
-                short(link.document.partition(":")[2])
+            linked = [
+                short(refs.get(link.document, link.document))
                 for link in front.links
                 if link.relation == relation
             ]
-            more = f"; {len(refs) - LABELS} more" if len(refs) > LABELS else ""
-            rows.append((relation, "; ".join(refs[:LABELS]) + more))
+            more = f"; {len(linked) - LABELS} more" if len(linked) > LABELS else ""
+            rows.append((relation, "; ".join(linked[:LABELS]) + more))
         rows += [
             ("created", stamp(front.created)),
             ("updated", stamp(front.updated)),
@@ -338,7 +339,7 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) ->
         front = entry.front
         line = (
             f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
-            f" ({ref_of(front.key, front.id)}, updated {front.updated:%Y-%m-%d})"
+            f" ({front.ref}, updated {front.updated:%Y-%m-%d})"
         )
         if missing := ancestors[common:]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"

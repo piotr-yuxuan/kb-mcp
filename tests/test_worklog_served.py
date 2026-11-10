@@ -79,9 +79,9 @@ def test_the_source_filter_keeps_to_the_work_log(home: Path) -> None:
     """The word in the page and in a transcript: two hits; one with each source."""
     served = library(home)
     assert len(refs(served.search(UNIQUE))) == len(["page", "transcript"])
-    assert refs(served.search(UNIQUE, filters={"source": "confluence"})) == ["196845"]
+    assert refs(served.search(UNIQUE, filters={"source": "confluence"})) == ["confluence:196845"]
     (transcript,) = refs(served.search(UNIQUE, filters={"source": "worklog"}))
-    assert transcript.startswith("t-")
+    assert transcript.startswith("worklog:t-")
 
 
 def test_a_transcript_found_is_read_by_the_ref_its_hit_shows(home: Path) -> None:
@@ -102,7 +102,7 @@ def test_an_entry_s_injected_line_is_inside_the_block(home: Path) -> None:
     """The entry that holds it is found, and read, the line as reference data."""
     served = library(home)
     (ref,) = refs(served.search("PWNED", filters={"source": "worklog"}))
-    assert ref.startswith("e-")
+    assert ref.startswith("worklog:e-")
     before, block, after = parts(served.read(ref))
     assert INJECTED in block
     assert "PWNED" not in before + after
@@ -113,12 +113,14 @@ def test_a_meeting_found_by_its_summary_is_read_by_its_ref_with_its_sections(
 ) -> None:
     """Its summary's word finds the meeting, not its day, which holds its heading alone."""
     served = library(home)
-    assert refs(served.search("rota", filters={"source": "worklog"})) == ["m-20261026-one-to-one"]
+    assert refs(served.search("rota", filters={"source": "worklog"})) == [
+        "worklog:m-20261026-one-to-one"
+    ]
     _, block, _ = parts(served.read("m-20261026-one-to-one"))
     assert "## Summary" in block
     assert "on-call rota" in block
     (day,) = refs(served.search("dashboard cluster", filters={"source": "worklog"}))
-    assert day == "d-20261026"
+    assert day == "worklog:d-20261026"
     _, block, _ = parts(served.read(day))
     assert "One-to-one" in block
     assert "rota" not in block
@@ -133,17 +135,17 @@ def test_a_participant_and_a_created_date_give_whom_one_met_and_when(home: Path)
     served = library(home)
     kim = {"source": "worklog", "participant": "kim"}
     assert sorted(refs(served.search(filters=kim, sort="created"))) == [
-        "m-20261027-capacity-planning",
-        "m-20261027-ledger-review",
-        "t-20261021-notes-on-x",
-        "t-20261027-1",
-        "t-d99a5f2dc74e8488",
+        "worklog:m-20261027-capacity-planning",
+        "worklog:m-20261027-ledger-review",
+        "worklog:t-20261021-notes-on-x",
+        "worklog:t-20261027-1",
+        "worklog:t-d99a5f2dc74e8488",
     ]
     since = {**kim, "created_after": "2026-10-27"}
     assert sorted(refs(served.search(filters=since, sort="created"))) == [
-        "m-20261027-capacity-planning",
-        "m-20261027-ledger-review",
-        "t-20261027-1",
+        "worklog:m-20261027-capacity-planning",
+        "worklog:m-20261027-ledger-review",
+        "worklog:t-20261027-1",
     ]
 
 
@@ -152,11 +154,11 @@ def test_a_meeting_s_read_names_its_transcript_which_names_it_back(home: Path) -
     served = library(home)
     meeting = parts(served.read("m-20261027-payments-stand-up"))[1].splitlines()
     assert "participant: Alex Example; Sam Sample" in meeting
-    assert "transcript: t-20261027-1" in meeting
+    assert "transcript: worklog:t-20261027-1" in meeting
     record = parts(served.read("t-20261027-1"))[1]
     assert "Then the retry budget stays at three." in record
     assert "\nparticipant: Alex Example; Sam Sample; Kim\n" in record
-    assert "\nsummary: m-20261027-payments-stand-up\n" in record
+    assert "\nsummary: worklog:m-20261027-payments-stand-up\n" in record
 
 
 def test_the_server_says_what_entries_and_transcripts_are(home: Path) -> None:

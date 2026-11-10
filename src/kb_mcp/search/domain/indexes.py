@@ -161,13 +161,13 @@ class WordsReader(Protocol):
         self,
         *,
         paths: Iterable[str] = (),
-        keys: Iterable[str] = (),
-        ids: Iterable[str] = (),
+        refs: Iterable[str] = (),
         filters: Filters | None = None,
     ) -> list[IndexedDocument]:
-        """Find the documents of these paths, issue keys, and page or work-log ids, by path.
+        """Find the documents of these paths and refs, by path.
 
-        An issue's id is never looked up, since a page may have the same.
+        A ref is a document's key or id, alone or after its source and a colon, as
+        ``jira:PRB-12``: alone, it finds that key or id in every source.
         """
 
     def recent(

@@ -224,7 +224,7 @@ the same document at other stages,
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py) and
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
-[`ref_of`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each
+[`FrontMatter.ref`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each
 connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py), with
 [`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py);
 [`Link`](../../src/kb_mcp/mirror/domain/mirror.py),

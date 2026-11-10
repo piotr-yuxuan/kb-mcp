@@ -106,6 +106,7 @@ CREATE TABLE documents (
   UNIQUE (source, id)
 );
 CREATE INDEX documents_key ON documents (key);
+CREATE INDEX documents_id ON documents (id);
 CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
@@ -189,11 +190,16 @@ WHERE section_words MATCH :match
                        AND (SELECT last_section FROM documents WHERE path = :path)
 ORDER BY bm25(section_words, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
 """
+# The documents of some paths and refs: each ref a key or id, alone or after its source.
 ENTRIES = """
+WITH refs AS (SELECT value AS ref, instr(value, ':') AS colon FROM json_each(:refs))
 SELECT d.* FROM documents d
 WHERE (d.path IN (SELECT value FROM json_each(:paths))
-       OR d.key IN (SELECT value FROM json_each(:keys))
-       OR (d.key IS NULL AND d.id IN (SELECT value FROM json_each(:ids))))
+       OR d.rowid IN (
+         SELECT e.rowid FROM refs r JOIN documents e
+         ON (r.colon = 0 AND r.ref IN (e.key, e.id))
+         OR (r.colon > 0 AND e.source = substr(r.ref, 1, r.colon - 1)
+             AND substr(r.ref, r.colon + 1) IN (e.key, e.id))))
   AND (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
 ORDER BY d.path
 """
@@ -835,19 +841,13 @@ class Reader:
         self,
         *,
         paths: Iterable[str] = (),
-        keys: Iterable[str] = (),
-        ids: Iterable[str] = (),
+        refs: Iterable[str] = (),
         filters: Filters | None = None,
     ) -> list[IndexedDocument]:
-        """Find the documents of these paths, issue keys, and page or work-log ids, by path.
-
-        A document with a key, as an issue, is never looked up by its id, since a page may
-        have the same.
-        """
+        """Find the documents of these paths and refs, as ``SearchReader`` says, by path."""
         parameters = {
             "paths": json.dumps(list(paths)),
-            "keys": json.dumps(list(keys)),
-            "ids": json.dumps(list(ids)),
+            "refs": json.dumps(list(refs)),
             "kept": self.kept(filters or Filters()),
         }
         return [indexed_document(row) for row in self._connection.execute(ENTRIES, parameters)]

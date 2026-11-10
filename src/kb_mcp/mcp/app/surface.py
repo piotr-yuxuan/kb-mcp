@@ -130,7 +130,7 @@ def prompts(library: Library) -> tuple[ServedPrompt, ...]:
             name="brief",
             description="Summarise one document: purpose, facts, decisions, status, dates.",
             arguments=(
-                ("ref", "A page, issue or work-log id, an address or a path in the mirror."),
+                ("ref", "A ref, such as jira:PRB-12, a key or id alone, an address or a path."),
             ),
             needs=("read",),
             render=brief,

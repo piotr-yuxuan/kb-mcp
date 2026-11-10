@@ -26,11 +26,10 @@ from opentelemetry import metrics, trace
 from pydantic import Field
 
 from kb_mcp.config.domain.settings import SearchMode as Mode
-from kb_mcp.kernel.names import WORKLOG_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
-from kb_mcp.mirror.domain.mirror import ROLES, ref_of
+from kb_mcp.mirror.domain.mirror import ROLES, document_id
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, PASSAGE_CHARS, around
@@ -194,9 +193,10 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     with TRACER.start_as_current_span("search.lexical"):
         found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
         named = [*planned.identifiers.keys, *planned.identifiers.ids]
-        keys, ids = planned.identifiers.keys, planned.identifiers.ids
-        pinned = reader.indexed_documents(keys=keys, ids=ids, filters=filters)
-        ordered = sorted(pinned, key=lambda e: named.index(ref_of(e.front.key, e.front.id)))
+        # Each document that the query names as it is cited, by its key, else its id.
+        cited = reader.indexed_documents(refs=named, filters=filters)
+        pinned = [entry for entry in cited if (entry.front.key or entry.front.id) in named]
+        ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
         first = [entry.path for entry in ordered]
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
@@ -636,11 +636,25 @@ class Library:
             raise UnanswerableError(str(error)) from None
 
     def _find(self, reader: SearchReader, ref: str) -> IndexedDocument | None:
-        """Find a document by path, issue key, page or work-log id, or address, in that order."""
-        named, path = identifiers(ref), ref.strip()
-        ids = [path] if WORKLOG_ID.fullmatch(path) else named.ids[:1]
-        found = reader.indexed_documents(paths=[path], keys=named.keys[:1], ids=ids)
-        return min(found, key=lambda entry: (entry.path != path, not entry.front.key), default=None)
+        """Find a document by path, else by ref, else by address; None for none.
+
+        A ref is its key or id, alone or after its source, as ``jira:PRB-12``; an address
+        gives an issue's key or a page's id. Raises UnanswerableError, listing their refs,
+        for a ref or an address that names several documents, as a key or id alone may.
+        """
+        path = ref.strip()
+        found = reader.indexed_documents(paths=[path], refs=[path])
+        exact = [entry for entry in found if entry.path == path]
+        if not found:
+            named = identifiers(path)
+            found = reader.indexed_documents(refs=[*named.keys[:1], *named.ids[:1]])
+        if len(found) > 1 and not exact:
+            listed = sorted(entry.front.ref for entry in found)
+            message = (
+                f"ref: {json.dumps(path, ensure_ascii=False)} names several documents; give one:"
+            )
+            raise UnanswerableError(responses.refusal(message, listed, len(listed)))
+        return (exact or found or [None])[0]
 
     def search(
         self,
@@ -699,8 +713,7 @@ class Library:
             person, held = about(reader, kept, [entry.path for entry in shown])
             for number, entry in enumerate(shown, offset + 1):
                 passage = snippet_of(reader, entry, ranked, planned)
-                ref = ref_of(entry.front.key, entry.front.id)
-                opening = responses.call(self.read, ref=ref, section=passage.number)
+                opening = responses.call(self.read, ref=entry.front.ref, section=passage.number)
                 items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
         def more(count: int) -> str:
@@ -776,9 +789,7 @@ class Library:
                 number,
                 entry,
                 passage,
-                responses.call(
-                    self.read, ref=ref_of(entry.front.key, entry.front.id), section=passage.number
-                ),
+                responses.call(self.read, ref=entry.front.ref, section=passage.number),
                 held.get(entry.path),
             )
             for number, (entry, passage) in enumerate(pairs, offset + 1)
@@ -845,8 +856,9 @@ class Library:
     ) -> str:
         """Read a mirrored document, or one of its sections, from a character offset.
 
-        ref: a page id, an issue key, a work-log id, a page or issue address, or a path in
-        the mirror.
+        ref: as answers cite it, its source then its key or id, such as jira:PRB-12; its
+        key or id alone, where no other document has it; a page or issue address; or a
+        path in the mirror.
         A long document comes in slices, each ending with the call that reads on.
         """
         bounded(ref=(ref, LONGEST["ref"]))
@@ -865,8 +877,16 @@ class Library:
                 raise UnanswerableError(message)
             last = min(end, begin + clamp(max_chars, CHARS_LIMITS))
             text = reader.text(entry.path, begin, last)
-        frame = responses.metadata(entry, whole=begin == 0)
-        ref = ref_of(entry.front.key, entry.front.id)
+            front = entry.front
+            others = [
+                each for each in (front.parent, *(link.document for link in front.links)) if each
+            ]
+            refs = {
+                document_id(other.front.source, other.front.id): other.front.ref
+                for other in reader.indexed_documents(refs=others)
+            }
+        frame = responses.metadata(entry, refs, whole=begin == 0)
+        ref = front.ref
         later = responses.call(self.read, ref=ref, section=section, offset=end, max_chars=max_chars)
         allowed = responses.budget(max_chars, READ_CHARS) - responses.RESERVE
         stop = begin + responses.cut(text, allowed - responses.tokens(frame + later))

@@ -426,11 +426,6 @@ plan's to add, since the data guard judges each
 
 The server's words for sources wait until a plan composes them from the declarations:
 
-- **`read` opens a hit by its path.** A hit shows the document's id and its path; the id is
-  looked up for Confluence's and the work log's documents alone
-  ([`ENTRIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)), so that the `read` call
-  that a hit gives says the document is not mirrored, and `read` by the path opens it
-  ([`NOT_MIRRORED`](../../src/kb_mcp/mcp/app/tools.py)).
 - **The `source` filter** takes `confluence`, `jira` or `worklog` alone
   ([`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py)), and the server's instructions name
   those three ([`CLOSING`](../../src/kb_mcp/mcp/app/surface.py)).

@@ -130,7 +130,7 @@ def test_paging_by_meaning_gives_each_document_once(by_meaning: tuple[Library, s
     found = []
     answer: str | None = library.search("gamma", limit=50)
     while answer is not None:
-        found += re.findall(r"^\d+\. .*\n {3}(\d+) \|", parts(answer)[1], re.MULTILINE)
+        found += re.findall(r"^\d+\. .*\n {3}confluence:(\d+) \|", parts(answer)[1], re.MULTILINE)
         answer = follow(library, answer)
     assert len(found) == len(set(found))
     big = {str(300000 + number) for number in range(DOCUMENTS)}
@@ -338,7 +338,7 @@ def test_browse_lists_each_document_once(large: tuple[Library, str]) -> None:
     found = []
     answer: str | None = library.browse(scope="space:BIG", limit=200)
     while answer is not None:
-        found += re.findall(r"\((\d+), updated", parts(answer)[1])
+        found += re.findall(r"\(confluence:(\d+), updated", parts(answer)[1])
         answer = follow(library, answer)
     assert sorted(found) == [str(300000 + number) for number in range(DOCUMENTS)]
 
@@ -349,7 +349,7 @@ def test_search_lists_each_document_once(large: tuple[Library, str]) -> None:
     found = []
     answer: str | None = library.search("gamma", limit=50)
     while answer is not None:
-        found += re.findall(r"^\d+\. .*\n {3}(\d+) \|", parts(answer)[1], re.MULTILINE)
+        found += re.findall(r"^\d+\. .*\n {3}confluence:(\d+) \|", parts(answer)[1], re.MULTILINE)
         answer = follow(library, answer)
     assert sorted(found) == [str(300000 + number) for number in range(DOCUMENTS)]
 

@@ -41,7 +41,7 @@ says why.
 ### search
 
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
-with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref,
+with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref, such as `jira:PRB-12`,
 path and update time, then what the document has of its subtype, such as an issue's type, its status
 unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
@@ -132,10 +132,15 @@ their count of comments and the day of the last, such as
 `commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`. Links
 come after them, one line per relation, by the ref that `read` takes: a meeting's
 `transcript`, and a transcript's `summary`, each meeting that links it, ten refs at
-most, then how many more, such as `transcript: t-20261027-1`.
+most, then how many more, such as `transcript: worklog:t-20261027-1`. The parent, and a
+document linked, come by their ref when they are mirrored, else by their document id,
+`<source>:<id>`.
 
-- `ref`: a page id, an issue key, a work-log id (`e-...`, `d-...`, `m-...` or `t-...`),
-  a page's or an issue's address, or a path in the mirror, at most 300 characters.
+- `ref`: a ref as answers cite it, the document's source, a colon, then its key or else
+  its id, such as `jira:PRB-12`, `confluence:196845` or `worklog:t-20261027-1`; its key or
+  id alone, such as `PRB-12`, where no other document has it, else refused with the refs
+  of those that have it; a page's or an issue's address; or a path in the mirror; at
+  most 300 characters.
 - `section`: a section's number, from 1.
 - `offset`: a character of the body to start from.
 - `max_chars`: 1 to 40,000 characters, 12,000 by default.
@@ -180,7 +185,8 @@ the argument. A prompt is listed only when the tools it uses are served.
 Read the document whole; summarise its purpose, facts, decisions, status and dates,
 each cited by section. Needs `read`.
 
-- `ref`: a page, issue or work-log id, an address or a path in the mirror.
+- `ref`: a ref, or a key or id alone, an address or a path in the mirror, as `read`
+  takes it.
 
 ### changes
 

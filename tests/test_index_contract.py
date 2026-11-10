@@ -214,12 +214,19 @@ def test_a_document_is_read_back(written: Written) -> None:
         assert reader.heading(RUNBOOK_PATH, 3) == ""
 
 
-def test_a_document_is_found_by_its_key_or_id(written: Written) -> None:
-    """An issue by its key, a page by its id; an issue's id is never looked up."""
+def test_a_document_is_found_by_its_key_or_id_alone_or_after_its_source(
+    written: Written,
+) -> None:
+    """A ref is a key or an id, of any source alone, of its source after it and a colon."""
     with written(BOTH).reading() as reader:
-        assert [each.path for each in reader.indexed_documents(keys=["PROJ-7"])] == [UPGRADE_PATH]
-        assert [each.path for each in reader.indexed_documents(ids=["1001"])] == [RUNBOOK_PATH]
-        assert reader.indexed_documents(ids=[UPGRADE.id]) == []
+
+        def found(*refs: str) -> list[str]:
+            return [each.path for each in reader.indexed_documents(refs=refs)]
+
+        assert found("PROJ-7") == found(UPGRADE.id) == found(f"jira:{UPGRADE.id}") == [UPGRADE_PATH]
+        assert found("1001") == found("confluence:1001") == [RUNBOOK_PATH]
+        assert found("jira:PROJ-7") == [UPGRADE_PATH]
+        assert found("confluence:PROJ-7") == found("jira:1001") == found("PROJ-8") == []
         assert reader.indexed_documents(paths=["jira/PROJ/PROJ-8.md"]) == []
 
 
@@ -232,7 +239,7 @@ def test_documents_found_come_by_path_whatever_order_they_were_written_in(
         [FilledDocument(front=UPGRADE, body=UPGRADE_BODY), FilledDocument(front=other, body="")]
     )
     with index.reading() as reader:
-        found = [each.path for each in reader.indexed_documents(keys=["PROJ-7"])]
+        found = [each.path for each in reader.indexed_documents(refs=["PROJ-7"])]
     assert found == sorted((location(other), UPGRADE_PATH))
 
 
@@ -596,7 +603,7 @@ def test_a_document_removed_leaves_no_trace(written: Written) -> None:
     with index.reading() as reader:
         assert reader.scores(quote("solitary"), Filters(), every=True) == ({}, True)
         assert reader.snippet(path, quote("solitary")) is None
-        assert reader.indexed_documents(paths=[path], ids=[LONE.id]) == []
+        assert reader.indexed_documents(paths=[path], refs=[LONE.id]) == []
         assert [each.path for each in reader.listing(Filters())] == sorted(
             [RUNBOOK_PATH, UPGRADE_PATH]
         )
@@ -676,7 +683,7 @@ def test_of_two_files_of_one_source_and_id_the_first_by_its_path_s_parts_is_held
     )
     assert (done.copied, done.added, done.replaced, done.removed) == (1, 1, 0, 1)
     with index.reading() as reader:
-        (entry,) = reader.indexed_documents(ids=[RUNBOOK.id])
+        (entry,) = reader.indexed_documents(refs=[RUNBOOK.id])
         assert entry.path == nested.path
         assert reader.held().documents.keys() == {nested.path, UPGRADE_PATH}
 

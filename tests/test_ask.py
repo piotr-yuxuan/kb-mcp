@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 # A passage's two lines about it, then its text, which runs to the next passage.
 ABOUT = re.compile(
-    r"^(\d+)\. (.*) \| (\S+) \| section (\d+)(?:: (.*))? \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC)"
-    r" \| (.*)\n(.*) \| (read\(.*\))\n",
+    r"^(\d+)\. (.*) \| [a-z][a-z0-9]*:(\S+) \| section (\d+)(?:: (.*))?"
+    r" \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC) \| (.*)\n(.*) \| (read\(.*\))\n",
     re.MULTILINE,
 )
 RETENTION = (
@@ -87,7 +87,7 @@ ASK_DOCUMENTS = 20  # the documents that one answer quotes, at most
 
 
 def passages(answer: str) -> list[dict[str, str]]:
-    """Read each passage of an answer: what its lines say, and its text."""
+    """Read each passage of an answer: what its lines say, its ref's key or id, and its text."""
     block = parts(answer)[1]
     found = list(ABOUT.finditer(block))
     ends = [match.start() - 2 for match in found[1:]] + [len(block)]
@@ -147,7 +147,7 @@ def test_a_passage_quotes_the_section_that_holds_the_words(words: Library) -> No
     )
     assert first["updated"] == "2026-10-20 21:52 UTC"
     assert first["address"] == "https://example.atlassian.net/wiki/x/1"
-    assert first["read"] == 'read(ref="196845", section=2)'
+    assert first["read"] == 'read(ref="confluence:196845", section=2)'
     assert section in words.read("196845", section=2)
 
 
