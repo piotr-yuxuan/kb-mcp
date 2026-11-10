@@ -244,7 +244,8 @@ Two more of the store's own records, each replaced whole:
   each scope, by its `source`, its scope `type` (`space` or `project`) and its `key`
   (`sources.atlassian.fetch.domain.coverage.Scope`), the one period over which every
   change was asked for, `start` and `end` (`sources.atlassian.fetch.domain.coverage.Coverage`),
-  `"exact": true` on a project's entry written since plan 034, `as_of`, the period's end
+  `"exact": true` on an exact entry, a project's since plan 034 and a space's since plan
+  056, `as_of`, the period's end
   when a run last left it exact, and `whole_read_at`, when a run last listed it whole; each
   time only once known. An entry without `type`, as plan 056 found them, is of its
   source's scope type, its source being its connector's name. A run that listed a
@@ -254,8 +255,9 @@ Two more of the store's own records, each replaced whole:
   failed, and a failure leaves it inexact, an entry of its listing that the adapter
   refuses among them, so that a run without `--since` starts at its covered start and
   asks again for whatever failed inside; each run of a space also fetches what its
-  listing names that its stored listing did not, and what `pending.json` holds, whatever
-  its update time, as a page moved in keeps its own. A project's ends at
+  listing names, by each entry's id, that its stored listing did not, and what
+  `pending.json` holds, whatever its update time, as a page moved in keeps its own, and
+  keeps in `pending.json` each of those that it did not store whole. A project's ends at
   the update time of its earliest document found and not stored whole (a fetch failed, a
   snapshot that the adapter refuses, a kept file failed, a stored snapshot unreadable),
   even below the old end, else at the fetch window's end; a search entry that the adapter
@@ -269,7 +271,10 @@ Two more of the store's own records, each replaced whole:
   listing, by its `source`, its document `type` and its `id`, with the key of that
   `scope` (`sources.atlassian.fetch.domain.deletions.Tombstone`); an entry as plan 056
   found them names the plural `kind` and the space's id, `space`, and is Confluence's,
-  of the space that the store lists under that id. A tombstone is pending until a probe answers,
+  of the space that Confluence's view of the store lists under that id; one whose space
+  no stored listing names keeps the space's id as its scope's key, until that space's
+  next whole read takes it into its scope, and `raw.spaces_unresolved` says so once a
+  read. A tombstone is pending until a probe answers,
   then dated by its first answer of gone (404, trashed, or moved to a space the store
   does not keep), and confirmed by a second, at least an hour later. A document found in
   a kept space whose stored listing names it has moved, and loses its tombstone, as does
