@@ -28,7 +28,7 @@ from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.endpoint import Scripted, serving
 from tests.test_api_token import (
     CREDENTIAL,
@@ -113,7 +113,7 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
     runs' are.
     """
     data = tmp_path / "data"
-    session = data / "session" / COOKIES
+    session = folder_of(data / "session", SITE) / COOKIES
     write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
     sent = served(monkeypatch, FakeSite().handle)
     endpoint = Keyed()

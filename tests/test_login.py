@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import TABLE
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, read_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, read_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.atlassian.fetch.app.login import SignedIn
 from kb_mcp.sources.declaration import Source
@@ -58,7 +58,7 @@ def test_only_the_site_cookies_of_the_browser_are_saved(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=tmp_path / "data"
     )
     login_module.save_session(settings, SITE, None, extensions=False)
-    saved = read_cookies(settings.session / COOKIES)
+    saved = read_cookies(folder_of(settings.session, SITE) / COOKIES)
     assert [(cookie["name"], cookie["path"]) for cookie in saved] == [
         ("tenant", "/"),
         ("wiki", "/wiki"),
@@ -90,7 +90,7 @@ def test_the_command_says_each_site_signed_in_on_stdout(
     assert main([*login(tmp_path, "jira"), "--detail", detail]) == 0
     assert capsys.readouterr().out == SIGNED_IN
     assert main([*login(tmp_path, "jira"), "--format", "json"]) == 0
-    session = (tmp_path / "kb-mcp" / "session").resolve()
+    session = (tmp_path / "kb-mcp" / "session" / "sandbox.example.invalid").resolve()
     assert json.loads(capsys.readouterr().out) == [{"site": SITE, "session": str(session)}]
 
 

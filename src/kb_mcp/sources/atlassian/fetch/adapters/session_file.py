@@ -1,4 +1,8 @@
-"""The saved session: the site's cookies, in a file that the user alone can read."""
+"""The saved session: a site's cookies, in a file that the user alone can read.
+
+Each site's session is a folder of the session's place, named after its host: its
+cookies and the browser profile that signed it in.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +11,9 @@ import os
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
+
+import structlog
 
 from kb_mcp.kernel.fields import Fields
 
@@ -14,6 +21,44 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
 COOKIES = "cookies.json"
+# The browser profile of the sign-in window, beside the cookies.
+PROFILE = "browser"
+
+
+def folder_of(root: Path, site: str) -> Path:
+    """Give the folder that keeps a site's session, under the session's place ``root``."""
+    return root / (urlsplit(site).hostname or "")
+
+
+def adopt_former_session(root: Path, site: str) -> None:
+    """Move the session kept before sessions were a site's into this site's folder, once.
+
+    That is ``root/cookies.json`` and the profile beside it. They move when every cookie
+    is of the site's host, as ``login`` saved them filtered to one host, and the site has
+    no session of its own yet: ``session.moved``, at INFO. Else they stay, with a
+    warning, ``session.not_moved``, saying why. With none, nothing is said.
+    """
+    former, folder = root / COOKIES, folder_of(root, site)
+    if not former.exists():
+        return
+    host = folder.name
+    try:
+        cookies = read_cookies(former)
+    except OSError, ValueError:
+        cookies = []
+    log = structlog.get_logger()
+    if not cookies or len(for_site(cookies, host)) != len(cookies):
+        why = "not this site's cookies; another site's run moves them, or remove them"
+        log.warning("session.not_moved", host=host, session=str(former), reason=why)
+    elif folder.exists():
+        why = "this site has a session of its own; remove the former one"
+        log.warning("session.not_moved", host=host, session=str(former), reason=why)
+    else:
+        folder.mkdir(mode=0o700)
+        for name in (COOKIES, PROFILE):
+            if (root / name).exists():
+                (root / name).rename(folder / name)
+        log.info("session.moved", host=host, session=str(folder))
 
 
 def read_cookies(path: Path) -> list[dict[str, str]]:

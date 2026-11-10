@@ -19,7 +19,7 @@ from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview, run_fetch
 from kb_mcp.sources.registry import SOURCES, refuse
@@ -76,7 +76,9 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "kb-mcp").resolve(),
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     return command(home, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
 
@@ -147,7 +149,9 @@ def test_each_source_is_fetched_alone_into_a_report_of_its_own(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "kb-mcp").resolve(),
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     options = ("--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
@@ -353,7 +357,9 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "kb-mcp").resolve(),
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     options = ("--space", "NOPE", "--since", "7d", "--detail", "detailed")
@@ -378,7 +384,9 @@ def test_a_dry_run_whose_space_finds_nothing_fails_and_exits_1(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "kb-mcp").resolve(),
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     monkeypatch.setattr(http, "client", lambda *_: FakeSite(spaces=[]).client())
     options = ("--space", "NOPE", "--since", "7d", "--dry-run", "--format", "json")
     assert main(command(home, *options)) == SOME_FAILED
@@ -417,7 +425,9 @@ def test_a_busy_store_exits_1_with_its_reason(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "kb-mcp").resolve(),
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--space", "MFS", "--since", "7d")
     with RawStore(chosen.raw, "confluence").writing():
@@ -661,3 +671,31 @@ def test_each_flag_of_the_registry_is_declared_alike_by_each_source_that_declare
     by_flag = [option for declared in SOURCES for option in declared.connector.flags.values()]
     for option in by_flag:
         assert {each for each in by_flag if each.flag == option.flag} == {option}
+
+
+# The scripted site's host, which its cookies are of.
+HOST_OF_SITE = "sandbox.example.invalid"
+
+
+def test_a_fetch_moves_the_former_session_into_its_site_s_folder_and_signs_in_by_it(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 3: one run moves it, a dry run before it moved nothing, the next none.
+
+    The session that runs kept before it was a site's signs each run in, the dry run's
+    too: no login again.
+    """
+    session = (home / "kb-mcp" / "session").resolve()
+    host = session / HOST_OF_SITE
+    write_cookies(session / COOKIES, [{"name": "s", "value": "v", "domain": HOST_OF_SITE}])
+    fake = FakeSite()
+    monkeypatch.setattr(http, "client", lambda *_: fake.client())
+    given = command(home, "--space", "MFS", "--since", "2026-10-02")
+    assert main([*given, "--dry-run"]) == 0
+    assert (session / COOKIES).exists()
+    assert main(given) == SOME_FAILED  # one of the scripted site's files fails
+    assert (host / COOKIES).exists()
+    assert not (session / COOKIES).exists()
+    assert [each["host"] for each in logged_as(home, "session.moved")] == [host.name]
+    assert main(given) in {0, SOME_FAILED}
+    assert len(logged_as(home, "session.moved")) == 1

@@ -83,9 +83,9 @@ Jira's alone. Like every command that writes under the data directory, it first 
 it will do, then asks `Proceed? [y/N]`: answer `y`.
 
 Chrome opens on the site with a profile of its own (under
-`~/kb-mcp/session/`). Sign in as usual; the window closes once Jira or
-Confluence answers with your account. The session's cookies are kept in
-`~/kb-mcp/session/cookies.json`, readable by you alone. If the sign-in
+`~/kb-mcp/session/<host>/`, a folder a site). Sign in as usual; the window closes once
+Jira or Confluence answers with your account. The session's cookies are kept in
+`~/kb-mcp/session/<host>/cookies.json`, readable by you alone. If the sign-in
 needs a browser extension, add `--keep-extensions`; if Playwright does not find Chrome,
 add `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`.
 

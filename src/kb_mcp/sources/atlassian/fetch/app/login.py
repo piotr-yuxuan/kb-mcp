@@ -16,6 +16,9 @@ from kb_mcp.sources.atlassian.fetch.adapters.browser import (
 )
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
+    PROFILE,
+    adopt_former_session,
+    folder_of,
     for_site,
     write_cookies,
 )
@@ -25,8 +28,6 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.sources.declaration import Source
-
-PROFILE = "browser"
 
 
 class SignedIn(Record):
@@ -39,15 +40,20 @@ class SignedIn(Record):
 def save_session(settings: Settings, site: str, chrome: Path | None, *, extensions: bool) -> None:
     """Open the sign-in window, wait for the user, and save the site's cookies.
 
-    The browser profile and the cookies stay under ``Settings.session``, readable by the
-    user alone. Raises SignInFailedError when the user does not finish in time.
+    The browser profile and the cookies stay in the site's folder of ``Settings.session``,
+    readable by the user alone, where a session kept before sessions were a site's first
+    moves, its profile signed in. Raises SignInFailedError when the user does not finish
+    in time.
     """
-    profile = settings.session / PROFILE
+    folder = folder_of(settings.session, site)
+    adopt_former_session(settings.session, site)
+    profile = folder / PROFILE
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)
+    folder.chmod(0o700)
     disable_password_saving(profile)
     cookies = open_sign_in_window(site, profile, chrome, extensions=extensions)
-    write_cookies(settings.session / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
+    write_cookies(folder / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
 
 
 def login(
@@ -73,5 +79,5 @@ def login(
         except SignInFailedError as error:
             structlog.get_logger().error("login.not_signed_in", site=site, reason=str(error))
             return None
-        signed.append(SignedIn(site=site, session=settings.session))
+        signed.append(SignedIn(site=site, session=folder_of(settings.session, site)))
     return tuple(signed)

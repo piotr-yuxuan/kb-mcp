@@ -757,10 +757,12 @@ site is a mention's identity (see [person](#person)).
 
 One way for an Atlassian [source](#source) to sign in: the cookies of a browser sign-in
 by `login`, and its browser profile, kept in the credential [store](#store) under
-`<data>/session/`; a run writes the cookies back as the site renews them.
+`<data>/session/<host>/`, one per site, which the sources of one site share; a run
+writes the cookies back as the site renews them.
 
 - **In the code.**
   [`SavedSession`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),
+  [`folder_of`](../../src/kb_mcp/sources/atlassian/fetch/adapters/session_file.py),
   [`read_cookies`](../../src/kb_mcp/sources/atlassian/fetch/adapters/session_file.py)
   and
   [`write_cookies`](../../src/kb_mcp/sources/atlassian/fetch/adapters/session_file.py).

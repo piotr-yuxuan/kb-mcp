@@ -21,7 +21,7 @@ import pytest
 
 from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.fetch.adapters import http
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.composed import MODEL
 from tests.endpoint import Scripted, serving
 from tests.test_fetching import SITE, FakeSite
@@ -337,7 +337,9 @@ def test_a_fetch_declined_or_refused_asks_the_site_nothing(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "kb-mcp").resolve(),
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     before = tree(home)

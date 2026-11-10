@@ -20,6 +20,8 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
+    adopt_former_session,
+    folder_of,
     for_site,
     read_cookies,
     write_cookies,
@@ -48,9 +50,12 @@ class SignIn(Protocol):
     def keep(self, client: httpx.Client) -> None:
         """Keep what a run has left of the sign-in, for the next run."""
 
+    def adopt_former(self) -> None:
+        """Take what a run that writes finds of the sign-in kept before it was a site's."""
+
 
 class SavedSession(Record):
-    """The site's cookies, which ``login`` saved under the session's folder."""
+    """The site's cookies, which ``login`` saved under the site's folder of the session."""
 
     site: str
     folder: Path
@@ -58,9 +63,14 @@ class SavedSession(Record):
     name: str = "the session saved by login"
 
     def client(self) -> httpx.Client:
-        """Return a client carrying the saved cookies; raise SignInNeededError if none are."""
+        """Return a client carrying the saved cookies; raise SignInNeededError if none are.
+
+        Until a run that writes moves it, the session kept before sessions were a site's
+        signs in, so that a dry run or ``doctor`` before it needs no login.
+        """
+        own = self.folder / COOKIES
         try:
-            cookies = read_cookies(self.folder / COOKIES)
+            cookies = read_cookies(own if own.exists() else self.folder.parent / COOKIES)
         except OSError, ValueError:
             raise SignInNeededError from None
         return http.client(self.site, cookies)
@@ -69,6 +79,10 @@ class SavedSession(Record):
         """Write back the site's cookies that the client holds, renewed ones included."""
         host = urlsplit(self.site).hostname or ""
         write_cookies(self.folder / COOKIES, for_site(http.jar(client), host))
+
+    def adopt_former(self) -> None:
+        """Move the session kept before sessions were a site's into this site's folder."""
+        adopt_former_session(self.folder.parent, self.site)
 
 
 class ApiToken(Record):
@@ -97,6 +111,9 @@ class ApiToken(Record):
     def keep(self, client: httpx.Client) -> None:
         """Keep nothing: the environment gives the token to each run."""
 
+    def adopt_former(self) -> None:
+        """Take nothing: a token reads and writes nothing of a session."""
+
 
 def choose_sign_in(settings: Settings, source: str) -> SignIn:
     """Sign in by the source's API token when one is set, else by the session that ``login`` saved.
@@ -109,7 +126,8 @@ def choose_sign_in(settings: Settings, source: str) -> SignIn:
     token = table.api_token
     if token is None:
         again = f"run kb-mcp login {source}"
-        return SavedSession(site=str(table.site), folder=settings.session, again=again)
+        site = str(table.site)
+        return SavedSession(site=site, folder=folder_of(settings.session, site), again=again)
     pair = f"{table.email or ''}:{token.get_secret_value()}"
     return ApiToken(
         site=str(table.site),

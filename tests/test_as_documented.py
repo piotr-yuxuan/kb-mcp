@@ -37,7 +37,7 @@ from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
@@ -108,7 +108,9 @@ def signed_in(
     chosen = MODEL(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=data.resolve()
     )
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     transport = httpx.MockTransport(handle)
     monkeypatch.setattr(
         http, "client", lambda site, cookies, hooks=(): CLIENT(site, cookies, hooks, transport)
@@ -132,7 +134,8 @@ def test_fetch_records_as_documented(
     video skipped and a file gone, over the period given; the next catches up on both
     from their last fetch, without --since. Then a space whose pages the site cannot
     serve, retried until they fail; a space not found; a period refused, a store busy,
-    Ctrl-C, and a session no longer saved.
+    Ctrl-C, and a session no longer saved; then the session kept before it was a site's,
+    of this site, which moves, then of another, which stays.
     """
     emitted = Emitted()
     since = ("--since", "2026-10-02")
@@ -166,9 +169,14 @@ def test_fetch_records_as_documented(
     monkeypatch.setattr(time, "sleep", interrupted)
     with emitted.gathering(telemetry, "fetch"):
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.INTERRUPTED
-    (chosen.session / COOKIES).unlink()
+    (folder_of(chosen.session, SITE) / COOKIES).unlink()
     with emitted.gathering(telemetry, "fetch"):
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.SIGN_IN_AGAIN
+    folder_of(chosen.session, SITE).rmdir()
+    for domain in (httpx.URL(SITE).host, "elsewhere.invalid"):
+        write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": domain}])
+        with emitted.gathering(telemetry, "fetch"):
+            main(fetch_arguments(data, "--space", "MFS", *since))
     assert undocumented("fetch", emitted) == []
 
 

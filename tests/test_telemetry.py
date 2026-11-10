@@ -31,7 +31,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.observability.adapters.logs import SDK
 from kb_mcp.observability.adapters.telemetry import Exported
 from kb_mcp.observability.app.observed import early
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.collector import LOGS, METRICS, TRACES, Collector, attributes, collecting, plain
 from tests.endpoint import nothing_listening
 from tests.test_api_token import (
@@ -264,7 +264,7 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
                 token.setenv(email, ADDRESS)
                 token.setenv(credential, SENTINEL)
             assert main(fetch_arguments(tmp_path, "-vv")) == SIGN_IN_NEEDED
-        session = tmp_path / "kb-mcp" / "session" / COOKIES
+        session = folder_of(tmp_path / "kb-mcp" / "session", SITE) / COOKIES
         write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
         assert main(fetch_arguments(tmp_path, "-vv")) == ExitStatus.FAILED
     finally:

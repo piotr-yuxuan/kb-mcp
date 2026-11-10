@@ -36,7 +36,7 @@ from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
@@ -132,7 +132,9 @@ def site(monkeypatch: MonkeyPatch) -> FakeSite:
 
 def signed_in(settings: Settings) -> Settings:
     """Save a session in the settings' data folder, and give the settings."""
-    write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(settings.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     return settings
 
 
@@ -318,7 +320,9 @@ def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: P
     config = home / "config.toml"
     config.write_text(f'[sources.wiki]\nspaces = ["MFS"]\nsite = "{SITE}"\n')
     data = home / "data"
-    write_cookies(data / "session" / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(data / "session", SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     given = ["--yes", "--config", str(config), "--data-dir", str(data), "wiki"]
     # A file of the scripted site fails, which fails the fetch.
     assert main(["fetch", *given, "--since", SINCE["--since"]], registry) == ExitStatus.FAILED

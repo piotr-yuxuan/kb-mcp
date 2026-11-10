@@ -1036,13 +1036,21 @@ A `<data>/models/` folder left by plan 011 is read by nothing.
 
 ## The session
 
-Owned by `login` (004). `<data>/session/` has mode `0700`; it holds the browser profile
-of the sign-in window and the saved session cookies (mode `0600`). Agents are never
-given access to it: only `<data>/docs/` is shared with them.
+Owned by `login` (004). `<data>/session/` has mode `0700`; it holds a folder per site,
+named after its host, `<data>/session/<host>/`, mode `0700` too, which two sources of one
+site share (059): the browser profile of the sign-in window, `browser/`, and the saved
+session cookies, `cookies.json` (mode `0600`). Agents are never given access to it: only
+`<data>/docs/` is shared with them.
+
+A session kept before sessions were a site's, `<data>/session/cookies.json` and
+`<data>/session/browser/`, still signs in a source whose site has none of its own; the
+first `fetch` that writes, or `login`, of the site whose host its cookies are of moves it
+into that site's folder, once (`session.moved`), and a dry run, `doctor` or `serve` moves
+nothing. Cookies of no configured site's host stay, with a warning (`session.not_moved`),
+until removed.
 
 `sources.atlassian.fetch.adapters.sign_in` chooses how each source signs in (015, 059): by
 an API token when its setting `api_token`, such as `sources.jira.api_token`, is set, else
-by the saved session,
-whose cookies a run writes back as the site renews them. A run signed in by a token reads and writes
+by the saved session of its site, whose cookies a run writes back as the site renews them. A run signed in by a token reads and writes
 nothing under `<data>/session/`, and keeps nothing of the token, which the environment
 gives to each run and no file under `<data>` holds.

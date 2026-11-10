@@ -42,7 +42,7 @@ from kb_mcp.mirror.adapters.pandoc import (
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain import names
@@ -386,7 +386,10 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
         data_dir=(home / "data").resolve(),
     )
-    write_cookies(chosen_settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen_settings.session, SITE) / COOKIES,
+        [{"name": "s", "value": "v", "domain": "x"}],
+    )
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     return fake
@@ -537,7 +540,9 @@ def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
             "worklog": {"path": worklog},
         },
     )
-    write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(settings.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     return settings
 
 

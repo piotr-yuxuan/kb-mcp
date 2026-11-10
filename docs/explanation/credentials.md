@@ -11,7 +11,7 @@ in [the trade-offs](trade-offs.md#cookies-and-api-tokens).
 
 | Secret | Given by | Kept by the program | Sent to |
 |---|---|---|---|
-| the session's cookies | `login`, in a Chrome window | `<data>/session/cookies.json`, beside the window's own profile | the site's host alone |
+| the session's cookies | `login`, in a Chrome window | `<data>/session/<host>/cookies.json`, beside the window's own profile, a folder a site | the site's host alone |
 | the API token, with its email | each source's variable, such as `KB_MCP_SOURCES__JIRA__API_TOKEN`, in one run's environment | nowhere | the source's site's host alone, as Basic auth |
 | the embedding key | `KB_MCP_EMBEDDING_API_KEY`, in one run's environment | nowhere | the embedding endpoint alone, as a bearer token |
 
@@ -27,7 +27,8 @@ included; the site's cookies are then saved for the runs that follow. Each step 
 what the window sees and what it keeps:
 
 - **A profile of its own.** Playwright starts the installed Chrome, or the executable
-  that `--chrome` names where that fails, on a profile under `<data>/session/browser/`,
+  that `--chrome` names where that fails, on a profile of the site, under
+  `<data>/session/<host>/browser/`,
   never your everyday one, so that your other sign-ins, saved passwords and extensions
   stay out of it
   ([`login`](../../src/kb_mcp/sources/atlassian/fetch/app/login.py),
