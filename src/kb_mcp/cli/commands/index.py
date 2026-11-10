@@ -21,7 +21,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outc
     """Update the index by words alone; exit as its outcome ends, 1 for a file left out.
 
     Nothing built is an error, and the index in place stays; each file skipped is a
-    problem, as is the count of files that the index lacks, even when nothing changed.
+    problem at each run, even when nothing changed.
     ``vectors.sqlite`` stays as it is.
     """
     indexing = indexing_of(loaded.settings, None)

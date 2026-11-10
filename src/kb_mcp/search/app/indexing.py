@@ -662,12 +662,11 @@ def filling(index: SearchIndex, indexing: Indexing) -> Outcome[Filled]:
     found = differences(digested(files), held)
     warned: list[OutcomeWarning] = []
     if found.changed or found.added or found.removed:
-        said = f"{len(found.changed)} changed, {len(found.added)} added, {len(found.removed)}"
-        warned.append(
-            OutcomeWarning(
-                where="mirror", reason=f"{said} removed since the index: run kb-mcp index"
-            )
+        reason = (
+            f"{len(found.changed)} changed, {len(found.added)} added, {len(found.removed)}"
+            " removed since the index: run kb-mcp index"
         )
+        warned.append(OutcomeWarning(where="mirror", reason=reason))
         log.warning(
             "embed.mirror_changed",
             changed=len(found.changed),

@@ -220,7 +220,6 @@ copied: 0
 added: 13
 replaced: 0
 removed: 0
-skipped: 0
 rebuilt whole: unavailable
 ```
 
