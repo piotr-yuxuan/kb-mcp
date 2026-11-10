@@ -75,13 +75,6 @@ class Mention(Record):
         return self
 
 
-class Problem(Record):
-    """What a prepare did not write: where it is, and why, never its content."""
-
-    where: str
-    reason: str
-
-
 def ref_of(key: str | None, identifier: str) -> str:
     """Name a document as ``read`` takes it and links name it: its key, else its id."""
     return key or identifier

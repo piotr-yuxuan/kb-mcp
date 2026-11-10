@@ -1,4 +1,4 @@
-"""The doctor gives each check a verdict, and its status follows from them."""
+"""The doctor gives each check what it found, and its status folds their states."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from kb_mcp.cli.app.doctor import doctor
 from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.declared import ATLASSIAN
 from kb_mcp.sources.atlassian.fetch.adapters import http
-from kb_mcp.sources.stages import FAILED, SIGN_IN, WELL
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL
 
@@ -29,15 +28,15 @@ NOT_SIGNED_IN = 3
 A_SOURCE = "KB_MCP_SOURCES__JIRA__PROJECTS"
 
 
-def states(verdicts: list[object]) -> dict[str, str]:
+def states(checks: list[object]) -> dict[str, str]:
     """Map each check to its state."""
-    return {verdict.name: verdict.state for verdict in verdicts}  # type: ignore[attr-defined]
+    return {each.name: each.state for each in checks}  # type: ignore[attr-defined]
 
 
 def test_without_a_site_the_doctor_says_so_and_checks_no_network(tmp_path: Path) -> None:
-    """With no site set, the checks that need one are replaced by that verdict."""
+    """With no site set, the checks that need one are replaced by that check."""
     found = states(doctor(MODEL(data_dir=tmp_path / "data"), [ATLASSIAN]))
-    assert found["site"] == FAILED
+    assert found["site"] == "failed"
     assert "tls" not in found
     assert "sign-in" not in found
 
@@ -45,10 +44,10 @@ def test_without_a_site_the_doctor_says_so_and_checks_no_network(tmp_path: Path)
 def test_a_missing_pandoc_fails_its_check(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The mirror needs pandoc; its absence is said plainly."""
     monkeypatch.setenv("PATH", str(tmp_path))
-    assert states(doctor(MODEL(data_dir=tmp_path / "data"), []))["pandoc"] == FAILED
+    assert states(doctor(MODEL(data_dir=tmp_path / "data"), []))["pandoc"] == "failed"
 
 
-@pytest.mark.parametrize(("verified", "state"), [(True, WELL), (False, WELL), (None, FAILED)])
+@pytest.mark.parametrize(("verified", "state"), [(True, "well"), (False, "well"), (None, "failed")])
 def test_tls_inspection_is_reported_and_only_no_answer_fails(
     tmp_path: Path, monkeypatch: MonkeyPatch, *, verified: bool | None, state: str
 ) -> None:
@@ -81,7 +80,7 @@ def test_without_a_saved_session_the_doctor_exits_3(
                 [ATLASSIAN],
             )
         )["sign-in"]
-        == SIGN_IN
+        == "sign in again"
     )
 
 
@@ -95,7 +94,7 @@ def test_a_check_that_fails_makes_the_doctor_exit_1(
 
 
 @pytest.mark.parametrize(
-    ("summary", "named"),
+    ("detail", "named"),
     [
         ("short", ["pandoc", "site"]),
         ("detailed", ["python", "pandoc", "data directory", "site"]),
@@ -105,22 +104,22 @@ def test_the_doctor_shows_the_checks_not_well_or_in_detail_every_one(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
-    summary: str,
+    detail: str,
     named: list[str],
 ) -> None:
     """Without pandoc nor a site: those two in short, all four in detail, then the count well."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
-    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--summary", summary]
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--detail", detail]
     assert main(options) == SOME_FAILED
-    *verdicts, count = capsys.readouterr().out.splitlines()
-    assert [verdict.split(": ")[0] for verdict in verdicts] == named
-    assert "pandoc: not found on PATH" in verdicts
+    *checks, count = capsys.readouterr().out.splitlines()
+    assert [check.split(": ")[0] for check in checks] == named
+    assert "pandoc: not found on PATH" in checks
     assert count == "2 of 4 checks well"
 
 
-def test_the_doctor_gives_every_verdict_as_json(
+def test_the_doctor_gives_every_check_as_json(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """One document: each check's name, what it found, and its state."""
@@ -129,14 +128,14 @@ def test_the_doctor_gives_every_verdict_as_json(
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
     assert main(options) == SOME_FAILED
-    verdicts = json.loads(capsys.readouterr().out)
-    assert [(verdict["name"], verdict["state"]) for verdict in verdicts] == [
-        ("python", WELL),
-        ("pandoc", FAILED),
-        ("data directory", WELL),
-        ("site", FAILED),
+    checks = json.loads(capsys.readouterr().out)
+    assert [(check["name"], check["state"]) for check in checks] == [
+        ("python", "well"),
+        ("pandoc", "failed"),
+        ("data directory", "well"),
+        ("site", "failed"),
     ]
-    assert verdicts[1]["found"] == "not found on PATH"
+    assert checks[1]["found"] == "not found on PATH"
 
 
 def test_a_machine_with_neither_a_site_nor_a_source_of_it_gets_the_machine_s_checks_alone(
@@ -179,7 +178,7 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
     assert "no site nor source of it: its sign-in not checked" in err
     assert "token-sentinel-7f2b" not in err
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
-    assert main([*options, "--summary", "detailed"]) == SOME_FAILED
+    assert main([*options, "--detail", "detailed"]) == SOME_FAILED
     assert f"{A_SOURCE}): not read by doctor" not in capsys.readouterr().err
 
 

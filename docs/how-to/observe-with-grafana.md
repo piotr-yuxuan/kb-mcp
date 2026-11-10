@@ -45,7 +45,7 @@ port and no path: `localhost` is refused, since a name could lead elsewhere. `ch
 shows the endpoint that a run would use, and its layer:
 
 ```bash
-kb-mcp check --summary detailed
+kb-mcp check --detail detailed
 ```
 
 Every command says on stderr, before it acts, that telemetry is on, where to, and which

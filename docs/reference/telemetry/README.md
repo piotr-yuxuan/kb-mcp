@@ -119,7 +119,7 @@ not settings.
 ## Telemetry
 
 Off unless an endpoint is set. Whatever layer sets it, every command says so on stderr
-before it acts, `telemetry: on, to <endpoint> (<layer>)`, unless `-q`: in its preview
+before it acts, `telemetry: on, to <endpoint> (<layer>)`, unless `-q`: in its echo
 if it writes, else before the values it ignores. So `serve`, which an agent starts with
 its own environment, says when `OTEL_EXPORTER_OTLP_ENDPOINT`, set there for another
 program, turns it on. `run.start` names the endpoint and its layer too, at INFO.

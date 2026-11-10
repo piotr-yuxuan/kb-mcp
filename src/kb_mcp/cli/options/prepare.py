@@ -33,19 +33,20 @@ def register(
         "prepare",
         help="turn what each source holds into the Markdown mirror",
         epilog=(
-            "With --format json: exit_status, the run's; sources, a row per source taken, in"
-            " the registry's order, each with its source, its outcome (done, failed,"
-            " interrupted, not run) and its result, null when it gave none: its outcome, and"
-            " under mirrored what the source's documents became, null when it did not run:"
-            " documents, how many it prepared; for Confluence and Jira, converted, the"
-            " conversions pandoc ran, and reused, those the cache gave, a document's file and"
-            " a space's tree being one each; changes, the files written, unchanged and"
-            " removed; unsupported, what the mirror does not show, by name; problems, each by"
-            " its place and why; elsewhere, those that it found reading the other source's,"
-            " by that source, which fail nothing of its own. For the work log: documents;"
-            " changes; html, the HTML transcripts left out; warnings; problems, each with what"
-            " it held back; in a dry run, documents, to_convert, to_remove, html, warnings and"
-            " problems."
+            "With --format json: `exit_status`, the run's; `sources`, a row per source"
+            " taken, in the registry's order, each with its `source`, its `ending` (done,"
+            " failed, interrupted, not run), its `counts`, null when it gave none, as a dry"
+            " run of Confluence or Jira, which counts nothing, and its `problems` and"
+            " `warnings`, each with its `where` and `reason`; a warning of Confluence or Jira"
+            " may be what it could not read of the other source's, which fails nothing of"
+            " its own. Confluence's and Jira's counts: `documents`, how many it prepared;"
+            " `converted`, the conversions pandoc ran, and `reused`, those the cache gave, a"
+            " document's file and a space's tree being one each; `changes`, the files"
+            " `written`, `unchanged` and `removed`; `unsupported`, what the mirror does not"
+            " show, by name. The work log's: `documents`; `changes`; `html`, the HTML"
+            " transcripts left out; `held_back`, by each problem's place, what keeps its"
+            " last copy; in a dry run, `documents`, `to_convert`, `to_remove`, `html` and"
+            " `held_back`."
         ),
     )
     actions, flags = add_settings_options(parser)

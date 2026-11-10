@@ -6,7 +6,7 @@ it covers, is set. ``fetch`` takes every source that has a fetcher and is config
 those named. ``prepare`` takes every source that keeps a store, which its fetcher says,
 whatever the store holds, and each read in place when it is configured, or those named.
 Each is taken once, in the registry's order, whatever the order typed. A source's options
-and light checks are its fetch's: each source taken says what the preview says of it, by
+and light checks are its fetch's: each source taken says what the echo says of it, by
 its declaration; an option that no setting holds, given, is said ignored by each source
 taken that does not declare it. Beside them, ``accounts_to_check``: which sign-ins
 ``doctor`` checks, by the same settings.

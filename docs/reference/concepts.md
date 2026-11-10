@@ -531,7 +531,9 @@ left, whatever their endings. No source depends on another. Each unit gives an
   transcript, or a mirror that changed since the index;
 - an ending: done; failed; sign in again; not run, for a unit that a dry run leaves
   alone, that an interruption reached before it started, or whose unit before it on its
-  source did not end done; or interrupted.
+  source did not end done; or interrupted. A unit of a dry run that finds a problem, or a
+  sign-in that no longer holds, ends failed or sign in again all the same, so that its
+  exit status says so.
 
 A run may also end with an ending of its own: before any unit acts, declined (the
 question asked before it writes is answered otherwise than yes), refused (its
@@ -602,24 +604,19 @@ status; telemetry tags every span and event of a run with its run id.
 **In the code.** [`Run`](../../src/kb_mcp/observability/app/observed.py), one
 invocation, with its run id, log and trace; the event `run.start`, which logs the
 settings, secrets masked. The outcome:
-[`RunReport`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
-[`FetchOutcome`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py),
-[`AtlassianPrepareOutcome`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py),
-[`WorklogPrepareOutcome`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py),
-[`IndexReport`](../../src/kb_mcp/search/app/indexing.py) and
+[`Outcome`](../../src/kb_mcp/kernel/outcome.py), with
+[`OutcomeWarning`](../../src/kb_mcp/kernel/outcome.py), whose counts are each
+stage's record, such as
+[`FetchCounts`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
+[`IndexCounts`](../../src/kb_mcp/search/app/indexing.py); embed's
 [`Filled`](../../src/kb_mcp/search/app/indexing.py). The ending:
-[`Outcome`](../../src/kb_mcp/sources/stages.py),
-[`RowOutcome`](../../src/kb_mcp/cli/domain/rows.py) and
-[`RANKED`](../../src/kb_mcp/cli/domain/rows.py),
-[`Verdict`](../../src/kb_mcp/sources/stages.py) and
-[`Verdict.state`](../../src/kb_mcp/sources/stages.py),
+[`Ending`](../../src/kb_mcp/kernel/exit_status.py) and
+[`folded`](../../src/kb_mcp/kernel/exit_status.py),
+[`Check`](../../src/kb_mcp/sources/stages.py) and
+[`Check.state`](../../src/kb_mcp/sources/stages.py),
 [`ExitStatus`](../../src/kb_mcp/kernel/exit_status.py) and
 [`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py). The problem:
-[`Problem`](../../src/kb_mcp/mirror/domain/mirror.py),
-[`WorklogProblem`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py),
-[`Unreadable`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-[`UnreadFile`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py) and
-[`IndexReport.skipped`](../../src/kb_mcp/search/app/indexing.py).
+[`Problem`](../../src/kb_mcp/kernel/outcome.py).
 
 ### store
 
@@ -781,8 +778,8 @@ store's own records.
 
 - **In the code.**
   [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-  [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and
-  [`Unreadable`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
+  [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and,
+  for what its adapter refuses, a [`Problem`](../../src/kb_mcp/kernel/outcome.py).
 
 ### snapshot
 
@@ -867,8 +864,8 @@ A subcommand of `kb-mcp`; each invocation of one is a [run](#run), save `complet
 What a [run](#run) writes on stderr before it acts or asks: the resolved settings and
 their layers, each source's lines, and the command to copy.
 
-- **In the code.** The module [preview.py](../../src/kb_mcp/cli/domain/preview.py), with
-  [`before`](../../src/kb_mcp/cli/domain/preview.py).
+- **In the code.** The module [echo.py](../../src/kb_mcp/cli/domain/echo.py), with
+  [`before`](../../src/kb_mcp/cli/domain/echo.py).
 
 ### detail
 
@@ -876,7 +873,7 @@ One axis of how a [run](#run)'s result is written, beside its format and level: 
 or `detailed`. JSON ignores it.
 
 - **In the code.** [`Detail`](../../src/kb_mcp/kernel/output.py) and
-  [`DETAILS`](../../src/kb_mcp/kernel/output.py); the option `--summary`.
+  [`DETAILS`](../../src/kb_mcp/kernel/output.py); the option `--detail`.
 
 ### setting
 

@@ -506,8 +506,8 @@ def test_the_check_of_documented_commands_refuses_a_prefix_of_an_option() -> Non
         ("kb-mcp fetch 2>&1 --simulate", [["fetch", "--simulate"]]),
         ("kb-mcp fetch > fetch.log --simulate", [["fetch", "--simulate"]]),
         (
-            "kb-mcp fetch --summary detailed#x # look first, it's cheap",
-            [["fetch", "--summary", "detailed#x"]],
+            "kb-mcp fetch --detail detailed#x # look first, it's cheap",
+            [["fetch", "--detail", "detailed#x"]],
         ),
         ("# kb-mcp fetch asks before it writes", []),
         (

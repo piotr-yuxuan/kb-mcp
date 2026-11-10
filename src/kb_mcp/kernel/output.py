@@ -25,14 +25,14 @@ class Output:
     """How a run reports, as its options and its terminals say.
 
     ``level`` is the least severe of what it says on stderr, and leaves stdout alone;
-    ``summary`` and ``format`` say how its result is written on stdout. ``quiet``, from
+    ``detail`` and ``format`` say how its result is written on stdout. ``quiet``, from
     -q alone, which sets the level error, leaves a result as text unwritten, and what is
     said before a run that asks nothing. ``stdin_terminal`` and ``stderr_terminal`` say
     whether someone can read a question there and answer it.
     """
 
     level: Level
-    summary: Detail
+    detail: Detail
     format: Format
     quiet: bool
     stdin_terminal: bool

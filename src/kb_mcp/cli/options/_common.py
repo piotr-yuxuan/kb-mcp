@@ -56,15 +56,15 @@ class Quiet(argparse.Action):
 
 
 def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) -> None:
-    """Add -q, -v and --log-level, which exclude one another, then --format and --summary.
+    """Add -q, -v and --log-level, which exclude one another, then --format and --detail.
 
     Each of the three sets ``level``: warning by default, info with -v, debug with -vv,
     error with -q. -q alone also sets ``quiet``, which leaves a result as text unwritten,
     as Unix has it; a level leaves stdout alone. Without ``result``, for a command whose
-    output is its own, such as a protocol, --format and --summary are not offered, and
+    output is its own, such as a protocol, --format and --detail are not offered, and
     take their defaults.
     """
-    parser.set_defaults(level=VERBOSITY[0], quiet=False, format=FORMATS[0], summary=DETAILS[0])
+    parser.set_defaults(level=VERBOSITY[0], quiet=False, format=FORMATS[0], detail=DETAILS[0])
     levels = parser.add_mutually_exclusive_group()
     levels.add_argument(
         "-q",
@@ -87,7 +87,7 @@ def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) 
             "--format", choices=FORMATS, help="write the result as text, or as one JSON document"
         )
         parser.add_argument(
-            "--summary", choices=DETAILS, help="write what matters of the result, or all of it"
+            "--detail", choices=DETAILS, help="write what matters of the result, or all of it"
         )
 
 

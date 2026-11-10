@@ -12,28 +12,13 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
-from kb_mcp.sources.stages import Result
-from kb_mcp.sources.worklog.prepare.app.prepare import (
-    WorklogDryRun,
-    WorklogPrepareOutcome,
-    plan_worklog,
-    prepare_worklog,
-)
+from kb_mcp.sources.worklog.prepare.app.prepare import plan_worklog, prepare_worklog
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.output import Detail
     from kb_mcp.sources.stages import SourceRun
-
-
-class WorklogPrepared(Result):
-    """A prepare: how it ended, and what it did or a dry run would, None when it could not."""
-
-    mirrored: WorklogPrepareOutcome | WorklogDryRun | None
-
-    def text(self, summary: Detail) -> str:
-        """Write the work log's counts; nothing when it could not run."""
-        return "" if self.mirrored is None else self.mirrored.text(summary)
+    from kb_mcp.sources.worklog.prepare.app.prepare import WorklogCounts, WorklogPlanned
 
 
 def preflight(run: SourceRun) -> str | None:
@@ -44,14 +29,14 @@ def preflight(run: SourceRun) -> str | None:
     return None
 
 
-def prepare(run: SourceRun) -> WorklogPrepared:
+def prepare(run: SourceRun) -> Outcome[WorklogCounts | WorklogPlanned]:
     """Mirror the work log, or count what a dry run would, with the pandoc found now.
 
     Pandoc gone from PATH since the run began, or giving no version, fails it, writing
-    nothing: an error, ``worklog.pandoc_failed``. Each problem is a warning,
+    nothing: a problem by pandoc and an error, ``worklog.pandoc_failed``. Each problem is a warning,
     ``worklog.problem``, by its place, its reason and what it held back, never content;
-    so is each warning, ``worklog.same_id``, and that a run with problems, not a dry
-    run, removed nothing, ``worklog.nothing_removed``.
+    so is that a run with problems, not a dry run, removed nothing,
+    ``worklog.nothing_removed``.
     """
     table = run.source_table
     act = plan_worklog if run.dry_run else prepare_worklog
@@ -59,17 +44,15 @@ def prepare(run: SourceRun) -> WorklogPrepared:
         done = act(table.path, run.settings.docs, Pandoc.find(), archives=table.archives)
     except (PandocMissingError, PandocFailedError) as error:
         structlog.get_logger().error("worklog.pandoc_failed", reason=str(error))
-        return WorklogPrepared(outcome="failed", mirrored=None)
+        return Outcome.of(problems=(Problem(where="pandoc", reason=str(error)),))
     log = structlog.get_logger()
     for problem in done.problems:
         log.warning(
             "worklog.problem",
             where=problem.where,
             reason=problem.reason,
-            held_back=problem.held_back,
+            held_back=done.counts.held_back[problem.where],
         )
-    for warning in done.warnings:
-        log.warning("worklog.same_id", reason=warning)
     if done.problems and not run.dry_run:
         log.warning("worklog.nothing_removed", problems=len(done.problems))
-    return WorklogPrepared(outcome="failed" if done.problems else "done", mirrored=done)
+    return done

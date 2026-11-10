@@ -23,10 +23,9 @@ max-complexity = 10
 # Pydantic reads a record's annotations when its class is made: the types they name are
 # imported at run time. Ruff follows a subclass of a subclass within one module alone, so
 # a record subclassed in another module is named too: the tests' Counting is a Pandoc,
-# each role's result a Result.
+# a source's row an Outcome.
 runtime-evaluated-base-classes = [
   "kb_mcp.kernel.record.Record",
   "kb_mcp.mirror.adapters.pandoc.Pandoc",
-  "kb_mcp.mirror.domain.mirror.Problem",
-  "kb_mcp.sources.stages.Result",
+  "kb_mcp.kernel.outcome.Outcome",
 ]

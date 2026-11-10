@@ -264,7 +264,7 @@ def test_the_command_in_detail_shows_every_group_how_the_index_was_built_and_the
     """The model's whole table, as ``table`` writes it, then the results file."""
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
-        options_given = [*options(data, url), "--summary", "detailed"]
+        options_given = [*options(data, url), "--detail", "detailed"]
         assert main(["eval", "--yes", str(data / "golden.yaml"), *options_given]) == 0
     [results] = (data / "eval" / "results").glob("*.json")
     out = capsys.readouterr().out

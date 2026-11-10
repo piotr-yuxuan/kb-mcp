@@ -509,12 +509,12 @@ measures the three modes on each, embeds only what `<data>/vectors.sqlite` lacks
 prints the tables, and writes the numbers (never the questions) to
 `<data>/eval/results/`. It measures every chunking, whatever the setting `chunking`
 says, unless `--chunking` names some; and the setting's model unless `--model` names
-others, several to compare them in one run. `--summary detailed` adds every group and
+others, several to compare them in one run. `--detail detailed` adds every group and
 the tests of each mode against words. To compare the defaults with the chunking that
 plan 019's rule kept:
 
 ```bash
-uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --summary detailed
+uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --detail detailed
 ```
 
 The first run embeds each chunking's chunks that the vector cache lacks, which took 31
@@ -528,7 +528,7 @@ For each model and chunking, the output has a part headed `## <model>, <chunking
   percentile of the time to rank one question, in milliseconds (see *Query time*,
   above). The row `hybrid` is the defaults' when the chunking is `windows`. Plan 018's
   bar asked for 200 ms at most; this laptop's CPU took 266 ms there.
-- With `--summary detailed`, `MRR@10, hybrid against lexical: p = ..., adjusted (Holm)
+- With `--detail detailed`, `MRR@10, hybrid against lexical: p = ..., adjusted (Holm)
   ...` tests hybrid search against words on that chunking. The rows of `lexical` come
   with the first chunking alone, since words ignore the chunking.
 - At the end, `Default chunking for <model>, by the rule: ...`, with each challenger's

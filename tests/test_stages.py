@@ -30,18 +30,19 @@ from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
-from kb_mcp.sources.atlassian.fetch.app.fetcher import Fetched
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Target
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
-from kb_mcp.sources.worklog.prepare.app.prepare import WorklogDryRun, WorklogPrepareOutcome
+from kb_mcp.sources.worklog.prepare.app.prepare import WorklogCounts, WorklogPlanned
 from tests.composed import MODEL
 from tests.samples import v2_space
 from tests.test_fetching import SITE, FakeSite
@@ -282,14 +283,12 @@ def test_the_fetcher_fetches_the_targets_of_the_source_that_it_runs_for(
     fetcher = fetcher_of(CONFLUENCE)
     confluence = fetcher.fetch(run_of(CONFLUENCE, signed_in(settings), SINCE))
     first = list(site.asked)
-    assert isinstance(confluence, Fetched)
-    assert confluence.downloaded is not None
+    assert isinstance(confluence.counts, FetchCounts)
     covered = RawStore(settings.raw).coverage().periods
     assert set(covered) == {Target(source="confluence", key="MFS")}
     jira = fetcher_of(JIRA).fetch(run_of(JIRA, settings, SINCE))
     then = site.asked[len(first) :]
-    assert isinstance(jira, Fetched)
-    assert jira.downloaded is not None
+    assert isinstance(jira.counts, FetchCounts)
     assert first
     assert [url.path for url in first if url.path.startswith("/rest/api/3/")] == []
     assert then
@@ -305,16 +304,16 @@ def test_a_fetch_with_no_session_saved_is_to_sign_in_before_any_request(
 ) -> None:
     """No token and no session: the outcome says to sign in, and the site is asked nothing."""
     fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, settings, SINCE))
-    assert fetched.outcome == "sign in"
+    assert fetched.ending == "sign in again"
     assert site.asked == []
 
 
 def test_a_dry_run_fetch_plans_and_writes_nothing(settings: Settings, site: FakeSite) -> None:
     """The fetcher plans: it asks the site, and the raw store is not written."""
     fetched = fetcher_of(JIRA).fetch(run_of(JIRA, signed_in(settings), SINCE, dry_run=True))
-    assert isinstance(fetched, Fetched)
-    assert fetched.downloaded is not None
-    assert fetched.downloaded.dry_run
+    assert fetched.ending == "not run"
+    assert isinstance(fetched.counts, FetchCounts)
+    assert fetched.counts.dry_run
     assert site.asked
     assert not settings.raw.exists()
 
@@ -408,7 +407,7 @@ def test_a_fetch_of_jira_neither_reads_nor_rewrites_what_answered_as_gone(
     stones.write_text(record, "utf-8")
     run = run_of(JIRA, signed_in(settings), SINCE)
     assert fetcher_of(JIRA).preflight(run) is None
-    assert fetcher_of(JIRA).fetch(run).outcome == "done"
+    assert fetcher_of(JIRA).fetch(run).ending == "done"
     assert stones.read_text("utf-8") == record
     assert any(each.path.startswith("/rest/api/3/") for each in site.asked)
     assert not any(each.path.startswith("/wiki/") for each in site.asked)
@@ -422,7 +421,7 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
     (settings.raw / "tombstones.json").write_text(RECORDS[1], "utf-8")
     run = run_of(CONFLUENCE, signed_in(settings), SINCE)
     assert fetcher_of(CONFLUENCE).preflight(run) is None
-    assert fetcher_of(CONFLUENCE).fetch(run).downloaded is not None
+    assert fetcher_of(CONFLUENCE).fetch(run).counts is not None
     assert list(RawStore(settings.raw).tombstones()) == [("pages", "1001")]
     assert any(each.path.startswith("/wiki/") for each in site.asked)
 
@@ -493,8 +492,10 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
         (settings.raw / "tombstones.json").write_text("not json", "utf-8")
     with capture_logs() as events:
         fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), options))
-    assert isinstance(fetched, Fetched)
-    assert (fetched.outcome, fetched.downloaded) == ("failed", None)
+    assert (fetched.ending, fetched.counts) == ("failed", None)
+    (problem,) = fetched.problems
+    assert problem.where == "confluence"
+    assert said in problem.reason
     (refused,) = [each for each in events if each["event"] == "fetch.refused"]
     assert refused["log_level"] == "error"
     assert refused["source"] == "confluence"
@@ -511,7 +512,7 @@ def test_the_fetch_s_text_is_what_download_writes(
     A file of the scripted site fails, which fails both.
     """
     fetched = fetcher_of(CONFLUENCE).fetch(run_of(CONFLUENCE, signed_in(settings), SINCE))
-    assert fetched.outcome == "failed"
+    assert fetched.ending == "failed"
     other = signed_in(settings_of(home / "other", worklog))
     command = ["fetch", "--yes", "--config", str(home / "none.toml"), "--space", "MFS"]
     period = ["--since", SINCE["--since"]]
@@ -529,13 +530,13 @@ def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for
     preparer = preparer_of(CONFLUENCE)
     assert preparer.preflight(run_of(CONFLUENCE, stored)) is None
     confluence = preparer.prepare(run_of(CONFLUENCE, stored))
-    assert (confluence.outcome, folders(stored.docs), cached(stored)) == (
+    assert (confluence.ending, folders(stored.docs), cached(stored)) == (
         "done",
         {"confluence"},
         {"confluence"},
     )
     jira = preparer_of(JIRA).prepare(run_of(JIRA, stored))
-    assert (jira.outcome, folders(stored.docs), cached(stored)) == (
+    assert (jira.ending, folders(stored.docs), cached(stored)) == (
         "done",
         {"confluence", "jira"},
         {"confluence", "jira"},
@@ -551,8 +552,8 @@ def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     said = ""
     for declared in (CONFLUENCE, JIRA):
         result = preparer_of(declared).prepare(run_of(declared, stored))
-        said += row_text(declared.name, result.outcome, result.text("detailed"))
-    command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--summary", "detailed"]
+        said += row_text(declared.name, result.ending, result.text("detailed"))
+    command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--detail", "detailed"]
     capsys.readouterr()  # what the prepares logged, outside a run, which has no log file
     assert main([*command, "--data-dir", str(other), "--site", SITE]) == ExitStatus.OK
     assert capsys.readouterr().out == said
@@ -562,8 +563,8 @@ def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
 def test_a_dry_run_leaves_the_atlassian_prepare_alone(stored: Settings) -> None:
     """Nothing is converted nor written, and the result says that it counts nothing."""
     result = preparer_of(CONFLUENCE).prepare(run_of(CONFLUENCE, stored, dry_run=True))
-    assert result.outcome == "not run"
-    assert result.text("detailed").startswith("not counted: ")
+    assert (result.ending, result.counts) == ("not run", None)
+    assert result.text("detailed").startswith("warning: confluence: not counted: ")
     assert not stored.docs.exists()
 
 
@@ -582,9 +583,9 @@ def test_pandoc_gone_fails_each_preparer_that_converts_and_writes_nothing(
             preparer_of(declared).prepare(run_of(declared, stored))
             for declared in (CONFLUENCE, WORKLOG)
         ]
-    assert [(result.outcome, result.text("detailed")) for result in results] == [
-        ("failed", ""),
-        ("failed", ""),
+    assert [(result.ending, result.counts, result.problems) for result in results] == [
+        ("failed", None, (Problem(where="pandoc", reason=message),)),
+        ("failed", None, (Problem(where="pandoc", reason=message),)),
     ]
     assert [(each["event"], each["log_level"], each["reason"]) for each in logged] == [
         ("prepare.pandoc_missing", "error", message),
@@ -611,14 +612,14 @@ def test_the_work_log_s_preparer_counts_in_a_dry_run_then_mirrors_its_folder(
     """A dry run converts and writes nothing; a run writes every document under worklog/."""
     preparer = preparer_of(WORKLOG)
     planned = preparer.prepare(run_of(WORKLOG, settings, dry_run=True))
-    assert planned.outcome == "done"
-    assert isinstance(planned.mirrored, WorklogDryRun)
-    assert planned.mirrored.to_convert == WORKLOG_DOCUMENTS
+    assert planned.ending == "not run"
+    assert isinstance(planned.counts, WorklogPlanned)
+    assert planned.counts.to_convert == WORKLOG_DOCUMENTS
     assert not settings.docs.exists()
     done = preparer.prepare(run_of(WORKLOG, settings))
-    assert done.outcome == "done"
-    assert isinstance(done.mirrored, WorklogPrepareOutcome)
-    assert done.mirrored.documents == WORKLOG_DOCUMENTS
+    assert done.ending == "done"
+    assert isinstance(done.counts, WorklogCounts)
+    assert done.counts.documents == WORKLOG_DOCUMENTS
     assert folders(settings.docs) == {"worklog"}
 
 
@@ -633,8 +634,8 @@ def test_the_work_log_s_text_is_what_prepare_writes_under_its_row(
     config = home / "config.toml"
     config.write_text(f'[sources.worklog]\npath = "{copied}"\n', "utf-8")
     command = ["prepare", "--yes", "--config", str(config), "worklog"]
-    given = [*command, "--data-dir", str(home / "other"), "--summary", "detailed"]
+    given = [*command, "--data-dir", str(home / "other"), "--detail", "detailed"]
     capsys.readouterr()  # what the prepare logged, outside a run, which has no log file
     assert main(given) == ExitStatus.OK
     out = capsys.readouterr().out
-    assert out.startswith(row_text("worklog", result.outcome, result.text("detailed")))
+    assert out.startswith(row_text("worklog", result.ending, result.text("detailed")))

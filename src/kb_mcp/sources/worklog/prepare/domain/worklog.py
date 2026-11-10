@@ -29,6 +29,7 @@ from kb_mcp.kernel.names import (
     RefusedError,
     require,
 )
+from kb_mcp.kernel.outcome import OutcomeWarning
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter
@@ -658,7 +659,7 @@ def in_archive(path: PurePosixPath) -> bool:
 
 def transcript_ids(
     paths: Iterable[PurePosixPath], *, archives: bool
-) -> tuple[dict[PurePosixPath, str], list[str]]:
+) -> tuple[dict[PurePosixPath, str], list[OutcomeWarning]]:
     """Return the id of each transcript among ``paths``, read or not, and the warnings.
 
     A transcript is an ``.org`` file under ``transcripts/`` or ``meetings/``, its id as
@@ -673,7 +674,7 @@ def transcript_ids(
     ``meetings/archive/`` are left out.
     """
     ids: dict[PurePosixPath, str] = {}
-    warnings: list[str] = []
+    warnings: list[OutcomeWarning] = []
     keepers: dict[str, PurePosixPath] = {}
     for path in sorted(
         (each for each in paths if each.suffix == ORG and each.parts[0] in TRANSCRIPT_FOLDERS),
@@ -683,7 +684,8 @@ def transcript_ids(
             continue
         identifier = transcript_id(path)
         if identifier in keepers:
-            warnings.append(f"{path}: same id as {keepers[identifier]}; named by its whole path")
+            reason = f"same id as {keepers[identifier]}; named by its whole path"
+            warnings.append(OutcomeWarning(where=str(path), reason=reason))
             identifier = f"t-{digest(f'/{path.as_posix()}')}"
         keepers[identifier] = path
         ids[path] = identifier

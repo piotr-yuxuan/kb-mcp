@@ -59,7 +59,7 @@ endpoint; `--chunking` names chunkings, every one by default:
 kb-mcp eval ~/kb-mcp/eval/golden.yaml --chunking sections --chunking windows
 ```
 
-`--summary detailed` gives every group and every test. [Evaluating
+`--detail detailed` gives every group and every test. [Evaluating
 search](../explanation/search-evaluation.md) explains each measure of `search`, the
 tests, and how the defaults were chosen; [chunking](../explanation/chunking.md), the
 chunkings and how they compared. To measure whether `ask` helps agents, see

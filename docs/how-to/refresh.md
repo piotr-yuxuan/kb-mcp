@@ -43,7 +43,7 @@ every command that writes does.
 1. **`fetch`** brings what changed of each configured source that has a fetcher,
    Confluence's spaces then Jira's projects, a row each. Without `--since`, each space and
    project fetches what changed since its last fetch, and asks again for what failed; one
-   never fetched takes its last 7 days, as the preview before the question says. `--since`
+   never fetched takes its last 7 days, as the echo before the question says. `--since`
    (`12h`, `7d`, `6mo`, an ISO date or time, or `all`) and `--until` set the period, and
    `--max-file-mb` the largest file kept. `--space` and `--project` replace a setting for
    one run. Each source's report goes to `<data>/runs/<time>-<source>.json`.
@@ -173,9 +173,10 @@ writes anything, nor asks. `index` and `embed` take none.
 
 ## 7. Read the result
 
-A row per source says how it ended: `done`, `failed`, `sign in`, `interrupted` or `not run`,
-then its counts; `--summary detailed` gives all of them, a fetch's beginning with each
-target's fetch window and what became of its coverage. A fetch counts what it fetches: with
+A row per source says how it ended: `done`, `failed`, `sign in again`, `interrupted` or
+`not run`, then what matters of its counts, and each problem and warning by its place and
+reason; `--detail detailed` gives every count, a fetch's beginning with each target's fetch
+window and what became of its coverage. A fetch counts what it fetches: with
 `--since`, the documents in the period and those already stored; without, those new or
 changed since the last fetch. `--format json` writes one document: `exit_status`, and
-`sources`, each with its `source`, `outcome` and `result`.
+`sources`, each with its `source`, `ending`, `counts`, `problems` and `warnings`.

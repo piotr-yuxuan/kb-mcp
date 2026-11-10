@@ -128,7 +128,7 @@ def arm_row(arm: Arm, group: str) -> str:
     )
 
 
-def text(evaluated: DepthsEvaluated, summary: Detail) -> str:
+def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     """Write each arm's row, every group's in detail; the first ranking's recall; the bar.
 
     The bar's verdicts come depth by depth, each clause said with the groups' losses,
@@ -143,7 +143,7 @@ def text(evaluated: DepthsEvaluated, summary: Detail) -> str:
     lines += [
         arm_row(arm, group)
         for arm in arms
-        for group in (groups if summary == "detailed" else ["all"])
+        for group in (groups if detail == "detailed" else ["all"])
     ]
     recall = ", ".join(f"@{size} {share:.3f}" for size, share in plain.recall.items())
     lines += ["", f"Recall of the order not reranked: {recall}", ""]

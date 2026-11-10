@@ -5,36 +5,32 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.app.doctor import doctor
-from kb_mcp.cli.domain.preview import values_of
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.sources import accounts_to_check
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.stages import FAILED, SIGN_IN, WELL
+from kb_mcp.kernel.exit_status import ExitStatus, folded
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Detail
-    from kb_mcp.sources.stages import Verdict
+    from kb_mcp.sources.stages import Check
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Verdict]]:
-    """Give each check's verdict; exit 1 if one fails, 3 to sign in again.
+def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list[Check]]:
+    """Give each check; exit as the worst of them ends the run: 1 failed, 3 to sign in again.
 
     A machine that uses no sign-in, as ``accounts_to_check`` judges, gets the machine's alone.
     """
     accounts = accounts_to_check(arguments.sources, values_of(loaded))
-    verdicts = doctor(loaded.settings, accounts.values())
-    states = {verdict.state for verdict in verdicts}
-    if SIGN_IN in states:
-        return ExitStatus.SIGN_IN_AGAIN, verdicts
-    return ExitStatus.FAILED if FAILED in states else ExitStatus.OK, verdicts
+    checks = doctor(loaded.settings, accounts.values())
+    return folded("done" if each.state == "well" else each.state for each in checks), checks
 
 
-def text(verdicts: list[Verdict], summary: Detail) -> str:
-    """Write the verdicts of the checks not well, in detail every one, then how many are well."""
-    shown = [verdict for verdict in verdicts if summary == "detailed" or verdict.state != WELL]
-    well = sum(verdict.state == WELL for verdict in verdicts)
-    return "".join(f"{verdict.name}: {verdict.found}\n" for verdict in shown) + (
-        f"{well} of {len(verdicts)} checks well\n"
+def text(checks: list[Check], detail: Detail) -> str:
+    """Write what the checks not well found, in detail every one, then how many are well."""
+    shown = [each for each in checks if detail == "detailed" or each.state != "well"]
+    well = sum(each.state == "well" for each in checks)
+    return "".join(f"{each.name}: {each.found}\n" for each in shown) + (
+        f"{well} of {len(checks)} checks well\n"
     )

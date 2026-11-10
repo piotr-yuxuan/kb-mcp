@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import re
 from dataclasses import dataclass, field
@@ -10,8 +11,10 @@ from typing import TYPE_CHECKING
 
 import httpx
 import pytest
+from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
@@ -22,7 +25,6 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     StoredSnapshot,
-    Unreadable,
 )
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
@@ -31,7 +33,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     write_cookies,
 )
 from kb_mcp.sources.atlassian.fetch.app import fetching as fetching_module
-from kb_mcp.sources.atlassian.fetch.app.fetching import Fetching, Targets, run_fetch
+from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Fetching, Targets, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import FetchWindow, Target
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
@@ -110,7 +112,8 @@ ISSUES = {
     ),
 }
 COMMENTS = [v3_comment(id="10100"), v3_comment(id="10101")]
-SERVED = ["Fresh page", "Page in a folder", "Old page", "Weekly news", "PRB-1", "MFS", "1001"]
+TITLES = ["Fresh page", "Page in a folder", "Old page", "Weekly news"]
+SERVED = [*TITLES, "PRB-1", "MFS", "1001"]
 
 
 @dataclass
@@ -332,7 +335,7 @@ def test_a_space_and_a_project_are_downloaded_with_their_files(tmp_path: Path) -
     assert isinstance(issue, StoredSnapshot)
     assert [comment.id for comment in issue.snapshot.comments] == ["10100", "10101"]
     assert store.blob(issue.blobs["10000"]).read_bytes() == PICTURE
-    assert done.report.failures == 0
+    assert done.problems == []
 
 
 def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) -> None:
@@ -381,7 +384,7 @@ def test_a_second_run_fetches_no_document_again(tmp_path: Path) -> None:
     done = run(store, again)
     fetched = [url.path for url in again.asked if "/pages/" in url.path or "/issue/" in url.path]
     assert fetched == []
-    assert done.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
+    assert done.counts.counts["confluence pages: already stored"] == len(["1001", "1002"])
 
 
 @pytest.mark.parametrize(
@@ -424,18 +427,19 @@ def test_a_changed_response_is_kept_raw_and_reported_by_its_path(tmp_path: Path)
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(changed_labels=True))
     results = {
-        item.where if isinstance(item, Unreadable) else item.snapshot.document.id: item
+        item.where if isinstance(item, Problem) else item.snapshot.document.id: item
         for item in store.latest(Page)
     }
     assert set(results) == {"1001", "confluence/pages/1002/000003"}
     reason = "document.json.labels.results[0].name: missing"
-    assert done.report.counts[f"confluence pages read failed: {reason}"] == 1
+    assert done.counts.counts[f"confluence pages read failed: {reason}"] == 1
+    assert done.problems == [Problem(where="confluence pages", reason=reason)]
 
 
 def test_the_report_names_nothing_the_site_served(tmp_path: Path) -> None:
     """Counts and paths only: no title, key, id or name."""
     done = run(RawStore(tmp_path / "raw"), FakeSite(changed_labels=True))
-    text = json.dumps(done.report.counts)
+    text = json.dumps(done.counts.counts)
     assert not [word for word in SERVED if word in text]
 
 
@@ -489,11 +493,11 @@ def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None
     The report is named by the run's source, after its time.
     """
     outcome = run_fetch(settings(tmp_path), targets(["MFS"], []), lambda: NOW, no_sleep)
-    assert outcome.status == SIGN_IN_NEEDED
-    assert outcome.report.counts["runs: stopped, sign-in needed"] == 1
+    assert outcome.ending == "sign in again"
+    assert outcome.counts.counts["runs: stopped, sign-in needed"] == 1
     [report] = (tmp_path / "data" / "runs").iterdir()
     assert report.name == "20261022T090000Z-confluence.json"
-    assert json.loads(report.read_text("utf-8"))["status"] == SIGN_IN_NEEDED
+    assert json.loads(report.read_text("utf-8"))["ending"] == "sign in again"
 
 
 @pytest.mark.parametrize(("spaces", "projects"), [([], []), (["MFS"], ["PRB"])])
@@ -521,9 +525,9 @@ def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     fake = FakeSite()
     chosen = saved_session(tmp_path, monkeypatch, fake)
     outcome = run_fetch(chosen, targets([], ["PRB"]), lambda: NOW, no_sleep)
-    assert outcome.status == 0
-    assert outcome.report.counts["jira issues: fetched"] == 1
-    assert [what for what in outcome.report.counts if "confluence" in what] == []
+    assert outcome.ending == "done"
+    assert outcome.counts.counts["jira issues: fetched"] == 1
+    assert [what for what in outcome.counts.counts if "confluence" in what] == []
     assert [url.path for url in fake.asked if url.path.startswith("/wiki/")] == []
     spans = {span.name for span in telemetry.spans.get_finished_spans()}
     assert "fetch.project" in spans
@@ -536,7 +540,7 @@ def test_an_expired_session_stops_the_run_before_anything_is_stored(
     """Confluence answering as to an anonymous user means the session has expired."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
     outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
-    assert outcome.status == SIGN_IN_NEEDED
+    assert outcome.ending == "sign in again"
     assert not (chosen.raw / "confluence" / "pages").exists()
 
 
@@ -546,10 +550,58 @@ def test_a_run_with_a_failure_says_so_in_its_status(
     """A document that failed makes the run's status 1, and its report says why."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
     outcome = run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
-    assert outcome.status == SOME_FAILED
-    assert outcome.report.failures == 1
+    assert outcome.ending == "failed"
+    assert [each.where for each in outcome.problems] == ["confluence pages"]  # read refused
     [report] = chosen.runs.iterdir()
-    assert json.loads(report.read_text("utf-8"))["status"] == SOME_FAILED
+    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
+
+
+@pytest.mark.parametrize(
+    ("stop", "ending"), [(KeyboardInterrupt, "interrupted"), (OSError, "failed")]
+)
+def test_a_run_that_something_stops_records_how(
+    stop: type[BaseException], ending: str, tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Ctrl-C leaves its record interrupted; any other error that stops it, failed."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
+
+    def stopped(*_: object) -> None:
+        raise stop
+
+    monkeypatch.setattr(Fetching, "run", stopped)
+    with pytest.raises(stop):
+        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    [report] = chosen.runs.iterdir()
+    assert json.loads(report.read_text("utf-8"))["ending"] == ending
+
+
+def test_a_run_whose_coverage_cannot_be_written_records_it_failed(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Every document fetched, then the coverage refused by the disk: the record says failed."""
+    chosen = saved_session(tmp_path, monkeypatch, FakeSite())
+
+    def refused(*_: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(RawStore, "put_coverage", refused)
+    with pytest.raises(OSError, match="No space left"):
+        run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
+    [report] = chosen.runs.iterdir()
+    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
+
+
+def test_a_count_is_named_with_a_colon_so_that_none_meets_the_windows() -> None:
+    """The counts are written beside ``windows`` and ``dry_run``: a name without one is refused."""
+    counts = FetchCounts()
+    counts.add("confluence pages: fetched")
+    with pytest.raises(ValueError, match="holds a colon"):
+        counts.add("windows")
+    assert to_jsonable_python(counts) == {
+        "confluence pages: fetched": 1,
+        "windows": [],
+        "dry_run": False,
+    }
 
 
 def test_only_the_site_cookies_with_a_value_are_saved_back(
@@ -582,16 +634,16 @@ def test_a_space_key_that_finds_nothing_fails_the_run_and_is_named_locally(
         site = SiteClient(client, sleep=no_sleep)
         done = Fetching(site, store, CAP, lambda: NOW, windows=week(["ENG"], []))
         done.run(["ENG"], [])
-    assert done.failed_targets == ["space ENG: not found"]
-    assert done.report.counts["confluence spaces failed: not found"] == 1
-    assert done.report.failures == 1
+    assert done.problems == [Problem(where="space ENG", reason="not found")]
+    assert done.counts.counts["confluence spaces failed: not found"] == 1
 
 
 def test_a_site_without_jira_still_downloads_its_spaces(tmp_path: Path) -> None:
     """Jira not answering is one failure; the spaces are downloaded all the same."""
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(jira=False))
-    assert done.report.counts["jira failed: status 404"] == 1
+    assert done.counts.counts["jira failed: status 404"] == 1
+    assert done.problems == [Problem(where="jira", reason="status 404")]
     assert [item for item in store.latest(Page) if isinstance(item, StoredSnapshot)]
     assert list(store.latest(Issue)) == []
 
@@ -607,7 +659,9 @@ def test_a_run_stops_when_the_site_stops_answering(tmp_path: Path) -> None:
         )
         with pytest.raises(TooManyFailuresError):
             done.run(["MFS"], [])
-    assert done.report.counts["confluence pages failed: status 503"] == MAX_FAILED_IN_A_ROW
+    assert done.counts.counts["confluence pages failed: status 503"] == MAX_FAILED_IN_A_ROW
+    assert {each.reason for each in done.problems} == {"status 503"}
+    assert len({each.where for each in done.problems}) == MAX_FAILED_IN_A_ROW
 
 
 def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
@@ -616,7 +670,8 @@ def test_an_answer_that_is_not_json_fails_one_document_and_the_run_goes_on(
     """A proxy page instead of one document's JSON costs that document alone."""
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(html_page="1002"))
-    assert done.report.counts["confluence pages failed: not JSON"] == 1
+    assert done.counts.counts["confluence pages failed: not JSON"] == 1
+    assert done.problems == [Problem(where="confluence pages 1002", reason="not JSON")]
     pages = [
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
     ]
@@ -632,14 +687,18 @@ def test_a_listing_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
     ]
     assert sorted(pages) == ["1001", "1002"]
-    assert done.report.counts["confluence pages: fetched"] == len(pages)
+    assert done.counts.counts["confluence pages: fetched"] == len(pages)
 
 
 def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None:
     """The snapshot is kept without the file; the next run fetches the file alone."""
     store = RawStore(tmp_path / "raw")
     first = run(store, FakeSite(media_fails=True))
-    assert first.report.counts["files failed: status 500"] >= 1
+    assert first.counts.counts["files failed: status 500"] >= 1
+    assert first.problems == [
+        Problem(where="file att1", reason="status 500"),
+        Problem(where="file 10000", reason="status 500"),
+    ]
     [fresh] = [
         item
         for item in store.latest(Page)
@@ -648,7 +707,7 @@ def test_a_file_that_failed_is_downloaded_by_a_later_run(tmp_path: Path) -> None
     assert "att1" not in fresh.blobs
     again = FakeSite()
     second = run(store, again)
-    assert second.report.counts["confluence pages: already stored"] == len(["1001", "1002"])
+    assert second.counts.counts["confluence pages: already stored"] == len(["1001", "1002"])
     assert store.read(fresh.snapshot.document).blobs["att1"]
     assert not [url for url in again.asked if url.path.startswith("/wiki/api/v2/pages/")]
 
@@ -659,9 +718,9 @@ def test_a_second_run_downloads_no_file_again(tmp_path: Path) -> None:
     run(store, FakeSite())
     again = FakeSite()
     done = run(store, again)
-    assert "files: downloaded" not in done.report.counts
-    assert done.report.counts["confluence blogposts: already stored"] == 1
-    assert done.report.counts["jira issues: already stored"] == 1
+    assert "files: downloaded" not in done.counts.counts
+    assert done.counts.counts["confluence blogposts: already stored"] == 1
+    assert done.counts.counts["jira issues: already stored"] == 1
     assert not [
         url for url in again.asked if "/attachment" in url.path or url.path == "/file/abc/binary"
     ]
@@ -675,7 +734,7 @@ def test_an_expired_session_still_leaves_a_run_report(
     run_fetch(chosen, targets(["MFS"], []), lambda: NOW, no_sleep)
     [report] = chosen.runs.iterdir()
     saved = json.loads(report.read_text("utf-8"))
-    assert saved["status"] == SIGN_IN_NEEDED
+    assert saved["ending"] == "sign in again"
     assert saved["counts"]["runs: stopped, sign-in needed"] == 1
 
 
@@ -686,7 +745,10 @@ def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> N
     """
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(failing_files=MAX_FAILED_IN_A_ROW + 2))
-    assert done.report.counts["files failed: status 404"] == MAX_FAILED_IN_A_ROW + 2
+    assert done.counts.counts["files failed: status 404"] == MAX_FAILED_IN_A_ROW + 2
+    assert done.problems == [
+        Problem(where=f"file gone{n}", reason="status 404") for n in range(MAX_FAILED_IN_A_ROW + 2)
+    ]
     stored = {
         item.snapshot.document.id for item in store.latest(Page) if isinstance(item, StoredSnapshot)
     }
@@ -695,12 +757,36 @@ def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> N
     assert [item for item in store.latest(Issue) if isinstance(item, StoredSnapshot)]
 
 
+@pytest.mark.parametrize(
+    "switches",
+    [
+        {"changed_labels": True},
+        {"jira": False},
+        {"html_page": "1002"},
+        {"media_fails": True},
+        {"failing_files": 3},
+        {"search_status": 400},
+        {"bulk_changed": True},
+        {"listing_changed": True},
+    ],
+    ids=str,
+)
+def test_each_failure_counted_is_one_problem_by_its_place_never_by_its_content(
+    switches: dict[str, object], tmp_path: Path
+) -> None:
+    """Every count of a failure is a problem; no problem's place holds what the site served."""
+    done = run(RawStore(tmp_path / "raw"), FakeSite(**switches))
+    failed = sum(number for what, number in done.counts.counts.items() if " failed: " in what)
+    assert failed == len(done.problems) > 0
+    assert not [each for each in done.problems if any(title in each.where for title in TITLES)]
+
+
 def test_a_project_that_jira_refuses_is_named_for_the_user(tmp_path: Path) -> None:
     """A JQL refused (an unknown project, say) names the key for stderr, not the report."""
     done = run(RawStore(tmp_path / "raw"), FakeSite(search_status=400))
-    assert done.failed_targets == ["project PRB: status 400"]
-    assert done.report.counts["jira projects failed: status 400"] == 1
-    assert "PRB" not in json.dumps(done.report.counts)
+    assert done.problems == [Problem(where="project PRB", reason="status 400")]
+    assert done.counts.counts["jira projects failed: status 400"] == 1
+    assert "PRB" not in json.dumps(done.counts.counts)
 
 
 def test_a_search_entry_with_a_changed_field_is_still_fetched(tmp_path: Path) -> None:
@@ -714,7 +800,10 @@ def test_a_user_the_adapter_refuses_fails_alone(tmp_path: Path) -> None:
     """An author without an account id is counted; the run's documents are all kept."""
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite(bulk_changed=True))
-    assert done.report.counts["confluence users failed: users[0].accountId: missing"] == 1
+    assert done.counts.counts["confluence users failed: users[0].accountId: missing"] == 1
+    assert done.problems == [
+        Problem(where="confluence users", reason="users[0].accountId: missing")
+    ]
     assert store.users() == []
 
 
@@ -722,16 +811,17 @@ def test_a_listing_entry_that_only_the_tree_needs_is_reported(tmp_path: Path) ->
     """A page entry without its title is fetched all the same, and its path is reported."""
     done = run(RawStore(tmp_path / "raw"), FakeSite(listing_changed=True))
     reason = "pages.title: missing"
-    assert done.report.counts[f"confluence pages in the tree failed: {reason}"] == len(
+    assert done.counts.counts[f"confluence pages in the tree failed: {reason}"] == len(
         ["1001", "1002"]
     )
+    assert done.problems == [Problem(where="confluence pages listing", reason=reason)] * 2
 
 
 def test_folders_over_the_cap_are_counted(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The walk up the folders is bounded, and what it leaves out is said."""
     monkeypatch.setattr(fetching_module, "MAX_FOLDERS", 1)
     done = run(RawStore(tmp_path / "raw"), FakeSite())
-    assert done.report.counts["confluence folders: over the cap, left out"] == 1
+    assert done.counts.counts["confluence folders: over the cap, left out"] == 1
 
 
 def test_a_busy_store_refuses_the_run_and_writes_no_report(
@@ -756,6 +846,7 @@ def test_a_file_not_of_its_listed_size_is_not_kept(
     monkeypatch.setitem(ATTACHMENTS, "1101", [wrong])
     store = RawStore(tmp_path / "raw")
     done = run(store, FakeSite())
-    assert done.report.counts["files failed: not the size listed"] == 1
+    assert done.counts.counts["files failed: not the size listed"] == 1
+    assert done.problems == [Problem(where="file att9", reason="not the size listed")]
     [post] = [item for item in store.latest(BlogPost) if isinstance(item, StoredSnapshot)]
     assert post.blobs == {}

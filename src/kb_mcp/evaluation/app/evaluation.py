@@ -314,7 +314,7 @@ def prepared(
     index.parent.mkdir(parents=True, exist_ok=True)
     started = clock()
     embedding = Embedding(embedder, settings.vectors, chunking=evaluated.chunking)
-    report = build_index(settings.docs, index, built_at, embedding)
+    report = build_index(settings.docs, index, built_at, embedding).counts
     seconds = clock() - started
     costs = Costs(
         chunks=report.chunks,

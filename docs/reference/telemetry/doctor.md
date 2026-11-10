@@ -2,7 +2,7 @@
 
 What `doctor` records, besides what every command does ([README](README.md)). A run is
 one trace: its root `doctor`, and the requests that check the site's certificate and the
-sign-in. The verdicts are the result, on stdout, not events.
+sign-in. The checks are the result, on stdout, not events.
 
 ## Events
 

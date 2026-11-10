@@ -45,7 +45,7 @@ from tests.test_api_token import (
     KEY_SENTINEL,
     SENTINEL,
     SIGN_IN_NEEDED,
-    download,
+    fetch_arguments,
     served,
 )
 from tests.test_fetching import SITE
@@ -258,10 +258,10 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
         with monkeypatch.context() as token:
             token.setenv(EMAIL, ADDRESS)
             token.setenv(CREDENTIAL, SENTINEL)
-            assert main(download(tmp_path, "-vv")) == SIGN_IN_NEEDED
+            assert main(fetch_arguments(tmp_path, "-vv")) == SIGN_IN_NEEDED
         session = tmp_path / "kb-mcp" / "session" / COOKIES
         write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
-        assert main(download(tmp_path, "-vv")) == ExitStatus.FAILED
+        assert main(fetch_arguments(tmp_path, "-vv")) == ExitStatus.FAILED
     finally:
         root.removeHandler(sink)
     assert any(COOKIE in request.headers.get("cookie", "") for request in sent)

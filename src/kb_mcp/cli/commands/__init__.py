@@ -4,6 +4,6 @@ The entry, ``_shared.enter``, loads the settings with the flags given, then impo
 module that the chosen subcommand's ``Command`` names, alone, and calls its ``run`` with
 the settings loaded (``config.domain.settings.Loaded``). It returns the exit status and
 the result, or None when it has none to write. The entry writes the result as JSON, or
-as ``text(result, summary)`` gives it, short or detailed. A module whose name begins
+as ``text(result, detail)`` gives it, short or detailed. A module whose name begins
 with ``_`` holds code that runs share.
 """

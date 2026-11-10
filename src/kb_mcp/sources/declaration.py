@@ -23,7 +23,7 @@ type Reading = Literal["listed", "searched", "in place"]
 type Refused = Callable[[Mapping[str, object], Mapping[str, object]], str | None]
 # what its run does not apply of the settings given, by setting, and why;
 type Unapplied = Callable[[Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
-# and the lines that a run's preview says of it.
+# and the lines that a run's echo says of it.
 type Described = Callable[[Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
 
 
@@ -67,9 +67,9 @@ class Account:
     ``table_path`` names the model by module path; ``settings`` are its settings, by name, in
     their order, the first where it signs in. ``login`` names by module path, as ``table_path``
     does, the run of ``kb-mcp login <name>``: a function of the settings, the browser's
-    path and, by name, ``extensions``, which gives a ``SignedIn`` of ``sources.stages``, or
+    path and, by name, ``extensions``, which gives a record of what it signed in to, or
     None when no sign-in completed, having said so. ``checks`` names alike ``doctor``'s of
-    it: a function of the settings, which gives a ``Verdict`` each. ``refused`` and
+    it: a function of the settings, which gives its checks, each a ``Check``. ``refused`` and
     ``unapplied``, if any, are its light checks, which ``doctor`` asks with no options:
     what cannot be signed in with, and what the sign-in does not apply. A path that does not
     load raises as it does, as a table's: a programmer's error, as no setting can cause it.

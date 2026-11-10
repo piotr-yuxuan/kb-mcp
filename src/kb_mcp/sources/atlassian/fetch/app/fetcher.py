@@ -12,49 +12,24 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
-from kb_mcp.sources.atlassian.fetch.app.fetching import (
-    FetchOutcome,
-    plan_fetch,
-    read_targets,
-    run_fetch,
-)
+from kb_mcp.sources.atlassian.fetch.app.fetching import plan_fetch, read_targets, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.period import PeriodError
-from kb_mcp.sources.stages import Result
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Detail
-    from kb_mcp.sources import stages
-    from kb_mcp.sources.atlassian.fetch.app.fetching import Targets
+    from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Targets
     from kb_mcp.sources.stages import SourceRun
 
-# How a fetch or its plan ended, by its status. A fetch that Ctrl-C stops raises
-# KeyboardInterrupt, so its status is never none here.
-FETCHED: dict[ExitStatus | None, stages.Outcome] = {
-    ExitStatus.OK: "done",
-    ExitStatus.FAILED: "failed",
-    ExitStatus.SIGN_IN_AGAIN: "sign in",
-}
 # What to do while another run writes the raw store.
 BUSY = "another run is writing it; try again once that run ends"
-
-
-class Fetched(Result):
-    """A fetch: how it ended, and what it did, None when it could not start."""
-
-    downloaded: FetchOutcome | None
-
-    def text(self, summary: Detail) -> str:
-        """Write the fetch's counts; nothing when it could not start."""
-        return "" if self.downloaded is None else self.downloaded.text(summary)
 
 
 def targets_of(run: SourceRun) -> Targets:
@@ -92,18 +67,19 @@ def preflight(run: SourceRun) -> str | None:
     return None
 
 
-def fetch(run: SourceRun) -> Fetched:
+def fetch(run: SourceRun) -> Outcome[FetchCounts]:
     """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_targets``.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
-    later fetch's start, or a record damaged since. It fails this fetch alone, an error,
-    ``fetch.refused``, naming the source, and the run's next rows go on.
+    later fetch's start, or a record damaged since. It fails this fetch alone, a problem
+    by the source and an error, ``fetch.refused``, naming the source, and the run's next
+    rows go on.
     """
     try:
         return fetch_targets(run.settings, targets_of(run), run.now, run.sleep, dry_run=run.dry_run)
     except (PeriodError, RepresentationError) as error:
         structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
-        return Fetched(outcome="failed", downloaded=None)
+        return Outcome.of(problems=(Problem(where=run.source.name, reason=str(error)),))
 
 
 def fetch_targets(
@@ -113,13 +89,14 @@ def fetch_targets(
     sleep: Callable[[float], None],
     *,
     dry_run: bool,
-) -> Fetched:
+) -> Outcome[FetchCounts]:
     """Fetch these targets, one source's, or plan their fetch; say what went wrong.
 
-    Another run writing the raw store fails the fetch before it starts, an error,
-    ``fetch.store_busy``; each target that failed is a warning, ``fetch.target_failed``,
-    and a sign-in that no longer holds an error, ``fetch.sign_in_needed``, saying how to
-    sign in again; both errors name the source, since each source's fetch can give them.
+    Another run writing the raw store fails the fetch before it starts, a problem by the
+    raw store and an error, ``fetch.store_busy``; each target that failed is a warning,
+    ``fetch.target_failed``, and a sign-in that no longer holds an error,
+    ``fetch.sign_in_needed``, saying how to sign in again; both errors name the source,
+    since each source's fetch can give them.
     """
     act = plan_fetch if dry_run else run_fetch
     source = targets.source
@@ -129,10 +106,9 @@ def fetch_targets(
         structlog.get_logger().error(
             "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
         )
-        return Fetched(outcome="failed", downloaded=None)
-    log = structlog.get_logger()
-    for target in outcome.failed_targets:
-        log.warning("fetch.target_failed", target=target)
-    if outcome.status == ExitStatus.SIGN_IN_AGAIN:
-        log.error("fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again)
-    return Fetched(outcome=FETCHED[outcome.status], downloaded=outcome)
+        return Outcome.of(problems=(Problem(where="raw store", reason=BUSY),))
+    if outcome.ending == "sign in again":
+        structlog.get_logger().error(
+            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again
+        )
+    return outcome

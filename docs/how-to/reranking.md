@@ -202,7 +202,7 @@ One to two minutes on a laptop's GPU by the estimate in the
 CPU with llama.cpp 0.6.0, about 12 minutes, at 36 seconds a search.
 
 In its table, compare the row of depth 30 with the row `none`, group `all`, and with
-`--summary detailed` each group:
+`--detail detailed` each group:
 
 - `Search, 95th`: within 5,000 ms, the bar's bound, on the machine that serves agents.
   Past 30,000 ms, searches would give up on the server and answer in their own order:
@@ -291,7 +291,7 @@ machine.
 3. **The short run**, a few minutes: one depth, on a sample of 20 questions.
 
    ```bash
-   kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --depth 30 --sample 20 --summary detailed
+   kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --depth 30 --sample 20 --detail detailed
    ```
 
    It asks before it runs. The first run builds its own index of the mirror under
@@ -305,7 +305,7 @@ machine.
 4. **The long run**, the bar's verdict: every question, at depths 10, 20, 30 and 50.
 
    ```bash
-   kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --summary detailed
+   kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --detail detailed
    ```
 
    110 texts a question: about 6 to 10 minutes for 30 questions by the estimate, 20 to
@@ -331,7 +331,7 @@ machine.
    says how to read it; for the default chunking alone, on the Mac:
 
    ```bash
-   kb-mcp eval ~/kb-mcp/eval/golden.yaml --chunking windows --summary detailed
+   kb-mcp eval ~/kb-mcp/eval/golden.yaml --chunking windows --detail detailed
    ```
 
 6. **What to send back.** The results files under `<data>/eval/results/`, the

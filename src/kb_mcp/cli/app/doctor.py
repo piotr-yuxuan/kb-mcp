@@ -1,4 +1,4 @@
-"""``doctor``'s run: the machine's checks, then each sign-in's, each with a verdict."""
+"""``doctor``'s run: the machine's checks, then each sign-in's, each with what it found."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import shutil
 import sys
 from typing import TYPE_CHECKING
 
-from kb_mcp.sources.stages import FAILED, Verdict
+from kb_mcp.sources.stages import Check
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -16,23 +16,23 @@ if TYPE_CHECKING:
     from kb_mcp.sources.declaration import Account
 
 
-def pandoc() -> Verdict:
+def pandoc() -> Check:
     """Say where the pandoc that the mirror needs is on PATH, or that there is none."""
     found = shutil.which("pandoc")
     return (
-        Verdict(name="pandoc", found=found)
+        Check(name="pandoc", found=found)
         if found
-        else Verdict(name="pandoc", found="not found on PATH", state=FAILED)
+        else Check(name="pandoc", found="not found on PATH", state="failed")
     )
 
 
-def doctor(settings: Settings, accounts: Iterable[Account]) -> list[Verdict]:
-    """Check the machine, then each account by the checks that it names; give every verdict."""
-    verdicts = [
-        Verdict(name="python", found=sys.version.split()[0]),
+def doctor(settings: Settings, accounts: Iterable[Account]) -> list[Check]:
+    """Check the machine, then each account by the checks that it names; give every check."""
+    checks = [
+        Check(name="python", found=sys.version.split()[0]),
         pandoc(),
-        Verdict(name="data directory", found=f"{settings.data_dir}: allowed"),
+        Check(name="data directory", found=f"{settings.data_dir}: allowed"),
     ]
     for account in accounts:
-        verdicts += pkgutil.resolve_name(account.checks)(settings)
-    return verdicts
+        checks += pkgutil.resolve_name(account.checks)(settings)
+    return checks

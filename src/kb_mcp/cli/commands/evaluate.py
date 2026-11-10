@@ -90,7 +90,7 @@ def run(
     return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)
 
 
-def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
+def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
     """Write each evaluated index's measures, each model's chunking, then the results file.
 
     Short gives each index's row of all the questions, mode by mode, for search and for
@@ -112,7 +112,7 @@ def text(evaluated: IndexesEvaluated, summary: Detail) -> str:
         )
     ]
     closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
-    if summary == "detailed":
+    if detail == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"
     lines = []
     for of_index in evaluated.indexes:

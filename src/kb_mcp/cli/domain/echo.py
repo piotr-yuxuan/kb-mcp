@@ -104,7 +104,7 @@ def before(
         then = "refuse"
     if output.quiet and then != "ask":
         return "", then
-    detailed = output.summary == "detailed"
+    detailed = output.detail == "detailed"
     values = values_of(loaded)
     unapplied = command.unapplied(arguments, values) if command.unapplied else {}
     read = dict.fromkeys((*command.reads, *OBSERVING))

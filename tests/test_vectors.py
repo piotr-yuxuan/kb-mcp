@@ -53,6 +53,7 @@ from tests.endpoint import (
 from tests.mirrors import MOMENT, fillers, location, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
+from tests.test_sources import keys_of
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -335,15 +336,13 @@ def test_index_after_embed_asks_nothing_and_keeps_the_vectors(
         assert (store.read_bytes(), index.read_bytes()) == (kept, built)
         out, err = capsys.readouterr()
         assert "then: documents added or changed have no vectors until kb-mcp embed" in err
-        assert "nothing written\nskipped: 0\nawaiting vectors: 0\n" in out
+        assert "nothing written\nawaiting vectors: 0\n" in out
         library = Library(SqliteIndex(index), data / "docs", Meaning(connect_scripted()), "hybrid")
         assert "search by meaning: tiny, " in parts(library.status())[1]
         write(data / "docs", page("196845", "Rollback"), BODY + "\nEdited.\n")
         assert main(["index", *options]) == 0
         assert len(scripted.asked) == asked
-        assert "replaced: 1\nremoved: 0\nskipped: 0\nawaiting vectors: 1\n" in (
-            capsys.readouterr().out
-        )
+        assert "replaced: 1\nremoved: 0\nawaiting vectors: 1\n" in (capsys.readouterr().out)
         with reading(index) as reader:
             assert 0 < reader.index_status().chunks < chunks
 
@@ -352,13 +351,13 @@ def test_the_command_embeds_with_the_settings_model(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
     """``embed`` names the model and what it embedded; the next run writes nothing."""
-    detailed = ["--summary", "detailed"]
+    detailed = ["--detail", "detailed"]
     model = "with tiny (no prefixes known: texts as they are)"
     with serving(Scripted()) as url:
         assert chained(data, capsys, url, *detailed) == 0
         out = capsys.readouterr().out
         assert f"chunks by meaning in {(data / 'index.sqlite').resolve()}, {model}:" in out
-        assert " texts embedded now, 0 found in the vector cache; 0 documents with a" in out
+        assert " texts embedded now, 0 found in the vector cache\n" in out
         assert main(["embed", "--yes", *config(data, "tiny", url), *detailed]) == 0
     assert f"nothing changed: {(data / 'index.sqlite').resolve()} holds " in (
         capsys.readouterr().out
@@ -595,7 +594,7 @@ def test_a_sections_rebuild_after_a_windows_one_embeds_nothing(data: Path) -> No
         data / "docs", data / "index.sqlite", MOMENT, Embedding(again, data / "v.db")
     )
     assert again.texts == []
-    assert report.embedded == 0
+    assert report.counts.embedded == 0
 
 
 def test_a_chunking_that_the_kernel_does_not_name_is_refused(
@@ -666,8 +665,8 @@ def filled_by(
     data: Path, answers: Scripted | None = None, chunking: Chunking = "sections"
 ) -> Filled:
     """Update the index, as ``index`` does, then fill it, as ``embed`` does; give the fill."""
-    assert update_index(indexing(data), MOMENT) is not None
-    filled = fill_and_prune(indexing(data, answers, chunking))
+    assert update_index(indexing(data), MOMENT).counts is not None
+    filled = fill_and_prune(indexing(data, answers, chunking)).counts
     assert filled is not None
     return filled
 
@@ -846,9 +845,9 @@ def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
     as_schema_6(data / "index.sqlite")
     indexed = update_index(indexing(data), MOMENT)
     assert indexed is not None
-    assert (indexed.report.rebuilt, indexed.report.copied) == ("unavailable", 0)
+    assert (indexed.counts.rebuilt, indexed.counts.copied) == ("unavailable", 0)
     answers = Scripted()
-    filled = fill_and_prune(indexing(data, answers, "windows"))
+    filled = fill_and_prune(indexing(data, answers, "windows")).counts
     assert filled is not None
     assert (texts_asked(answers), filled.embedded) == ([], 0)
     assert chunks_of(data / "index.sqlite") == whole_chunks(data, "windows")
@@ -965,7 +964,7 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
     """
     filled_by(data)
     write(data / "docs", page("196846", "Added"), BODY.replace("payout", "refund"))
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     fill = SqliteIndex.fill
     builds: list[str] = []
 
@@ -973,11 +972,11 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
         builds.append(expected)
         if len(builds) == 1:
             write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
-            assert update_index(indexing(data), MOMENT, rebuild=rebuild) is not None
+            assert update_index(indexing(data), MOMENT, rebuild=rebuild).counts is not None
         return fill(self, expected, *rest)
 
     monkeypatch.setattr(SqliteIndex, "fill", meanwhile)
-    filled = fill_and_prune(indexing(data))
+    filled = fill_and_prune(indexing(data)).counts
     assert filled is not None
     assert len(builds) == len(set(builds)) == TWICE
     assert chunks_of(data / "index.sqlite") == whole_chunks(data)
@@ -985,16 +984,16 @@ def test_an_index_written_between_embed_s_read_and_write_starts_it_again(
 
 def test_an_index_written_at_each_attempt_stops_embed(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Criterion 8: twice, ``embed`` stops, ``index.not_built`` naming the other run."""
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     fill = SqliteIndex.fill
 
     def meanwhile(self: SqliteIndex, *arguments: object) -> str | None:
-        assert update_index(indexing(data), MOMENT, rebuild=True) is not None
+        assert update_index(indexing(data), MOMENT, rebuild=True).counts is not None
         return fill(self, *arguments)
 
     monkeypatch.setattr(SqliteIndex, "fill", meanwhile)
     with capture_logs() as logs:
-        assert fill_and_prune(indexing(data)) is None
+        assert fill_and_prune(indexing(data)).counts is None
     (failed,) = [each for each in logs if each["event"] == "index.not_built"]
     assert failed["reason"] == CHANGED_MEANWHILE
 
@@ -1008,7 +1007,7 @@ def test_index_and_embed_started_together_take_turns(data: Path) -> None:
         target=lambda: results.append(update_index(indexing(data), MOMENT))
     )
     indexing_thread.start()
-    filled = fill_and_prune(indexing(data))
+    filled = fill_and_prune(indexing(data)).counts
     indexing_thread.join()
     assert filled is not None
     assert results[0] is not None
@@ -1019,12 +1018,12 @@ def test_index_and_embed_started_together_take_turns(data: Path) -> None:
 def test_a_lock_held_too_long_stops_embed_naming_it(data: Path, monkeypatch: MonkeyPatch) -> None:
     """Criterion 8: a wait past WAIT_S, shortened here: ``index.not_built`` naming the lock."""
     monkeypatch.setattr(vector_cache, "WAIT_S", 0.3)
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     before = (data / "index.sqlite").read_bytes()
     lock = data / "index.sqlite.lock"
     with lock.open("a") as file, capture_logs() as logs:
         fcntl.flock(file, fcntl.LOCK_EX)
-        assert fill_and_prune(indexing(data)) is None
+        assert fill_and_prune(indexing(data)).counts is None
     (failed,) = [each for each in logs if each["event"] == "index.not_built"]
     assert str(lock) in failed["reason"]
     assert (data / "index.sqlite").read_bytes() == before
@@ -1034,7 +1033,7 @@ def test_a_fill_that_fails_before_its_rename_leaves_the_index_as_it_was(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Criterion 9: its bytes as they were, no build file left, and the lock free."""
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     before = (data / "index.sqlite").read_bytes()
 
     def fail(*_: object) -> dict[str, object]:
@@ -1046,7 +1045,7 @@ def test_a_fill_that_fails_before_its_rename_leaves_the_index_as_it_was(
             fill_and_prune(indexing(data))
     assert (data / "index.sqlite").read_bytes() == before
     assert not list(data.glob(f"{sqlite_index.BUILDING}*"))
-    assert fill_and_prune(indexing(data)) is not None
+    assert fill_and_prune(indexing(data)).counts is not None
 
 
 def test_a_fill_killed_leaves_the_index_as_it_was(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -1107,16 +1106,16 @@ def test_the_prune_keeps_what_embed_wrote_when_an_index_ran_since(
     """
     filled_by(data)
     write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "buyer"))
-    assert update_index(indexing(data), MOMENT) is not None
+    assert update_index(indexing(data), MOMENT).counts is not None
     prune = indexing_module.prune
 
     def meanwhile(*arguments: object, **options: object) -> Pruned:
         write(data / "docs", page("196845", "Rollback"), BODY.replace("seller", "agent"))
-        assert update_index(indexing(data), MOMENT) is not None
+        assert update_index(indexing(data), MOMENT).counts is not None
         return prune(*arguments, **options)
 
     monkeypatch.setattr(indexing_module, "prune", meanwhile)
-    filled = fill_and_prune(indexing(data))
+    filled = fill_and_prune(indexing(data)).counts
     assert filled is not None
     assert filled.pruned is not None
     assert filled.pruned.outcome == "pruned"
@@ -1204,3 +1203,63 @@ def test_no_warning_for_a_mirror_unchanged_a_skipped_file_or_an_alias_file(
         status, err = embedded_at(data, url, capsys)
     assert status == FAILED
     assert mirror_changed(err) == []
+
+
+def test_embed_s_json_fails_by_a_chunk_refused_and_warns_of_a_mirror_changed(
+    data: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """A chunk refused is a problem, ending failed; a mirror changed, a warning, ending done."""
+    monkeypatch.setenv("KB_MCP_CHUNKING", "sections")
+    refused = "Rollback\nRelease\nThe deploy of the seller service."
+    with serving(Scripted(refused={refused})) as url:
+        assert chained(data, capsys, url, "--format", "json") == FAILED
+        failed = json.loads(capsys.readouterr().out)
+    assert list(failed) == ["ending", "counts", "problems", "warnings"]
+    assert (failed["ending"], failed["warnings"]) == ("failed", [])
+    assert [each["where"] for each in failed["problems"]] == ["confluence/ENG/196845-rollback.md"]
+    write(data / "docs", page("196847", "Later"))
+    with serving(Scripted()) as url:
+        options = ["embed", "--yes", "--format", "json", *config(data, "tiny", url)]
+        assert main(options) == 0
+        warned = json.loads(capsys.readouterr().out)
+    assert (warned["ending"], warned["problems"]) == ("done", [])
+    assert [each["where"] for each in warned["warnings"]] == ["mirror"]
+    assert warned["warnings"][0]["reason"].endswith("since the index: run kb-mcp index")
+
+
+def test_each_key_that_index_s_and_embed_s_help_names_is_one_of_their_json(
+    data: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Their --help name, in backquotes, keys that their --format json writes.
+
+    A file without front matter gives index a problem, and a chunk refused gives embed one.
+    """
+    monkeypatch.setenv("KB_MCP_CHUNKING", "sections")
+    (data / "docs" / "stray.md").write_text("# No front matter\n", encoding="utf-8")
+    refused = "Rollback\nRelease\nThe deploy of the seller service."
+    written: dict[str, set[str]] = {}
+    with serving(Scripted(refused={refused})) as url:
+        for stage in ("index", "embed"):
+            main([stage, "--yes", "--format", "json", *config(data, "tiny", url)])
+            written[stage] = keys_of(json.loads(capsys.readouterr().out))
+    for stage, keys in written.items():
+        with pytest.raises(SystemExit):
+            main([stage, "--help"])
+        named = set(re.findall(r"`([a-z_]+)`", capsys.readouterr().out))
+        assert named, stage
+        assert sorted(named - keys) == [], stage
+
+
+def test_each_file_that_the_index_lacks_is_a_problem_of_embed(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """It holds the prune back, so it fails embed, by its path and why the index lacks it."""
+    broken = data / "docs" / "confluence" / "ENG" / "1-broken.md"
+    broken.write_text("---\ntitle: no other key\n---\n", encoding="utf-8")
+    with serving(Scripted()) as url:
+        assert chained(data, capsys, url, "--format", "json") == FAILED
+    document = json.loads(capsys.readouterr().out)
+    assert (document["ending"], document["warnings"]) == ("failed", [])
+    (problem,) = document["problems"]
+    assert problem["where"] == "confluence/ENG/1-broken.md"
+    assert problem["reason"].startswith("not in the index: front matter without exactly")

@@ -58,7 +58,7 @@ parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is o
 to stderr until the settings are read, and `main` imports the
 [`ENTRY_MODULE`](../../src/kb_mcp/cli/main.py) shared by every observed command.
 
-### 2. Settings, the guard and the preview
+### 2. Settings, the guard and the echo
 
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) maps each flag given to
 its setting ([`Command.setting_flags`](../../src/kb_mcp/cli/domain/command.py))
@@ -102,9 +102,9 @@ off this machine without `--allow-remote-embeddings`, or over plain http even wi
 is exit 2, said on stderr alone: no run has
 started, so there is no log file.
 
-Then [`before`](../../src/kb_mcp/cli/domain/preview.py) writes the preview
+Then [`before`](../../src/kb_mcp/cli/domain/echo.py) writes the echo
 on stderr: each setting that the command reads, with its value, a secret only as set or not
-([`setting_line`](../../src/kb_mcp/cli/domain/preview.py)); the sources
+([`setting_line`](../../src/kb_mcp/cli/domain/echo.py)); the sources
 taken and left out ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py));
 each value ignored, and why; and the command to copy
 ([`command_line`](../../src/kb_mcp/cli/domain/command_line.py)).
@@ -140,9 +140,9 @@ starts there, here `given`; a `--since` that does not come before the fetch wind
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
 exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
-one before it failed, as it reads what is on disk. The exit status is the first outcome
-of [`RANKED`](../../src/kb_mcp/cli/domain/rows.py) that a row had:
-interrupted, then sign in, then failed; else 0.
+one before it failed, as it reads what is on disk. The exit status folds the rows'
+endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/exit_status.py)):
+interrupted, then sign in again, then failed; else 0.
 
 ### 4. The source and the site's port
 
@@ -461,11 +461,13 @@ chunks, the model, its fingerprint, the chunking and a new `build`. On any failu
 new file goes and the old index stays: an endpoint that does not answer, or lacks the
 model, raises [`ModelError`](../../src/kb_mcp/search/adapters/model_api.py),
 which [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) logs as
-`index.not_built`. A file skipped is named in `index`'s
-[`IndexReport`](../../src/kb_mcp/search/app/indexing.py), and a chunk refused in `embed`'s
-[`Filled`](../../src/kb_mcp/search/app/indexing.py); each run exits 0 only when its
-result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
-[`Filled.whole`](../../src/kb_mcp/search/app/indexing.py)).
+`index.not_built`. A file skipped is a problem of `index`'s outcome
+([`outcome_of`](../../src/kb_mcp/search/app/indexing.py), its counts an
+[`IndexCounts`](../../src/kb_mcp/search/app/indexing.py)), and a document with a chunk
+refused one of `embed`'s ([`filled_outcome`](../../src/kb_mcp/search/app/indexing.py), its
+counts a [`Filled`](../../src/kb_mcp/search/app/indexing.py)), as is each file that the
+index lacks, and a mirror changed since the index a warning; each exits 0 only when its
+outcome has no problem.
 
 ### 10. The result
 
@@ -475,7 +477,7 @@ result is whole ([`IndexReport.whole`](../../src/kb_mcp/search/app/indexing.py),
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its counts, by its [`Result.text`](../../src/kb_mcp/sources/stages.py). `index`
+its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/outcome.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).
@@ -488,7 +490,7 @@ and `embed` have one result each, written by their own `text`
 
 An agent starts the command with no arguments, as [coding agents](../how-to/agents.md)
 set it up, and `main` reads that as `serve`. The entry is the one of step 2, without a
-preview or a question, as `serve` writes nothing, and its
+echo or a question, as `serve` writes nothing, and its
 [`Command`](../../src/kb_mcp/cli/domain/command.py) is not `traced`: each
 request will be a trace of its own.
 
@@ -623,7 +625,7 @@ document fetched is a trace of its own.
 
 Each step has its tests, which say what the code must do in the requirement's words:
 [`test_settings.py`](../../tests/test_settings.py),
-[`test_preview.py`](../../tests/test_preview.py) and
+[`test_echo.py`](../../tests/test_echo.py) and
 [`test_confirmation.py`](../../tests/test_confirmation.py) for step 2;
 [`test_sources.py`](../../tests/test_sources.py) for 2, 3 and 10;
 [`test_fetching.py`](../../tests/test_fetching.py),

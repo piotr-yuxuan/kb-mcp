@@ -1,6 +1,6 @@
 """What a run says on stderr before it acts, in a scratch home.
 
-The values that it ignores; for a command that writes, its summary and the command to copy.
+The values that it ignores; for a command that writes, its echo and the command to copy.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import pytest
 from kb_mcp.cli.commands import model as model_command
 from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.cli.domain.preview import values_of
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
 from kb_mcp.observability.app.observed import early
@@ -60,7 +60,7 @@ OWN_OPTIONS = {
 }
 # What the command to copy never carries, by plan 015: the output's options and the
 # question's.
-EXCLUDED = {"--yes", "-y", "--dry-run", "-q", "-v", "-vv", "--log-level", "--format", "--summary"}
+EXCLUDED = {"--yes", "-y", "--dry-run", "-q", "-v", "-vv", "--log-level", "--format", "--detail"}
 
 
 @pytest.fixture
@@ -86,18 +86,18 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
     return recorded
 
 
-@pytest.mark.parametrize("summary", ["short", "detailed"])
+@pytest.mark.parametrize("detail", ["short", "detailed"])
 def test_login_says_that_it_ignores_the_email_and_the_token(
-    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], summary: str
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], detail: str
 ) -> None:
     """It signs in in a browser: each is named once with its layer, never with its value.
 
-    Neither is among the settings that its summary shows.
+    Neither is among the settings that its echo shows.
     """
     monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     monkeypatch.setenv(EMAIL, "someone@example.invalid")
     monkeypatch.setenv(CREDENTIAL, SECRETS[CREDENTIAL])
-    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--summary", summary]
+    options = ["--yes", "--config", str(home / "none.toml"), "--site", SITE, "--detail", detail]
     assert main(["login", "atlassian", *options]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
@@ -144,7 +144,7 @@ def test_an_email_without_a_token_is_ignored(
     ],
 )
 @pytest.mark.usefixtures("runs")
-def test_a_fetch_s_summary_says_how_it_signs_in(
+def test_a_fetch_s_echo_says_how_it_signs_in(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
@@ -169,7 +169,7 @@ def test_a_fetch_s_summary_says_how_it_signs_in(
     ],
 )
 @pytest.mark.usefixtures("runs")
-def test_a_fetch_s_summary_says_where_its_windows_start(
+def test_a_fetch_s_echo_says_where_its_windows_start(
     home: Path, capsys: CaptureFixture[str], given: list[str], rule: str
 ) -> None:
     """The rule in words, before the run reads the store: from --since, or the last fetch."""
@@ -188,7 +188,7 @@ def test_an_index_says_in_detail_that_it_reads_no_model_and_no_endpoint(
     config.write_text('model = "tiny"\n', "utf-8")
     monkeypatch.setenv(KEY, SECRETS[KEY])
     options = ["--yes", "--config", str(config), "--data-dir", str(home / "data")]
-    assert main(["index", *options, "--summary", "detailed"]) == 0
+    assert main(["index", *options, "--detail", "detailed"]) == 0
     out, err = capsys.readouterr()
     ignored = [line for line in err.splitlines() if line.startswith("ignored: ")]
     assert ignored == [
@@ -227,7 +227,7 @@ def test_a_model_named_on_the_command_line_replaces_the_setting(
 
 
 @pytest.mark.usefixtures("runs")
-def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_layer(
+def test_the_echo_says_why_the_run_does_not_apply_a_setting_whatever_its_layer(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """At its default too, where no value is said to be ignored.
@@ -243,10 +243,10 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
     assert "ignored: " not in err
     monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(home))
     assert main(["prepare", "--yes", "--config", none, "worklog"]) == 0
-    summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
+    echo = capsys.readouterr().err.split("kb-mcp prepare")[0]
     marked = [
         line.strip().partition(": ")[0]
-        for line in summary.splitlines()
+        for line in echo.splitlines()
         if line.endswith(" (not applied: no source of the atlassian account in this prepare)")
     ]
     assert marked == ["accounts.atlassian.site"]
@@ -255,14 +255,14 @@ def test_the_summary_says_why_the_run_does_not_apply_a_setting_whatever_its_laye
 def test_settings_that_the_command_never_reads_are_ignored_in_detail_alone(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """The doctor reads no model and no key: said under --summary detailed, else left out."""
+    """The doctor reads no model and no key: said under --detail detailed, else left out."""
     monkeypatch.setenv("PATH", str(home))
     config = home / "config.toml"
     config.write_text('model = "tiny"\n', "utf-8")
     monkeypatch.setenv(KEY, SECRETS[KEY])
     main(["doctor", "--config", str(config)])
     assert "ignored" not in capsys.readouterr().err
-    main(["doctor", "--config", str(config), "--summary", "detailed"])
+    main(["doctor", "--config", str(config), "--detail", "detailed"])
     err = capsys.readouterr().err
     assert "ignored: model (config.toml): not read by doctor\n" in err
     assert f"ignored: embedding_api_key ({KEY}): not read by doctor\n" in err
@@ -364,7 +364,7 @@ def test_a_command_that_writes_says_what_it_reads_what_it_ignores_then_its_comma
         f"ignored: {UNKNOWN}: names no setting\n"
         f"{command}"
     )
-    assert main([*options, "--summary", "detailed"]) == 0
+    assert main([*options, "--detail", "detailed"]) == 0
     assert capsys.readouterr().err == (
         "prepare, with these settings:\n"
         f"  accounts.atlassian.site: {SITE} [config.toml]\n"
@@ -392,8 +392,8 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
 ) -> None:
     """Every run logs into logs.dir, and reads telemetry.endpoint: neither is ignored.
 
-    Given by a layer, each is listed with it under --summary detailed, after the
-    command's own settings, and the run's log file is there; the short summary names
+    Given by a layer, each is listed with it under --detail detailed, after the
+    command's own settings, and the run's log file is there; the short echo names
     neither.
     """
     logs = (home / "logs").resolve()
@@ -401,7 +401,7 @@ def test_the_entry_s_own_settings_given_are_read_and_listed_in_detail_alone(
     config.write_text(f'[logs]\ndir = "{logs}"\n', "utf-8")
     monkeypatch.setenv("OTEL_SDK_DISABLED", "true")
     options = [command, "--yes", "--config", str(config)]
-    assert main([*options, "--summary", "detailed"]) == 0
+    assert main([*options, "--detail", "detailed"]) == 0
     said = capsys.readouterr().err
     assert "ignored" not in said
     listed = said.split(f"kb-mcp {command} \\\n")[0].splitlines()
@@ -430,8 +430,8 @@ def test_every_command_says_that_telemetry_is_on_and_what_turned_it_on(
     """Whatever layer sets the endpoint, one line names it on stderr, at every level but -q.
 
     OpenTelemetry's variable, which other programs share, may turn telemetry on unseen,
-    as may the setting's: a command that writes says so in its summary, one that only
-    reads alike, without a summary. Without an endpoint, no such line. Nothing listens
+    as may the setting's: a command that writes says so in its echo, one that only
+    reads alike, without an echo. Without an endpoint, no such line. Nothing listens
     there.
     """
     options = [*command, "--config", str(home / "none.toml")]
@@ -452,7 +452,7 @@ def test_every_command_says_that_telemetry_is_on_and_what_turned_it_on(
 def test_the_level_error_leaves_out_the_values_ignored_alone(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """They are warnings; the summary and the command are what the run is, said still.
+    """They are warnings; the echo and the command are what the run is, said still.
 
     Only -q leaves those out. A command that only reads then says nothing.
     """
@@ -473,7 +473,7 @@ def test_the_level_error_leaves_out_the_values_ignored_alone(
     assert capsys.readouterr().err == ""
 
 
-def test_a_command_s_described_lines_end_its_summary(
+def test_a_command_s_described_lines_end_its_echo(
     home: Path, capsys: CaptureFixture[str], runs: list[tuple[argparse.Namespace, Loaded]]
 ) -> None:
     """They are its own function's, of the arguments and the settings' values by path."""
@@ -486,8 +486,8 @@ def test_a_command_s_described_lines_end_its_summary(
     arguments.command = dataclasses.replace(arguments.command, described=described)
     with early():
         assert enter(arguments, given, SOURCES) == 0
-    summary = capsys.readouterr().err.split("kb-mcp prepare")[0]
-    assert summary.endswith(f"  fetches {SITE}\n  as prepare\n")
+    echo = capsys.readouterr().err.split("kb-mcp prepare")[0]
+    assert echo.endswith(f"  fetches {SITE}\n  as prepare\n")
     assert len(runs) == 1
 
 
@@ -628,7 +628,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     }
     for variable, value in given.items():
         monkeypatch.setenv(variable, value)
-    output = ["--yes", "-v", "--summary", "detailed", "--format", "json"]
+    output = ["--yes", "-v", "--detail", "detailed", "--format", "json"]
     main([name, "--config", str(config), *output, *OWN_OPTIONS[name]])
     err = capsys.readouterr().err
     assert not any(secret in err for secret in SECRETS.values())

@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     RawStore,
     StoreBusyError,
     StoredSnapshot,
-    Unreadable,
 )
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     BlogPost,
@@ -65,10 +65,10 @@ def page_responses(version: int, page_id: str = "196845", **changes: object) -> 
     }
 
 
-def readable(results: Iterator[StoredSnapshot | Unreadable] | list[object]) -> list[StoredSnapshot]:
+def readable(results: Iterator[StoredSnapshot | Problem] | list[object]) -> list[StoredSnapshot]:
     """Keep the snapshots that were read, and fail on any that was not."""
     items = list(results)
-    assert not [item for item in items if isinstance(item, Unreadable)]
+    assert not [item for item in items if isinstance(item, Problem)]
     return [item for item in items if isinstance(item, StoredSnapshot)]
 
 
@@ -127,7 +127,7 @@ def test_a_snapshot_that_fails_while_written_leaves_nothing(store: RawStore) -> 
 
 
 def test_a_changed_response_is_kept_and_reported_when_read(store: RawStore) -> None:
-    """Raw first: a response the adapter refuses is still stored, then read as Unreadable.
+    """Raw first: a response the adapter refuses is still stored, then read as Problem.
 
     The others still come back, so one changed response never hides the rest.
     """
@@ -136,9 +136,9 @@ def test_a_changed_response_is_kept_and_reported_when_read(store: RawStore) -> N
     store.put(Page, page_responses(1, page_id="200", labels=labels), FETCHED, {})
     store.put(Page, page_responses(1, page_id="300"), FETCHED, {})
     results = list(store.latest(Page))
-    assert [type(item) for item in results] == [StoredSnapshot, Unreadable, StoredSnapshot]
+    assert [type(item) for item in results] == [StoredSnapshot, Problem, StoredSnapshot]
     unreadable = results[1]
-    assert isinstance(unreadable, Unreadable)
+    assert isinstance(unreadable, Problem)
     assert unreadable.where == "confluence/pages/200/000001"
     assert unreadable.reason == "document.json.labels.results[0].name: missing"
 
@@ -276,12 +276,12 @@ def test_a_space_listing_is_replaced_whole(store: RawStore) -> None:
 def test_an_entry_of_a_listing_that_its_adapter_refuses_is_reported_alone(
     store: RawStore,
 ) -> None:
-    """One changed entry is Unreadable at its index; the others are read."""
+    """One changed entry is Problem at its index; the others are read."""
     store.put_space(v2_space(), [v2_page(), v2_page(id="2", title=None)], [], [])
     first, second = store.listed("196613", Page)
     assert isinstance(first, Page)
     where = "confluence/spaces/196613/pages.json[1]"
-    assert second == Unreadable(where=where, reason=f"{where}.title: expected a string")
+    assert second == Problem(where=where, reason=f"{where}.title: expected a string")
 
 
 def test_a_space_id_that_is_a_path_is_refused(store: RawStore) -> None:

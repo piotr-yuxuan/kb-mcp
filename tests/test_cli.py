@@ -563,24 +563,39 @@ def test_the_level_options_exclude_one_another(
 
 
 @pytest.mark.parametrize("name", sorted(set(SUBCOMMANDS) - OWN_OUTPUT))
-def test_every_subcommand_with_a_result_takes_its_format_and_summary(name: str) -> None:
+def test_every_subcommand_with_a_result_takes_its_format_and_detail(name: str) -> None:
     """Text and short by default; JSON and detailed when asked."""
     positionals = POSITIONALS.get(name, [])
     defaults = parser().parse_args([name, *positionals])
-    assert (defaults.format, defaults.summary) == ("text", "short")
-    asked = parser().parse_args([name, "--format", "json", "--summary", "detailed", *positionals])
-    assert (asked.format, asked.summary) == ("json", "detailed")
+    assert (defaults.format, defaults.detail) == ("text", "short")
+    asked = parser().parse_args([name, "--format", "json", "--detail", "detailed", *positionals])
+    assert (asked.format, asked.detail) == ("json", "detailed")
 
 
 @pytest.mark.parametrize("name", sorted(OWN_OUTPUT))
-def test_serve_and_completion_take_no_format_nor_summary(
+def test_serve_and_completion_take_no_format_nor_detail(
     name: str, capsys: CaptureFixture[str]
 ) -> None:
     """Their output is their own: the protocol, the script."""
     with pytest.raises(SystemExit) as stopped:
-        parser().parse_args([name, "--format", "json", "--summary", "detailed"])
+        parser().parse_args([name, "--format", "json", "--detail", "detailed"])
     assert stopped.value.code == BAD_SETTINGS
-    assert "unrecognized arguments: --format json --summary detailed" in capsys.readouterr().err
+    assert "unrecognized arguments: --format json --detail detailed" in capsys.readouterr().err
+
+
+def test_the_detail_is_no_longer_called_summary(capsys: CaptureFixture[str]) -> None:
+    """--summary, the option's former name, is refused as unknown: summary is a link relation."""
+    with pytest.raises(SystemExit) as stopped:
+        parser().parse_args(["fetch", "--summary=short"])
+    assert stopped.value.code == BAD_SETTINGS
+    assert "unrecognized arguments: --summary=short" in capsys.readouterr().err
+
+
+def test_the_former_detail_option_spaced_from_its_value_is_refused_too() -> None:
+    """``fetch --summary detailed``, as scripts wrote it, exits 2, whatever the parser reads."""
+    with pytest.raises(SystemExit) as stopped:
+        parser().parse_args(["fetch", "--summary", "detailed"])
+    assert stopped.value.code == BAD_SETTINGS
 
 
 def test_check_quiet_prints_nothing_but_still_its_document(
@@ -627,7 +642,7 @@ def test_check_as_json_gives_settings_layers_and_ignored_values_secrets_masked(
     monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "https://variable.example.invalid")
     monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
     for summary in ("short", "detailed"):
-        options = ["--config", str(config), "--summary", summary, "--format", "json"]
+        options = ["--config", str(config), "--detail", summary, "--format", "json"]
         assert main(["check", *options]) == 0
         out = capsys.readouterr().out
         assert not any(secret in out for secret in SECRETS.values())
@@ -667,7 +682,7 @@ def test_check_accepts_a_plain_data_directory(home: Path, capsys: CaptureFixture
     assert out == (
         "accounts.atlassian.site: https://example.atlassian.net\nsources.confluence.spaces: ENG\n"
     )
-    assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
+    assert main(["check", "--config", str(config), "--detail", "detailed"]) == 0
     data = (home / "kb-mcp").resolve()
     assert f"data_dir: {data} [default]\n" in capsys.readouterr().out
 
@@ -700,7 +715,7 @@ def test_check_in_detail_shows_every_setting_its_value_and_its_layer(
 ) -> None:
     """The settings at defaults too, unset ones said to be so; a secret never shown."""
     monkeypatch.setenv(*next(iter(SECRETS.items())))
-    assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
+    assert main(["check", "--config", str(home / "none.toml"), "--detail", "detailed"]) == 0
     out = capsys.readouterr().out
     assert out == (
         f"data_dir: {(home / 'kb-mcp').resolve()} [default]\n"
@@ -846,7 +861,7 @@ def test_check_ignores_opentelemetry_s_endpoint_off_this_machine_and_says_so(
 ) -> None:
     """Other programs share the variable: said ignored, it leaves telemetry off, exit 0."""
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
-    options = ["check", "--config", str(home / "none.toml"), "--summary", "detailed"]
+    options = ["check", "--config", str(home / "none.toml"), "--detail", "detailed"]
     assert main(options) == 0
     out, err = capsys.readouterr()
     assert "telemetry.endpoint: (not set) [default]\n" in out
@@ -866,7 +881,7 @@ def test_check_names_the_layer_of_telemetry_s_endpoint_the_setting_first(
     with nothing_listening() as shared, nothing_listening() as set_here:
         variable, setting = shared.removesuffix("/v1"), set_here.removesuffix("/v1")
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", variable)
-        options = ["check", "--summary", "detailed", "--config"]
+        options = ["check", "--detail", "detailed", "--config"]
         assert main([*options, str(home / "none.toml")]) == 0
         out, err = capsys.readouterr()
         assert f"telemetry.endpoint: {variable} [OTEL_EXPORTER_OTLP_ENDPOINT]\n" in out
@@ -960,7 +975,7 @@ def test_check_runs_with_variables_that_name_no_setting_or_are_empty(
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJETS", '["X"]')
     monkeypatch.setenv("KB_MCP_SPACES", '["X"]')
     monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__SITE", "")
-    assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
+    assert main(["check", "--config", str(home / "none.toml"), "--detail", "detailed"]) == 0
     out, err = capsys.readouterr()
     assert "\naccounts.atlassian.site: (not set) [default]\n" in out
     assert sorted(err.splitlines()) == [
@@ -976,7 +991,7 @@ def test_an_empty_table_in_the_file_gives_each_setting_under_it_at_its_default(
     """Its settings are the file's; check reads them, so none is said to be unread."""
     config = home / "config.toml"
     config.write_text('[sources.jira]\n# projects = ["PLAT"]\n', "utf-8")
-    assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
+    assert main(["check", "--config", str(config), "--detail", "detailed"]) == 0
     out, err = capsys.readouterr()
     assert "sources.jira.projects: (none) [config.toml]\n" in out
     assert err == ""
@@ -989,7 +1004,7 @@ def test_an_empty_table_in_a_variable_replaces_each_setting_under_it(
     config = home / "config.toml"
     config.write_text('[sources.jira]\nprojects = ["PLAT"]\n', "utf-8")
     monkeypatch.setenv("KB_MCP_SOURCES", "{}")
-    assert main(["check", "--config", str(config), "--summary", "detailed"]) == 0
+    assert main(["check", "--config", str(config), "--detail", "detailed"]) == 0
     out, err = capsys.readouterr()
     assert "sources.confluence.spaces: (none) [KB_MCP_SOURCES]\n" in out
     assert "sources.jira.projects: (none) [KB_MCP_SOURCES]\n" in out
@@ -1059,7 +1074,7 @@ def test_check_names_the_layer_of_each_setting_the_strongest_winning(
 
     Each value replaced is said on stderr, naming its layer and the one that replaced it.
     """
-    detailed = ["--summary", "detailed"]
+    detailed = ["--detail", "detailed"]
     assert main(["check", "--config", str(home / "none.toml"), *detailed]) == 0
     out, err = capsys.readouterr()
     assert err == ""
@@ -1126,7 +1141,7 @@ def test_check_reads_no_generic_atlassian_name(
 ) -> None:
     """ATLASSIAN_SITE is another tool's: the site stays unset."""
     monkeypatch.setenv("ATLASSIAN_SITE", "https://other.example.invalid")
-    assert main(["check", "--config", str(home / "none.toml"), "--summary", "detailed"]) == 0
+    assert main(["check", "--config", str(home / "none.toml"), "--detail", "detailed"]) == 0
     assert "\naccounts.atlassian.site: (not set) [default]\n" in capsys.readouterr().out
 
 

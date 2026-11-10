@@ -76,7 +76,7 @@ def served(
     return sent
 
 
-def download(home: Path, *more: str) -> list[str]:
+def fetch_arguments(home: Path, *more: str) -> list[str]:
     """Give the arguments of a fetch of the scripted site's space and project."""
     return [
         "fetch",
@@ -101,7 +101,7 @@ def test_the_token_goes_to_the_site_s_host_alone(home: Path, monkeypatch: Monkey
     No session is read or written: its folder is never made.
     """
     sent = served(monkeypatch, FakeSite().handle)
-    main(download(home))
+    main(fetch_arguments(home))
     on_site = [request for request in sent if request.url.host == HOST]
     elsewhere = [request for request in sent if request.url.host != HOST]
     assert on_site
@@ -120,7 +120,7 @@ def test_a_run_with_the_token_leaves_a_saved_session_as_it_was(
     write_cookies(session / COOKIES, [{"name": "kept", "value": "v", "domain": HOST}])
     before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in session.rglob("*")}
     sent = served(monkeypatch, FakeSite(set_cookies=["renewed=w; Path=/"]).handle)
-    main(download(home, *dry_run))
+    main(fetch_arguments(home, *dry_run))
     assert sent
     assert not any("kept=" in request.headers.get("cookie", "") for request in sent)
     after = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in session.rglob("*")}
@@ -136,7 +136,7 @@ def test_a_fetch_refused_by_the_site_exits_3_naming_the_variables(
     Each source's fetch signs in on its own, so each says it, naming its source.
     """
     served(monkeypatch, lambda _: httpx.Response(401))
-    assert main(download(home, *dry_run)) == SIGN_IN_NEEDED
+    assert main(fetch_arguments(home, *dry_run)) == SIGN_IN_NEEDED
     err = capsys.readouterr().err
     assert ("error", "fetch.sign_in_needed") in said(err)
     assert f"check {EMAIL} and {CREDENTIAL}" in err
@@ -213,18 +213,18 @@ def shown(text: str) -> list[str]:
 
 
 @pytest.mark.parametrize("output_format", ["text", "json"])
-@pytest.mark.parametrize("summary", ["short", "detailed"])
-def test_check_shows_no_secret_in_any_format_or_summary(
+@pytest.mark.parametrize("detail", ["short", "detailed"])
+def test_check_shows_no_secret_in_any_format_or_detail(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
     output_format: str,
-    summary: str,
+    detail: str,
 ) -> None:
     """Each secret is said to be set, and never shown."""
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     options = ["--config", str(home / "none.toml"), "--format", output_format]
-    assert main(["check", *options, "--summary", summary, "-v"]) == 0
+    assert main(["check", *options, "--detail", detail, "-v"]) == 0
     out, err = capsys.readouterr()
     assert "accounts.atlassian.api_token" in out
     assert "embedding_api_key" in out
@@ -234,10 +234,10 @@ def test_check_shows_no_secret_in_any_format_or_summary(
 @pytest.mark.parametrize(
     ("answer", "more"),
     [
-        (FakeSite().handle, ["--summary", "detailed", "-v"]),
-        (FakeSite().handle, ["--format", "json", "--summary", "detailed"]),
-        (FakeSite().handle, ["--dry-run", "--summary", "detailed"]),
-        (lambda _: httpx.Response(401), ["--summary", "detailed"]),
+        (FakeSite().handle, ["--detail", "detailed", "-v"]),
+        (FakeSite().handle, ["--format", "json", "--detail", "detailed"]),
+        (FakeSite().handle, ["--dry-run", "--detail", "detailed"]),
+        (lambda _: httpx.Response(401), ["--detail", "detailed"]),
     ],
 )
 def test_a_fetch_shows_no_secret_nor_writes_one_in_its_report(
@@ -247,10 +247,10 @@ def test_a_fetch_shows_no_secret_nor_writes_one_in_its_report(
     answer: Callable[[httpx.Request], httpx.Response],
     more: list[str],
 ) -> None:
-    """Its summary, the command to copy, its result and its errors, then its run report."""
+    """Its echo, the command to copy, its result and its errors, then its run report."""
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     served(monkeypatch, answer)
-    main(download(home, *more))
+    main(fetch_arguments(home, *more))
     out, err = capsys.readouterr()
     assert "kb-mcp fetch" in err
     assert shown(out + err) == []
@@ -264,7 +264,7 @@ def test_refused_settings_show_no_secret(
     """A refusal names the setting and its layer, whatever the secrets set."""
     monkeypatch.setenv(KEY, KEY_SENTINEL)
     monkeypatch.setenv("KB_MCP_DATA_DIR", "relative")
-    assert main(download(home)) == REFUSED
+    assert main(fetch_arguments(home)) == REFUSED
     out, err = capsys.readouterr()
     assert said(err) == [("error", "settings.refused")]
     assert "data_dir (KB_MCP_DATA_DIR): " in err
@@ -274,7 +274,7 @@ def test_refused_settings_show_no_secret(
 def test_an_index_that_fails_to_embed_shows_no_key(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Its summary says the key is set; its error, that the model is missing, without it.
+    """Its echo says the key is set; its error, that the model is missing, without it.
 
     Nor does the run's log file show it.
     """
@@ -286,7 +286,7 @@ def test_an_index_that_fails_to_embed_shows_no_key(
         monkeypatch.setenv("KB_MCP_EMBEDDING_URL", url)
         assert main(["index", *options]) == 0
         capsys.readouterr()
-        assert main(["embed", *options, "--summary", "detailed"]) == 1
+        assert main(["embed", *options, "--detail", "detailed"]) == 1
     out, err = capsys.readouterr()
     assert "embedding_api_key: set" in err
     assert ("error", "index.not_built") in said(err)

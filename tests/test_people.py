@@ -1236,21 +1236,28 @@ def index(
     return status, capsys.readouterr().err
 
 
-def test_an_unused_alias_keeps_its_keys_in_index_s_json(
+def test_index_s_json_warns_of_an_unused_alias_and_fails_by_a_file_without_front_matter(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 052 renames no key of ``--format json``: an alias still says its key and target."""
+    """An alias that changes nothing is a warning; a stray file, a problem that fails the run."""
     (data / "aliases.toml").write_text('"Jo Placeholder" = "Robin Example"\n', encoding="utf-8")
+    (data / "docs" / "stray.md").write_text("# Notes, no front matter\n", encoding="utf-8")
     config = data.parent / "config.toml"
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
     given = ["index", "--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
-    assert main(given) == 0
-    (unused,) = json.loads(capsys.readouterr().out)["report"]["persons"]["unused"]
-    assert (sorted(unused), unused["key"], unused["target"]) == (
+    assert main(given) == 1
+    document = json.loads(capsys.readouterr().out)
+    assert list(document) == ["ending", "counts", "problems", "warnings"]
+    assert document["ending"] == "failed"
+    (unused,) = [each for each in document["warnings"] if each["where"] == "Jo Placeholder"]
+    assert unused["reason"].startswith("alias that changed nothing: ")
+    (alias,) = document["counts"]["persons"]["unused"]  # written whole, keys kept
+    assert (sorted(alias), alias["key"], alias["target"]) == (
         ["held", "key", "means", "name", "target"],
         "jo placeholder",
         "Robin Example",
     )
+    assert [each["where"] for each in document["problems"]] == ["stray.md"]
 
 
 def test_index_joins_by_the_alias_file_and_warns_of_what_it_left_apart(

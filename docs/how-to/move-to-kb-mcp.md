@@ -247,6 +247,7 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 | `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
 | `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
 | `login` | `login atlassian` |
+| `--summary short` or `--summary detailed` | `--detail short` or `--detail detailed`; `--summary` is refused, exit 2 |
 
 A script that wants search by meaning ends with `index`, then `embed`, never with
 `prepare && embed`: `embed` reads the index, not the mirror, so a page that `prepare`
@@ -257,19 +258,33 @@ goes on, with the exit status it would have had.
 What reads a run's output follows:
 
 - **JSON.** A result's `steps`, each with its `step`, are `sources`, each with its `source`,
-  `outcome` and `result`, whose `downloaded` and `mirrored` stay. `index`'s `report` gives
-  the documents held by type, their sections and the files skipped, then the documents
-  `copied`, `added`, `replaced` and `removed`, `awaiting`, those awaiting vectors, null
-  when the index names no model, `unchanged`, whether nothing was written, and `rebuilt`,
-  why the index was rebuilt whole, if it was; its `model` and `pruned` are null; its
-  `chunks` was `pieces` before schema 7. `embed`'s result by meaning gives `index`,
-  `model`, `chunks` (formerly `pieces`) and `documents`, those that the index holds,
-  `skipped`, the files that it lacks, `added` and `removed`, the chunks, `embedded`,
-  `found` and `refused`, `unchanged`, and `pruned`. `eval`'s result and results file
-  give each evaluated index under `indexes`, formerly `runs`, with its `costs.chunks`,
-  formerly `costs.pieces`; results files already written keep `runs`.
+  `ending`, `counts`, `problems` and `warnings`, in place of its `outcome` and `result`. A
+  fetch's `downloaded` is gone: its `failed_targets` are among the row's `problems`, each
+  with its `where` and `reason`, beside each document or file that failed; its `status` is
+  the row's `ending`; the counts of its `report` are keys of `counts`, beside its
+  `windows` and `dry_run`. A prepare's `mirrored` is the row's `counts`, but for its
+  `problems`, `warnings` and `elsewhere`, now the row's `problems` and `warnings`; the
+  work log's `held_back`, once each problem's, is `counts.held_back`, by each problem's
+  place. `index` and `embed` write one outcome each, its `ending`, `counts`, `problems`
+  and `warnings`. `index`'s `report` is its `counts`, with `index`, its path; its
+  `skipped` files are its `problems`, and what `persons` left apart, each ambiguous name
+  and each unused alias, its `warnings` too; its
+  `model` and `pruned` are gone; its `chunks` was `pieces` before schema 7. `embed`'s
+  result is its `counts`, `chunks` formerly `pieces`; its `refused` documents, and each
+  file that the index lacks, `skipped` counting them, are its `problems`, and a mirror
+  changed since the index is its `warnings`.
+  `eval`'s result and results file give each evaluated index under `indexes`, formerly
+  `runs`, with its `costs.chunks`, formerly `costs.pieces`; results files already
+  written keep `runs`.
 - **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
   cache", where they said "vector store".
+- **Endings.** A row says `sign in again` where it said `sign in`. The events
+  `fetch.source` and `prepare.source` give `ending` where they gave `outcome`, their spans
+  `kb_mcp.ending` where they had `kb_mcp.outcome`, and a run report `ending` where it held
+  `status`, the exit status; the dashboards read the new attribute. `prepare.not_mirrored`
+  names the source whose prepare found the problem, and what one source could not read of
+  the other's is a warning of its row, its reason beginning with that source's name, as
+  `jira's, read here:`.
 - **Log files, spans and metrics.** A run's log file and root span take its command's name,
   `fetch` or `prepare`, for instance. Events, spans and instruments named `download.`,
   `kb_mcp.download.`, `mirror.` and `kb_mcp.mirror.` are named `fetch.`, `kb_mcp.fetch.`,

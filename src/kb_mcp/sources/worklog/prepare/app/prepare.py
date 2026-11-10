@@ -28,12 +28,13 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, Problem
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -64,17 +65,8 @@ if TYPE_CHECKING:
     from kb_mcp.sources.worklog.prepare.domain.worklog import OrgText
 
 TRACER = trace.get_tracer(__name__)
-
-
-class WorklogProblem(Problem):
-    """A file of the work log not read, or a document not converted, and what it held back.
-
-    ``where`` is the path from the work log's folder, or a document's file and id, never
-    its content; ``held_back``, what keeps its last copy for it: for a file not read, as
-    the domain's function ``held_back`` says; for a conversion, the document's id.
-    """
-
-    held_back: str
+# Why a meeting is a warning: its link reaches no transcript found.
+UNLINKED = "its :MEETING: link reaches no transcript found"
 
 
 class Read(Record):
@@ -82,68 +74,60 @@ class Read(Record):
 
     The documents are those read that draw on no file not read. Problems stop removals
     but of a written document's old files; warnings, such as two transcripts of one id,
-    do not.
+    do not. A problem's ``where`` is the path from the work log's folder, or a
+    document's file and id, never its content; ``held_back`` gives, by that place, what
+    keeps its last copy for it: for a file not read, as the domain's function
+    ``held_back`` says; for a conversion, the document's id.
     """
 
     documents: tuple[WorklogDocument, ...]
     html: int
-    problems: tuple[WorklogProblem, ...]
-    warnings: tuple[str, ...]
+    problems: tuple[Problem, ...]
+    held_back: dict[str, str]
+    warnings: tuple[OutcomeWarning, ...]
 
 
-class WorklogPrepareOutcome(Record):
-    """What a run did: documents prepared, files changed, HTML transcripts left out.
+class WorklogCounts(Record):
+    """What a prepare did: documents prepared, files changed, HTML transcripts left out.
 
-    Problems stop removals but of a written document's old files; warnings, such as two
-    transcripts of one id, do not.
+    ``held_back`` gives, by each problem's place, what keeps its last copy for it.
     """
 
     documents: int
     changes: Changes
     html: int
-    problems: tuple[WorklogProblem, ...]
-    warnings: tuple[str, ...]
+    held_back: dict[str, str]
 
-    def text(self, summary: Detail) -> str:
-        """Write the counts of documents, of files, of HTML transcripts left out, of problems.
-
-        In detail, each warning comes before the problems.
-        """
-        warnings = self.warnings if summary == "detailed" else ()
+    def text(self, _detail: Detail) -> str:
+        """Write the counts of documents, of files, of HTML transcripts left out."""
         return (
             f"documents: {self.documents}\n"
             f"files written: {self.changes.written}\n"
             f"files unchanged: {self.changes.unchanged}\n"
             f"files removed: {self.changes.removed}\n"
             f"HTML left out: {self.html}\n"
-            + "".join(f"warning: {warning}\n" for warning in warnings)
-            + f"problems: {len(self.problems)}\n"
         )
 
 
-class WorklogDryRun(Record):
-    """What a run would do: documents, those to convert, files to remove, HTML left out."""
+class WorklogPlanned(Record):
+    """What a prepare would do: documents, those to convert, files to remove, HTML left out.
+
+    ``held_back`` gives, by each problem's place, what would keep its last copy for it.
+    """
 
     documents: int
     to_convert: int
     to_remove: int
     html: int
-    problems: tuple[WorklogProblem, ...]
-    warnings: tuple[str, ...]
+    held_back: dict[str, str]
 
-    def text(self, summary: Detail) -> str:
-        """Write the counts of documents, of those to convert, of files to remove, of problems.
-
-        HTML transcripts left out come before the problems, and in detail each warning.
-        """
-        warnings = self.warnings if summary == "detailed" else ()
+    def text(self, _detail: Detail) -> str:
+        """Write the counts of documents, to convert, files to remove, HTML transcripts left out."""
         return (
             f"documents: {self.documents}\n"
             f"to convert: {self.to_convert}\n"
             f"files to remove: {self.to_remove}\n"
             f"HTML left out: {self.html}\n"
-            + "".join(f"warning: {warning}\n" for warning in warnings)
-            + f"problems: {len(self.problems)}\n"
         )
 
 
@@ -159,11 +143,13 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
     ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
     transcript found, and the first by its file, else its id: never a problem, so that it
-    holds no removal back.
+    holds no removal back, but a warning of the outcome, each meeting by its file or id.
+    Two transcripts of one id are a warning too, and each one an event,
+    ``worklog.same_id``.
     """
     with TRACER.start_as_current_span("worklog.read"):
         org_files = files.listed(folder, archives=archives)
-        unread = [(each.path, each.reason) for each in org_files.problems]
+        unread = [(each.where, each.reason) for each in org_files.problems]
         org_texts: list[OrgText] = []
         for relative in org_files.paths:
             try:
@@ -174,15 +160,12 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
         # A file linking out is a problem, never listed: its path names it all the same.
         # A folder not listed, though its name may end in .org, names none.
         out = [
-            PurePosixPath(each.path)
+            PurePosixPath(each.where)
             for each in org_files.problems
             if each.reason == files.LINKS_OUT
         ]
         ids, warnings = transcript_ids([*org_files.paths, *out], archives=archives)
-        problems = [
-            WorklogProblem(where=where, reason=reason, held_back=held_back(where, ids))
-            for where, reason in unread
-        ]
+        problems = [Problem(where=where, reason=reason) for where, reason in unread]
         named = transcripts(org_texts, ids, archives=archives)
         todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
         journaled, unlinked = journal(todo, archive, archives=archives, transcripts=ids)
@@ -202,11 +185,17 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     )
     if unlinked:
         log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
+    for each in warnings:
+        log.warning("worklog.same_id", reason=f"{each.where}: {each.reason}")
     return Read(
         documents=tuple(documents_read),
         html=org_files.html,
         problems=tuple(problems),
-        warnings=tuple(warnings),
+        held_back={where: held_back(where, ids) for where, _ in unread},
+        warnings=(
+            *warnings,
+            *(OutcomeWarning(where=each, reason=UNLINKED) for each in unlinked),
+        ),
     )
 
 
@@ -245,7 +234,7 @@ def moved(
 
 def prepare_worklog(
     folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
-) -> WorklogPrepareOutcome:
+) -> Outcome[WorklogCounts]:
     """Mirror the work log under ``folder`` into ``docs/worklog/``, with ``pandoc``.
 
     Without ``archives``, the archive file, ``transcripts/archive/``,
@@ -265,7 +254,7 @@ def prepare_worklog(
     log = structlog.get_logger()
     kept, placed = existing(docs)
     read = read_worklog(folder, archives=archives)
-    problems = list(read.problems)
+    problems, held = list(read.problems), dict(read.held_back)
     converter = pandoc.org_converter()
     ready: dict[PurePosixPath, tuple[FrontMatter, str]] = {}
     with (
@@ -287,13 +276,9 @@ def prepare_worklog(
                 try:
                     body = pandoc.org_markdown(document.text)
                 except PandocFailedError as error:
-                    problems.append(
-                        WorklogProblem(
-                            where=f"{document.file.path}, {document.id}",
-                            reason=str(error),
-                            held_back=document.id,
-                        )
-                    )
+                    where = f"{document.file.path}, {document.id}"
+                    problems.append(Problem(where=where, reason=str(error)))
+                    held[where] = document.id
                     DOCUMENTS.add(1, {"kb_mcp.outcome": "failed", **typed})
                     continue
                 outcome = "mirrored"
@@ -355,19 +340,19 @@ def prepare_worklog(
         removed=changes.removed,
         problems=len(problems),
     )
-    return WorklogPrepareOutcome(
-        documents=len(wanted),
-        changes=changes,
-        html=read.html,
-        problems=tuple(problems),
-        warnings=read.warnings,
+    return Outcome.of(
+        WorklogCounts(documents=len(wanted), changes=changes, html=read.html, held_back=held),
+        problems,
+        read.warnings,
     )
 
 
 def plan_worklog(
     folder: Path, docs: Path, pandoc: Pandoc, *, archives: bool = True
-) -> WorklogDryRun:
+) -> Outcome[WorklogPlanned]:
     """Say what preparing the work log would do, converting and writing nothing.
+
+    It ends not run, a dry run's, or failed for a problem found.
 
     A document is to convert when no file holds its revision; a file is to remove when no
     document read has its path, unless a problem was found, as a run would then keep it,
@@ -396,11 +381,15 @@ def plan_worklog(
         to_remove=to_remove,
         problems=len(read.problems),
     )
-    return WorklogDryRun(
-        documents=len(read.documents),
-        to_convert=to_convert,
-        to_remove=to_remove,
-        html=read.html,
-        problems=read.problems,
-        warnings=read.warnings,
+    return Outcome.of(
+        WorklogPlanned(
+            documents=len(read.documents),
+            to_convert=to_convert,
+            to_remove=to_remove,
+            html=read.html,
+            held_back=read.held_back,
+        ),
+        read.problems,
+        read.warnings,
+        otherwise="not run",
     )

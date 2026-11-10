@@ -12,7 +12,7 @@ import structlog
 from pydantic_core import to_json, to_jsonable_python
 
 from kb_mcp.cli.adapters.confirmation import ask
-from kb_mcp.cli.domain.preview import before, ignored_lines, values_of
+from kb_mcp.cli.domain.echo import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -32,43 +32,28 @@ if TYPE_CHECKING:
 
 
 def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Source]) -> int:
-    """Load the settings, with the flags given, run the chosen subcommand, write its result.
+    """Load the settings, run the chosen command, write its result; return the exit status.
 
-    The settings are loaded for every command observed, which reads those of
-    ``OBSERVING`` whatever else it reads, by the model that holds the table of each
-    source of the registry, ``sources``, and of each account that a source names, each
-    loaded by the module path that its declaration names. Refused settings exit 2 before
-    the run is imported, as does what the command refuses of them and of its arguments, a program
-    that it needs missing from PATH, or a file that it reads missing or a folder, a pipe
-    being read: each is an error, the event ``settings.refused`` or ``run.refused`` with
-    its reason, on stderr alone, as a run that never started has no log file. Before
-    ``run.refused`` go the values that the settings loaded ignored, one of which may be
-    why, such as a variable that names no setting, unless at the level error, as for a
-    run. Else the values ignored go to stderr, after the preview of a command that writes
-    and before the command to copy. Such a command then asks, unless told not to, and is
-    refused where no one can answer: declined, it exits 1, refused, 2, both before the
-    run is imported. The run gets the settings loaded, with each one's layer, a flag's
-    being its option. It returns its status, then its result, or None when it has none to
-    write, such as ``serve``, whose output is the protocol. The result goes to stdout as
-    one JSON document, secrets masked, or as its module's ``text`` writes it, unless -q.
-    The run's status is returned.
+    The settings are loaded with the flags given, by the model of the registry's
+    ``sources`` and of the accounts they name. Before the command's module is imported,
+    the run ends refused, 2, for refused settings, ``settings.refused``, and for what the
+    command refuses of them or of its arguments, a program missing from PATH or a file
+    that it reads missing or a folder, ``run.refused``, after the values that the settings
+    ignored: each on stderr alone, as such a run has no log file. A command that writes
+    then says its echo and asks, unless given --yes: declined, the run ends 1; with no
+    terminal to ask on, refused, 2.
 
-    From the run's import to its result written, the run is ``observed``: its logs go to
-    stderr at its level and to its log file, in the settings' log folder, where every
-    command's files past 30 days go, as the parser's ``commands`` name them; its start
-    names the arguments ``given``, the settings as one JSON document, secrets masked,
-    and the layer of telemetry's endpoint, which says what turned telemetry on, or off;
-    its telemetry goes to the settings' endpoint, if any, as one trace unless its
-    command says it is not ``traced``, saying whether it is a dry run. The values of the
-    command's ``unlogged`` arguments read ``[not logged]`` among those given, each in its
-    place. An exception
-    that the run lets through, or Ctrl-C, ends it with the status that ``observed``
-    gives.
+    The run is then ``observed``, its start naming the arguments ``given``, each of the
+    command's ``unlogged`` ones as ``[not logged]``, the settings, secrets masked, and the
+    layer of telemetry's endpoint. The module's ``run`` gives its status and its result,
+    None when it has none to write, such as ``serve``'s: the result goes to stdout as one
+    JSON document, secrets masked, or as the module's ``text`` writes it, unless -q. An
+    exception or Ctrl-C ends the run as ``observed`` says.
     """
     command: Command = arguments.command
     output = Output(
         arguments.level,
-        arguments.summary,
+        arguments.detail,
         arguments.format,
         quiet=arguments.quiet,
         stdin_terminal=sys.stdin.isatty(),
@@ -135,6 +120,6 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         if result is not None and output.format == "json":
             sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
         elif result is not None and not output.quiet:
-            sys.stdout.write(module.text(result, output.summary))
+            sys.stdout.write(module.text(result, output.detail))
         run.status = int(status)
     return run.status

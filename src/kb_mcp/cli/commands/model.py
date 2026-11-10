@@ -9,11 +9,12 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.commands._embedding import open_endpoint, prefixes_said
+from kb_mcp.cli.commands._embedding import open_endpoint
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
+from kb_mcp.search.app.indexing import prefixes_said
 
 if TYPE_CHECKING:
     import argparse
@@ -55,7 +56,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Read
     )
 
 
-def text(ready: Ready, _summary: Detail) -> str:
+def text(ready: Ready, _detail: Detail) -> str:
     """Write the dimensions, the endpoint, the short digest, and whether prefixes are known."""
     return (
         f"{ready.name}: {ready.dimensions} dimensions, from {ready.url};"

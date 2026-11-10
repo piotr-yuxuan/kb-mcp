@@ -200,7 +200,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, obje
     return STEPS[arguments.step](arguments, loaded)
 
 
-def text(result: object, summary: Detail) -> str:
+def text(result: object, detail: Detail) -> str:
     """Write a step's result: the runs prepared, a tool's answer alone, an answer kept, a grading.
 
     A grading gives the runs counted, B against A on each measure, the verdict on ask,
@@ -233,7 +233,7 @@ def text(result: object, summary: Detail) -> str:
                 f"{f' ({each.reason})' if each.reason else ''}; calls: {made or 'none'};"
                 f" {each.handed:,} tokens handed over; {each.seconds:.1f} s"
                 for each in result.outcomes
-                if summary == "detailed"
+                if detail == "detailed"
                 for made in [", ".join(f"{tool} {count}" for tool, count in each.calls.items())]
             ]
             return "\n".join([*lines, ""])

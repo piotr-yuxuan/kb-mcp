@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.app.sources import SourcesRefusedError, run_each
-from kb_mcp.cli.domain.preview import values_of
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.sources import FETCH, PREPARE, chosen, given
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.stages import SourceRun
@@ -26,7 +26,7 @@ REFUSED = {FETCH: "fetch.refused", PREPARE: "prepare.refused"}
 
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran | None]:
-    """Run each source taken in this stage; exit as the rows rank, 2 when refused.
+    """Run each source taken in this stage; exit as the rows' endings fold, 2 when refused.
 
     The entry refused what it could before asking. Each source taken is run with its
     table, its account's, and, in a fetch, its options' values by flag. A fetcher or a
@@ -63,11 +63,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     return ran.exit_status, ran
 
 
-def text(ran: Ran, summary: Detail) -> str:
-    """Write a row per source, how it ended, then its result's own text, indented."""
+def text(ran: Ran, detail: Detail) -> str:
+    """Write a row per source, how it ended, then its outcome's own text, indented."""
     written: list[str] = []
     for row in ran.sources:
-        written.append(f"{row.source}: {row.outcome}\n")
-        if row.result is not None:
-            written.extend(f"  {line}\n" for line in row.result.text(summary).splitlines())
+        written.append(f"{row.source}: {row.ending}\n")
+        written.extend(f"  {line}\n" for line in row.text(detail).splitlines())
     return "".join(written)

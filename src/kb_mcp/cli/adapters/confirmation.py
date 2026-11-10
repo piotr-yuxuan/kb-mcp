@@ -9,7 +9,7 @@ from kb_mcp.kernel.exit_status import ExitStatus
 if TYPE_CHECKING:
     from typing import TextIO
 
-    from kb_mcp.cli.domain.preview import Then
+    from kb_mcp.cli.domain.echo import Then
 
 QUESTION = "Proceed? [y/N] "
 # The answers that let a run go on, in any case.
@@ -17,7 +17,7 @@ AGREED = {"y", "yes"}
 
 
 def ask(then: Then, stdin: TextIO, stderr: TextIO) -> ExitStatus | None:
-    """Do what follows the preview: give None for the run to go on, else its exit status.
+    """Do what follows the echo: give None for the run to go on, else its exit status.
 
     A refusal tells to pass --yes and exits 2. The question reads one line: y or yes
     lets the run go on; any other answer, or the end of input, does nothing and exits 1;

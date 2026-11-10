@@ -3,8 +3,8 @@
 A ``Fetcher`` brings a system's changes into the store that it owns, raw first; a
 ``Preparer`` writes documents through the mirror, from that store or from a folder read
 in place. Each takes a ``SourceRun``, the source it is run for and what it reads, and
-gives a ``Result``: how it ended and its counts, which ``--format json`` writes as every
-result, and whose ``text`` writes them as its command does. A declaration names its
+gives an ``Outcome``: how it ended, its problems and warnings, and its counts, a record
+whose ``text`` writes them as its command does. A declaration names its
 fetcher and preparers by module path, which a run loads, never ``--help``; any object
 with an interface's methods is one, and each source's is a module, its functions the
 methods, which take the run by position.
@@ -12,10 +12,8 @@ methods, which take the run by position.
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
@@ -25,30 +23,18 @@ from kb_mcp.kernel.record import Record
 from kb_mcp.sources.declaration import Source
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.output import Detail
-
-# How a fetcher or a preparer ended: done, failed, the sign-in no longer holding, or not run, as a
-# preparer that a dry run leaves alone.
-type Outcome = Literal["done", "failed", "sign in", "not run"]
-
+    from kb_mcp.kernel.outcome import Outcome
 
 # What a check concludes: all is well, the user must sign in again, or something fails.
-WELL, SIGN_IN, FAILED = "well", "sign in", "failed"
+type CheckState = Literal["well", "sign in again", "failed"]
 
 
-class Verdict(Record):
+class Check(Record):
     """One check: what it looked at, what it found, and what that means."""
 
     name: str
     found: str
-    state: str = WELL
-
-
-class SignedIn(Record):
-    """The site signed in to, and the folder that keeps its session."""
-
-    site: str
-    session: Path
+    state: CheckState = "well"
 
 
 class SourceRun(Record):
@@ -72,16 +58,6 @@ class SourceRun(Record):
     dry_run: bool
 
 
-class Result(Record):
-    """How a fetcher or a preparer ended; each one's result adds its counts, written as text."""
-
-    outcome: Outcome
-
-    @abstractmethod
-    def text(self, summary: Detail) -> str:
-        """Write the counts as the stage's command writes them, short or detailed."""
-
-
 @runtime_checkable
 class Fetcher(Protocol):
     """A source's fetcher: it brings a system's changes into the store that it owns."""
@@ -89,7 +65,7 @@ class Fetcher(Protocol):
     def preflight(self, run: SourceRun, /) -> str | None:
         """Say what the fetch cannot go on with, read from disk before any source starts."""
 
-    def fetch(self, run: SourceRun, /) -> Result:
+    def fetch(self, run: SourceRun, /) -> Outcome:
         """Fetch what changed, or in a dry run say what it would fetch; say how it ended."""
 
 
@@ -100,5 +76,5 @@ class Preparer(Protocol):
     def preflight(self, run: SourceRun, /) -> str | None:
         """Say what the preparer cannot go on with, read from disk before any source starts."""
 
-    def prepare(self, run: SourceRun, /) -> Result:
+    def prepare(self, run: SourceRun, /) -> Outcome:
         """Write the source's documents, or count what a dry run would; say how it ended."""

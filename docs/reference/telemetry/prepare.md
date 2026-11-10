@@ -16,14 +16,14 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 | Event | Level | Fields | When |
 |---|---|---|---|
 | `prepare.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only counts |
-| `prepare.source` | info | `source`, `outcome` | A source's row ended: `done`, `failed` or, in a dry run of a source that cannot count, `not run` |
+| `prepare.source` | info | `source`, `ending` | A source's row ended: `done`, `failed` or, in a dry run, `not run` |
 | `prepare.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
 | `prepare.refused` | error | `reason` | What the run cannot go on with, before its first row: a preparer that does not load, naming the source and the path, or what a preparer's preflight refuses, after its source and its stage (`source 'worklog': prepare: ...`), such as a work log that is not a folder, or types that are not all the resource types of one source: exit 2 |
 | `prepare.interrupted` | warning | `source` | Ctrl-C stopped the row of this source, none once every row ended: later rows do not run, exit 130 |
 | `prepare.placed` | info | `source`, `documents`, `assets`, `problems` | The raw store is read and every document placed, so that links reach the other source's: the source's documents placed in the mirror, the files they attach, its problems so far |
 | `prepare.document` | debug | `path`, `id`, `title`, `seconds` | A document's file is built, or fails to be: its path in the mirror, its id or key, its title |
 | `prepare.written` | info | `source`, `written`, `unchanged`, `removed`, `converted`, `reused`, `pruned` | The source's files are written: how many changed, were already so, were removed; the conversions pandoc ran, those the cache gave, and those deleted from the source's rows, which this run did not use, none when the source has problems |
-| `prepare.not_mirrored` | warning | `source`, `where`, `reason` | Something is not written into the mirror, by the source that it belongs to, its place in the raw store and why, never its content. It fails that source's row, and the run exits 1. Each source reads the whole store: one that cannot be read of the other source's is said by both when both are prepared, and by this one alone otherwise, a prepare of one source going on, its row done, though its files may then link the document's address on the site and no longer its file |
+| `prepare.not_mirrored` | warning | `source`, `where`, `reason` | Something is not written into the mirror, by the source whose prepare found it, its place in the raw store and why, never its content. A problem of that source's own fails its row, and the run exits 1. Each source reads the whole store: one that cannot be read of the other source's is a warning of this row, its reason naming that source, said by both when both are prepared, and by this one alone otherwise, a prepare of one source going on, its row done, though its files may then link the document's address on the site and no longer its file |
 | `prepare.nothing_removed` | warning | `source`, `problems` | A source with problems removes none of its files but those of documents gone or moved, nor an attached file, so that each last good copy stays. An attached file also stays, without this warning, while reading the raw store finds a problem of the other source's, such as a snapshot or listing that cannot be read, and while a document's file links it, such as the last good copy of a document that another prepare could not build, or of the source that a run leaves out |
 | `prepare.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, of a format that SQLite cannot read or may not write, or with a schema that names other columns, as a file of plan 039's, without `source`, has: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name, `integrity_check`, or `UnicodeDecodeError` when SQLite's report quotes a name of the schema that is no longer UTF-8, never content |
 | `prepare.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: each of Confluence's and Jira's rows fails, writing nothing, the run exiting as its rows rank |
@@ -40,7 +40,7 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 
 | Span | Kind | Attributes | What |
 |---|---|---|---|
-| `prepare.source` | internal | `kb_mcp.source`, `kb_mcp.outcome` | A source's row: its source and how it ended, no outcome on one that Ctrl-C stopped |
+| `prepare.source` | internal | `kb_mcp.source`, `kb_mcp.ending` | A source's row: its source and how it ended, no ending on one that Ctrl-C stopped |
 | `prepare.read` | internal | | The raw store read: spaces, users, listings, the newest snapshot of each document |
 | `prepare.build` | internal | | Each of the source's documents' files built, through pandoc or the cache, then, for Confluence, each space's tree |
 | `prepare.write` | internal | | The source's files that changed written, those no longer wanted removed, then the source's conversions this run did not use deleted |

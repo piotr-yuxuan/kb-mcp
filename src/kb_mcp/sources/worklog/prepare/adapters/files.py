@@ -15,6 +15,7 @@ import stat
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.sources.worklog.prepare.domain.worklog import (
     ARCHIVED,
@@ -38,20 +39,13 @@ class UnreadableError(OSError):
     """A file of the work log not read; the message says why, never with its content."""
 
 
-class UnreadFile(Record):
-    """Something of the work log not read: its path within the folder, and why."""
-
-    path: str
-    reason: str
-
-
 class OrgFiles(Record):
     """The org files found, in path order, the HTML transcripts counted, and problems."""
 
     root: Path  # the work log's folder, resolved
     paths: tuple[PurePosixPath, ...]  # relative to the root
     html: int
-    problems: tuple[UnreadFile, ...]
+    problems: tuple[Problem, ...]
 
 
 def listed(folder: Path, *, archives: bool) -> OrgFiles:
@@ -64,9 +58,9 @@ def listed(folder: Path, *, archives: bool) -> OrgFiles:
     root = folder.resolve()
     if not root.is_dir():
         return OrgFiles(
-            root=root, paths=(), html=0, problems=(UnreadFile(path=".", reason="not a folder"),)
+            root=root, paths=(), html=0, problems=(Problem(where=".", reason="not a folder"),)
         )
-    problems: list[UnreadFile] = []
+    problems: list[Problem] = []
     found: list[PurePosixPath] = []  # every file found, of any kind
     seen = {root}
     archive = PurePosixPath(TODO_ARCHIVE)
@@ -100,7 +94,7 @@ def listed(folder: Path, *, archives: bool) -> OrgFiles:
         ):
             continue
         if not real.is_relative_to(root):
-            problems.append(UnreadFile(path=str(relative), reason=LINKS_OUT))
+            problems.append(Problem(where=str(relative), reason=LINKS_OUT))
         elif real.is_dir() and relative.parts[0] in TRANSCRIPT_FOLDERS:
             seen.add(real)
             try:
@@ -108,7 +102,7 @@ def listed(folder: Path, *, archives: bool) -> OrgFiles:
                     heapq.heappush(queue, (crossed + each.is_symlink(), each))
             except OSError as error:
                 problems.append(
-                    UnreadFile(path=str(relative), reason=f"not read ({type(error).__name__})")
+                    Problem(where=str(relative), reason=f"not read ({type(error).__name__})")
                 )
         elif real.is_file():
             found.append(relative)
@@ -121,8 +115,8 @@ def listed(folder: Path, *, archives: bool) -> OrgFiles:
     )
     if len(transcripts) > TRANSCRIPT_COUNT:
         problems.append(
-            UnreadFile(
-                path=", ".join(TRANSCRIPT_FOLDERS), reason=f"over {TRANSCRIPT_COUNT} transcripts"
+            Problem(
+                where=", ".join(TRANSCRIPT_FOLDERS), reason=f"over {TRANSCRIPT_COUNT} transcripts"
             )
         )
     paths = (*others, *transcripts[:TRANSCRIPT_COUNT])

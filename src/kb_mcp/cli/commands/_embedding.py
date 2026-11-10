@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.endpoint import EMBEDDINGS
-from kb_mcp.search.adapters.embedding import prefixes
 from kb_mcp.search.adapters.model_api import Endpoint, endpoint
 from kb_mcp.search.app.indexing import Indexing
 
@@ -49,8 +48,3 @@ def indexing_of(settings: Settings, opening: Callable[[], Endpoint] | None) -> I
         chunking=settings.chunking,
         endpoint=opening,
     )
-
-
-def prefixes_said(model: str) -> str:
-    """Say whether the prefixes that a model's card asks for are known here."""
-    return "its prefixes known" if prefixes(model) else "no prefixes known: texts as they are"

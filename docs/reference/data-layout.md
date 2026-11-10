@@ -84,7 +84,7 @@ The site's responses and its HTML change without notice. So that a change stays 
   print them.
 - **Raw first.** The raw store keeps responses exactly as received, reading only what
   names their folder. A response whose other fields have changed is therefore kept; it
-  reads as `Unreadable` until its adapter is fixed, and then `prepare` reads it again
+  reads as a `Problem` until its adapter is fixed, and then `prepare` reads it again
   without fetching anything.
 - **HTML likewise.** The site's markup (class names, data attributes, macro names) is
   known to one module of 005, as named constants. Markup it does not know becomes a
@@ -163,7 +163,7 @@ The store's interface for snapshots:
 - `has(document)`; `read(document)`, which returns a `StoredSnapshot` or raises one of
   `raw_store.UNREADABLE` (`RepresentationError` for a refused field, another
   `ValueError` or an `OSError` for a damaged file); and `latest(document_class)`, which yields
-  the newest snapshot of each document of its type as a `StoredSnapshot`, or as an `Unreadable`
+  the newest snapshot of each document of its type as a `StoredSnapshot`, or as a `Problem`
   (where it is, and the refused field's path or the error's class) when it cannot be
   read. The others still follow.
 - `StoredSnapshot` is the snapshot read into the domain (`Snapshot`), its folder, `fetched_at`
@@ -215,7 +215,7 @@ were listed (`listed_at(space_id)`); other spaces' are kept. Of each listing ent
 reads only the space's id, and of each user only the account id. `put_users(users)` merges users into those kept, by account id, so the
 newest name wins. They are read, each entry by its adapter, with `spaces()`,
 `listed(space_id, Page | BlogPost)`, `folders(space_id)` and `users()`; an entry that its
-adapter refuses comes back as an `Unreadable` at its index, and the others are read.
+adapter refuses comes back as a `Problem` at its index, and the others are read.
 
 Listings give 005 the whole tree, titles and breadcrumbs, even of pages whose bodies are
 outside the period fetched, folders included (`Page.parent_type` says whether a parent
@@ -266,8 +266,10 @@ Two more of the store's own records, each replaced whole:
 Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
 `<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, one for each source fetched,
 `confluence` or `jira`, since two fetches can start within a second (030), in the format
-004's plan defines. A run report holds counts and refused fields' paths, never content,
-and names no target. No code reads one back. Its counts of documents depend on whether
+004's plan defines: `ending`, how the fetch ended (`done`, `failed`, `sign in again`, or
+`interrupted` by Ctrl-C), and `counts`, each count by its name; reports written before
+held `status`, the exit status, in place of `ending`. A run report holds counts and
+refused fields' paths, never content, and names no target. No code reads one back. Its counts of documents depend on whether
 `--since` was given (034): with it, `<source> <resource type>: in the period` and `<source> <resource type>: already
 stored`; without, `<source> <resource type>: new or changed since the last fetch`; `listed` and `fetched` either way.
 

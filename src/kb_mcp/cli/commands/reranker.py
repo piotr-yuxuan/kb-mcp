@@ -80,7 +80,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Chec
     return ExitStatus.OK, checked
 
 
-def text(checked: Checked, _summary: Detail) -> str:
+def text(checked: Checked, _detail: Detail) -> str:
     """Write the probe's scores and the time at the depth; say what to mind."""
     probe = (
         f"{checked.model}, at {checked.url}: the answer scores {checked.answering:.4f},"

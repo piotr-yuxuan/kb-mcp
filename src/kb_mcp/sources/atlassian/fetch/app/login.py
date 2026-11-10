@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import structlog
 
+from kb_mcp.kernel.record import Record
 from kb_mcp.sources.atlassian.fetch.adapters.browser import (
     SignInFailedError,
     disable_password_saving,
@@ -17,14 +19,18 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     for_site,
     write_cookies,
 )
-from kb_mcp.sources.stages import SignedIn
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from kb_mcp.config.domain.settings import Settings
 
 PROFILE = "browser"
+
+
+class SignedIn(Record):
+    """The site signed in to, and the folder that keeps its session."""
+
+    site: str
+    session: Path
 
 
 def save_session(settings: Settings, site: str, chrome: Path | None, *, extensions: bool) -> None:
