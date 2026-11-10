@@ -41,8 +41,8 @@ class Answered(Record):
     refused: bool
 
 
-def finished(session: Callable[[], Awaitable[None]]) -> None:
-    """Run a session with a server to its end.
+def finished[T](session: Callable[[], Awaitable[T]]) -> T:
+    """Run a session with a server to its end, and give its result.
 
     Raise TimeoutError when its deadline passed, and ServerError when the server failed,
     such as one that exits before it answers.
@@ -50,16 +50,15 @@ def finished(session: Callable[[], Awaitable[None]]) -> None:
     failure = ""
     timed_out = False
     try:
-        anyio.run(session)
+        return anyio.run(session)
     except* TimeoutError:
         timed_out = True
     except* (MCPError, OSError) as group:
         failure = type(group.exceptions[0]).__name__
     if timed_out:
         raise TimeoutError
-    if failure:
-        message = f"the server did not answer ({failure})"
-        raise ServerError(message)
+    message = f"the server did not answer ({failure})"
+    raise ServerError(message)
 
 
 def started(server: Sequence[str]) -> Client:
@@ -73,9 +72,8 @@ def listed(server: Sequence[str], deadline_s: float) -> ToolListing:
 
     Raises TimeoutError past ``deadline_s`` seconds, and ServerError.
     """
-    found: list[ToolListing] = []
 
-    async def session() -> None:
+    async def session() -> ToolListing:
         with anyio.fail_after(deadline_s):
             async with started(server) as client:
                 tools = (await client.list_tools()).tools
@@ -84,10 +82,9 @@ def listed(server: Sequence[str], deadline_s: float) -> ToolListing:
                     tool.model_dump(mode="json", by_alias=True, exclude_none=True, include=fields)
                     for tool in tools
                 ]
-                found.append(ToolListing(instructions=client.instructions or "", tools=dumped))
+                return ToolListing(instructions=client.instructions or "", tools=dumped)
 
-    finished(session)
-    return found[0]
+    return finished(session)
 
 
 def called(
@@ -98,16 +95,14 @@ def called(
     Raises TimeoutError past ``deadline_s`` seconds, the server then stopped, and
     ServerError.
     """
-    found: list[Answered] = []
 
-    async def session() -> None:
+    async def session() -> Answered:
         with anyio.fail_after(deadline_s):
             async with started(server) as client:
                 result = await client.call_tool(tool, arguments)
                 text = "\n".join(
                     part.text for part in result.content if isinstance(part, TextContent)
                 )
-                found.append(Answered(text=text, refused=result.is_error))
+                return Answered(text=text, refused=result.is_error)
 
-    finished(session)
-    return found[0]
+    return finished(session)
