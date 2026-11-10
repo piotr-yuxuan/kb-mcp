@@ -86,7 +86,7 @@ def prepare_classes(
 
     The data folder's cache of pandoc's conversions is open for this mirror alone, on the
     rows of ``source``. What it could not mirror is a warning, ``prepare.not_mirrored``,
-    by the source that it belongs to, its place and the reason, never its content, as is
+    by the source whose prepare found it, its place and the reason, never its content, as is
     that the source then removed none of its files, ``prepare.nothing_removed``. What it
     could not read of another source is a warning of its outcome, said alike, since its
     own files may then link around that source's document, and fails nothing of its own.
