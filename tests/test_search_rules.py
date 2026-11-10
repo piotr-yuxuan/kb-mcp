@@ -230,12 +230,12 @@ def test_a_score_by_meaning_cannot_be_sorted_by_created_date() -> None:
 def test_chunks_end_at_the_last_blank_line_that_fits() -> None:
     """Paragraphs are packed while they fit; white space never starts a chunk."""
     text = "\n\nfirst para\n\nsecond para\n\nthird paragraph here\n"
-    spans = chunks(text, limit=LIMIT)
-    assert [text[start:end].strip() for start, end in spans] == [
+    ranges = chunks(text, limit=LIMIT)
+    assert [text[start:end].strip() for start, end in ranges] == [
         "first para\n\nsecond para",
         "third paragraph here",
     ]
-    assert all(end - start <= LIMIT and not text[start].isspace() for start, end in spans)
+    assert all(end - start <= LIMIT and not text[start].isspace() for start, end in ranges)
 
 
 def test_a_long_paragraph_is_cut_at_a_line_break_then_a_space_then_anywhere() -> None:
@@ -251,8 +251,8 @@ def test_a_long_paragraph_is_cut_at_a_line_break_then_a_space_then_anywhere() ->
 def test_a_blank_line_beyond_the_limit_ends_no_chunk_before_it() -> None:
     """Only a blank line within the limit can end a chunk; a later one waits its turn."""
     text = "one two three four five six\n\nseven"
-    spans = chunks(text, limit=10)
-    assert [text[a:b].strip() for a, b in spans] == ["one two", "three four", "five six", "seven"]
+    ranges = chunks(text, limit=10)
+    assert [text[a:b].strip() for a, b in ranges] == ["one two", "three four", "five six", "seven"]
 
 
 def test_a_chunk_holds_at_most_1200_characters_by_default() -> None:

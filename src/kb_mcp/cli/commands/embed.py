@@ -24,7 +24,7 @@ CONVERTED = "; converted, as made by an earlier version, so that it gives freed 
 # One whose conversion failed, its reason given, which the next prune tries again.
 SHRINKS_NOT = (
     "; made by an earlier version, it is not yet converted to give freed space back ({}):"
-    " the next prune tries again, given about the store's size free on disk"
+    " the next prune tries again, given about the vector cache's size free on disk"
 )
 
 
@@ -47,7 +47,7 @@ def prune_text(pruned: Pruned | None, summary: Detail) -> str:
     """Say what the prune that followed the build did.
 
     Short gives the vectors deleted and the vector cache's size. Detailed gives the
-    vectors kept, of which for the evaluation alone, those deleted, the store's size
+    vectors kept, of which for the evaluation alone, those deleted, the vector cache's size
     before and after, and whether it gives space back; or why it did not prune.
     """
     if pruned is None:

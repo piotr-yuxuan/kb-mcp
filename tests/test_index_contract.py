@@ -195,7 +195,7 @@ def test_more_of_a_word_ranks_higher(written: Written) -> None:
 
 
 def test_a_document_is_read_back(written: Written) -> None:
-    """Its front matter, length and sections come back, its text by any span of its body."""
+    """Its front matter, length and sections come back, its text by any range of its body."""
     with written(BOTH).reading() as reader:
         (entry,) = reader.indexed_documents(paths=[RUNBOOK_PATH])
         assert entry.path == RUNBOOK_PATH
@@ -429,7 +429,7 @@ NEAR_BODY = (
 
 
 def test_nearest_gives_a_document_its_best_chunk(written: Written) -> None:
-    """Its score is that chunk's cosine; its section and its span in the body say where."""
+    """Its score is that chunk's cosine; its section and its range in the body say where."""
     compass = page("2001", "Compass")
     chunks = (
         chunk_of(NEAR_BODY, "north text", "k-north", NORTH),

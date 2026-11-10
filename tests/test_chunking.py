@@ -45,7 +45,7 @@ FRONT = page("196845", TITLE, breadcrumb=("Handbook", "Payments"))
 
 
 def bounds(section: Section) -> tuple[int, int]:
-    """Give a section's span in the body, its heading line included."""
+    """Give a section's range in the body, its heading line included."""
     return section.start, section.start + len(section.text)
 
 
@@ -125,12 +125,12 @@ def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> Non
     """2,000 characters of five-letter words: spaces at 4, 9, ..., 1,199, then the rest."""
     body = "abcd " * 400
     cut = sections(body)
-    spans = [(chunk[1], chunk[2]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)]
-    assert spans == [(0, 1199), (STEP, 2000)]
+    ranges = [(chunk[1], chunk[2]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)]
+    assert ranges == [(0, 1199), (STEP, 2000)]
 
 
 @pytest.mark.parametrize(
-    ("body", "spans"),
+    ("body", "ranges"),
     [
         # A white space just past 1,200 characters ends the window at its whole length.
         ("x" * 1150 + " " + "y" * 49 + " " + "z" * 100, [(0, WINDOW), (STEP, 1301)]),
@@ -143,19 +143,19 @@ def test_a_window_stops_at_its_last_space_and_the_next_starts_960_after() -> Non
     ],
 )
 def test_a_window_ends_at_white_space_and_none_is_blank(
-    body: str, spans: list[tuple[int, int]]
+    body: str, ranges: list[tuple[int, int]]
 ) -> None:
     """Hand-computed cases of the white space that ends windows and that they skip."""
     cut = sections(body)
-    assert [(chunk[1], chunk[2]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)] == spans
+    assert [(chunk[1], chunk[2]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)] == ranges
 
 
 def test_a_word_longer_than_the_last_tenth_is_cut_at_the_window_s_length() -> None:
     """No white space to stop at: the window ends inside the word."""
     body = "x" * 1300
     cut = sections(body)
-    spans = [(chunk[1], chunk[2]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)]
-    assert spans == [(0, WINDOW), (STEP, 1300)]
+    ranges = [(chunk[1], chunk[2]) for chunk in CHUNKERS["windows"].cut(FRONT, cut)]
+    assert ranges == [(0, WINDOW), (STEP, 1300)]
 
 
 def test_a_window_is_embedded_with_the_title_and_belongs_to_the_section_of_its_middle() -> None:
@@ -175,16 +175,16 @@ def test_windows_hold_at_most_1200_characters_and_overlap_as_the_plan_says() -> 
     for body in bodies():
         cut = sections(body)
         windows = CHUNKERS["windows"].cut(FRONT, cut)
-        spans = [(chunk[1], chunk[2]) for chunk in windows]
+        ranges = [(chunk[1], chunk[2]) for chunk in windows]
         short_words = max((len(each) for each in body.split()), default=0) <= WORD
-        assert not body[: spans[0][0] if spans else len(body)].strip()
-        assert not body[spans[-1][1] if spans else 0 :].strip()
-        for (start, end), (index, *_, text) in zip(spans, windows, strict=True):
+        assert not body[: ranges[0][0] if ranges else len(body)].strip()
+        assert not body[ranges[-1][1] if ranges else 0 :].strip()
+        for (start, end), (index, *_, text) in zip(ranges, windows, strict=True):
             assert end - start <= WINDOW
             assert body[start:end].strip()
             assert bounds(cut[index])[0] <= (start + end) // 2 < bounds(cut[index])[1]
             assert text == "\n".join(line for line in (TITLE, body[start:end].strip()) if line)
-        for (start, end), (following, _) in itertools.pairwise(spans):
+        for (start, end), (following, _) in itertools.pairwise(ranges):
             # Past white space alone, the next window starts at the next word.
             skips = not body[start + STEP : start + STEP + WINDOW - TENTH].strip()
             assert following == (len(body) - len(body[end:].lstrip()) if skips else start + STEP)
@@ -199,11 +199,11 @@ def test_small_to_big_chunks_hold_512_characters_and_cover_each_section_s_body()
         cut = sections(body)
         found = CHUNKERS["small-to-big"].cut(FRONT, cut)
         for index, section in enumerate(cut):
-            spans = [(start, end) for each, start, end, _ in found if each == index]
-            inner = (edge for span in spans for edge in span)
+            ranges = [(start, end) for each, start, end, _ in found if each == index]
+            inner = (edge for pair in ranges for edge in pair)
             edges = [section.body_start, *inner, bounds(section)[1]]
             left = [body[start:end] for start, end in itertools.batched(edges, 2, strict=True)]
-            assert all(0 < end - start <= SMALL for start, end in spans)
+            assert all(0 < end - start <= SMALL for start, end in ranges)
             assert edges == sorted(edges)
             assert not "".join(left).strip()
 
