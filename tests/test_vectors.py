@@ -186,11 +186,11 @@ def test_chunks_are_read_by_path_section_and_start_whatever_their_rowids(data: P
         )
     with reading(data / "index.sqlite") as reader:
         chunks = reader.vectors()
-    assert [chunk.path for chunk in chunks.chunks] == [
+    assert [chunks.paths[each] for each in chunks.documents] == [
         *[location(first)] * 3,
         *[location(second)] * 2,
     ]
-    assert [chunk.number for chunk in chunks.chunks] == [1, 2, 2, 1, 2]
+    assert chunks.sections == (1, 2, 2, 1, 2)
     assert chunks.matrix.reshape(-1).tolist() == [2, 4, 1, 0, 3]
 
 
@@ -538,14 +538,15 @@ def test_a_window_belongs_to_the_section_of_its_middle_and_spans_the_body(data: 
     with reading(data / "index.sqlite") as reader:
         chunks = reader.vectors()
         bounds = reader.bounds(path)
-        mine = [chunk for chunk in chunks.chunks if chunk.path == path]
+        columns = zip(chunks.documents, chunks.sections, chunks.starts, chunks.ends, strict=True)
+        mine = [where for document, *where in columns if chunks.paths[document] == path]
         assert len(mine) == WINDOWS
-        for chunk in mine:
-            first, last = bounds[chunk.number - 1]
-            assert first <= (chunk.start + chunk.end) // 2 < last
-            assert reader.text(path, chunk.start, chunk.end) == body[chunk.start : chunk.end]
-            assert f"Rollback\n{body[chunk.start : chunk.end].strip()}" in embedder.texts
-    assert (mine[0].start, mine[0].number) == (0, RELEASE)
+        for number, start, end in mine:
+            first, last = bounds[number - 1]
+            assert first <= (start + end) // 2 < last
+            assert reader.text(path, start, end) == body[start:end]
+            assert f"Rollback\n{body[start:end].strip()}" in embedder.texts
+    assert mine[0][:2] == [RELEASE, 0]
 
 
 def test_a_text_that_chunkings_share_is_embedded_once(data: Path) -> None:

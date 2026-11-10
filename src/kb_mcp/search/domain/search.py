@@ -243,6 +243,14 @@ class Chunk(Record):
     vector_key: str  # its vector's in the vector cache
 
 
+class Matched(Record):
+    """The chunk that placed a document by meaning: its section and its range in the body."""
+
+    number: int  # the section holding its middle, numbered from 1
+    start: int
+    end: int
+
+
 class Score(Record):
     """How well a document matches one expression, by its best section."""
 
@@ -352,14 +360,19 @@ class ChunkVectors(Record):
     __eq__ = object.__eq__
     __hash__ = object.__hash__
 
+    # Columns beside the matrix, one row per chunk, rather than a record per chunk: a
+    # serving process keeps them for every chunk of the index.
     documents: tuple[int, ...]  # each chunk's document, by rowid
-    chunks: tuple[Chunk, ...]
-    updated: Mapping[str, datetime]  # each document's update, by path
+    sections: tuple[int, ...]  # each chunk's section number
+    starts: tuple[int, ...]  # where each chunk starts in its document's body
+    ends: tuple[int, ...]  # where each chunk ends in its document's body
     matrix: NDArray[np.float32]  # one row per chunk
+    paths: Mapping[int, str]  # each document's path, by rowid
+    updated: Mapping[str, datetime]  # each document's update, by path
 
     def nearest(
         self, query: NDArray[np.float32], kept: Collection[int] | None, limit: int
-    ) -> dict[str, tuple[Score, Chunk]]:
+    ) -> dict[str, tuple[Score, Matched]]:
         """Score the documents nearest a query by their best chunk, at most ``limit``.
 
         Only the documents in ``kept`` count, when it is given. Each path comes with its
@@ -369,8 +382,9 @@ class ChunkVectors(Record):
         best: dict[str, int] = {}  # each document's best chunk, by its row
         similarity = self.matrix @ query.reshape(-1) if self.documents else np.empty(0)
         for index in np.argsort(-similarity, kind="stable"):
-            if kept is None or self.documents[index] in kept:
-                best.setdefault(self.chunks[index].path, int(index))
+            document = self.documents[index]
+            if kept is None or document in kept:
+                best.setdefault(self.paths[document], int(index))
         chosen = sorted(
             best.items(),
             key=lambda item: (-similarity[item[1]], -self.updated[item[0]].timestamp(), item[0]),
@@ -378,7 +392,9 @@ class ChunkVectors(Record):
         return {
             path: (
                 Score(relevance=float(similarity[index]), updated=self.updated[path]),
-                self.chunks[index],
+                Matched(
+                    number=self.sections[index], start=self.starts[index], end=self.ends[index]
+                ),
             )
             for path, index in chosen
         }

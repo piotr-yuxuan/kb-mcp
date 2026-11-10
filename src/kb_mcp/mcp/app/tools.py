@@ -43,8 +43,8 @@ from kb_mcp.search.domain.reranking import (
 )
 from kb_mcp.search.domain.search import (
     MAX_WORDS,
-    Chunk,
     Filters,
+    Matched,
     Passage,
     Plan,
     Sort,
@@ -147,8 +147,8 @@ class Ranking(Record):
 
     paths: list[str]
     whole: bool  # every document matching the words is counted
-    # Each document that meaning placed, and its best chunk.
-    chunks: dict[str, Chunk] = Field(default_factory=dict)
+    # Each document that meaning placed, and the chunk that matched.
+    matched: dict[str, Matched] = Field(default_factory=dict)
     counted: str = "found"  # what the count line calls the documents counted
     note: str = ""  # the sentences saying why meaning, or reranking, was not used
     pinned: int = 0  # the documents that the query names, first, by identifier
@@ -200,11 +200,11 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         return Ranking(paths=words, whole=whole, note=note, pinned=len(first))
     scores = {path: score for path, (score, _) in near.found.items()}
     by_meaning = rank([scores], first, sort="relevance")
-    chunks = {path: chunk for path, (_, chunk) in near.found.items()}
+    matched = {path: chunk for path, (_, chunk) in near.found.items()}
     if asked.mode == "semantic":
         counted = "nearest in meaning"
         return Ranking(
-            paths=by_meaning, whole=True, chunks=chunks, counted=counted, pinned=len(first)
+            paths=by_meaning, whole=True, matched=matched, counted=counted, pinned=len(first)
         )
     updated = {path: s.updated for one, _ in found for path, s in one.items()}
     updated |= {path: score.updated for path, score in scores.items()}
@@ -213,9 +213,10 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     # A document that words do not find is ranked by meaning alone: shown by meaning.
     places = {path: at for at, path in enumerate(words)}
     higher = [path for at, path in enumerate(by_meaning) if at < places.get(path, math.inf)]
-    placed, counted = {path: chunks[path] for path in higher}, "found by words or meaning"
+    placed = {path: matched[path] for path in higher}
+    counted = "found by words or meaning"
     return Ranking(
-        paths=[*first, *fused], whole=whole, chunks=placed, counted=counted, pinned=len(first)
+        paths=[*first, *fused], whole=whole, matched=placed, counted=counted, pinned=len(first)
     )
 
 
@@ -227,7 +228,7 @@ def snippet_of(
     A document shown by words opens at its best section for the query's words; one
     without them, at its start, with a lead that leaves out the title's heading.
     """
-    if chunk := ranked.chunks.get(entry.path):
+    if chunk := ranked.matched.get(entry.path):
         end = min(chunk.end, chunk.start + 2 * responses.SNIPPET)
         lead = reader.text(entry.path, chunk.start, end)
         return Passage(
@@ -260,7 +261,7 @@ def place_of(
     characters that are no letter nor digit. Candidates being the rarest word's
     occurrences, a section of many hits costs as many bisections.
     """
-    if chunk := ranked.chunks.get(path):
+    if chunk := ranked.matched.get(path):
         return chunk.number, (chunk.start, chunk.end)
     alone = (rf"(?<![^\W_]){re.escape(folded(word))}(?![^\W_])" for word in planned.words)
     words = re.compile("|".join(alone), re.IGNORECASE)
@@ -297,7 +298,7 @@ def passages(
     for path in paths:
         number, place = place_of(reader, ranked, planned, path)
         first, last = reader.bounds(path)[number - 1]
-        if quoted and path in ranked.chunks:
+        if quoted and path in ranked.matched:
             start, end = quoted(place, (first, last))
             text = reader.text(path, start, end)
         else:

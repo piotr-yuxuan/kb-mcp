@@ -23,7 +23,7 @@ from kb_mcp.search.adapters.model_api import ModelError, endpoint
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning, Nearest
-from kb_mcp.search.domain.search import Chunk, Filters, Score, plan_query
+from kb_mcp.search.domain.search import Filters, Matched, Score, plan_query
 from tests.answers import parts
 from tests.endpoint import DIGEST, URL, Scripted, connect_scripted, scripted, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
@@ -453,7 +453,7 @@ class Ordered(Meaning):
             found={
                 path: (
                     Score(relevance=1.0 - rank / 100, updated=MOMENT),
-                    Chunk(path=path, number=section, start=start, end=end, vector_key="k"),
+                    Matched(number=section, start=start, end=end),
                 )
                 for rank, (path, section, start, end) in enumerate(self.order)
             }
@@ -510,8 +510,8 @@ def test_a_ranking_holds_the_chunk_of_each_document_that_meaning_placed(
     """
     mixed, start, end = plan_of(data)
     with reading(data / "index.sqlite") as reader:
-        runbook = Chunk(path=RUNBOOK, number=1, start=0, end=24, vector_key="k")
-        plan = Chunk(path=mixed, number=3, start=start, end=end, vector_key="k")
+        runbook = Matched(number=1, start=0, end=24)
+        plan = Matched(number=3, start=start, end=end)
         ordered = Ordered([(RUNBOOK, 1, 0, 24), (mixed, 3, start, end)])
         planned = plan_query("PROJ-7 notes")
         asked = Asked(
@@ -519,7 +519,7 @@ def test_a_ranking_holds_the_chunk_of_each_document_that_meaning_placed(
         )
         ranked = ranking(reader, ordered, asked)
     placed = {RUNBOOK: runbook, mixed: plan} if mode == "semantic" else {RUNBOOK: runbook}
-    assert (ranked.paths[0], ranked.chunks) == (PROJ_7, placed)
+    assert (ranked.paths[0], ranked.matched) == (PROJ_7, placed)
     tools = Library(SqliteIndex(data / "index.sqlite"), data / "docs", ordered, mode)
     sections = {each.path: each.section for each in tools.ranked("PROJ-7 notes", mode)[0]}
     assert sections[RUNBOOK] == 1

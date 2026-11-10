@@ -384,8 +384,8 @@ and reranking are calls to services; a reranker reads each candidate's title, he
 and the text about its best place. The evaluation scores rankings (MRR@10, Section@10).
 
 **In the code.** [`Ranking`](../../src/kb_mcp/mcp/app/tools.py), which holds the
-documents' paths and, for those that meaning placed, their best
-[`Chunk`](../../src/kb_mcp/search/domain/search.py);
+documents' paths and, for those that meaning placed, the chunk that matched
+([`Matched`](../../src/kb_mcp/search/domain/search.py));
 [`ranking`](../../src/kb_mcp/mcp/app/tools.py),
 [`reranked`](../../src/kb_mcp/mcp/app/tools.py) and
 [`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py). Where the code

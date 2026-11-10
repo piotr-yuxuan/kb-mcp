@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         Filters,
         IndexedDocument,
         IndexStatus,
+        Matched,
         Passage,
         Score,
         Sort,
@@ -254,7 +255,7 @@ class VectorReader(Protocol):
 
     def nearest(
         self, vector: NDArray[np.float32], filters: Filters, depth: int
-    ) -> dict[str, tuple[Score, Chunk]]:
+    ) -> dict[str, tuple[Score, Matched]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
         A document is as near as its best chunk, of chunks tied the first by section

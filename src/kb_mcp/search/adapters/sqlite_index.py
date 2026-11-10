@@ -64,7 +64,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.chunking import Chunking
     from kb_mcp.search.domain.indexes import Change, Put
-    from kb_mcp.search.domain.search import Sort
+    from kb_mcp.search.domain.search import Matched, Sort
 
 TRACER = trace.get_tracer(__name__)
 # What the file of a build begins with, beside its index, until it is renamed into place.
@@ -214,16 +214,11 @@ FROM sections s JOIN documents d ON d.rowid = s.document
 WHERE d.path = :path
 ORDER BY s.number
 """
-# Every chunk with its document, its section, and its range in the document's body; by
-# what no rowid changes, so that an updated index and a whole build give one matrix.
+# Every chunk, where it is, with the columns asked: by what no rowid changes, so that an
+# updated index and a whole build give one matrix. What a search reads, and what
+# ``embed`` compares.
 CHUNKS = """
-SELECT d.rowid AS document, d.path, d.updated, s.number, p.start, p."end", p.key, p.vector
-FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
-ORDER BY d.path, s.number, p.start
-"""
-# Every chunk that has its vector, where it is and its key: what ``embed`` compares.
-HELD_CHUNKS = """
-SELECT d.path, s.number, p.start, p."end", p.key
+SELECT d.path, s.number, p.start, p."end", {columns}
 FROM chunks p JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
 ORDER BY d.path, s.number, p.start
 """
@@ -1017,33 +1012,30 @@ class Reader:
         """Give every chunk that has its vector, by path, section number and start."""
         return [
             Chunk(path=path, number=number, start=start, end=end, vector_key=key)
-            for path, number, start, end, key in self._connection.execute(HELD_CHUNKS)
+            for path, number, start, end, key in self._connection.execute(
+                CHUNKS.format(columns="p.key")
+            )
         ]
 
     def vectors(self) -> ChunkVectors:
         """Read every chunk's vector, with where the chunk is: what meaning searches."""
-        rows = self._connection.execute(CHUNKS).fetchall()
+        columns = "d.rowid AS document, d.updated, p.vector"
+        rows = self._connection.execute(CHUNKS.format(columns=columns)).fetchall()
         dimensions = len(rows[0]["vector"]) // vector_cache.LAYOUT.itemsize if rows else 0
         matrix = np.frombuffer(b"".join(row["vector"] for row in rows), dtype=vector_cache.LAYOUT)
         return ChunkVectors(
             documents=tuple(row["document"] for row in rows),
-            chunks=tuple(
-                Chunk(
-                    path=row["path"],
-                    number=row["number"],
-                    start=row["start"],
-                    end=row["end"],
-                    vector_key=row["key"],
-                )
-                for row in rows
-            ),
-            updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
+            sections=tuple(row["number"] for row in rows),
+            starts=tuple(row["start"] for row in rows),
+            ends=tuple(row["end"] for row in rows),
             matrix=matrix.astype(np.float32).reshape(len(rows), dimensions),
+            paths={row["document"]: row["path"] for row in rows},
+            updated={row["path"]: datetime.fromisoformat(row["updated"]) for row in rows},
         )
 
     def nearest(
         self, vector: NDArray[np.float32], filters: Filters, depth: int
-    ) -> dict[str, tuple[Score, Chunk]]:
+    ) -> dict[str, tuple[Score, Matched]]:
         """Give at most ``depth`` documents passing the filters, nearest a unit vector first.
 
         Each path comes with its score, then its best chunk.

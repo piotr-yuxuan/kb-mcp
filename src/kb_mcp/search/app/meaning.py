@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.search.adapters.model_api import ModelError
-from kb_mcp.search.domain.search import Chunk, Score
+from kb_mcp.search.domain.search import Matched, Score
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -38,7 +38,7 @@ STALE = "{name}: the index was built with other weights of it; run kb-mcp embed"
 class Nearest(Record):
     """The documents nearest a query, or why there are none to give."""
 
-    found: dict[str, tuple[Score, Chunk]]  # each path's score, then its best chunk
+    found: dict[str, tuple[Score, Matched]]  # each path's score, then its best chunk
     reason: str = ""
 
 
