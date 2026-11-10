@@ -1,11 +1,11 @@
 """Confluence's and Jira's preparer: one source's documents written into the mirror.
 
-Both connectors name this module, a ``Preparer``: ``prepare`` reads from the connector
-of the source that a run is for the document types that it converts, and the source
-whose rows of the cache of conversions it reads, finds pandoc, then writes the documents
-of those classes alone, among those of every source of its site that this module
-prepares; a dry run leaves the mirror as it is, and says that it counts nothing.
-``prepare_source`` writes them and says what it could not.
+Both connectors name this module, a ``Preparer``: ``prepare`` reads from the connector of
+the source that a run is for the document types that it converts, and the source whose rows
+of the cache of conversions it reads, finds pandoc, then writes the documents of those
+classes alone, among those of every source of its site that this module prepares, keeping
+the attached files that any source's files link; a dry run leaves the mirror as it is, and
+says that it counts nothing. ``prepare_source`` writes them and says what it could not.
 """
 
 from __future__ import annotations
@@ -33,22 +33,24 @@ if TYPE_CHECKING:
 NOT_COUNTED = "not counted: a dry run of this source converts nothing, and cannot tell"
 
 
-def of_its_site(run: SourceRun) -> dict[str, Classes]:
-    """Give each source of the run's site that this module prepares its document classes, by name.
+def prepared_here(run: SourceRun) -> tuple[dict[str, Classes], dict[str, str | None]]:
+    """Give each source that this module prepares its document classes, then its site, by name.
 
-    Its own among them; a site not set is one of them all.
+    The run's source among them. Those of its site are placed and linked together; every
+    one's files may link the attached files that they all keep in one folder.
     """
-    site = run.source_table.site
-    return {
-        each.name: tuple(
-            known
-            for known in DOCUMENT_CLASSES
-            if known.document_type in each.connector.document_types
-        )
-        for each in run.sources
-        if __name__ in each.connector.preparers
-        and getattr(run.settings.sources, each.name).site == site
-    }
+    prepared = [each for each in run.sources if __name__ in each.connector.preparers]
+    return (
+        {
+            each.name: tuple(
+                known
+                for known in DOCUMENT_CLASSES
+                if known.document_type in each.connector.document_types
+            )
+            for each in prepared
+        },
+        {each.name: getattr(run.settings.sources, each.name).site for each in prepared},
+    )
 
 
 def preflight(run: SourceRun) -> str | None:
@@ -62,7 +64,9 @@ def preflight(run: SourceRun) -> str | None:
     unknown = [
         each.name for each in run.source.connector.scope_types if each not in (SPACE, PROJECT)
     ]
-    spaced = [name for name, classes in of_its_site(run).items() if Page in classes]
+    sources, sites = prepared_here(run)
+    site = sites[run.source.name]
+    spaced = [name for name, each in sources.items() if Page in each and sites[name] == site]
     if unknown:
         return f"scope types {', '.join(unknown)}: not a space's or a project's, whole"
     if len(spaced) > 1:
@@ -89,21 +93,21 @@ def prepare(run: SourceRun) -> Outcome[AtlassianCounts]:
     except PandocMissingError as error:
         structlog.get_logger().error("prepare.pandoc_missing", reason=str(error))
         return Outcome.of(problems=(Problem(where="pandoc", reason=str(error)),))
-    return prepare_source(
-        run.settings, run.source_table.site, pandoc, run.source.name, of_its_site(run)
-    )
+    sources, sites = prepared_here(run)
+    return prepare_source(run.settings, sites, pandoc, run.source.name, sources)
 
 
 def prepare_source(
     settings: Settings,
-    site: str | None,
+    sites: Mapping[str, str | None],
     pandoc: Pandoc,
     source: str,
     sources: Mapping[str, Classes],
 ) -> Outcome[AtlassianCounts]:
     """Prepare a source's documents from the raw store, among those of ``sources``; say why not.
 
-    ``sources`` gives each source of the site's document classes by its name. The data
+    ``sources`` gives each Atlassian source's document classes by its name, and ``sites``
+    its site, as ``prepare_atlassian`` takes them. The data
     folder's cache of pandoc's conversions is open for this mirror alone, on the rows of
     ``source``; a cache of the former layout is adopted for each source of ``sources``.
     What it could not mirror is a warning, ``prepare.not_mirrored``, by the source whose
@@ -121,7 +125,7 @@ def prepare_source(
         adopted=tuple(sources),
     ) as cache:
         outcome = prepare_atlassian(
-            RawStore(settings.raw, source), settings.docs, site, cache, sources
+            RawStore(settings.raw, source), settings.docs, sites, cache, sources
         )
     for each in (*outcome.problems, *outcome.warnings):
         log.warning("prepare.not_mirrored", source=source, where=each.where, reason=each.reason)

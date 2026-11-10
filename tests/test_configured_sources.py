@@ -273,3 +273,39 @@ def test_a_site_of_two_sources_of_pages_refuses_their_prepare(
     assert "sources confluence, wiki: two sources of the pages of one site" in (
         capsys.readouterr().err
     )
+
+
+def test_a_prepare_of_one_site_keeps_the_files_that_another_site_s_documents_link(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review round 1: every source keeps its attached files in one folder, ``assets``.
+
+    A prepare of the client's site, whose store holds nothing yet, places its own site's
+    documents alone, but each source's files still link theirs: none of Confluence's goes.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        f'[sources.clientjira]\nconnector = "jira"\nprojects = ["PRB"]\nsite = "{CLIENT_SITE}"\n',
+        "utf-8",
+    )
+    data = tmp_path / "data"
+    cookie = [{"name": "s", "value": "v", "domain": "x"}]
+    write_cookies(folder_of(data / "session", SITE) / COOKIES, cookie)
+    given = ["--yes", "--config", str(config), "--data-dir", str(data)]
+    main(["fetch", *given, "--since", "2026-10-02", "confluence"])
+    assert main(["prepare", *given, "confluence"]) == ExitStatus.OK
+    assets = sorted((data / "docs" / "assets").iterdir())
+    linked = [
+        each
+        for each in assets
+        if any(
+            each.name in path.read_text("utf-8")
+            for path in (data / "docs" / "confluence").rglob("*.md")
+        )
+    ]
+    assert linked
+    assert main(["prepare", *given, "clientjira"]) == ExitStatus.OK
+    assert all(each.exists() for each in linked)

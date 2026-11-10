@@ -170,7 +170,8 @@ def prepared_source(
     with conversions.opened(
         path, lambda: convert.__qualname__, convert, source=source, adopted=tuple(ATLASSIAN)
     ) as cache:
-        return prepare_atlassian(RawStore(store.root, source), docs, site, cache, ATLASSIAN)
+        sites = dict.fromkeys(ATLASSIAN, site)
+        return prepare_atlassian(RawStore(store.root, source), docs, sites, cache, ATLASSIAN)
 
 
 def prepared_sources(

@@ -311,16 +311,18 @@ def document_file(
 def prepare_atlassian(
     store: RawStore,
     docs: Path,
-    site: str | None,
+    sites: Mapping[str, str | None],
     conversions: Conversions,
     sources: Mapping[str, Classes],
 ) -> Outcome[AtlassianCounts]:
     """Write the documents of ``store``'s source from the raw store to ``docs``.
 
-    ``sources`` gives the document classes of each Atlassian source of the site, by its
-    name, ``store``'s among them, which raises KeyError, a caller's error, before anything
-    is read when it is not; the one whose classes are pages lists the spaces, which the
-    others read too, as the registry gives the connector of spaces one source.
+    ``sources`` gives the document classes of each Atlassian source, by its name, and
+    ``sites`` the site of each, ``store``'s among them, which raises KeyError, a caller's
+    error, before anything is read when it is not. The sources of its site, those
+    below, are placed; every source's files are read for the attached files that they
+    link, as every source writes into one folder of them. Of the site's, the one whose
+    classes are pages lists the spaces, which the others read too.
     ``conversions`` writes HTML as Markdown, through the source's rows of the cache.
     Every document of every source is placed, so that links and images reach the other
     sources' files, but only those of ``store``'s source are built and written, with
@@ -341,14 +343,16 @@ def prepare_atlassian(
     at DEBUG each document built, by its path, id and title.
     """
     log = structlog.get_logger()
-    source, document_classes = store.source, sources[store.source]
+    source, site = store.source, sites[store.source]
+    placing = {name: each for name, each in sources.items() if sites[name] == site}
+    document_classes = placing[source]
     # The problems found, by the source they belong to: the catalogue's are its lister's.
-    found: dict[str, list[Problem]] = {name: [] for name in sources}
+    found: dict[str, list[Problem]] = {name: [] for name in placing}
     problems = found[source]
-    lister = next((name for name, classes in sources.items() if Page in classes), source)
+    lister = next((name for name, classes in placing.items() if Page in classes), source)
     with TRACER.start_as_current_span("prepare.read"):
         catalogue, damaged, times = read_catalogue(RawStore(store.root, lister), found[lister])
-        placed, retired = place(store, sources, catalogue, times, found)
+        placed, retired = place(store, placing, catalogue, times, found)
         linked, assets = link_targets(placed, store, site)
     own = [each for each in placed if each.source == source]
     _, files = link_targets(own, store, site)
