@@ -27,7 +27,11 @@ class Service:
     form: str | None = None  # what its address must look like, as a refusal says it
 
     def __post_init__(self) -> None:
-        """Refuse a form beside a flag: off this machine, the rule checks no form."""
+        """Refuse a form beside a flag, which no address could meet off this machine.
+
+        The form asks for http, a port and no path; off this machine, https alone is
+        reached.
+        """
         if self.form and self.flag:
             message = f"{self.name}: a form, or a flag, not both"
             raise ValueError(message)

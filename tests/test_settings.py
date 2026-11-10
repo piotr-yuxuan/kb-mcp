@@ -1295,7 +1295,7 @@ def test_a_service_on_this_machine_only_is_refused_off_it_whatever_the_run_says(
 
 
 def test_a_service_reached_off_this_machine_takes_no_form() -> None:
-    """Off this machine, the rule checks no form: a service may not have both."""
+    """The form asks for http; off this machine, https alone: no address meets both."""
     with pytest.raises(ValueError, match="a form, or a flag, not both"):
         Service(name="x", setting="x.url", sends="x", flag="--allow-x", form="an address")
 
