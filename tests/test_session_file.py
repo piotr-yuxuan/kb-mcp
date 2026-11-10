@@ -8,6 +8,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
     PROFILE,
@@ -16,6 +17,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     read_cookies,
     write_cookies,
 )
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import SavedSession
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -119,3 +121,16 @@ def test_a_former_session_that_no_one_site_takes_stays_said_once(
         ("session.not_moved", "warning")
     ]
     assert reason in logged[0]["reason"]
+
+
+def test_the_former_session_signs_in_its_own_site_alone_until_it_moves(tmp_path: Path) -> None:
+    """Review round 2: another site, without cookies of its own, is asked to log in."""
+    root = tmp_path / "session"
+    former(root, HOST)
+    sites = (SITE, CLIENT)
+    own = SavedSession(site=SITE, folder=folder_of(root, SITE), again="", sites=sites)
+    with own.client() as client:
+        assert [cookie.domain for cookie in client.cookies.jar] == [HOST]
+    other = SavedSession(site=CLIENT, folder=folder_of(root, CLIENT), again="", sites=sites)
+    with pytest.raises(SignInNeededError):
+        other.client()

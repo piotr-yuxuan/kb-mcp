@@ -23,6 +23,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     adopt_former_session,
     folder_of,
     for_site,
+    kept_why,
     read_cookies,
     write_cookies,
 )
@@ -71,11 +72,14 @@ class SavedSession(Record):
         """Return a client carrying the saved cookies; raise SignInNeededError if none are.
 
         Until a run that writes moves it, the session kept before sessions were a site's
-        signs in, so that a dry run or ``doctor`` before it needs no login.
+        signs this site in when it is this site's, as ``kept_why`` judges, so that a dry run
+        or ``doctor`` before it needs no login; never another site.
         """
-        own = self.folder / COOKIES
+        own, former = self.folder / COOKIES, self.folder.parent / COOKIES
+        if not own.exists() and kept_why(former, self.folder, self.sites) is None:
+            own = former
         try:
-            cookies = read_cookies(own if own.exists() else self.folder.parent / COOKIES)
+            cookies = read_cookies(own)
         except OSError, ValueError:
             raise SignInNeededError from None
         return http.client(self.site, cookies)
