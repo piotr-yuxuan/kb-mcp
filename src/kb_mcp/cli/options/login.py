@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +9,7 @@ from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Mapping, Sequence
 
     from kb_mcp.sources.declaration import Source
@@ -56,13 +56,24 @@ def in_the_browser(arguments: argparse.Namespace, settings: Mapping[str, object]
 
 
 def nothing_to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse a sign-in of no source, or of one whose location is not set: the first found."""
+    """Refuse a sign-in of no source, or of one whose location is not set: the first found.
+
+    First of all ``atlassian``, the sign-in that ``login`` named before plan 059, unless a
+    source takes that name: refused, naming the sources that sign in.
+    """
     taken = signing(arguments, settings)
+    names = [each.name for each in arguments.sources if each.connector.login is not None]
+    gone = arguments.source == FORMER and FORMER not in names
     faults = [
-        f"{each.path(location)}: not set; add it to the settings"
-        for each in taken
-        if (location := each.connector.location) is not None
-        and settings[each.path(location)] is None
+        f"{FORMER}: gone; name a source, login {' or login '.join(names)}, or none"
+        if gone
+        else None,
+        *(
+            f"{each.path(location)}: not set; add it to the settings"
+            for each in taken
+            if (location := each.connector.location) is not None
+            and settings[each.path(location)] is None
+        ),
     ]
     faults.append(
         None
@@ -95,18 +106,11 @@ def register(
     add_yes_option(parser)
     signed = [each for each in sources if each.connector.login is not None]
     names = [each.name for each in signed]
-
-    def named(text: str) -> str:
-        if text == FORMER and text not in names:
-            message = f"{FORMER}: gone; name a source, login {' or login '.join(names)}, or none"
-            raise argparse.ArgumentTypeError(message)
-        return text
-
     source = parser.add_argument(
         "source",
         nargs="?",
-        type=named,
-        choices=names,
+        choices=list(dict.fromkeys((*names, FORMER))),
+        metavar=f"{{{','.join(names)}}}",
         help="the source whose site to sign in to; by default each one in use",
     )
     chrome = parser.add_argument(

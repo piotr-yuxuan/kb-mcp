@@ -316,18 +316,28 @@ def test_a_prepare_of_one_site_keeps_the_files_that_another_site_s_documents_lin
     [
         (["check", "--site", SITE], "--site: gone; each source's site is its setting"),
         (["fetch", "--site", SITE], "KB_MCP_SOURCES__<NAME>__SITE"),
-        (["login", "atlassian"], "atlassian: gone; name a source, login confluence or login jira"),
     ],
-    ids=["check", "fetch", "login"],
+    ids=["check", "fetch"],
 )
 def test_the_options_that_went_are_refused_saying_what_took_their_place(
     tmp_path: Path, capsys: CaptureFixture[str], given: list[str], said: str
 ) -> None:
-    """Review round 1: --site and login atlassian, exit 2, never taken for another word."""
+    """Review round 1: --site, exit 2, never taken for another word."""
     with pytest.raises(SystemExit) as stopped:
         main([*given, "--config", str(tmp_path / "none.toml")])
     assert stopped.value.code == ExitStatus.REFUSED
     assert said in capsys.readouterr().err
+
+
+def test_login_atlassian_is_refused_naming_the_sources(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Review rounds 1 and 2: by login's own check, exit 2, before a window opens."""
+    given = ["login", "atlassian", "--yes", "--config", str(tmp_path / "none.toml")]
+    assert main(given) == ExitStatus.REFUSED
+    assert "atlassian: gone; name a source, login confluence or login jira" in (
+        capsys.readouterr().err
+    )
 
 
 def test_an_empty_variable_of_a_source_that_the_settings_do_not_name_is_ignored(
