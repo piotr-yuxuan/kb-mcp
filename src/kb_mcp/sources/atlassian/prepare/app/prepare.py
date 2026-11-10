@@ -422,7 +422,7 @@ def prepare_atlassian(
             remove=not any(found.values()),
         )
         changes = replace(changes, removed=changes.removed + swept.removed)
-        pruned = conversions.drop_unused(remove=not problems)
+        pruned = 0 if problems else conversions.drop_unused()
     log.info(
         "prepare.written",
         source=source,
