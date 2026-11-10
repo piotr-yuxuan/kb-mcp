@@ -193,6 +193,10 @@ keeps has changed since the former name:
   `prepare.cache_adopted` saying how many, and converts only what changed, as before;
   each prune then drops the rows that its source did not use. Nothing is downloaded
   again.
+- **No way back without a copy.** The first fetch of spaces writes `raw/tombstones.json`
+  in a new format, which the tag `pre-kb-mcp` cannot read, and `raw/coverage.json` with
+  keys that it ignores, a space's coverage then read inexact: to go back to the tag, put
+  back the two files as they were before that fetch, so keep a copy of them first.
 - **A report per source.** A download's report is
   `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it
   fetches, where it was `<time>.json`. Reports already there stay as they are. No code
