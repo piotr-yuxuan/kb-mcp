@@ -51,10 +51,11 @@ def test_a_cookie_file_in_another_shape_is_refused(tmp_path: Path) -> None:
         read_cookies(path)
 
 
-# A site, its host, and another site's host.
+# A site, its host, and another site's host and site.
 SITE = "https://sandbox.example.invalid"
 HOST = "sandbox.example.invalid"
 ELSEWHERE = "client.example.invalid"
+CLIENT = f"https://{ELSEWHERE}"
 
 
 def former(root: Path, domain: str) -> None:
@@ -63,32 +64,58 @@ def former(root: Path, domain: str) -> None:
     (root / PROFILE / "Default").mkdir(parents=True)
 
 
+def files(root: Path) -> list[Path]:
+    """Give every file and folder under the session's place, but its lock, by its path."""
+    return sorted(path.relative_to(root) for path in root.rglob("*") if path.name != ".lock")
+
+
 def test_the_former_session_moves_into_its_site_s_folder_once(tmp_path: Path) -> None:
     """Plan 059: the cookies and the profile beside them, said at INFO; then nothing."""
     root = tmp_path / "session"
     former(root, f".{HOST}")
     with capture_logs() as logged:
-        adopt_former_session(root, SITE)
-        adopt_former_session(root, SITE)
-    assert sorted(each.name for each in root.iterdir()) == [HOST]
+        adopt_former_session(root, SITE, (SITE, CLIENT))
+        adopt_former_session(root, SITE, (SITE, CLIENT))
+        adopt_former_session(root, CLIENT, (SITE, CLIENT))
+    assert sorted(each.name for each in root.iterdir() if each.name != ".lock") == [HOST]
     assert sorted(each.name for each in (root / HOST).iterdir()) == [PROFILE, COOKIES]
     assert (root / HOST).stat().st_mode & 0o777 == OWNER_ONLY_FOLDER
     assert [(each["event"], each["host"]) for each in logged] == [("session.moved", HOST)]
 
 
-@pytest.mark.parametrize("own", [False, True], ids=["another site's", "one of its own"])
-def test_a_former_session_of_another_site_or_beside_one_of_its_own_stays(
-    tmp_path: Path, *, own: bool
-) -> None:
-    """A warning says why; nothing moves, nothing is removed."""
+def test_a_site_s_folder_without_cookies_takes_the_former_session(tmp_path: Path) -> None:
+    """Review round 1: a profile alone, of a login not done, is no session of its own."""
     root = tmp_path / "session"
-    former(root, HOST if own else ELSEWHERE)
+    former(root, HOST)
+    (folder_of(root, SITE) / PROFILE).mkdir(parents=True)
+    adopt_former_session(root, SITE, (SITE,))
+    assert (folder_of(root, SITE) / COOKIES).exists()
+    assert not (root / COOKIES).exists()
+
+
+@pytest.mark.parametrize(
+    ("domain", "own", "reason"),
+    [
+        ("elsewhere.invalid", False, "of no site that the settings name"),
+        (HOST, True, "a session of its own"),
+        (".example.invalid", False, "of several sites"),
+    ],
+    ids=["no site's", "beside one of its own", "several sites'"],
+)
+def test_a_former_session_that_no_one_site_takes_stays_said_once(
+    tmp_path: Path, domain: str, *, own: bool, reason: str
+) -> None:
+    """A warning says why, once whichever site's runs find it; nothing moves or goes."""
+    root = tmp_path / "session"
+    former(root, domain)
     if own:
         write_cookies(folder_of(root, SITE) / COOKIES, [])
-    before = sorted(path.relative_to(root) for path in root.rglob("*"))
+    before = files(root)
     with capture_logs() as logged:
-        adopt_former_session(root, SITE)
-    assert sorted(path.relative_to(root) for path in root.rglob("*")) == before
+        for site in (SITE, CLIENT):
+            adopt_former_session(root, site, (SITE, CLIENT))
+    assert files(root) == before
     assert [(each["event"], each["log_level"]) for each in logged] == [
         ("session.not_moved", "warning")
     ]
+    assert reason in logged[0]["reason"]

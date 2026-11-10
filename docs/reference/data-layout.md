@@ -1046,9 +1046,10 @@ session cookies, `cookies.json` (mode `0600`). Agents are never given access to 
 A session kept before sessions were a site's, `<data>/session/cookies.json` and
 `<data>/session/browser/`, still signs in a source whose site has none of its own; the
 first `fetch` that writes, or `login`, of the site whose host its cookies are of moves it
-into that site's folder, once (`session.moved`), and a dry run, `doctor` or `serve` moves
-nothing. Cookies of no configured site's host stay, with a warning (`session.not_moved`),
-until removed.
+into that site's folder, once (`session.moved`), the profile first and the cookies last,
+under a lock of `<data>/session/`; a dry run, `doctor` or `serve` moves nothing. Cookies of
+no site that the settings name, or of several, or of a site with cookies of its own, stay,
+with one warning a run (`session.not_moved`), until removed.
 
 `sources.atlassian.fetch.adapters.sign_in` chooses how each source signs in (015, 059): by
 an API token when its setting `api_token`, such as `sources.jira.api_token`, is set, else

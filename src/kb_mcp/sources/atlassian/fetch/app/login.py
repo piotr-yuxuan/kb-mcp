@@ -22,6 +22,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     for_site,
     write_cookies,
 )
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sites_of
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -46,7 +47,7 @@ def save_session(settings: Settings, site: str, chrome: Path | None, *, extensio
     in time.
     """
     folder = folder_of(settings.session, site)
-    adopt_former_session(settings.session, site)
+    adopt_former_session(settings.session, site, sites_of(settings))
     profile = folder / PROFILE
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)

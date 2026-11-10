@@ -55,11 +55,16 @@ class SignIn(Protocol):
 
 
 class SavedSession(Record):
-    """The site's cookies, which ``login`` saved under the site's folder of the session."""
+    """The site's cookies, which ``login`` saved under the site's folder of the session.
+
+    ``sites`` are every site that the settings name, among which the session kept before
+    sessions were a site's finds its own.
+    """
 
     site: str
     folder: Path
     again: str
+    sites: tuple[str, ...] = ()
     name: str = "the session saved by login"
 
     def client(self) -> httpx.Client:
@@ -82,7 +87,7 @@ class SavedSession(Record):
 
     def adopt_former(self) -> None:
         """Move the session kept before sessions were a site's into this site's folder."""
-        adopt_former_session(self.folder.parent, self.site)
+        adopt_former_session(self.folder.parent, self.site, self.sites)
 
 
 class ApiToken(Record):
@@ -115,6 +120,11 @@ class ApiToken(Record):
         """Take nothing: a token reads and writes nothing of a session."""
 
 
+def sites_of(settings: Settings) -> tuple[str, ...]:
+    """Give every site that the settings name, of any source whose table holds one."""
+    return tuple(str(table.site) for _, table in settings.sources if getattr(table, "site", None))
+
+
 def choose_sign_in(settings: Settings, source: str) -> SignIn:
     """Sign in by the source's API token when one is set, else by the session that ``login`` saved.
 
@@ -127,7 +137,8 @@ def choose_sign_in(settings: Settings, source: str) -> SignIn:
     if token is None:
         again = f"run kb-mcp login {source}"
         site = str(table.site)
-        return SavedSession(site=site, folder=folder_of(settings.session, site), again=again)
+        folder = folder_of(settings.session, site)
+        return SavedSession(site=site, folder=folder, again=again, sites=sites_of(settings))
     pair = f"{table.email or ''}:{token.get_secret_value()}"
     return ApiToken(
         site=str(table.site),
