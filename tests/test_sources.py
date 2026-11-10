@@ -86,6 +86,8 @@ CONFIGURED = {
 # meetings and six transcripts, one of them under meetings/.
 WORKLOG_BY_TYPE = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
 WORKLOG_DOCUMENTS = sum(WORKLOG_BY_TYPE.values())
+# The keys of each row of fetch's and prepare's JSON, in order: its source, then its outcome.
+ROW_KEYS = ["source", "ending", "counts", "problems", "warnings"]
 # The period of a fetch that covers what the scripted sites serve: the week before FIRST.
 SINCE = {"--since": (FIRST - WEEK).isoformat()}
 
@@ -404,8 +406,7 @@ def test_json_is_one_document_with_a_row_per_source(
         ("confluence", "failed"),
         ("jira", "done"),
     ]
-    keys = ["counts", "ending", "problems", "source", "warnings"]
-    assert all(sorted(row) == keys for row in document["sources"])
+    assert all(list(row) == ROW_KEYS for row in document["sources"])
     assert "counts" in document["sources"][0]["counts"]
     assert signed_in.asked
     assert main(command(home, config, "prepare", "--yes", "--format", "json")) == ExitStatus.OK
@@ -415,6 +416,7 @@ def test_json_is_one_document_with_a_row_per_source(
         ("jira", "done"),
         ("worklog", "done"),
     ]
+    assert all(list(row) == ROW_KEYS for row in document["sources"])
     assert document["sources"][2]["counts"]["documents"] == WORKLOG_DOCUMENTS
 
 
@@ -765,6 +767,7 @@ def test_a_dry_run_of_the_site_plans_and_writes_nothing(
         ("confluence", "not run"),
         ("jira", "not run"),
     ]
+    assert all(list(row) == ROW_KEYS for row in rows)
     assert sorted(path.name for path in (home / "data").iterdir()) == ["session"]
     assert signed_in.asked
 
