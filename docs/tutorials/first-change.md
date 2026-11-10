@@ -424,11 +424,9 @@ an adapter, and seen Import Linter and the reference test each refuse what the c
 layout and its pages do not allow. From here:
 
 - [Instructions for coding agents](../../AGENTS.md), which bind every change: the
-  workflow, from a plan in `docs/work/plans/` to a merge, the checks, and the sandbox.
+  workflow, from a plan to a merge, the checks, and the sandbox.
   A new subcommand also has its page under
   [telemetry](../reference/telemetry/README.md), changed with the code.
-- [The roadmap](../work/README.md): the plans to come; those done are in
-  [`changelog/`](../work/changelog/).
 - [The code's layout](../explanation/code-layout.md), and
   [a walkthrough of the code](../explanation/code-walkthrough.md) of one refresh and one
   search.

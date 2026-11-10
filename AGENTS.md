@@ -10,8 +10,9 @@ never this project's docs.
 
 Follow the `workflow:plans` skill with these parameters:
 
-- Plans are `docs/work/plans/NNN-slug.md`, tracked by git; parked ones are under
-  `docs/work/held/`. Records under `docs/work/` are history, never a contract.
+- Plans are `docs/work/plans/NNN-slug.md`, untracked: `docs/work/` is git-ignored and
+  never committed; parked ones are under `docs/work/held/`, done ones under
+  `docs/work/changelog/`. Records under `docs/work/` are history, never a contract.
 - Checks, run in full before each review and each merge:
   - `uv run ruff check` and `uv run ruff format --check`;
   - `uv run lint-imports`;
@@ -25,8 +26,8 @@ Follow the `workflow:plans` skill with these parameters:
   [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
   [the internals](docs/explanation/internals.md); the formats that the stages share, in
   [the data layout](docs/reference/data-layout.md); where code goes, in
-  [the code's layout](docs/explanation/code-layout.md); the plans, in
-  [the roadmap](docs/work/README.md). Only the adapter of a representation reads its
+  [the code's layout](docs/explanation/code-layout.md); the plans, in the roadmap,
+  `docs/work/README.md`, untracked. Only the adapter of a representation reads its
   JSON, and only one module knows the site's HTML.
 - A new page goes in the folder of `docs/` named by its Diataxis kind, and
   [the map](docs/README.md) links it in the commit that writes it. The reference of

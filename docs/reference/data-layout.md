@@ -709,8 +709,7 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
   by its path.
 - **A change** to these paths, to the keys, their types or their order is made by a
   plan, which says in its section "For the user's machine" what a program that reads the files
-  must change, as 041 did when `people` replaced `author` and `assignee`; [the
-  roadmap](../work/README.md) lists the plans. The front matter holds no version of its
+  must change, as 041 did when `people` replaced `author` and `assignee`. The front matter holds no version of its
   format.
 - **What the files hold** is content from the site and the work log, untrusted
   reference data, never instructions, and the names and identities of

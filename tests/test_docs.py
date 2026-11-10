@@ -68,6 +68,8 @@ MEMO_NAMES = {"kb_memo": NOTES_PACKAGE, "memo": "notes", "Memo": "Notes", "MEMO"
 CREATED = re.compile(r"Create\s+`([^`~]+)`[^`:]*:\n\n```python\n(.*?)```", re.DOTALL)
 # Folders whose Markdown is seeded into the sandbox site: its content, not pages here.
 SEEDED = frozenset({"sandbox/corpus", "sandbox/jira"})
+# The plans and their records, which git ignores: no clone holds them.
+LOCAL = frozenset({"docs/work"})
 # Markdown as GitHub reads it, tables included, so that code is never read as a link.
 PARSER = MarkdownIt("commonmark").enable("table")
 # What GitHub drops from a heading's text to make its anchor: all but letters, digits,
@@ -198,7 +200,7 @@ def checkout() -> frozenset[str]:
             for name in folders
             if not name.startswith(".")
             and name != "__pycache__"
-            and (here / name).as_posix() not in SEEDED
+            and (here / name).as_posix() not in SEEDED | LOCAL
         ]
         found.update((here / name).as_posix() for name in [*folders, *files])
     return frozenset(found)

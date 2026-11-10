@@ -11,3 +11,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+# The plans, their records and the roadmap: kept locally, never committed.
+docs/work/

@@ -706,7 +706,7 @@ def test_a_remote_endpoint_needs_the_flag_and_https() -> None:
 def test_an_allowed_remote_endpoint_goes_through_the_environment_s_proxy(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """On a managed network, a proxy may be the way out: a listener here stands for it, never reaching out."""
+    """Behind a proxy, a listener here stands for it, never reaching out."""
     asked: list[bytes] = []
     for name in ("NO_PROXY", "no_proxy"):
         monkeypatch.delenv(name, raising=False)

@@ -1,8 +1,8 @@
 # Trade-offs
 
 Each decision that shapes kb-mcp, as one section: what was decided, why,
-what it costs, the alternative rejected, and the plan that settled it, whose record in
-[`docs/work/changelog/`](../work/changelog/) holds the full reasoning and the measures.
+what it costs, the alternative rejected, and the plan that settled it, whose record,
+kept outside the repository, holds the full reasoning and the measures.
 [The internals](internals.md) say how the parts work together; this page says why they
 are as they are. A decision costs something by definition: each section names its price,
 so that the next person to weigh it knows what was paid.
@@ -20,7 +20,7 @@ and the server's tools are read-only too.
   issue through this program, and must go to the site for that.
 - **Rejected.** Write access, through the REST APIs or tools that edit pages and issues.
 - **Settled** by the programme of plans, before plan 001, and held by
-  [plan 004](../work/changelog/004-download.md#decisions)'s port, GET only.
+  plan 004's port, GET only.
 
 ## Refresh by hand
 
@@ -58,12 +58,12 @@ server never fetches from the site.
   and save no request. A refresh started from an MCP tool, after the user's approval, is
   planned (009), not built.
 - **Settled** by the programme with the user, before plan 001; catching up without
-  dates by [plan 007](../work/changelog/007-incremental-refresh.md#decisions); the
+  dates by plan 007; the
   commands that the user composes by
-  [plan 031](../work/changelog/031-composable-commands.md#settled-by-the-user), which removed
-  the `sync` of [plan 017](../work/changelog/017-modular-sources.md#what-sync-does); the
+  plan 031, which removed
+  the `sync` of plan 017; the
   catch-up from the last fetch, a project's end exact, by
-  [plan 034](../work/changelog/034-incremental-fetch.md#decisions); a space's coverage
+  plan 034; a space's coverage
   exact after a whole read without failure by plan 056.
 
 ## Cookies and API tokens
@@ -88,9 +88,9 @@ takes the token when one is set, else the session.
   which is refused, since secrets come from the environment alone; the generic
   `ATLASSIAN_*` variables, as a token exported for another tool would then switch the
   sign-in.
-- **Settled** by [plan 001](../work/changelog/001-proof-test.md#decisions) and
-  [plan 004](../work/changelog/004-download.md#decisions) for the session, by
-  [plan 015](../work/changelog/015-cli-and-configuration.md#sign-in-with-an-api-token)
+- **Settled** by plan 001 and
+  plan 004 for the session, by
+  plan 015
   for the token.
 
 ## Raw first
@@ -111,7 +111,7 @@ the mirror, the index and the vectors are all derived from it, offline.
   fetches ([`RawStore.add_blobs`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)).
 - **Rejected.** Converting while downloading, which would fetch everything again after
   each fix of the conversion.
-- **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
+- **Settled** by plan 003.
 
 ## Strict reading, a module per representation
 
@@ -134,7 +134,7 @@ naming its path, never its value.
 - **Rejected.** Reading responses where they are used, or with defaults for what is
   missing; models of the site's JSON in Pydantic, which plan 015 left for later, if at
   all.
-- **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions), at the
+- **Settled** by plan 003, at the
   user's request.
 
 ## Three roles, not a bundle
@@ -164,7 +164,7 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
   each source by name in `cli` and `config`, on which `sync` dispatched since plan 017,
   which treats a new source as a change to the core.
 - **Settled** by the user, in
-  [plan 030](../work/changelog/030-sources-as-equals.md#settled-by-the-user).
+  plan 030.
 
 ## A list, not entry points
 
@@ -185,7 +185,7 @@ which the entry takes as a parameter ([`main`](../../src/kb_mcp/cli/main.py)).
   ms, on a command that a shell's completion runs at every Tab, for what no distribution
   yet needs. Choosing a source's roles in the settings.
 - **Settled** by the user, in
-  [plan 030](../work/changelog/030-sources-as-equals.md#the-registry-a-list-in-the-code).
+  plan 030.
 
 ## Markdown beside MCP
 
@@ -202,8 +202,8 @@ The mirror is a folder of Markdown files, one per document with its front matter
   names it.
 - **Rejected.** Serving the site's HTML; files alone, without search; exports to Word or
   PDF, which do not scale to a site.
-- **Settled** by [plan 005](../work/changelog/005-markdown-mirror.md#goal) and
-  [plan 006](../work/changelog/006-search-mcp.md#goal).
+- **Settled** by plan 005 and
+  plan 006.
 
 ## Pandoc's conversions kept by their input
 
@@ -247,11 +247,11 @@ Every run still reads the store and builds every document's HTML.
   `prepare --rebuild`, which deleting the file replaces; the work log in the cache, whose
   revisions already skip what has not changed; a file per source, where a column keeps
   one file, which the data guard already judges.
-- **Settled** by the user's answer to [plan
-  034](../work/changelog/034-incremental-fetch.md#questions-for-the-user)'s fourth
-  question, "Cache pandoc's output", built by [plan
-  039](../work/changelog/039-conversion-cache.md#decisions), and its rows parted by source
-  by [plan 030](../work/changelog/030-sources-as-equals.md#confluence-and-jira-prepared-apart-from-029).
+- **Settled** by the user's answer to plan
+  034's fourth
+  question, "Cache pandoc's output", built by plan
+  039, and its rows parted by source
+  by plan 030.
 
 ## People, a generic key
 
@@ -318,8 +318,8 @@ that what read the two keys, a hit's line among them
   filter: Jira's author stays its reporter, with its creator beside it. Generic names
   for the other keys that Atlassian shapes, `key`, `space`, `project`, `issue_type` and
   `version`, which nothing yet needs.
-- **Settled** by [plan
-  041](../work/changelog/041-people-in-documents.md#one-generic-key-in-place-of-two-atlassian-ones),
+- **Settled** by plan
+  041,
   on the user's feedback, its questions answered by their defaults when the
   user approved it.
 
@@ -427,11 +427,11 @@ afresh at each run
   already name the day; a side table of links, and "Linked from" in `read`; participants
   joined across documents, left to plan 043; a filter by type, which `source` with a
   participant or a date already narrows.
-- **Settled** by [plan
-  042](../work/changelog/042-work-log-days-and-meetings.md#days-and-meetings-the-rule), on
+- **Settled** by plan
+  042, on
   the user's feedback, its questions answered by their defaults when the
-  user approved it; dates by the day and numbers by the journal's order by [plan
-  044](../work/changelog/044-meetings-by-their-day.md#dates-the-day-alone), on the
+  user approved it; dates by the day and numbers by the journal's order by plan
+  044, on the
   user's answer that the work log gives the day of a meeting, never its time.
 
 ## A file not read holds back its own
@@ -474,8 +474,8 @@ again under another title's path, and `prepare` exits 1.
   written from two runs' reads. Removing files while a file is not read, but those that
   it builds: a second rule in the prepare and in its dry run. Lifting the bound, or one in
   bytes: not needed for ten years or more.
-- **Settled** by [plan
-  044](../work/changelog/044-meetings-by-their-day.md#settled-by-the-user), on the
+- **Settled** by plan
+  044, on the
   user's answers, its questions answered by their defaults when the user
   approved it.
 
@@ -573,7 +573,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   aliases as a setting, a new kind of setting through the layers and the generated
   reference, logged by every run. Person documents under `<data>/docs/`, which other
   engines would read: a new type, folder and owner of files, left to a later plan.
-- **Settled** by [plan 043](../work/changelog/043-person-index.md#how-names-become-persons),
+- **Settled** by plan 043,
   on the user's feedback, its questions answered by their defaults when the
   user approved it.
 
@@ -593,10 +593,10 @@ Words are indexed by SQLite's full-text engine, FTS5, in one file,
   hand. Each `index` digests every file of the mirror, and copies the whole index to
   write what changed ([the index updated aside](#the-index-updated-aside-not-in-place)).
 - **Rejected.** The Porter stemmer, which knows English alone where the content mixes
-  English and French ([plan 011](../work/changelog/011-search-strategies.md#deliberately-not-done)).
+  English and French (plan 011).
   No plan weighed another engine: the programme settled FTS5 with the user.
 - **Settled** by the programme, and built by
-  [plan 006](../work/changelog/006-search-mcp.md#the-index).
+  plan 006.
 
 ## The index updated aside, not in place
 
@@ -662,8 +662,8 @@ build, row for row, and ranks the golden questions alike
   interfaces, [`WordsIndex`](../../src/kb_mcp/search/domain/indexes.py) and
   [`VectorIndex`](../../src/kb_mcp/search/domain/indexes.py), hold only what search
   needs, and a networked backend's adapter would bring its own pool and retries.
-- **Settled** by [plan
-  035](../work/changelog/035-incremental-index-and-embed.md#decisions), its first question
+- **Settled** by plan
+  035, its first question
   answered by the user, aside, and its fourth too: `embed` warns of a mirror
   changed since the index, and goes on.
 
@@ -741,9 +741,9 @@ outside that list. A sort by a date scores every match.
   `people` by role and time, which SQLite then takes for a commenter too: a comment
   range alone in 52 ms rather than 80, a commenter's match by name in 77 rather than 8,
   as plan 041 measured them.
-- **Settled** by [plan
-  040](../work/changelog/040-jira-filters-and-sort.md#what-a-date-range-and-a-sort-cost-in-sqlite),
-  and for persons by [plan 043](../work/changelog/043-person-index.md#where-persons-live-the-index).
+- **Settled** by plan
+  040,
+  and for persons by plan 043.
 
 ## Hybrid ranking, measured by `eval`
 
@@ -772,9 +772,9 @@ mode and chunking on golden questions, whose answers are known.
 - **Rejected.** Words alone and `sections`, which the rules of 018 and 019 kept; meaning
   alone, which scored higher still over `windows` on the sandbox, where the user
   chose hybrid search.
-- **Settled** by [plan 011](../work/changelog/011-search-strategies.md#search) for the
-  modes and the measure; the defaults by [plan
-  025](../work/changelog/025-windows-and-hybrid.md#settled-by-the-user), the
+- **Settled** by plan 011 for the
+  modes and the measure; the defaults by plan
+  025, the
   user's choice.
 
 ## Embeddings by any OpenAI-compatible API, not in process
@@ -807,7 +807,7 @@ which is only the example: any such server works.
   consent written by `eval-agents prepare` into the runs' files, which every later call
   inherited (plan 063); a refusal that names the flag to an agent, which could add it.
 - **Settled** by the user, in
-  [plan 018](../work/changelog/018-embeddings-via-ollama.md#settled-by-the-user-not-reopened).
+  plan 018.
 
 ## A reranker on this machine, off by default
 
@@ -837,7 +837,7 @@ by default.
   shape; on by default, which the user chose before the measures, then reversed
   for accuracy.
 - **Settled** by the user, in
-  [plan 022](../work/changelog/022-reranking.md#settled-by-the-user).
+  plan 022.
 
 ## Budgets and untrusted-data markers
 
@@ -860,8 +860,8 @@ block marked as untrusted reference data
   guarantee: a model may still follow what a page says.
 - **Rejected.** Rewriting content to defuse a forged marker, after which a page would no
   longer read back as written; answers without a bound.
-- **Settled** by [plan 006](../work/changelog/006-search-mcp.md#responses), and for `ask`
-  by [plan 019](../work/changelog/019-knowledge-base-surface.md#ask).
+- **Settled** by plan 006, and for `ask`
+  by plan 019.
 
 ## argparse with argcomplete
 
@@ -879,7 +879,7 @@ registers every declaration, and imports a run only once the arguments are parse
 - **Rejected.** Subparsers registered lazily, which neither argcomplete nor `--help`
   would see.
 - **Settled** by the user, in
-  [plan 015](../work/changelog/015-cli-and-configuration.md#settled-by-the-user).
+  plan 015.
 
 ## File, then environment, then flags
 
@@ -900,7 +900,7 @@ merges them and keeps each value's layer.
 - **Rejected.** pydantic-settings' own sources, which would add a flag per field,
   secrets included, and cannot say which layer gave a value.
 - **Settled** by the user, in
-  [plan 015](../work/changelog/015-cli-and-configuration.md#the-settings-one-model-three-layers).
+  plan 015.
 
 ## Records as Pydantic models
 
@@ -926,7 +926,7 @@ dataclasses, each for the reason that [the code's layout](code-layout.md#records
   mode, which would have changed hundreds of callers; `SkipValidation`, which would make
   the exceptions models in name only.
 - **Settled** by the user, in
-  [plan 028](../work/changelog/028-pydantic-records.md#settled-by-the-user).
+  plan 028.
 
 ## Telemetry off, logs that may hold titles
 
@@ -944,7 +944,7 @@ only once an endpoint is set, and only to this machine.
 - **Rejected.** Logs without titles, which could not say which document was slow or
   failed; telemetry on by default, or to a collector elsewhere.
 - **Settled** by the user, in
-  [plan 016](../work/changelog/016-observability-and-progress.md#settled-by-the-user);
+  plan 016;
   [observability](observability.md) explains it further.
 
 ## Data off synchronised folders and git trees
@@ -964,4 +964,4 @@ anything is written.
   even when nothing synchronises it, and a sync client that it does not know passes.
 - **Rejected.** No plan weighed another way: the rule came with the programme of plans,
   and plan 003 made every command enforce it.
-- **Settled** by [plan 003](../work/changelog/003-foundations.md#decisions).
+- **Settled** by plan 003.

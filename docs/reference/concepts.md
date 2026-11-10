@@ -1,7 +1,6 @@
 # Concepts
 
-The code is being conformed to these concepts, as [the roadmap](../work/README.md) says;
-where a sentence here and the code differ, the code is what runs, under the names of
+The code is being conformed to these concepts; where a sentence here and the code differ, the code is what runs, under the names of
 each entry's "In the code" paragraph.
 
 [The entity-relationship views](concepts-er.html) draw the core concepts with their

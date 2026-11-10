@@ -1,6 +1,6 @@
 # Proof test: Atlassian Cloud REST through a browser session
 
-This folder holds the probe of plan 001 (`docs/work/plans/001-proof-test.md`). It
+This folder holds the probe of plan 001. It
 answers one question: can a script that uses your own signed-in browser session read,
 through Atlassian Cloud's REST APIs, everything you see on a page? That means its
 text, nested includes, dynamic tables, and images at full resolution. Run it on the

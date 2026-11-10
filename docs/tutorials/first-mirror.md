@@ -239,8 +239,7 @@ Run again, `index` reads only the files whose bytes changed, and `embed` embeds 
 texts that changed; with nothing changed, each says `nothing written`.
 
 On macOS, `fetch` may not exit once its fetch is done: a known issue, which plan 013
-is to diagnose and fix, parked for now
-([the roadmap](../work/README.md#plans) lists it).
+is to diagnose and fix, parked for now.
 
 Look at what `prepare` wrote:
 

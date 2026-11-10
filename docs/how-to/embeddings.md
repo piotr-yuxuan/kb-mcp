@@ -22,7 +22,7 @@ at `http://127.0.0.1:11434/v1`. Without one, `embed` stops, and the index that
 words, saying why.
 
 Hybrid search over windows is the default by the user's choice
-([plan 025](../work/changelog/025-windows-and-hybrid.md)): on plan 002's sandbox
+(plan 025): on plan 002's sandbox
 questions it ranked better than hybrid search over sections or words alone, and ranking
 mattered more than speed.
 [The defaults](../explanation/chunking.md#the-defaults-the-users-choice) give the

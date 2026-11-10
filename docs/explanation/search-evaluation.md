@@ -301,7 +301,7 @@ Two small models, run in process with onnxruntime on this laptop (x86_64, 16 thr
 Hybrid beat lexical with both models (adjusted p = 0.015 and 0.025) and lost nothing
 on identifier and keyword questions: hybrid became the default. The cold embedding of
 6,729 chunks took 142 and 161 seconds. The full tables per group are in
-`docs/work/changelog/011-search-strategies.md`.
+plan 011's record.
 
 ### Plan 018: Qwen3 through Ollama
 
@@ -646,5 +646,5 @@ the model; otherwise the first run embeds the windows again.
   information retrieval evaluation](https://doi.org/10.1145/1321440.1321528), CIKM 2007.
 - Cormack, Clarke and Büttcher, [Reciprocal rank fusion outperforms Condorcet and
   individual rank learning methods](https://doi.org/10.1145/1571941.1572114), SIGIR 2009.
-- Plans 011 and 018, in `docs/work/changelog/`, for every run's full tables, its
-  decisions and its reviews.
+- The records of plans 011 and 018, for every run's full tables, their decisions and
+  their reviews.

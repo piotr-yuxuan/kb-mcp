@@ -7,8 +7,8 @@ Code Copilot. It reads what you can already see on the site, through the REST AP
 your own signed-in browser session or an API token, and never writes to the site; the
 work log, a folder of org files, it reads in place.
 
-Work in progress: [the roadmap](docs/work/README.md) says what each plan to come delivers;
-[the changelog](docs/work/changelog/) keeps the record of each plan done.
+Work in progress: the plans to come, and the record of each plan done, are kept outside
+the repository.
 
 ## What it needs
 

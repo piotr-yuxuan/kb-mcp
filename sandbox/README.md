@@ -1,8 +1,7 @@
 # Sandbox corpus: the world bible
 
 This folder holds a fictional company's wiki and engineering tickets, seeded into the
-sandbox site to evaluate search
-([the record of the plan that made it](../docs/work/changelog/002-sandbox-corpus.md)).
+sandbox site to evaluate search.
 Everything here is invented. This file is the single reference for the facts that
 pages, tickets and golden questions share: write against it, and change it first when
 a shared fact changes.
