@@ -25,6 +25,7 @@ from mcp_types import INVALID_PARAMS, ToolAnnotations
 from opentelemetry import metrics
 
 from kb_mcp.cli.commands._embedding import open_endpoint
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.names import PROGRAM
@@ -135,7 +136,8 @@ def checking(render: Callable[..., str]) -> Callable[..., str]:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None]:
     """Serve the tools named, and the prompts that they allow, until the client closes stdin.
 
-    Their filter ``source`` takes the sources that the settings name. The lexical mode
+    Their filter ``source`` takes the sources that a prepare takes by default, those that
+    keep a store and those configured. The lexical mode
     never opens the embedding endpoint, nor does a server not reranking
     open the reranking server's. The protocol is the output:
     no result is given. ``kb_mcp.serve.fallbacks`` is 0 from the start, so that a chart of
@@ -157,7 +159,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             SqliteIndex(settings.index), settings.docs, meaning, settings.search_mode, reranking
         )
         offered = surface(library, arguments.tools)
-        filters = search_filters(tuple(type(settings.sources).model_fields))
+        values = values_of(loaded)
+        filters = search_filters(
+            [each.name for each in arguments.sources if each.prepared_by_default(values)]
+        )
         tools = [
             Tool.from_function(
                 served(getattr(library, name), filters),

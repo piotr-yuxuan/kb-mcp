@@ -172,3 +172,10 @@ class Source:
     def paths(self) -> tuple[str, ...]:
         """Give its settings by their paths, joined by dots: ``sources.<name>.<setting>``."""
         return tuple(f"sources.{self.name}.{setting}" for setting in self.connector.settings)
+
+    def prepared_by_default(self, settings: Mapping[str, object]) -> bool:
+        """Say whether it holds documents to prepare: it keeps a store, or is configured.
+
+        ``settings`` holds every setting's value by its path; configured is its first set.
+        """
+        return self.connector.fetcher is not None or bool(settings[self.paths[0]])

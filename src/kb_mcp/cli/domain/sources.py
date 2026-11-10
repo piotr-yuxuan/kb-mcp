@@ -63,7 +63,7 @@ def chosen_to_prepare(
     for declared in arguments.sources:
         if named and declared.name not in named:
             left[declared.name] = "not named"
-        elif declared.connector.fetcher is None and not settings[declared.paths[0]]:
+        elif not declared.prepared_by_default(settings):
             left[declared.name] = "not configured"
         else:
             taken.append(declared)

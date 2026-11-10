@@ -94,8 +94,8 @@ which binds it to its settings;
 [`FrontMatter.source`](../../src/kb_mcp/mirror/domain/mirror.py) and the index's column
 `documents.source`, which hold its name; and the filter `source` of
 [`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py), which
-[`search_filters`](../../src/kb_mcp/mcp/app/tools.py) gives the sources that the settings
-name.
+[`search_filters`](../../src/kb_mcp/mcp/app/tools.py) gives the sources that
+[`Source.prepared_by_default`](../../src/kb_mcp/sources/declaration.py) takes.
 
 ### scope
 

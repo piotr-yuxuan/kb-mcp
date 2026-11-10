@@ -138,27 +138,37 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
         assert [name for name, each in filters["properties"].items() if "title" in each] == []
 
 
-def test_the_filter_source_takes_the_sources_that_the_server_s_settings_name(home: Path) -> None:
-    """Plan 056: a deployment of two sources offers those two, in the registry's order.
+def test_the_filter_source_takes_the_sources_that_a_prepare_takes_by_default(home: Path) -> None:
+    """Plan 056: those that keep a store, and those configured, in the registry's order.
 
-    The default offers the registry's three; a server of Jira and the work log alone,
-    whose index is not yet built, offers theirs.
+    The default offers Confluence and Jira, the work log being unconfigured; a server of
+    Jira and the work log alone, whose index is not yet built, offers Jira, and the work
+    log once its folder is set.
     """
     registry = (
         "from kb_mcp.sources.atlassian.declared import JIRA;"
         " from kb_mcp.sources.worklog.declared import WORKLOG;"
         " from tests.composed import sourced; REGISTRY = sourced(JIRA, WORKLOG)"
     )
+    config = home / "config.toml"
+    config.write_text(f"[sources.worklog]\npath = {json.dumps(str(home))}\n", "utf-8")
     offered = {
+        # One source is a constant of the schema, several its enum.
         name: [
-            tool.input_schema["$defs"]["SearchFilters"]["properties"]["source"]["enum"]
-            for tool in seen(home, registry=chosen)[1].tools[:2]
+            source.get("enum") or [source["const"]]
+            for tool in seen(home, *options, registry=chosen)[1].tools[:2]
+            for source in [tool.input_schema["$defs"]["SearchFilters"]["properties"]["source"]]
         ]
-        for name, chosen in (("default", None), ("two", registry))
+        for name, chosen, options in (
+            ("default", None, ()),
+            ("two", registry, ()),
+            ("two configured", registry, ("--config", str(config))),
+        )
     }
     assert offered == {
-        "default": [["confluence", "jira", "worklog"]] * 2,
-        "two": [["jira", "worklog"]] * 2,
+        "default": [["confluence", "jira"]] * 2,
+        "two": [["jira"]] * 2,
+        "two configured": [["jira", "worklog"]] * 2,
     }
 
 

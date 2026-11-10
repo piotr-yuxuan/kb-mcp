@@ -139,8 +139,11 @@ SearchFilters.__pydantic_config__ = {"extra": "forbid", "json_schema_extra": unt
 def search_filters(sources: Sequence[str]) -> type[SearchFilters]:
     """Give ``SearchFilters`` as a server of these sources offers them: ``source`` one of them.
 
-    Each other filter, its description and its configuration are ``SearchFilters``' own.
+    Each other filter, its description and its configuration are ``SearchFilters``' own;
+    without a source, ``source`` takes any text, as ``SearchFilters`` has it.
     """
+    if not sources:
+        return SearchFilters
     hints = typing.get_type_hints(SearchFilters)
     offered = TypedDict("SearchFilters", {**hints, "source": Literal[*sources]}, total=False)
     offered.__doc__ = SearchFilters.__doc__
