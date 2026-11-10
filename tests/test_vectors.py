@@ -787,26 +787,36 @@ def test_a_chunk_s_vector_key_stays_what_it_was(chunking: Chunking) -> None:
     assert (first, last) == KEYS[chunking]
 
 
-def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
-    data: Path,
-) -> None:
-    """Plan 054: the former tables, ``pieces`` and the words' ``chunks``, at schema 6.
-
-    ``index`` rebuilds it whole, as an index it cannot read; ``embed`` then takes every
-    chunk's vector from the vector cache, since neither a text nor a context prefix
-    changed, and the index holds a whole build's chunks.
-    """
-    filled_by(data, chunking="windows")
+def test_an_index_holds_the_tables_chunks_and_section_words_at_schema_7(data: Path) -> None:
+    """Plan 054, criterion 3: the tables and the schema row of an index built now."""
+    filled_by(data)
     with closing(sqlite3.connect(data / "index.sqlite")) as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
         schema = connection.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone()
-        assert ({"chunks", "section_words"} <= tables, "pieces" in tables) == (True, False)
-        assert schema == ("7",)
+    assert ({"chunks", "section_words"} <= tables, "pieces" in tables) == (True, False)
+    assert schema == ("7",)
+
+
+def as_schema_6(index: Path) -> None:
+    """Give an index the former tables, ``pieces`` and the words' ``chunks``, at schema 6."""
+    with closing(sqlite3.connect(index)) as connection:
         connection.execute('ALTER TABLE chunks RENAME COLUMN "end" TO stop')
         connection.execute("ALTER TABLE chunks RENAME TO pieces")
         connection.execute("ALTER TABLE section_words RENAME TO chunks")
         connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
         connection.commit()
+
+
+def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
+    data: Path,
+) -> None:
+    """Plan 054: ``index`` rebuilds it whole, as an index it cannot read.
+
+    ``embed`` then takes every chunk's vector from the vector cache, since neither a text
+    nor a context prefix changed, and the index holds a whole build's chunks.
+    """
+    filled_by(data, chunking="windows")
+    as_schema_6(data / "index.sqlite")
     indexed = update_index(indexing(data), MOMENT)
     assert indexed is not None
     assert (indexed.report.rebuilt, indexed.report.copied) == ("unavailable", 0)
@@ -815,10 +825,6 @@ def test_an_index_of_schema_6_is_rebuilt_whole_and_embed_asks_the_model_nothing(
     assert filled is not None
     assert (texts_asked(answers), filled.embedded) == ([], 0)
     assert chunks_of(data / "index.sqlite") == whole_chunks(data, "windows")
-    with closing(sqlite3.connect(data / "index.sqlite")) as connection:
-        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
-    assert {"chunks", "section_words"} <= tables
-    assert "pieces" not in tables
 
 
 def embedded_at(data: Path, url: str, capsys: CaptureFixture[str]) -> tuple[int, str]:

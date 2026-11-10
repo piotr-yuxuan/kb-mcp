@@ -48,7 +48,7 @@ from tests.endpoint import Scripted, scripted, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_evaluate import GOLDEN, golden, ticking
 from tests.test_observed import said
-from tests.test_vectors import BODY, Counting
+from tests.test_vectors import BODY, Counting, as_schema_6
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping, Sequence
@@ -607,11 +607,7 @@ def test_an_evaluation_index_of_schema_6_holds_the_prune_back(
     windows = evaluated(data, data / "vectors.sqlite", "windows")
     with closing(sqlite3.connect(windows)) as connection:
         keys = {row[0] for row in connection.execute("SELECT key FROM chunks")}
-        connection.execute('ALTER TABLE chunks RENAME COLUMN "end" TO stop')
-        connection.execute("ALTER TABLE chunks RENAME TO pieces")
-        connection.execute("ALTER TABLE section_words RENAME TO chunks")
-        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
-        connection.commit()
+    as_schema_6(windows)
     status, result, err = held_back(data, capsys)
     assert (status, result["outcome"], result["file"]) == (0, "held back", str(windows))
     assert result["reason"] == UNREADABLE
