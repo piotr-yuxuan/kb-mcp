@@ -240,6 +240,29 @@ def test_a_reader_without_a_handle_searches_alike(data: Path) -> None:
     assert alone
 
 
+def test_a_search_by_meaning_builds_no_record_per_chunk(
+    data: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 054, review: a serving process keeps columns beside the matrix, for memory.
+
+    With ``Chunk`` made to fail, the vectors are read and a search by meaning answers.
+    """
+    build(data, counting())
+
+    def refused(*_: object, **__: object) -> None:
+        message = "a Chunk was built"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(Chunk, "__init__", refused)
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.vectors().documents) > 0
+    meaning = Meaning(connect_scripted())
+    tools = Library(SqliteIndex(data / "index.sqlite"), data / "docs", meaning, "semantic")
+    answer = tools.search("payout")
+    assert answer.startswith("Documents nearest in meaning:")
+    assert "Ranked by words alone" not in answer
+
+
 def test_another_fingerprint_reuses_no_vector(data: Path) -> None:
     """The same name with another digest is other weights: every text is embedded again."""
     first = counting()
