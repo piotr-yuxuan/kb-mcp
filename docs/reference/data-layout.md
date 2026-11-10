@@ -208,11 +208,12 @@ result of every page of each list:
 <data>/raw/<source>/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
 <data>/raw/<source>/spaces/<space id>/blogposts.json  every blog post, likewise
 <data>/raw/<source>/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
-<data>/raw/confluence/users.json                      every author seen, from GET /wiki/rest/api/user/bulk
+<data>/raw/<source>/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
-`<source>` is the name of the source of spaces, `confluence` by default; the site's
-users are the site's, kept at one path whatever the sources' names.
+`<source>` is the name of the source of spaces, `confluence` by default; the users are
+its site's, which one source of spaces lists, so that two sites keep theirs apart and a
+store of before keeps its file, `confluence/users.json`, where it was.
 
 `put_space(space, pages, blog_posts, folders, listed_at=...)` replaces one space's
 listings, each file whole, one after another, and records in `listed_at.json` when they

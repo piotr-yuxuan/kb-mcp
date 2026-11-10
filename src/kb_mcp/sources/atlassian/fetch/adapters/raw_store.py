@@ -60,9 +60,9 @@ TOMBSTONES = "tombstones.json"
 # documents that joined the space and are not stored yet.
 LISTED_AT = "listed_at.json"
 PENDING = "pending.json"
-# The site's users, merged, where Confluence's one source keeps its documents: they are
-# the site's, which plan 059 keys by site.
-USERS = Path(CONFLUENCE, "users.json")
+# The site's users, merged, in the folder of the source whose spaces named them: of its
+# site, which one source of spaces lists.
+USERS = "users.json"
 # The scope types of the coverage's entries, by name; an entry written before plan 056
 # names none, and its source, then always its connector's name, gives it.
 SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
@@ -198,13 +198,13 @@ def _identifier(value: str, name: str) -> str:
 class RawStore:
     """One source's view of the raw store: responses as received, and files by SHA-256.
 
-    The sources of one site share the store under ``root``: its files, coverage, records
-    of what answered as gone, site users and lock. Its source's snapshot of a document is
+    The sources share the store under ``root``: its files, coverage, records of what
+    answered as gone, and lock. Its source's snapshot of a document is
     the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file per response
     plus the store's record. It is written whole into a hidden folder and renamed into
     place, so it is either complete or absent, and its responses never change. A space's
-    listings are ``<root>/<source>/spaces/<id>/*.json``, each replaced whole; site users
-    are ``<root>/confluence/users.json``, merged. A file is
+    listings are ``<root>/<source>/spaces/<id>/*.json``, each replaced whole, and its
+    site's users ``<root>/<source>/users.json``, merged. A file is
     ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
     """
 
@@ -480,7 +480,7 @@ class RawStore:
     def put_users(self, users: list[object]) -> None:
         """Merge site users, as received, into those kept from earlier runs, by account id."""
         self._check_writing()
-        path = self.root / USERS
+        path = self.root / self.source / USERS
         kept = _decode(path) if path.exists() else []
         if type(kept) is not list or type(users) is not list:
             message = "users: expected a list"
@@ -493,7 +493,7 @@ class RawStore:
 
     def users(self) -> list[SiteUser | Problem]:
         """Read every site user kept."""
-        return self._entries(self.root / USERS, confluence_v2.person)
+        return self._entries(self.root / self.source / USERS, confluence_v2.person)
 
     def _entries[T](self, path: Path, read: Callable[[Fields], T]) -> list[T | Problem]:
         if not path.exists():

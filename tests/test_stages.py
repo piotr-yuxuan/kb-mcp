@@ -314,7 +314,7 @@ def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: P
 
     Fetched, then prepared, from the scripted site: its raw folder, its mirror's folder
     and each of its documents' front matter carry its name; nothing carries the
-    connector's, but the site's users, which are the site's, beside its first source's.
+    connector's, the site's users neither, which plan 059 keeps in its folder.
     """
     registry = (Source(name="wiki", connector=CONFLUENCE), *sourced(JIRA, WORKLOG))
     config = home / "config.toml"
@@ -329,10 +329,9 @@ def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: P
     assert main(["prepare", *given], registry) == ExitStatus.OK
     assert sorted(each.name for each in (data / "raw").iterdir() if each.is_dir()) == [
         "blobs",
-        "confluence",
         "wiki",
     ]
-    assert [each.name for each in (data / "raw" / "confluence").iterdir()] == ["users.json"]
+    assert (data / "raw" / "wiki" / "users.json").is_file()
     assert (data / "raw" / "wiki" / "pages").is_dir()
     assert (data / "raw" / "wiki" / "spaces").is_dir()
     assert sorted(each.name for each in (data / "docs").iterdir()) == ["assets", "wiki"]

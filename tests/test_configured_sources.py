@@ -12,6 +12,7 @@ several are left.
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,6 +20,10 @@ import pytest
 from kb_mcp.cli.commands import sources as sources_command
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
+from tests.test_fetching import SITE, FakeSite
 
 if TYPE_CHECKING:
     import argparse
@@ -29,6 +34,8 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Loaded
 
+# The client's site, a second one.
+CLIENT_SITE = "https://client.example.invalid"
 # A second Jira site's source, as a settings file writes it.
 CLIENT = '[sources.clientjira]\nconnector = "jira"\nprojects = ["ABC"]\n'
 
@@ -202,3 +209,67 @@ def test_the_account_s_former_settings_are_refused_naming_each_source_s(
     err = capsys.readouterr().err
     assert f"  {named}\n" in err
     assert "token-sentinel-1b8f" not in err
+
+
+def test_two_sites_of_one_connector_fetch_sign_in_and_prepare_apart(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 059, step 3: each source its raw folder, coverage, sign-in and mirror's folder.
+
+    The client's site, without a session, asks to sign in again, and Jira's goes on; once
+    signed in, both fetch the same project's key apart, and each document's address is
+    its own site's.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'[sources.jira]\nprojects = ["PRB"]\nsite = "{SITE}"\n'
+        f'[sources.clientjira]\nconnector = "jira"\nprojects = ["PRB"]\nsite = "{CLIENT_SITE}"\n',
+        "utf-8",
+    )
+    data = tmp_path / "data"
+    write_cookies(
+        folder_of(data / "session", SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
+    given = ["--yes", "--config", str(config), "--data-dir", str(data), "--format", "json"]
+    fetch = ["fetch", *given, "--since", "2026-10-02"]
+    assert main(fetch) == ExitStatus.SIGN_IN_AGAIN
+    rows = {row["source"]: row["ending"] for row in json.loads(capsys.readouterr().out)["sources"]}
+    assert rows == {"jira": "done", "clientjira": "sign in again"}
+    session = folder_of(data / "session", CLIENT_SITE) / COOKIES
+    write_cookies(session, [{"name": "s", "value": "v", "domain": "x"}])
+    assert main(fetch) == ExitStatus.OK
+    assert sorted(each.name for each in (data / "raw").iterdir() if each.is_dir()) == [
+        "blobs",
+        "clientjira",
+        "jira",
+    ]
+    covered = RawStore(data / "raw", "jira").coverage().periods
+    assert {(scope.source, scope.key) for scope in covered} == {
+        ("jira", "PRB"),
+        ("clientjira", "PRB"),
+    }
+    capsys.readouterr()
+    assert main(["prepare", *given]) == ExitStatus.OK
+    for name, site in (("jira", SITE), ("clientjira", CLIENT_SITE)):
+        written = list((data / "docs" / name).rglob("*.md"))
+        assert written
+        assert all(f"url: {site}/" in path.read_text("utf-8") for path in written)
+
+
+def test_a_site_of_two_sources_of_pages_refuses_their_prepare(
+    tmp_path: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Their pages are placed by one listing of the site's spaces: exit 2, naming both."""
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        f'[sources.wiki]\nconnector = "confluence"\nspaces = ["ENG"]\nsite = "{SITE}"\n',
+        "utf-8",
+    )
+    given = ["prepare", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]
+    assert main([*given, "confluence"]) == ExitStatus.REFUSED
+    assert "sources confluence, wiki: two sources of the pages of one site" in (
+        capsys.readouterr().err
+    )
