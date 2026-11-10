@@ -1,17 +1,9 @@
 """Pandoc's conversions so far, kept across prepares by their input, in one SQLite file.
 
-A conversion is a row of the source whose prepare asked for it, keyed there by the
-SHA-256 of the UTF-8 bytes of its converter's name, a NUL, then the HTML converted. With
-``--sandbox``, pandoc reads nothing but that HTML, and the converter's name holds
-pandoc's version line and arguments: so a key holds the whole of pandoc's input, and its
-row cannot go stale. A name stands for one function: two functions under one name would
-share rows. Each source's prepare reads and prunes its own rows alone, so that a text
-that two sources convert is a row of each, which neither prune takes from the other. A
-file of plan 039's, which the tag pre-kb-mcp wrote, holds rows that name no source: they
-are adopted, a row of each source that may have asked for them.
-Each conversion is committed at once, so that an interrupted run keeps all it made; in
-WAL mode with ``synchronous = NORMAL``, a power cut may lose the last few, never the
-file. Deleting the file costs one conversion of everything, and downloads nothing.
+The layout and the replacement of a damaged file: docs/reference/data-layout.md, section
+"Pandoc's conversions". A key holds the whole of pandoc's input, which ``--sandbox``
+limits to the HTML, so its row cannot go stale; a converter's name stands for one
+function, as two functions under one name would share rows.
 """
 
 from __future__ import annotations
@@ -38,8 +30,8 @@ CREATE = (
 # The columns that a run reads: a schema whose text names others, which CREATE TABLE IF NOT
 # EXISTS leaves as it is, fails here, at opening, and not at the run's first lookup.
 COLUMNS = "SELECT source, key, markdown FROM conversions LIMIT 0"
-# The columns of a file of plan 039's, whose rows name no source, and how its rows become
-# a row of each source given, as a JSON list.
+# The columns of a file whose rows name no source, and how its rows become a row of each
+# source given, as a JSON list.
 FORMER = ["key", "markdown"]
 ADOPT = (
     "INSERT INTO conversions (source, key, markdown)"
@@ -157,20 +149,9 @@ def opened(
 ) -> Iterator[Conversions]:
     """Open the file at ``path`` for the rows of ``source``; close it after use.
 
-    A file of plan 039's, whose rows name no source, is first made a file of this
-    layout, each of its rows a row of each source of ``adopted``, at once and whole, and
-    ``prepare.cache_adopted`` says how many rows each source took. The file is created,
-    or replaced when damaged: opening it takes the write lock once,
-    then ``PRAGMA integrity_check`` judges the file, each index against its table
-    included. When the check reports damage, or SQLite finds the file damaged, no
-    database, in a format that it cannot read or may not write, or with a schema that
-    names other columns, or text that is not UTF-8, the file
-    and its ``-wal`` and ``-shm`` are deleted, ``prepare.cache_replaced`` says why,
-    by SQLite's error name, ``integrity_check`` or ``UnicodeDecodeError``, and an empty
-    file takes its place. A file locked past the wait is not damaged, nor one in a folder
-    that the run may not write: it raises, as any write that cannot be made does, and
-    stays. Damage that SQLite finds during the run raises too, once the file is deleted,
-    so that the next run starts a new one.
+    A file whose rows name no source is first adopted, each row a row of each source of
+    ``adopted``. A damaged or unusable file is replaced with an empty one; damage found
+    during use deletes the file and re-raises.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=WAIT_S)
@@ -192,8 +173,7 @@ def opened(
             connection.executescript(SETUP)
             checked = connection.execute("PRAGMA integrity_check").fetchall()
         except sqlite3.DatabaseError as error:
-            code = error.sqlite_errorcode
-            if code not in UNUSABLE and (code & PRIMARY) not in DAMAGED:
+            if error.sqlite_errorcode not in UNUSABLE and not damaged(error):
                 raise
             damage = error.sqlite_errorname
         except UnicodeDecodeError:
