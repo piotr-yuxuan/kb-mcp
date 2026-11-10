@@ -733,7 +733,8 @@ by the next `index`, and `embed` then finds in the vector cache every vector tha
 `vectors.sqlite` still holds, no text embedded having changed. An index of another schema
 is refused, naming `prepare`, then `index`, then `embed`: `prepare` writes the mirror
 again before `index` rebuilds the index, as a new schema can come with a new format of
-the files; one cut by a chunking that this version
+the files; one of schema 6, whose files this version reads as they are, naming `index`,
+then `embed`; one cut by a chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the
 index names, and only while the endpoint's fingerprint for it is the index's.

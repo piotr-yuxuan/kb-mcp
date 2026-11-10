@@ -908,6 +908,19 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
         pass
 
 
+def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path) -> None:
+    """Plan 054: the mirror's files of schema 6 are read as they are, so no prepare first."""
+    write(data / "docs", page("196845", "Kafka"), BODY)
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    with sqlite3.connect(data / "index.sqlite") as connection:
+        connection.execute("UPDATE meta SET value = '6' WHERE name = 'schema'")
+    connection.close()
+    with pytest.raises(UnavailableIndexError) as refused, reading(data / "index.sqlite"):
+        pass
+    assert str(refused.value).endswith("rebuild it with `kb-mcp index`, then `kb-mcp embed`")
+    assert "prepare" not in str(refused.value)
+
+
 def child_environment(data: Path) -> dict[str, str]:
     """Give a child its scratch home, the data directory and the lexical mode, 200 columns wide."""
     return {

@@ -80,6 +80,9 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
 # section_words.
 SCHEMA = "7"
+# The former schemas whose mirror's files this version reads as they are: rebuilding the
+# index is enough, with no prepare first.
+SAME_MIRROR = frozenset({"6"})
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -1090,7 +1093,7 @@ def reading(
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
     Another schema names ``prepare``, then ``index``, not ``index`` alone: a new schema
     can come with a new format of the mirror's files, which ``index`` would skip, and
-    ``prepare`` writes them first.
+    ``prepare`` writes them first; one of SAME_MIRROR names ``index`` alone.
     """
     unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
@@ -1105,10 +1108,12 @@ def reading(
         except sqlite3.DatabaseError:
             meta = {}
         if meta.get("schema") != SCHEMA:
-            message = (
-                f"{unread} `kb-mcp prepare`, which writes the mirror again first,"
-                " then `kb-mcp index`, then `kb-mcp embed`"
+            prepare = (
+                ""
+                if meta.get("schema") in SAME_MIRROR
+                else " `kb-mcp prepare`, which writes the mirror again first, then"
             )
+            message = f"{unread}{prepare} `kb-mcp index`, then `kb-mcp embed`"
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:
