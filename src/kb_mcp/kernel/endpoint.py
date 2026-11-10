@@ -1,7 +1,6 @@
 """A service's address: its host, whether it is this machine, and the service's rule.
 
-Standard library only, and light, since the settings and the command's declarations
-check an address alike.
+Standard library only, and light, since the command's declarations check addresses too.
 """
 
 from __future__ import annotations
@@ -36,11 +35,6 @@ class Service:
             message = f"{self.name}: a form, or a flag, not both"
             raise ValueError(message)
 
-    @property
-    def otherwise(self) -> str:
-        """Offer the flag as a refusal ends; nothing for a service this machine alone serves."""
-        return f", or pass {self.flag}" if self.flag else ""
-
 
 EMBEDDINGS = Service(
     name="the embedding endpoint",
@@ -49,7 +43,7 @@ EMBEDDINGS = Service(
     flag="--allow-remote-embeddings",
     start="With Ollama: ollama serve",
 )
-# Local only, by the user's word (plan 022): no flag lets a run rerank off this machine.
+# Local only, by the user's word: no flag lets a run rerank off this machine.
 RERANKING = Service(
     name="the reranking server",
     setting="rerank.url",
@@ -114,9 +108,10 @@ def refused_endpoint(url: str, service: Service, *, remote_allowed: bool) -> str
     if loopback(url):
         return None
     if not (remote_allowed and service.flag):
+        otherwise = f", or pass {service.flag}" if service.flag else ""
         return (
             f"not an address of this machine, where {service.sends} would go;"
-            f" write 127.0.0.1 for this one{service.otherwise}"
+            f" write 127.0.0.1 for this one{otherwise}"
         )
     if not url.startswith("https://"):
         return "an endpoint off this machine is reached over https only"

@@ -1,7 +1,6 @@
-"""The tools that the MCP server may serve, named once for its options and for itself.
+"""The tools that the MCP server may serve.
 
-Standard library only, so that ``serve``'s declaration offers them without loading the
-server.
+Standard library only, so that ``serve``'s options offer them without loading the server.
 """
 
 from __future__ import annotations

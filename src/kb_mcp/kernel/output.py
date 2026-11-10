@@ -1,7 +1,6 @@
 """How a run reports: the level of what it says, -q, how its result is written, its terminals.
 
-Standard library only, and light, since the parser takes its choices from here; the
-entry builds ``Output`` from the options, for the command line and plan 016's logs.
+Standard library only, and light, since the parser takes its choices from here.
 """
 
 from __future__ import annotations

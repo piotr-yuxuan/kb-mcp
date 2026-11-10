@@ -77,7 +77,6 @@ class ServedPrompt(Record):
 class Surface(Record):
     """What a server of some tools says: instructions, descriptions by tool, prompts."""
 
-    tools: tuple[Tool, ...]
     instructions: str
     descriptions: dict[Tool, str]
     prompts: tuple[ServedPrompt, ...]
@@ -177,6 +176,4 @@ def surface(library: Library, tools: Sequence[Tool]) -> Surface:
         descriptions["search"] += TO_ASK
     offered = tuple(prompt for prompt in prompts(library) if set(prompt.needs) <= set(tools))
     instructions = f"{OPENING} {said}.{WORKLOG_INSTRUCTION}{CLOSING}"
-    return Surface(
-        tools=tuple(tools), instructions=instructions, descriptions=descriptions, prompts=offered
-    )
+    return Surface(instructions=instructions, descriptions=descriptions, prompts=offered)

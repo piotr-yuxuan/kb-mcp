@@ -1,11 +1,4 @@
-"""The base of the program's records: values built by keyword, checked, frozen.
-
-Every record is a ``Record``; the classes that stay dataclasses, and why, are in
-``docs/explanation/code-layout.md``. A validator refuses a value by raising the domain's
-``RefusedError``, which Pydantic wraps; the constructor gives it back as raised, so that
-callers and messages see what they saw of a dataclass. ``copy.replace`` gives a record
-with some fields changed, checked again, as ``dataclasses.replace`` gave a dataclass.
-"""
+"""The base of the program's records: values built by keyword, checked, frozen."""
 
 from __future__ import annotations
 
@@ -33,11 +26,10 @@ class Record(BaseModel):
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: object) -> None:
-        """Leave a record that is not frozen unhashable, as a dataclass that was not frozen.
+        """Leave a record that is not frozen unhashable, unless it defines ``__hash__``.
 
         Pydantic hashes a frozen model by its fields, and a subclass inherits the hash: a
-        record that accumulates would hash the same whatever it holds. A ``__hash__`` that
-        the class defines is kept, as a dataclass keeps it.
+        record that accumulates would hash the same whatever it holds.
         """
         super().__pydantic_init_subclass__(**kwargs)
         if not cls.model_config.get("frozen") and "__hash__" not in vars(cls):
