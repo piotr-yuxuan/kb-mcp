@@ -263,7 +263,8 @@ Two more of the store's own records, each replaced whole:
   even below the old end, else at the fetch window's end; a search entry that the adapter
   refuses leaves it as it was, and a failure at its very start makes it inexact. A run
   without `--since` reads an exact scope from a day before its covered end, and an entry
-  without `exact` from its covered start. Versions before plan 034 read the record, and
+  without `exact` from its covered start, which takes, after an upgrade, a page that moved
+  into a space during its covered period and was never fetched. Versions before plan 034 read the record, and
   ignore `exact`; those before plan 056 ignore `type` and the times, and read a space's
   `exact` as false.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by

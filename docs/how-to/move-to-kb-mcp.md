@@ -193,6 +193,10 @@ keeps has changed since the former name:
   `prepare.cache_adopted` saying how many, and converts only what changed, as before;
   each prune then drops the rows that its source did not use. Nothing is downloaded
   again.
+- **The first fetch of each space reads its whole covered period.** A space's coverage
+  was never exact before, so that fetch asks again for every change since its covered
+  start, and may fetch pages that moved into the space while the former version ran;
+  from then on, a space read whole without failure is exact.
 - **No way back without a copy.** The first fetch of spaces writes `raw/tombstones.json`
   in a new format, which the tag `pre-kb-mcp` cannot read, and `raw/coverage.json` with
   keys that it ignores, a space's coverage then read inexact: to go back to the tag, put

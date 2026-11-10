@@ -288,6 +288,33 @@ def test_a_joined_entry_that_the_adapter_refuses_comes_once_it_reads_without_an_
     assert (store.pending(SPACE), store.coverage().exact) == (set(), {MFS})
 
 
+def test_an_upgraded_space_fetches_what_its_tag_listing_named_inside_its_covered_period(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """The tag's coverage and listing: a page moved in during the covered period is stored.
+
+    The tag never fetched it; one updated before the covered start stays history. The
+    space is exact only once that page is stored.
+    """
+    chosen = settings(tmp_path)
+    chosen.raw.mkdir(parents=True)
+    start = FIRST - WEEK
+    period = {"start": start.isoformat(), "end": FIRST.isoformat()}
+    (chosen.raw / "coverage.json").write_text(
+        json.dumps([{"source": "confluence", "key": "MFS", **period}]), "utf-8"
+    )
+    store = RawStore(chosen.raw, "confluence")
+    with store.writing():
+        store.put_space(v2_space(), list(PAGES.values()), [], [])
+    failing = RefreshSite(pages_fail=True)
+    assert run(chosen, monkeypatch, failing, catch_up(["MFS"], []), SECOND) == "failed"
+    assert store.coverage().exact == frozenset()
+    later = SECOND + timedelta(hours=1)
+    assert run(chosen, monkeypatch, RefreshSite(), catch_up(["MFS"], []), later) == "done"
+    assert sorted(stored_pages(chosen)) == ["1001", "1002"]
+    assert store.coverage().exact == {MFS}
+
+
 def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
