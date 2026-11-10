@@ -268,33 +268,33 @@ class Joining:
                         self.identities.setdefault(each, set()).add(own)
         # The name keys of the names without an identity.
         self.alone = {key for key, names in spelt.items() if any(own is None for _, own in names)}
-        # Each identity's own person that an alias names another, with that other: none
-        # while the aliases of identities are read, whose values name persons as the
-        # mentions alone make them.
-        self.moved: dict[str, str] = {}
+        # The aliases of identities, whose values name persons as the mentions alone make
+        # them; then each identity's own person that one names another, with that other.
         read = {
-            name: self.alias(name, value) for name, value in aliases.items() if name in self.owned
+            name: self.alias(name, value, {})
+            for name, value in aliases.items()
+            if name in self.owned
         }
-        self.moved = {
+        self.moved: dict[str, str] = {
             self.owned[alias.key]: alias.means
             for alias in read.values()
             if isinstance(alias.means, str) and alias.reason is None
         }
         read |= {
-            name: self.alias(name, value)
+            name: self.alias(name, value, self.moved)
             for name, value in aliases.items()
             if name not in self.owned
         }
         self.aliases = {read[name].key: read[name] for name in aliases}
 
-    def alias(self, name: str, value: str) -> Alias:
+    def alias(self, name: str, value: str, moved: Mapping[str, str]) -> Alias:
         """Read a line of the alias file: what it holds, and the person its value means.
 
         It holds a name's key, or an identity that a mention holds. Its value is a
         person's id; an identity that a mention holds, which means that identity's own
         person; or a name, which means the one identity's person of its key, as rule 3
-        finds it, else the person by name alone of a key that a name without an identity
-        holds.
+        finds it with ``moved``, else the person by name alone of a key that a name
+        without an identity holds.
         """
         if PERSON_ID.fullmatch(value):
             means: Meant = value
@@ -302,7 +302,7 @@ class Joining:
             compared = self.compared_key(value)
             means = (
                 self.owned.get(value)
-                or self.identified(value)
+                or self.identified(value, moved)
                 or (person_id(NAME_ANCHOR, compared) if compared in self.held else None)
             )
         key = name if name in self.owned else name_key(name)
@@ -319,15 +319,15 @@ class Joining:
         key = ANNOTATION.sub("", written)
         return written if key in self.split else key
 
-    def identified(self, name: str) -> Meant:
+    def identified(self, name: str, moved: Mapping[str, str]) -> Meant:
         """Find the person of the one identity with a name of this name's ``key``.
 
-        Identities that ``moved`` makes one are one. A name of several identities' key is
-        ambiguous, as is a bare name whose key's identities annotations tell apart; one
-        of none, None.
+        Identities that ``moved`` makes one, each own person to another's, are one. A
+        name of several identities' key is ambiguous, as is a bare name whose key's
+        identities annotations tell apart; one of none, None.
         """
         found = self.identities.get(self.compared_key(name), set())
-        persons = {self.moved.get(person, person) for person in found}
+        persons = {moved.get(person, person) for person in found}
         if len(persons) > 1:
             return Ambiguity(name=name, persons=frozenset(persons))
         return next(iter(persons), None)
@@ -355,7 +355,7 @@ def by_name(row: PersonRow, joining: Joining) -> Meant:
     participants then disagree. A participant of several identities' key could be any
     of them or rule 4's persons.
     """
-    found = joining.identified(row.name)
+    found = joining.identified(row.name, joining.moved)
     attended = by_attendance(row, joining)
     if attended is None or found is None:
         return found
