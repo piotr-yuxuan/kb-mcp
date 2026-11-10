@@ -854,12 +854,14 @@ and the build warns of that name, under the first of them, when they are two per
 or more; an alias of the name to one of its spellings, such as `"Kim" = "Kim"`, joins
 them. The same rows in any order give the same persons.
 
-A person's id is `p-` and the first 16 hex digits of the SHA-256 of `account`, a line
+A person's id is `p-` and the first 16 hex digits of the SHA-256 of `identity`, a line
 feed and the identity, or of `name`, a line feed and the key by which the join compares
 the name (`search.domain.people.person_id`): stable while what anchors the person
-stays. An identity of the issuer `atlassian` is hashed by its value alone, the account
-id, so that every id made before identities had an issuer stays; any other issuer's
-whole, so that equal values of two issuers are two persons. Two identities that an
+stays. An identity of the issuer `atlassian` hashes as its account id did before
+identities had an issuer, `account`, a line feed and its value alone
+(`search.domain.people.LEGACY_BARE_ISSUERS`), so that every id made then stays; any
+other issuer's, under `identity`, whole, so that no two issuers' identities are one
+person. Two identities that an
 alias makes one keep the id of the one that it names. A second note on a name, which parts its annotated spellings, anchors
 each of them anew: the bare name keeps the id, and an alias to it, or an id that an
 agent kept, names fewer documents, as the build warns of that name. A person is served

@@ -41,10 +41,13 @@ BY_IDENTITY = "identity"
 BY_ALIAS = "alias"
 BY_ATTENDANCE = "attendance"
 BY_NAME = "name"
-# What a person's id hashes before an identity, the word of the accounts that identities
-# replaced, so that no id changed, and before a name's key.
-IDENTITY_ANCHOR = "account"
+# What a person's id hashes before an identity, and before a name's key.
+IDENTITY_ANCHOR = "identity"
 NAME_ANCHOR = "name"
+# The issuers whose identities hash as account ids did before identities had an issuer:
+# under LEGACY_ANCHOR and by their value alone, so that no id made then changed.
+LEGACY_BARE_ISSUERS = frozenset({ATLASSIAN_ISSUER})
+LEGACY_ANCHOR = "account"
 # Why an alias changes nothing.
 UNHELD = "no name without an identity has its key"
 NOBODY = "its value names nobody"
@@ -91,17 +94,18 @@ def person_id(anchor: str, value: str) -> str:
     """Give the id of the person that an identity, or a name's key, anchors.
 
     ``anchor`` is IDENTITY_ANCHOR or NAME_ANCHOR. The id is ``p-`` and the first 16 hex
-    digits of the SHA-256 of the anchor, a line feed and the value, an identity of
-    ATLASSIAN_ISSUER's by its value alone, as before identities had an issuer, so that no
-    id changed: an opaque id, stable while what anchors the person stays, so that no
-    identity is served. It protects nothing: hashing a known identity finds it again. A
-    second note on a name, which parts its annotated spellings by
+    digits of the SHA-256 of the anchor, a line feed and the value; an identity of one of
+    LEGACY_BARE_ISSUERS, of LEGACY_ANCHOR, a line feed and its value alone, which no
+    other identity's hash can equal: an opaque id, stable while what anchors the person
+    stays, so that no identity is served. It protects nothing: hashing a known identity
+    finds it again. A second note on a name, which parts its annotated spellings by
     ``Joining.compared_key``, anchors each of them anew; the bare name keeps the id,
     which then names fewer documents.
     """
     issuer, _, bare = value.partition(":")
-    hashed = bare if anchor == IDENTITY_ANCHOR and issuer == ATLASSIAN_ISSUER else value
-    return "p-" + hashlib.sha256(f"{anchor}\n{hashed}".encode()).hexdigest()[:16]
+    legacy = anchor == IDENTITY_ANCHOR and issuer in LEGACY_BARE_ISSUERS
+    hashed = f"{LEGACY_ANCHOR}\n{bare}" if legacy else f"{anchor}\n{value}"
+    return "p-" + hashlib.sha256(hashed.encode()).hexdigest()[:16]
 
 
 def aliases_digest(aliases: Mapping[str, str]) -> str:

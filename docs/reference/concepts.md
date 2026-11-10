@@ -368,9 +368,10 @@ that each document links to by `summary`;
 column `person_names.joined` and [`JOINED`](../../src/kb_mcp/mcp/app/responses.py),
 where how a spelling joined is stored as `identity`, `alias`, `attendance` or `name`;
 [`SiteUser.account_id`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py) and
-`users.json`. A person's id hashes the word `account` before an identity, and an
-identity of `atlassian` by its value alone, as ids were made before identities had an
-issuer ([`IDENTITY_ANCHOR`](../../src/kb_mcp/search/domain/people.py)).
+`users.json`. A person's id hashes an identity of `atlassian` as an account id was
+hashed before identities had an issuer, the word `account` and its value alone
+([`LEGACY_BARE_ISSUERS`](../../src/kb_mcp/search/domain/people.py)), and any other
+identity under the word `identity`.
 
 ### ranking
 

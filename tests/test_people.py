@@ -182,14 +182,27 @@ def test_an_atlassian_identity_keeps_the_id_that_its_account_had(
     assert joined((row,), {}, {}).of[row] == former
 
 
-def test_another_issuer_s_identity_of_an_equal_value_is_another_person() -> None:
-    """Equal values of two issuers never collide: the other's hashes its issuer too."""
+@pytest.mark.parametrize(
+    "identities",
+    [("atlassian:acct-0001", "elsewhere:acct-0001"), ("atlassian:qm:5f1a", "qm:5f1a")],
+    ids=["an equal value", "an Atlassian value that writes the other's issuer"],
+)
+def test_another_issuer_s_identity_is_another_person(identities: tuple[str, str]) -> None:
+    """Two issuers' identities never collide: the other's hashes under its own anchor.
+
+    An Atlassian account id may hold a colon, so that ``atlassian:qm:5f1a`` holds the
+    text of the issuer ``qm``'s ``5f1a``; the former hashes as an account id did.
+    """
     rows = tuple(
         PersonRow(document=1, role="commenter", name="Robin", identity=identity, updated=day(20))
-        for identity in ("atlassian:acct-0001", "elsewhere:acct-0001")
+        for identity in identities
     )
     result = joined(rows, {}, {})
-    assert [result.of[row] for row in rows] == [ROBIN, anchored("account\nelsewhere:acct-0001")]
+    atlassian, other = identities
+    assert [result.of[row] for row in rows] == [
+        anchored(f"account\n{atlassian.removeprefix('atlassian:')}"),
+        anchored(f"identity\n{other}"),
+    ]
 
 
 def test_a_key_ignores_case_accents_and_spaces() -> None:
