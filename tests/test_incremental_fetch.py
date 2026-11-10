@@ -13,6 +13,7 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
+from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
@@ -543,7 +544,9 @@ def test_a_page_whose_probe_failed_is_probed_again_on_a_later_run(
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     failing = RefreshSite(listing=without("1002"), html_page=None, gone=set())
     failing.pages_fail = True  # every page GET answers 503: no answer to the probe
-    run(chosen, monkeypatch, failing, catch_up(["MFS"], []), SECOND)
+    monkeypatch.setattr(http, "client", lambda *_: failing.client())
+    outcome = run_fetch(chosen, catch_up(["MFS"], []), lambda: SECOND, lambda _: None)
+    assert Problem(where="confluence pages 1002", reason="status 503") in outcome.problems
     [pending] = RawStore(chosen.raw).tombstones().values()
     assert (pending.key, pending.first_gone, pending.confirmed) == (("pages", "1002"), None, False)
     for day in (1, 2):

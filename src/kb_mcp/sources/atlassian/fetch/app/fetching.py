@@ -423,19 +423,23 @@ class Fetching:
                 self.counts.add("confluence documents: absent, waiting for a probe", waiting)
 
     def probe(self, key: tuple[str, str], kept: set[str]) -> ProbeAnswer | None:
-        """GET a document absent from its listing, and say what became of it."""
+        """GET a document absent from its listing, and say what became of it.
+
+        A probe that fails is a problem by its document, as ``fetch_document`` names one.
+        """
+        document_class = Page if key[0] == Page.resource_type else BlogPost
+        where = f"{label(document_class)} {key[1]}"
         try:
             response = Fields(self.site.json(confluence_v2.probe_request(*key)), "probe")
             found_space, status = confluence_v2.whereabouts(response)
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
                 return ProbeAnswer.GONE
-            self.failed("confluence probes", " ".join(key), error)
+            self.failed("confluence probes", where, error)
             return None
         except RepresentationError as error:
-            self.failed("confluence probes", " ".join(key), error)
+            self.failed("confluence probes", where, error)
             return None
-        document_class = Page if key[0] == Page.resource_type else BlogPost
         named = found_space in kept and key[1] in self.store.listed_ids(found_space, document_class)
         return answer_of(found_space, status, kept, named=named)
 
