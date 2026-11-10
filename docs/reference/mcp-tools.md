@@ -64,7 +64,8 @@ Other filters of people add neither.
 
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (one of the sources that keep a store or are
-  configured: by default `confluence`, `jira`, and `worklog` once its folder is set), `space`,
+  configured, by default `confluence`, `jira`, and `worklog` once its folder is set, then
+  those that the index holds, read as the server starts), `space`,
   `project`, `status`, `label`, `issue_type`, `person` (someone in any role, by any
   name that a source writes for them or by their id, `p-` and 16 hex digits),
   `author` (an issue's reporter, the person it is for, who may not be who created it; a

@@ -138,12 +138,16 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
         assert [name for name, each in filters["properties"].items() if "title" in each] == []
 
 
-def test_the_filter_source_takes_the_sources_that_a_prepare_takes_by_default(home: Path) -> None:
-    """Plan 056: those that keep a store, and those configured, in the registry's order.
+def test_the_filter_source_takes_the_configured_sources_then_those_of_the_index(
+    home: Path, tmp_path: Path
+) -> None:
+    """Plan 056: those configured, in the registry's order, then those of the index.
 
-    The default offers Confluence and Jira, the work log being unconfigured; a server of
-    Jira and the work log alone, whose index is not yet built, offers Jira, and the work
-    log once its folder is set.
+    Configured: those that keep a store, and those read in place whose first setting is
+    set; then the index's, so that no document is left out of the filter. The index
+    holds Confluence's and Jira's. A server of Jira and the work log alone offers Jira,
+    then Confluence from the index, and the work log once its folder is set; before the
+    first index, Jira alone.
     """
     registry = (
         "from kb_mcp.sources.atlassian.declared import JIRA;"
@@ -151,24 +155,32 @@ def test_the_filter_source_takes_the_sources_that_a_prepare_takes_by_default(hom
         " from tests.composed import sourced; REGISTRY = sourced(JIRA, WORKLOG)"
     )
     config = home / "config.toml"
-    config.write_text(f"[sources.worklog]\npath = {json.dumps(str(home))}\n", "utf-8")
+    settings = (home / ".config" / "kb-mcp" / "config.toml").read_text("utf-8")
+    config.write_text(f"{settings}[sources.worklog]\npath = {json.dumps(str(home))}\n", "utf-8")
+    bare = tmp_path / "bare"
+    (bare / ".config" / "kb-mcp").mkdir(parents=True)
+    (bare / ".config" / "kb-mcp" / "config.toml").write_text(
+        f"data_dir = {json.dumps(str(tmp_path / 'empty'))}\n", "utf-8"
+    )
     offered = {
         # One source is a constant of the schema, several its enum.
         name: [
             source.get("enum") or [source["const"]]
-            for tool in seen(home, *options, registry=chosen)[1].tools[:2]
+            for tool in seen(where, *options, registry=chosen)[1].tools[:2]
             for source in [tool.input_schema["$defs"]["SearchFilters"]["properties"]["source"]]
         ]
-        for name, chosen, options in (
-            ("default", None, ()),
-            ("two", registry, ()),
-            ("two configured", registry, ("--config", str(config))),
+        for name, where, chosen, options in (
+            ("default", home, None, ()),
+            ("two", home, registry, ()),
+            ("two configured", home, registry, ("--config", str(config))),
+            ("two, no index", bare, registry, ()),
         )
     }
     assert offered == {
         "default": [["confluence", "jira"]] * 2,
-        "two": [["jira"]] * 2,
-        "two configured": [["jira", "worklog"]] * 2,
+        "two": [["jira", "confluence"]] * 2,
+        "two configured": [["jira", "worklog", "confluence"]] * 2,
+        "two, no index": [["jira"]] * 2,
     }
 
 
