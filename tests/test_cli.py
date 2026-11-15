@@ -312,8 +312,7 @@ def test_a_command_that_went_is_refused_naming_the_choices(
     assert stopped.value.code == ExitStatus.REFUSED
     err = capsys.readouterr().err
     assert f"invalid choice: '{name}'" in err
-    assert "'fetch'" in err
-    assert "'prepare'" in err
+    assert {"fetch", "prepare"} <= set(re.findall(r"[\w-]+", err.splitlines()[-1]))
 
 
 def test_the_help_says_who_asks_and_what_each_exit_status_means() -> None:

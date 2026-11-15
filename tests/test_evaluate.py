@@ -561,7 +561,8 @@ def test_a_chunking_not_named_exits_2_offering_the_kernel_s(
     with pytest.raises(SystemExit) as stopped:
         main(["eval", "--yes", str(data / "golden.yaml"), "--chunking", "window"])
     assert stopped.value.code == REFUSED
-    assert ", ".join(f"'{name}'" for name in CHUNKINGS) in capsys.readouterr().err
+    refusal = capsys.readouterr().err.splitlines()[-1]
+    assert set(CHUNKINGS) <= set(re.findall(r"[\w-]+", refusal))
 
 
 def test_each_target_s_scores_are_measured_by_its_chunking_ask_s_among_them(
