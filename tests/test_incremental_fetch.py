@@ -1711,6 +1711,33 @@ def test_a_whole_read_of_before_resets_no_absence_found_by_another_project_s(
     )
 
 
+@pytest.mark.parametrize("order", [["OPS", "PRB"], ["PRB", "OPS"]], ids=["OPS first", "PRB first"])
+def test_a_confirmed_tombstone_stays_confirmed_when_another_project_misses_it(
+    tmp_path: Path, monkeypatch: MonkeyPatch, order: list[str]
+) -> None:
+    """Review of 061: 20002, confirmed gone from OPS, is missing from PRB's whole read too.
+
+    PRB, due a week after its whole read named 20002, keeps the confirmed tombstone of
+    OPS rather than starting one of its own, whichever of the two the run reads first,
+    and prepare writes no file of it.
+    """
+    chosen = settings(tmp_path)
+    deleted = moved_then_deleted(chosen, monkeypatch)
+    for moment in (FIRST + WEEK, FIRST + WEEK + 2 * CONFIRM_AFTER):
+        run(chosen, monkeypatch, deleted, catch_up([], ["OPS"]), moment)
+    due = FIRST + timedelta(days=3) + WEEK
+    run(chosen, monkeypatch, deleted, catch_up([], order), due)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert (stone.key, stone.scope.key, stone.first_gone, stone.confirmed) == (
+        ("jira", "issue", "20002"),
+        "OPS",
+        FIRST + WEEK,
+        True,
+    )
+    prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
+    assert sorted((chosen.docs / "jira").glob("*/*.md")) == []
+
+
 def test_a_whole_read_of_before_drops_no_confirmed_tombstone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

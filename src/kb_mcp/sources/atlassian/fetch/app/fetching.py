@@ -424,8 +424,10 @@ class Fetching:
         by id alone, and, for a project, those that its searches found since; ``listed``
         those that this run's whole read names, None when the run
         made none. The absent are the documents held that the store holds, and those
-        already tombstoned in the scope; a document that this run's whole read names is
-        present, and loses any tombstone, of whichever scope. A whole read of before
+        already tombstoned in the scope; one that another scope of the source found absent
+        keeps that tombstone and its state, so that a confirmed one stays confirmed. A
+        document that this run's whole read names is present, and loses any tombstone, of
+        whichever scope. A whole read of before
         neither starts nor ends an absence: without one, the scope's tombstones stay as
         they are, to be probed again. The record is written before the whole read is
         replaced, so that no absent document is lost to a run that stops; they are
@@ -448,6 +450,11 @@ class Fetching:
             again = {key[2] for key in known if key[1] == named}
             missing = again if listed is None else (before | again) - listed[document_class]
             absent |= {(scope.source, named, each): scope for each in missing}
+        # Another scope's tombstone of a document absent from here too goes on as it is.
+        known |= {
+            key: self.tombstones[key]
+            for key in (absent.keys() - known.keys()) & self.tombstones.keys()
+        }
         present = {
             (scope.source, each.document_type.name, i)
             for each, ids in (listed or {}).items()
@@ -466,7 +473,9 @@ class Fetching:
         """Probe what each scope's whole read no longer names, and record what is gone.
 
         Those not confirmed are probed, at most ``MAX_PROBES`` a scope and a run, those
-        on their way first; the rest stay pending. A document answering from another
+        on their way first; the rest stay pending. A tombstone of another scope, of a
+        document absent from this one too, goes on from its own state. A document answering
+        from another
         scope is followed there once that scope's last whole read names it, and stays
         pending until then. Raises SignInNeededError when too many answer gone and the
         session no longer holds; when the site does not answer, nothing is believed. The
@@ -481,7 +490,9 @@ class Fetching:
         listings: dict[tuple[str, type[FetchedDocument]], set[str]] = {}
         with TRACER.start_as_current_span("fetch.probes"):
             for scope, (absent, stored, before) in self.absent.items():
-                known = {k: s for k, s in self.tombstones.items() if s.scope == scope}
+                known = {
+                    k: s for k, s in self.tombstones.items() if s.scope == scope or k in absent
+                }
                 # By the tombstones as they stood before this run: those on their way first.
                 order = probing_order(absent, before)[:MAX_PROBES]
                 with task("probes", len(order)) as probes:

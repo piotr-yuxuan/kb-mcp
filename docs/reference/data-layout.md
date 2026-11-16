@@ -322,7 +322,9 @@ Two more of the store's own records, each replaced whole:
   found in a kept scope whose last whole read names it has moved, and loses its
   tombstone, as does one that a whole read made by the run names, in any scope of its
   source; one found in a kept scope whose whole read does not name it goes back to
-  pending. The scopes kept are
+  pending. A document missing from a scope's whole read that another scope of its
+  source already found absent keeps that tombstone and its state, so that one confirmed
+  gone stays confirmed. The scopes kept are
   those whose whole reads the sources of the run's site keep (`holders`): another
   site's, whose keys may be the same, never counts. The absent are found from the last
   whole read by id alone (`listed_ids(holder, document_class)`), so that an entry the
