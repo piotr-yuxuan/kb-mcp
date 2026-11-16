@@ -1487,6 +1487,41 @@ def test_an_issue_absent_from_a_whole_read_is_probed_at_each_run_until_confirmed
     assert stone.confirmed
 
 
+def test_an_issue_missing_from_a_whole_read_is_confirmed_gone_then_leaves_the_mirror(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 1: absent, probed gone at its first 404, confirmed gone past CONFIRM_AFTER.
+
+    Prepare keeps its file while it is only probed gone, and removes it once confirmed;
+    the issue that its project still holds keeps its own.
+    """
+    chosen = settings(tmp_path)
+    kept = issue_at("20001", FIRST - timedelta(days=1), files=False)
+    both = {"20001": kept, "20002": issue_at("20002", FIRST - timedelta(days=2), files=False)}
+    project = chosen.docs / "jira" / "PRB"
+
+    def mirrored() -> list[str]:
+        prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
+        return sorted(path.name for path in project.glob("*.md"))
+
+    run(chosen, monkeypatch, RefreshSite(issues=both), first_week([], ["PRB"]), FIRST)
+    assert mirrored() == ["PRB-20001.md", "PRB-20002.md"]
+    absent = FIRST + WEEK
+    run(chosen, monkeypatch, RefreshSite(issues={"20001": kept}), catch_up([], ["PRB"]), absent)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert (stone.key, stone.first_gone, stone.confirmed) == (
+        ("jira", "issue", "20002"),
+        absent,
+        False,
+    )
+    assert mirrored() == ["PRB-20001.md", "PRB-20002.md"]
+    later = absent + CONFIRM_AFTER
+    run(chosen, monkeypatch, RefreshSite(issues={"20001": kept}), catch_up([], ["PRB"]), later)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert stone.confirmed
+    assert mirrored() == ["PRB-20001.md"]
+
+
 def test_an_issue_listed_again_by_a_whole_read_loses_its_tombstone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

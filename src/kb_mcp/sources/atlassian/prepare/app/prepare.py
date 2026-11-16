@@ -39,6 +39,7 @@ from kb_mcp.mirror.domain.mirror import SourceFile, scope_name
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     COVERAGE,
+    TOMBSTONES,
     UNREADABLE,
     RawStore,
     StoredSnapshot,
@@ -170,10 +171,11 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
 def read_catalogue(
     store: RawStore, problems: list[Problem]
 ) -> tuple[Catalogue, set[str], dict[str, datetime]]:
-    """Read the spaces, site users, listings and the scopes' as-of times.
+    """Read the spaces, site users, listings, the scopes' as-of times and what is gone.
 
     Also return the spaces whose listing failed, and when each space was listed. A record
-    of coverage that cannot be read is a problem, and no as-of time is known.
+    of coverage that cannot be read is a problem, and no as-of time is known; one of
+    tombstones, a problem too, and nothing is known gone.
     """
     spaces = {space.id: space for space in readable(store.spaces(), problems)}
     users = readable(store.users(), problems)
@@ -182,6 +184,11 @@ def read_catalogue(
     except UNREADABLE as error:
         problems.append(Problem(where=COVERAGE, reason=reason(error)))
         as_of = {}
+    try:
+        gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
+    except UNREADABLE as error:
+        problems.append(Problem(where=TOMBSTONES, reason=reason(error)))
+        gone = {}
     times = {space_id: listed_at(store, space_id, problems) for space_id in spaces}
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
@@ -196,7 +203,9 @@ def read_catalogue(
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    catalogue = Catalogue(spaces=spaces, names=names, listed=listed, folders=folders, as_of=as_of)
+    catalogue = Catalogue(
+        spaces=spaces, names=names, listed=listed, folders=folders, as_of=as_of, gone=gone
+    )
     return catalogue, damaged, times
 
 
@@ -213,23 +222,15 @@ def place(
     of the store that ``store`` views. A page or a blog post goes to the space whose
     freshest listing names it, before the one its snapshot names, everywhere the mirror
     uses its space; one whose space is not listed has no folder, and is reported. A
-    document confirmed gone is left out, unless a listing taken after it answered gone
-    names it again. Each problem goes to the list of the source it belongs to, by its
-    name, in ``problems``; the tombstones', to the source that lists spaces, if any, as
-    only a space's whole read makes them, else to ``store``'s. Also return the files that
-    must go even when the source reports problems: those of documents gone (to None), and
-    the old file of a document that moved (to its new file).
+    document confirmed gone is left out: a page or a blog post unless a listing taken
+    after it answered gone names it again; an issue that a whole read names again has no
+    tombstone. Each problem goes to the list of the source it belongs to, by its name, in
+    ``problems``. Also return the files that must go even when the source reports
+    problems: those of documents gone (to None), and the old file of a document that
+    moved (to its new file).
     """
     placed: list[Placed] = []
     retired: dict[PurePosixPath, PurePosixPath | None] = {}
-    try:
-        gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
-    except UNREADABLE as error:
-        spaced = (name for name, classes in sources.items() if Page in classes)
-        problems[next(spaced, store.source)].append(
-            Problem(where="tombstones.json", reason=reason(error))
-        )
-        gone = {}
     for source, found in (
         (name, item)
         for name, classes in sources.items()
@@ -237,14 +238,18 @@ def place(
         for item in readable(RawStore(store.root, name).latest(document_class), problems[name])
     ):
         stored, document = found, found.snapshot.document
+        stone = catalogue.gone.get((source, document.document_type.name, document.id))
         if isinstance(document, Issue):
-            placed.append(Placed(source=source, stored=stored, path=issue_path(source, document)))
+            path = issue_path(source, document)
+            if stone is None:
+                placed.append(Placed(source=source, stored=stored, path=path))
+            else:
+                retired[path] = None
             continue
         if not isinstance(document, ConfluenceDocument):
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        stone = gone.get((source, document.document_type.name, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
         named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)
