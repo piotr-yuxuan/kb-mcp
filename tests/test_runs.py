@@ -23,6 +23,7 @@ from datetime import UTC, datetime, timedelta, tzinfo
 from typing import TYPE_CHECKING
 
 import pytest
+from structlog.testing import capture_logs
 
 from kb_mcp.cli.adapters.run_record import RunBusyError, RunRecord
 from kb_mcp.cli.app import resumption
@@ -284,7 +285,9 @@ def test_an_error_that_no_unit_catches_passes_once_its_unit_is_recorded_failed()
     """The unit that raised fails, by the error's type alone; each later one taken, not run.
 
     So a resume runs them; the error passes as it was raised. The entries are written as
-    the unit before it ends, then once more.
+    the unit before it ends, then once more. Each stage's end says what the record does
+    (telemetry/fetch.md and prepare.md): the status that its units' endings fold, and
+    how each ended, the unit that raised among them.
     """
     written: list[tuple[Recorded, ...]] = []
 
@@ -293,11 +296,11 @@ def test_an_error_that_no_unit_catches_passes_once_its_unit_is_recorded_failed()
         raise OSError(message)
 
     planned = [
-        Planned(unit=Unit(stage="fetch", source="jira"), act=lambda: Outcome(ending="done")),
-        Planned(unit=Unit(stage="prepare", source="jira"), act=broken),
+        Planned(unit=Unit(stage="fetch", source="worklog"), act=lambda: Outcome(ending="done")),
+        Planned(unit=Unit(stage="fetch", source="jira"), act=broken),
         acted("done"),
     ]
-    with pytest.raises(OSError, match="value-sentinel-062"):
+    with capture_logs() as events, pytest.raises(OSError, match="value-sentinel-062"):
         run_units(planned, (), datetime(2026, 11, 16, tzinfo=UTC), written.append, dry_run=False)
     assert [len(entries) for entries in written] == [1, 3]
     fetched, failed, indexed = written[-1]
@@ -306,6 +309,8 @@ def test_an_error_that_no_unit_catches_passes_once_its_unit_is_recorded_failed()
     assert problem.where == "jira"
     assert "OSError" in problem.reason
     assert "value-sentinel-062" not in problem.reason
+    (end,) = [each for each in events if each["event"] == "fetch.end"]
+    assert (end["status"], end["sources"]) == (ExitStatus.FAILED, ["worklog: done", "jira: failed"])
 
 
 @pytest.fixture

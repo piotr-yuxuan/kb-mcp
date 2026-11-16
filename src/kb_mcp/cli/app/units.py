@@ -142,6 +142,14 @@ class Progress(Record):
             ended[self.acting] = Outcome(ending=ending, problems=problems)
         self.end(ended)
 
+    def failed(self, error: Exception) -> None:
+        """End the invocation failed by an error that no unit caught, as ``stopped`` says.
+
+        The problem of the unit at work names the error's type alone, never its message,
+        which may hold a value.
+        """
+        self.stopped("failed", f"stopped by {type(error).__name__}, which nothing caught")
+
     def done(self) -> Done:
         """Give what the invocation did: its status folds its own ending and each unit's last."""
         entries = tuple(self.entries[each] for each in self.units if each in self.entries)
@@ -164,6 +172,8 @@ def run_sources(
     whether a dry run, its ``source`` as each unit ends, and its ``end``, the status that
     its units' endings fold and how each ended; Ctrl-C, its ``interrupted``, a warning
     naming the source of the unit that it stopped, none once that unit ended, and passes.
+    Ctrl-C, or an error that no unit caught, ends the invocation, as ``run_units`` says,
+    before the stage's ``end``, which so counts the unit that it stopped.
     """
     log = structlog.get_logger()
     started, ended, interrupted, finished = EVENTS[stage]
@@ -187,6 +197,9 @@ def run_sources(
         acting = progress.acting
         log.warning(interrupted, source=None if acting is None else acting.source)
         progress.stopped("interrupted")
+        raise
+    except Exception as error:
+        progress.failed(error)
         raise
     finally:
         rows = [progress.entries[each.unit] for each in taken if each.unit in progress.outcomes]
@@ -235,6 +248,6 @@ def run_units(
     except KeyboardInterrupt:
         progress.stopped("interrupted")
     except Exception as error:
-        progress.stopped("failed", f"stopped by {type(error).__name__}, which nothing caught")
+        progress.failed(error)
         raise
     return progress.done()
