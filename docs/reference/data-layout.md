@@ -285,10 +285,9 @@ Two more of the store's own records, each replaced whole:
   each whole read ([above](#a-projects-whole-reads)), since plan 061; each
   time only once known. A scope read whole and not yet covered, as a project whose
   first search failed, has an entry without `start` and `end`, which keeps its
-  `whole_read_at`, so that its next run is no whole read again within the week;
-  versions before plan 061 refuse such a record. An entry without `type`, as plan 056
-  found them, is of its source's scope type, its source being its connector's name. A run that listed a
-  scope whole joins its fetch window to that period when the two overlap or touch, or
+  `whole_read_at`, so that its next run is no whole read again within the week. An
+  entry without `type`, as plan 056 found them, is of its source's scope type, its
+  source being its connector's name. A run that listed a scope whole joins its fetch window to that period when the two overlap or touch, or
   replaces an inexact period that the window starts at or before. Without a failure, such a
   run leaves the period exact. A space's period ends at the fetch window's end whatever
   failed, and a failure leaves it inexact, an entry of its listing that the adapter
@@ -305,7 +304,10 @@ Two more of the store's own records, each replaced whole:
   without `exact` from its covered start, which takes, after an upgrade, a page that moved
   into a space during its covered period and was never fetched. Versions before plan 034 read the record, and
   ignore `exact`; those before plan 056 ignore `type` and the times, and read a space's
-  `exact` as false.
+  `exact` as false. Every version before plan 061, 0.1.4 and the tag `pre-kb-mcp` among
+  them, refuses the whole record, every source's, rather than ignore it, once it holds
+  an entry without a period: keep a copy of `raw/coverage.json` before the first fetch
+  to go back to one ([moving to kb-mcp](../how-to/move-to-kb-mcp.md)).
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each document absent from its scope's whole read, a space's
   listing or a project's, by its `source`, its document `type` and its `id`, with the key of that
