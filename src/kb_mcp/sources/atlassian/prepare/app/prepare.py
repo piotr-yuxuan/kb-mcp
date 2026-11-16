@@ -48,6 +48,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     BlogPost,
     ConfluenceDocument,
+    Folder,
     Issue,
     Page,
 )
@@ -59,7 +60,12 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     RenderContext,
     normalise,
 )
-from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES, Catalogue, front_matter
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import (
+    TYPE_ROLES,
+    Catalogue,
+    folder_front_matter,
+    front_matter,
+)
 from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,
     confluence_path,
@@ -75,7 +81,6 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.output import Detail
     from kb_mcp.mirror.adapters.conversions import Conversions
-    from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
 # The document classes of a source, which a prepare takes whole.
 type Classes = tuple[type[Page | BlogPost | Issue], ...]
@@ -273,6 +278,33 @@ def place(
     return placed, retired
 
 
+def folder_files(
+    source: str, catalogue: Catalogue, times: Mapping[str, datetime], problems: list[Problem]
+) -> dict[str, tuple[PurePosixPath, bytes]]:
+    """Give the file of each folder of the source's spaces by its id: its path and its bytes.
+
+    A folder is a container, its file a front matter without a body. It goes in the space
+    whose freshest listing names it, by ``times``, as a page does. One whose front matter
+    is refused is a problem, by its space's listing of folders.
+    """
+    homes = {
+        folder.id: (space_id, folder)
+        for space_id in sorted(catalogue.folders, key=times.__getitem__)
+        for folder in catalogue.folders[space_id]
+    }
+    files: dict[str, tuple[PurePosixPath, bytes]] = {}
+    for space_id, folder in homes.values():
+        space = catalogue.spaces[space_id]
+        try:
+            matter = folder_front_matter(source, folder, space, catalogue)
+        except RefusedError as error:
+            where = f"{source}/spaces/{space_id}/folders.json"
+            problems.append(Problem(where=where, reason=str(error)))
+            continue
+        files[folder.id] = (confluence_path(source, folder, space.key), dump(matter, "").encode())
+    return files
+
+
 def link_targets(
     placed: Iterable[Placed], store: RawStore, site: str | None
 ) -> tuple[LinkTargets, dict[PurePosixPath, Path]]:
@@ -384,7 +416,9 @@ def prepare_atlassian(
         assets=len(files),
         problems=len(problems),
     )
-    wanted: dict[PurePosixPath, bytes | Path] = {**files}
+    # A source of pages writes the folders of their spaces too, each a container.
+    folders = folder_files(source, catalogue, times, problems) if Page in document_classes else {}
+    wanted: dict[PurePosixPath, bytes | Path] = {**files, **dict(folders.values())}
     if own:
         # The source's file beside its documents: the roles that each of its types takes,
         # and its scopes' as-of times.
@@ -392,7 +426,10 @@ def prepare_atlassian(
             SourceFile(
                 roles={
                     each.document_type.name: TYPE_ROLES[each.document_type.name]
-                    for each in document_classes
+                    for each in (
+                        *document_classes,
+                        *((Folder,) if Page in document_classes else ()),
+                    )
                 },
                 as_of={
                     scope_name(scope.type.name, scope.key): moment.astimezone(UTC)
@@ -425,9 +462,8 @@ def prepare_atlassian(
                     title=each.document.title,
                     seconds=round(seconds, 3),
                 )
-        # Each space's tree is its lister's, built with its pages; Jira has none.
-        spaces = catalogue.spaces.values() if Page in document_classes else ()
-        for space in spaces:
+        # Each space's tree is its lister's, built with its pages and folders; Jira has none.
+        for space in catalogue.spaces.values() if Page in document_classes else ():
             tree = tree_path(source, space.key)
             # Only the files built: a page whose file failed has no file yet.
             links = {
@@ -436,6 +472,10 @@ def prepare_atlassian(
                 if isinstance(each.document, Page)
                 and each.document.space_id == space.id
                 and each.path in wanted
+            } | {
+                folder_id: posixpath.relpath(path, tree.parent)
+                for folder_id, (path, _) in folders.items()
+                if path.parent == tree.parent
             }
             try:
                 if space.id not in damaged:
@@ -475,7 +515,7 @@ def prepare_atlassian(
     )
     return Outcome.of(
         AtlassianCounts(
-            documents=sum(1 for each in own if each.path in wanted),
+            documents=sum(1 for each in own if each.path in wanted) + len(folders),
             converted=conversions.converted,
             reused=conversions.reused,
             changes=changes,

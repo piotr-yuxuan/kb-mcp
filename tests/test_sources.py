@@ -56,7 +56,7 @@ from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, sourced
 from tests.reference import Emitted
 from tests.test_confirmation import QUESTION, Terminal
-from tests.test_fetching import PAGES, SITE, FakeSite
+from tests.test_fetching import FOLDERS, PAGES, SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
 
@@ -1034,7 +1034,8 @@ def test_a_second_prepare_reuses_every_conversion_each_source_its_own(
     outcome = first["counts"]
     assert (first["source"], first["ending"], outcome["reused"]) == ("confluence", "done", 0)
     converted = outcome["converted"]
-    assert converted > outcome["documents"] > 0  # a tree among them
+    # Each page and blog post, and the space's tree; a folder, of no body, is not converted.
+    assert converted == outcome["documents"] - len(FOLDERS) + 1 > 1
     again = second["counts"]
     assert (again["converted"], again["reused"]) == (0, converted)
     documents = outcome["documents"]

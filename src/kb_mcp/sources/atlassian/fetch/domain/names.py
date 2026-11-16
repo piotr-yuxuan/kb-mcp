@@ -17,12 +17,13 @@ CONFLUENCE = "confluence"
 JIRA = "jira"
 PAGE = DocumentType(name="page", plural="pages")
 BLOGPOST = DocumentType(name="blogpost", plural="blogposts")
+FOLDER = DocumentType(name="folder", plural="folders", container=True)
 ISSUE = DocumentType(name="issue", plural="issues")
 SPACE = ScopeType(
     name="space",
     key=SPACE_KEY,
     enumeration="listed",
-    document_types=(PAGE, BLOGPOST),
+    document_types=(PAGE, BLOGPOST, FOLDER),
     option=Option(
         flag="--space",
         help="a space key, in place of the setting's; repeat for more",

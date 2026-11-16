@@ -9,6 +9,7 @@ plan 030 has it: each places every document, and writes and removes its own file
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import sqlite3
 from contextlib import closing
@@ -65,14 +66,14 @@ IMAGE = b"\x89PNG an image"
 OTHER_IMAGE = b"\x89PNG another image"
 SPACE_ID = "196613"
 WORDS = "Words of the leaf page."
-# Each source's documents: Home, Leaf and the blog post; the issue.
-DOCUMENTS = {"confluence": 3, "jira": 1}
+# Each source's documents: Home, the folder Plans, Leaf and the blog post; the issue.
+DOCUMENTS = {"confluence": 4, "jira": 1}
 # A conversion for each document's file, and Confluence's for the space's tree.
 CONVERSIONS = {"confluence": 4, "jira": 1}
-# Each source's files: its documents, Confluence's tree, the file that its documents
-# attach, the leaf's image and the blog post's being one, the issue's another, and its
-# source's file.
-FILES = {"confluence": 6, "jira": 3}
+# Each source's files: its documents, the folder's among them, Confluence's tree, the
+# file that its documents attach, the leaf's image and the blog post's being one, the
+# issue's another, and its source's file.
+FILES = {"confluence": 7, "jira": 3}
 
 
 def listing_page(
@@ -267,6 +268,7 @@ def test_the_mirror_writes_exactly_the_layouts_paths(sandbox: Sandbox) -> None:
     assert each(outcomes, lambda outcome: outcome.counts.documents) == DOCUMENTS
     assert set(sandbox.files()) == {
         "confluence/MFS/100-home.md",
+        "confluence/MFS/200-plans.md",
         "confluence/MFS/300-leaf.md",
         "confluence/MFS/blog/600-news.md",
         "confluence/MFS/_tree.md",
@@ -437,15 +439,56 @@ def test_each_body_has_the_layouts_sections(sandbox: Sandbox) -> None:
 
 
 def test_the_tree_nests_pages_and_folders(sandbox: Sandbox) -> None:
-    """Siblings by title; a page without a body is named as not yet mirrored."""
+    """Siblings by title; a page without a body is named as not yet mirrored.
+
+    A folder, a document since plan 061, links its file as a page does.
+    """
     sandbox.run()
     assert sandbox.text("confluence/MFS/_tree.md") == (
         "# A space (MFS)\n\n"
         "- [Home](100-home.md)\n"
         "  - Listed only (not yet mirrored)\n"
-        "  - Plans\n"
+        "  - [Plans](200-plans.md)\n"
         "    - [Leaf](300-leaf.md)\n"
     )
+
+
+def test_each_folder_is_a_document_without_a_body(sandbox: Sandbox) -> None:
+    """Criterion 5: its front matter, a folder of its space under its parent page, then nothing.
+
+    No people nor address; its source's file says that it takes no role.
+    """
+    sandbox.run()
+    folder, body = load(sandbox.text("confluence/MFS/200-plans.md"), "folder")
+    assert (folder, body) == (
+        FrontMatter(
+            source="confluence",
+            type="folder",
+            id="200",
+            key=None,
+            title="Plans",
+            scope="space:MFS",
+            status="current",
+            subtype=None,
+            labels=(),
+            people=(),
+            parent="confluence:100",
+            links=(),
+            created=datetime(2026, 10, 19, 8, tzinfo=UTC),
+            updated=datetime(2026, 10, 20, 8, tzinfo=UTC),
+            version=2,
+            revision="000002",
+            url=None,
+            breadcrumb=("Home",),
+        ),
+        "",
+    )
+    roles = json.loads(sandbox.text("confluence/_source.json"))["roles"]
+    assert roles == {
+        "page": ["author", "commenter"],
+        "blogpost": ["author", "commenter"],
+        "folder": [],
+    }
 
 
 def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(

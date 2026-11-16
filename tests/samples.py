@@ -115,9 +115,13 @@ def v2_folder(**changes: object) -> dict[str, object]:
     folder: dict[str, object] = {
         "id": "197001",
         "type": "folder",
+        "status": "current",
         "title": "A folder",
         "parentId": "196725",
         "parentType": "page",
+        "authorId": "account-1",
+        "createdAt": "2026-10-19T08:00:00.000Z",
+        "version": {"number": 2, "createdAt": "2026-10-20T08:00:00.000Z"},
     }
     return {**folder, **changes}
 

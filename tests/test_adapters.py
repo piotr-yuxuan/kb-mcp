@@ -286,11 +286,20 @@ def test_a_page_keeps_whether_its_parent_is_a_page_or_a_folder() -> None:
     assert (page.parent_id, page.parent_type) == ("196725", "folder")
 
 
-def test_a_folder_is_read_with_its_title_and_parent() -> None:
-    """A folder is a node of the tree, with no body."""
-    assert confluence_v2.folder(Fields(v2_folder(), "folder")) == Folder(
-        id="197001", title="A folder", parent_id="196725", parent_type="page"
+def test_a_folder_is_read_with_its_title_parent_and_version() -> None:
+    """A folder is a node of the tree, with no body, versioned as a page is (plan 061)."""
+    folder = confluence_v2.folder(Fields(v2_folder(), "folder"))
+    assert folder == Folder(
+        id="197001",
+        title="A folder",
+        status="current",
+        created=datetime(2026, 10, 19, 8, tzinfo=UTC),
+        updated=datetime(2026, 10, 20, 8, tzinfo=UTC),
+        version=2,
+        parent_id="196725",
+        parent_type="page",
     )
+    assert folder.revision == "000002"
 
 
 def test_a_project_key_that_is_a_path_is_refused() -> None:

@@ -268,7 +268,16 @@ def test_spaces_listed_on_different_runs_are_all_kept(store: RawStore) -> None:
     assert page.parent_type == "page"
     assert store.listed("196613", BlogPost) == []
     assert store.folders("196613") == [
-        Folder(id="197001", title="A folder", parent_id="196725", parent_type="page")
+        Folder(
+            id="197001",
+            title="A folder",
+            status="current",
+            created=datetime(2026, 10, 19, 8, tzinfo=UTC),
+            updated=datetime(2026, 10, 20, 8, tzinfo=UTC),
+            version=2,
+            parent_id="196725",
+            parent_type="page",
+        )
     ]
 
 

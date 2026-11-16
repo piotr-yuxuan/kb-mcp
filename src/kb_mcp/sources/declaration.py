@@ -64,10 +64,13 @@ class DocumentType:
     """A type of document that one connector declares: its name, and its name in the plural.
 
     ``name`` is the front matter's ``type``; ``plural`` names its folder of a copy store.
+    A ``container``, such as a folder, has no body: a title, a place in the tree and
+    children.
     """
 
     name: str
     plural: str
+    container: bool = False
 
 
 @dataclass(frozen=True)
