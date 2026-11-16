@@ -415,11 +415,12 @@ Its prepare reads that store alone and converts through the cache of conversions
   fetch of a store: the created and updated dates of the mirror are carried over before
   the read, and until a read without a problem takes them all, `prepare` removes no
   file; a file of the mirror that does not read then fails that fetch, by its path, so
-  that the loss of its dates is said once, loudly, not lost in a warning. A prepare
-  whose conversion fails removes no file either, and the others' links to the document
-  that failed are left out meanwhile, its file no longer known to prepare. Either way,
-  the old file of a document written again under another path goes, told by the id that
-  its name carries
+  that the loss of its dates is said once, loudly, not lost in a warning; meanwhile, the
+  mirror holds the files of the documents that no read has taken, which deleting it
+  loses until their org files read. A prepare whose conversion fails removes no file
+  either, so that the document keeps its file, and the others their links to it. Either
+  way, the old file of a document written again under another path goes, told by the id
+  that its name carries
   ([`named_id`](../../src/kb_mcp/sources/worklog/prepare/domain/layout.py)), the
   longest of the store's that begins it: the file of a document gone whose name begins
   with a written document's id and a dash goes with it, sooner than it would. The first

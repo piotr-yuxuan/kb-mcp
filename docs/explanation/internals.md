@@ -222,7 +222,8 @@ pandoc's version and arguments
 ([`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)) and the text,
 builds every file again, and hands them to the mirror's writer. So the mirror holds no
 memory of the work log: deleting the source's folder of it and preparing again gives the
-same files back, converting nothing, and its source's file says the store's as-of time.
+same files back, converting nothing, but those of documents carried over from the mirror
+that no read has taken yet, and its source's file says the store's as-of time.
 
 - **Writes**, by `fetch`, the source's file of `<data>/copies/` alone, under its lock,
   replaced whole through a hidden file renamed into place; by `prepare`, the source's

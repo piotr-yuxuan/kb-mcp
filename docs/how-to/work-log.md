@@ -189,11 +189,14 @@ converting it again. pandoc converts each document, and `<data>/conversions.sqli
 keeps each conversion by its input, so that a prepare converts only the texts that
 changed; a transcript's lines stay apart.
 
-Deleting `<data>/docs/worklog/` costs nothing: the next `prepare` writes the same files
-from the store, converting nothing. Deleting `<data>/copies/worklog/` costs one read:
-the next `fetch` reads the folder whole and takes the dates from the mirror again, as
-below. A `prepare` that finds no copy store fails the work log's row, exit 1,
-naming `kb-mcp fetch worklog`, and prepares the other sources.
+Deleting `<data>/docs/worklog/` costs nothing once a fetch has read the work log without
+a problem since the upgrade: the next `prepare` writes the same files from the store,
+converting nothing. Before, the file of a document that no read has taken yet, below, is
+in no store: deleting the mirror loses it, and the others' links to it, until its org
+file reads. Deleting `<data>/copies/worklog/` costs one read: the next `fetch` reads the
+folder whole and takes the dates from the mirror again, as below. A `prepare` that finds
+no copy store fails the work log's row, exit 1, naming `kb-mcp fetch worklog`, and
+prepares the other sources.
 
 ### After an upgrade from a version without the copy store
 
@@ -246,9 +249,10 @@ Its first run embeds the whole mirror.
   a meeting renamed, or an entry renamed without `:ID:`, is found under its old id and
   its new, and one deleted stays, its file still naming the transcript or the meetings
   that no longer name it back. A prepare whose conversion failed removes no file but the
-  old one of a document retitled, until a prepare converts it. A document not
-  read before it has a copy, or whose conversion fails, is named in no other's `links`
-  until a run reads and converts it.
+  old one of a document retitled, until a prepare converts it; the document whose
+  conversion failed keeps its file and its links, and the others' links to it. A
+  document not read before it has a copy, or whose conversion fails before it has a
+  file, is named in no other's `links` until a run reads and converts it.
 - A file not read also holds back the files that it builds, which stay as they were: for
   `todo.org` or its archive, every file; for a transcript, its own; for a folder that
   cannot be listed, the transcripts under it, but one whose id a file elsewhere takes,

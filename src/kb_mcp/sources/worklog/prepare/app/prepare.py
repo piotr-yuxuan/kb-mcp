@@ -104,8 +104,9 @@ def prepare_worklog(
     Each document's text is converted through ``conversions``, the source's rows of the
     cache; a conversion that fails is a problem by the document's org file and id, never
     its content, which holds back that id. A link is written only when its other end has
-    a file: one written in this run, or that of a document carried over from the mirror,
-    which stays until a read takes it. The source's file beside its documents says the
+    a file once the run is done: one written in it, or one that stays, which the id that
+    its name carries tells, as of a document whose conversion failed, or carried over from
+    the mirror until a read takes it. The source's file beside its documents says the
     roles that each of its types takes and the store's as-of time, written whenever the
     store holds a document. A run that found a problem, or whose store holds a carried
     date, removes no file but the old ones of a document written, which the id that its
@@ -175,9 +176,14 @@ def prepare_worklog(
     written = {matter.id for matter, _ in ready.values()}
     known = copies.documents.keys() | copies.migrated.keys()
     found = worklog_owned(docs, source)
-    # Each file not written, by the id that its name carries.
+    # Each file not written, by the id that its name carries: a written document's is its
+    # old one, retired; any other stays, unless the run removes what it does not write. A
+    # link's other end has a file once the run is done: written, or one that stays.
     placed = {path: named_id(path, known) for path in found - ready.keys()}
-    ends = {document_id(source, each) for each in [*written, *copies.migrated]}
+    remove = not problems and not copies.migrated
+    retired = {path for path, identifier in placed.items() if identifier in written}
+    stay = () if remove else (each for path, each in placed.items() if path not in retired)
+    ends = {document_id(source, each) for each in [*written, *stay] if each is not None}
     wanted: dict[PurePosixPath, bytes | Path] = {
         path: dump(
             copy.replace(
@@ -195,13 +201,7 @@ def prepare_worklog(
             SourceFile(roles=TYPE_ROLES, as_of=as_of)
         )
     with TRACER.start_as_current_span("worklog.write"):
-        changes = write_changed(
-            docs,
-            wanted,
-            lambda _: found,
-            remove=not problems and not copies.migrated,
-            retired={path for path, identifier in placed.items() if identifier in written},
-        )
+        changes = write_changed(docs, wanted, lambda _: found, remove=remove, retired=retired)
         pruned = 0 if problems else conversions.drop_unused()
     log.info(
         "worklog.end",

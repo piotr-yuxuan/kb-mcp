@@ -564,10 +564,12 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A link
-always names a file: a document of the work log not read before it has a copy, or
-whose conversion fails in that prepare, is left out of the other documents' links,
-until a run reads and converts it, while one carried over from the mirror that no read
-has taken yet keeps the links to its file. A link added or removed while a work-log
+always names a file that the prepare leaves: one that it writes, or one that stays, of
+a document whose conversion fails in that prepare, which keeps its file and its links,
+or carried over from the mirror while no read has taken it and its file is there. A
+document of the work log without a file then, not read before it has a copy, or whose
+conversion fails before it has one, is left out of the other documents' links until a
+run reads and converts it. A link added or removed while a work-log
 transcript is not read is written on its meeting alone until a run reads the
 transcript, whose last copy stays as it was; and while a fetch's problem keeps a meeting
 or a transcript gone from the work log in the copy store, its file stays, naming
@@ -665,7 +667,9 @@ read finds no document gone and leaves `as_of`.
 Prepare converts each document's text through the source's rows of the cache of
 conversions ([below](#pandocs-conversions)), and writes every file again, those whose
 bytes changed: deleting `<data>/docs/worklog/` and preparing again gives the same files
-back, converting nothing. A prepare whose conversion fails is a problem by the
+back, converting nothing, but while a carried date waits: the file of a document that no
+read has taken yet is in no store, so that deleting the folder loses it, and the links to
+it, until its org file reads. A prepare whose conversion fails is a problem by the
 document's org file and id, and removes no file but the old file of a document written
 again under another path, which the id that begins its name tells, the longest of the
 store's (`named_id`); a prepare that finds no copy store is a problem naming `kb-mcp

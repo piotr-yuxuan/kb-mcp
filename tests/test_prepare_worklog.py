@@ -1219,6 +1219,48 @@ def test_a_document_that_fails_with_no_file_is_no_link_s_other_end(
     assert one_way(run.files()) == []
 
 
+def links_of(file: MirrorFile) -> list[tuple[str, str]]:
+    """Give a file's links, each its relation and the id of its other end."""
+    return [(each.relation, each.document.removeprefix("worklog:")) for each in file.matter.links]
+
+
+def test_a_document_whose_conversion_fails_keeps_its_file_and_its_links(run: Run) -> None:
+    """Its last file stays, so it is a link's other end still: the stand-up names it.
+
+    As before the copy store; neither file is written again for the link.
+    """
+    run()
+    kept = run.docs / run.by_id("t-20261027-1").path
+    before = kept.read_bytes()
+    run.edit("transcripts/current/2026-10-27 Tue/1.org", "XQ: asked", "XQ: failing, asked")
+    outcome = run(failing="failing")
+    assert [each.where for each in outcome.problems] == [
+        "transcripts/current/2026-10-27 Tue/1.org, t-20261027-1"
+    ]
+    assert kept.read_bytes() == before
+    assert links_of(run.by_id(STANDUP)) == [("transcript", "t-20261027-1")]
+    assert one_way(run.files()) == []
+
+
+def test_the_mirror_deleted_while_a_carried_date_waits_loses_that_file_and_its_links(
+    run: Run,
+) -> None:
+    """A carried document that no read has taken has a file of the mirror alone.
+
+    While it is there, the stand-up links it; once the mirror is deleted, the prepare
+    cannot give it back, and no link names it.
+    """
+    base_mirror(run.docs)
+    (run.root / "transcripts/current/2026-10-27 Tue/1.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+    assert run().problems
+    assert links_of(run.by_id(STANDUP)) == [("transcript", "t-20261027-1")]
+    shutil.rmtree(run.docs / "worklog")
+    assert run.prepare().problems == ()
+    assert "t-20261027-1" not in {each.matter.id for each in run.files()}
+    assert (links_of(run.by_id(STANDUP)), one_way(run.files())) == ([], [])
+
+
 def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     """Its file stays as it was; every other document is written, the stand-up linking it.
 
