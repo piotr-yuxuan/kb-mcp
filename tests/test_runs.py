@@ -140,10 +140,21 @@ def test_a_resume_runs_each_unit_not_done_and_each_that_follows_one() -> None:
         ({"stages": ("index", "fetch")}, "stages: some of fetch, prepare, index, embed"),
         ({"stages": ()}, "stages: some of"),
         ({"sources": {"fetch": ("jira",)}}, "sources: those of each stage enabled"),
+        ({"options": {}}, "options: fetch's and index's"),
+        ({"options": {"fetch": {}, "index": {}}}, "options: fetch's and index's"),
+        ({"options": {"fetch": {}, "index": {"--rebuild": "no"}}}, "options: fetch's"),
+        (
+            {"options": {"fetch": {}, "index": {"--rebuild": False}, "embed": {}}},
+            "options: fetch's and index's",
+        ),
     ],
 )
 def test_a_configuration_refuses_what_no_run_can_be(changed: dict[str, object], said: str) -> None:
-    """Another run id, which names a folder, stages out of order or none, sources of no stage."""
+    """Another run id, which names a folder, stages out of order or none, sources of no stage.
+
+    And a stage's options that its run reads missing: fetch's, or index's --rebuild, which
+    must say true or false; or the options of a stage that reads none.
+    """
     with pytest.raises(RefusedError, match=said):
         configuration(**changed)
 
@@ -834,6 +845,41 @@ def test_a_period_that_no_source_taken_reads_is_ignored_as_before(
         (each["stage"], each["source"], each["ending"]) for each in entries
     ]
     assert (home / "data" / "copies" / "worklog" / "copies.json").is_file()
+
+
+@pytest.mark.usefixtures("site")
+def test_a_resume_refuses_a_record_that_lacks_what_a_stage_needs_naming_its_file(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The data layout: a field missing, or refused, is refused by its file and field, exit 2.
+
+    Its options emptied, whose index's --rebuild its index reads; its fetch without an
+    option that Jira's fetch declares; a setting refused, by its path in the settings.
+    """
+    options = given(home, endpoint)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "kb_mcp.cli.commands._runs.fill_and_prune",
+            lambda *_: (_ for _ in ()).throw(KeyboardInterrupt),
+        )
+        status, document = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.INTERRUPTED
+    run = document["run"]
+    configured = home / "data" / "runs" / run / "configuration.json"
+    held = json.loads(configured.read_text("utf-8"))
+    where = f"run {run}: runs/{run}/configuration.json: "
+    for damaged, said in [
+        ({**held, "options": {}}, "options: fetch's and index's"),
+        (
+            {**held, "options": {**held["options"], "fetch": {"--since": None}}},
+            "options.fetch.--until: missing",
+        ),
+        ({**held, "settings": {**held["settings"], "data_dir": 5}}, "settings: data_dir: "),
+    ]:
+        configured.write_text(json.dumps(damaged), "utf-8")
+        assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
+        (line,) = [each for each in capsys.readouterr().err.splitlines() if where in each]
+        assert said in line
 
 
 def test_a_dry_run_records_nothing(

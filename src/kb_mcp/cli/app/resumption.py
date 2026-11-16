@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.adapters.run_record import RunRecord
+from kb_mcp.cli.adapters.run_record import CONFIGURATION, RunRecord
+from kb_mcp.cli.domain.command import FETCH
 from kb_mcp.cli.domain.runs import keyed, resume_refused, resume_said, units_of
-from kb_mcp.config.domain.settings import SettingsError, with_secrets
+from kb_mcp.cli.domain.sources import fetch_flags
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.record import Record
 
@@ -30,9 +31,10 @@ def resumption(
     """Read a run's record, under the data directory that ``loaded`` names, to resume it.
 
     It may not be resumed when no record of it is there, its record does not read, a
-    source of its units is no longer among ``sources``, its settings no longer build with
-    the secrets that ``loaded`` holds, or ``resume_refused`` says so; each refusal names
-    the run. Else the resume says what it will do, as ``resume_said`` gives it.
+    source of its units is no longer among ``sources``, its fetch lacks an option that a
+    source of it declares, its settings no longer build with the secrets that ``loaded``
+    holds, or ``resume_refused`` says so; each refusal names the run, and the file at
+    fault. Else the resume says what it will do, as ``resume_said`` gives it.
     """
     runs = loaded.settings.runs
     record = RunRecord(runs / run)
@@ -49,9 +51,17 @@ def resumption(
     ]
     if gone:
         return Resumption(refusal=f"run {run}: source {gone[0]}: no longer configured")
+    fetched = configuration.options.get(FETCH, {})
+    declared = fetch_flags(configured[name] for name in configuration.sources.get(FETCH, ()))
+    missing = [
+        flag for flag, option in declared.items() if option.setting is None and flag not in fetched
+    ]
+    if missing:
+        where = record.where(CONFIGURATION)
+        return Resumption(refusal=f"run {run}: {where}: options.fetch.{missing[0]}: missing")
     try:
-        settings = with_secrets(configuration.settings, loaded.settings)
-    except SettingsError as error:
+        settings = record.settings(configuration, loaded.settings)
+    except RepresentationError as error:
         return Resumption(refusal=f"run {run}: {error}")
     units = units_of(
         configuration, {name: len(each.connector.preparers) for name, each in configured.items()}

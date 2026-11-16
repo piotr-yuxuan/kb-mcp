@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import AwareDatetime, Field, JsonValue, model_validator
 
-from kb_mcp.cli.domain.command import EMBED, PREPARE, STAGES, WHOLE, Stage
+from kb_mcp.cli.domain.command import EMBED, FETCH, INDEX, PREPARE, STAGES, WHOLE, Stage
 from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
 from kb_mcp.kernel.exit_status import Ending
 from kb_mcp.kernel.names import RUN_ID, RefusedError
@@ -69,7 +69,9 @@ class Configuration(Record):
     def check_configuration(self) -> Self:
         """Refuse another run id, no stage or stages out of order, or sources of no stage.
 
-        Each stage enabled per source has its sources, and only those.
+        Each stage enabled per source has its sources, and only those; fetch and index,
+        when enabled, have their options, and only they: index's ``--rebuild``, true or
+        false.
         """
         if not RUN_ID.fullmatch(self.run):
             message = f"run: not a run id, {RUN_ID.pattern}"
@@ -79,6 +81,13 @@ class Configuration(Record):
             raise RefusedError(message)
         if set(self.sources) != {each for each in self.stages if each not in WHOLE}:
             message = "sources: those of each stage enabled per source, and only those"
+            raise RefusedError(message)
+        rebuild = self.options.get(INDEX, {}).get("--rebuild")
+        taking = {each for each in self.stages if each in {FETCH, INDEX}}
+        if set(self.options) != taking or (INDEX in taking and not isinstance(rebuild, bool)):
+            message = (
+                "options: fetch's and index's, when enabled, and only those; --rebuild, a boolean"
+            )
             raise RefusedError(message)
         return self
 

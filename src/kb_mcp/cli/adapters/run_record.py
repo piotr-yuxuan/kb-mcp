@@ -21,12 +21,14 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from kb_mcp.cli.domain.runs import Configuration, Outcomes, Recorded
+from kb_mcp.config.domain.settings import SettingsError, with_secrets
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.record import refused_fields
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
+    from kb_mcp.config.domain.settings import Settings
     from kb_mcp.kernel.record import Record
 
 # The record's files, and its lock, in the run's folder.
@@ -75,6 +77,22 @@ class RunRecord:
         """
         return self._read(CONFIGURATION, Configuration)
 
+    def settings(self, configuration: Configuration, secrets: Settings) -> Settings:
+        """Build the settings that its configuration records, each secret as ``secrets`` has it.
+
+        Raises RepresentationError, naming the file and each setting refused, never its
+        value, such as the table of a source that the settings' model no longer holds.
+        """
+        try:
+            return with_secrets(configuration.settings, secrets)
+        except SettingsError as error:
+            message = f"{self.where(CONFIGURATION)}: settings: {error}"
+            raise RepresentationError(message) from None
+
+    def where(self, name: str) -> str:
+        """Name one of its files as a refusal does: by its path from the data directory."""
+        return name if self.folder is None else f"runs/{self.folder.name}/{name}"
+
     def write_outcomes(self, entries: Iterable[Recorded]) -> None:
         """Replace each unit's last entry, in their order, inside ``holding``."""
         self._write(OUTCOMES, Outcomes(units=tuple(entries)))
@@ -105,7 +123,7 @@ class RunRecord:
             Path(hidden).unlink(missing_ok=True)
 
     def _read[R: Record](self, name: str, kind: type[R]) -> R:
-        where = name if self.folder is None else f"runs/{self.folder.name}/{name}"
+        where = self.where(name)
         if self.folder is None and name not in self._kept:
             raise FileNotFoundError(name)
         try:

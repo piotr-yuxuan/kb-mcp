@@ -432,7 +432,7 @@ but the secrets, which each invocation takes from its environment.
 | `stages` | the stages that the run enables, in pipeline order |
 | `dry_run` | whether it plans alone; always false, as a dry run is not recorded |
 | `sources` | the sources that each stage per source takes, in their order, by stage |
-| `options` | each stage's options, by flag: a fetch's that no setting holds, `--since` as the time it named, or null for each scope's coverage, `--until` as a time, the run's start when none was given; whether `index` rebuilds whole |
+| `options` | the options of `fetch` and `index`, each when enabled, by flag: each of a fetch's sources' that no setting holds, `--since` as the time it named, or null for each scope's coverage, `--until` as a time, the run's start when none was given; `index`'s `--rebuild`, whether it rebuilds whole |
 | `settings` | every setting as the run resolved it, each table nested, its paths made absolute, but each secret, which is absent: the API tokens and the embedding endpoint's key |
 
 ```json

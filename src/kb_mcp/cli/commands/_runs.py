@@ -18,7 +18,7 @@ from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint
 from kb_mcp.cli.domain.command import INDEX
 from kb_mcp.cli.domain.rows import Ended
 from kb_mcp.cli.domain.runs import Configuration, units_of
-from kb_mcp.config.domain.settings import with_secrets, without_secrets
+from kb_mcp.config.domain.settings import without_secrets
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.search.app.indexing import fill_and_prune, update_index
@@ -68,7 +68,7 @@ def recorded(
             if configuration is not None:
                 record.write_configuration(configuration)
             fixed = record.read_configuration()
-            settings = with_secrets(fixed.settings, loaded.settings)
+            settings = record.settings(fixed, loaded.settings)
             try:
                 done = run_units(
                     planned(fixed, settings),
