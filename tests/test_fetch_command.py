@@ -595,7 +595,10 @@ def test_a_source_without_a_fetcher_is_no_choice(
     with pytest.raises(SystemExit) as stopped:
         main(command(home, name), (*SOURCES, *sourced(memo)))
     assert stopped.value.code == REFUSED
-    assert f"invalid choice: {name!r} (choose from 'confluence', 'jira')" in capsys.readouterr().err
+    refusal = capsys.readouterr().err.splitlines()[-1]
+    assert f"invalid choice: {name!r}" in refusal
+    named = set(re.findall(r"[\w-]+", refusal)) & {"confluence", "jira", "worklog", "memo"}
+    assert named == {name, "confluence", "jira"}
 
 
 def test_the_help_shows_a_group_per_source_that_has_a_fetcher(

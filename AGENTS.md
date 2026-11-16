@@ -27,7 +27,7 @@ Follow the `workflow:plans` skill with these parameters:
   [the internals](docs/explanation/internals.md); the formats that the stages share, in
   [the data layout](docs/reference/data-layout.md); where code goes, in
   [the code's layout](docs/explanation/code-layout.md); the plans, in the roadmap,
-  `docs/work/README.md`, untracked. Only the adapter of a representation reads its
+  `docs/work/roadmap.md`, untracked. Only the adapter of a representation reads its
   JSON, and only one module knows the site's HTML.
 - A new page goes in the folder of `docs/` named by its Diataxis kind, and
   [the map](docs/README.md) links it in the commit that writes it. The reference of
