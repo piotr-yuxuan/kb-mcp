@@ -1968,3 +1968,21 @@ def test_an_issue_found_moved_loses_the_tombstone_of_another_project(
     run(chosen, monkeypatch, in_zed, catch_up([], ["PRB"]), FIRST + timedelta(days=1) + WEEK)
     assert "/rest/api/3/issue/20002" in jira_asked(in_zed)
     assert RawStore(chosen.raw, "jira").tombstones() == {}
+
+
+@pytest.mark.parametrize("order", [["OPS", "PRB"], ["PRB", "OPS"]], ids=["OPS first", "PRB first"])
+def test_an_issue_named_by_this_run_s_whole_read_ends_the_run_without_a_tombstone(
+    tmp_path: Path, monkeypatch: MonkeyPatch, order: list[str]
+) -> None:
+    """Review of 061: 20002, confirmed gone from OPS, comes back in PRB, read whole.
+
+    Whichever project the run reads first, OPS, not due, does not bring back the
+    tombstone that PRB's whole read ended.
+    """
+    chosen = settings(tmp_path)
+    deleted = moved_then_deleted(chosen, monkeypatch)
+    for moment in (FIRST + WEEK, FIRST + WEEK + 2 * CONFIRM_AFTER):
+        run(chosen, monkeypatch, deleted, catch_up([], ["OPS"]), moment)
+    back = ProjectSite(projects={"OPS": {}, "PRB": {"20002": in_project("20002", "PRB")}})
+    run(chosen, monkeypatch, back, catch_up([], order), FIRST + timedelta(days=3) + WEEK)
+    assert RawStore(chosen.raw, "jira").tombstones() == {}

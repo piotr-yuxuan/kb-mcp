@@ -475,22 +475,24 @@ class Fetching:
 
         Those not confirmed are probed, at most ``MAX_PROBES`` a scope and a run, those
         on their way first; the rest stay pending. A tombstone of another scope, of a
-        document absent from this one too, goes on from its own state. A document answering
-        from another
-        scope is followed there once that scope's last whole read names it, and stays
-        pending until then. Raises SignInNeededError when too many answer gone and the
-        session no longer holds; when the site does not answer, nothing is believed. The
-        task ``probes`` reports a scope's probes, each by its document's id; all is the
-        span ``fetch.probes``. The scopes kept, those whose whole reads the site's sources
-        keep, this one's and its peers', are read once, and each one's whole read once,
-        when a probe first finds a document there.
+        document absent from this one too, goes on from its own state; a document that a
+        later scope's whole read of this run named has none left, and stays present. A
+        document answering from another scope is followed there once that scope's last
+        whole read names it, and stays pending until then. Raises SignInNeededError when
+        too many answer gone and the session no longer holds; when the site does not
+        answer, nothing is believed. The task ``probes`` reports a scope's probes, each by
+        its document's id; all is the span ``fetch.probes``. The scopes kept, those whose
+        whole reads the site's sources keep, this one's and its peers', are read once, and
+        each one's whole read once, when a probe first finds a document there.
         """
         stores = (self.store, *self.peers)
         types = {CLASSES[key[1]] for absent, _, _ in self.absent.values() for key in absent}
         kept = {each: {h for store in stores for h in store.holders(each)} for each in types}
         listings: dict[tuple[str, type[FetchedDocument]], set[str]] = {}
         with TRACER.start_as_current_span("fetch.probes"):
-            for scope, (absent, stored, before) in self.absent.items():
+            for scope, (tracked, stored, before) in self.absent.items():
+                # Not what a later scope's whole read of this run named, which is present.
+                absent = {k: s for k, s in tracked.items() if k in self.tombstones}
                 known = {
                     k: s for k, s in self.tombstones.items() if s.scope == scope or k in absent
                 }
