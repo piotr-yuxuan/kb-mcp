@@ -68,8 +68,11 @@ connector is a [`Connector`](../../src/kb_mcp/sources/declaration.py), with
 [`Connector.fetcher`](../../src/kb_mcp/sources/declaration.py) and
 [`Connector.preparers`](../../src/kb_mcp/sources/declaration.py); its scope types are each a
 [`ScopeType`](../../src/kb_mcp/sources/declaration.py), with its
-[`Enumeration`](../../src/kb_mcp/sources/declaration.py), and its document types each a
-[`DocumentType`](../../src/kb_mcp/sources/declaration.py); what a source of it needs is
+[`Enumeration`](../../src/kb_mcp/sources/declaration.py), and how often one searched by
+update time is read whole,
+[`ScopeType.whole_read_every`](../../src/kb_mcp/sources/declaration.py); its document types
+each a [`DocumentType`](../../src/kb_mcp/sources/declaration.py), a container by
+[`DocumentType.container`](../../src/kb_mcp/sources/declaration.py); what a source of it needs is
 [`Connector.settings`](../../src/kb_mcp/sources/declaration.py), among them its
 [`Connector.location`](../../src/kb_mcp/sources/declaration.py), and its sign-in
 [`Connector.login`](../../src/kb_mcp/sources/declaration.py) and
@@ -144,12 +147,14 @@ tree.
 [`Coverage.periods`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 [`Coverage.exact`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 [`Coverage.as_of`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py) and
-[`Coverage.whole_read_at`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
+[`Coverage.whole_read_at`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
+[`whole_read_due`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py), and
 [`FetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py);
 [`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), a run's scopes, and
 [`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
 [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), the stored
-listings and `listed_at.json`, which are what a scope listed at its last whole read. The
+listings, a project's whole read and `listed_at.json`, which are what a scope listed at
+its last whole read. The
 as-of times reach the index through the mirror, in each source's file,
 [`SourceFile.as_of`](../../src/kb_mcp/mirror/domain/mirror.py), and are served as
 [`IndexedDocument.as_of`](../../src/kb_mcp/search/domain/search.py), by
@@ -235,6 +240,9 @@ the same document at other stages,
 [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
+[`Folder`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), a container, whose
+front matter [`folder_front_matter`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)
+gives,
 [`WorklogDocument`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py) and
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
 [`FrontMatter.ref`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each

@@ -44,7 +44,8 @@ server never fetches from the site.
   as-of time, its scope's, the last moment that the scope is known complete, or
   `as of: unknown`, and `status` each scope's, so that an
   agent can tell how old its evidence is. And catching up is not free: each run lists
-  every space whole, and reads the work log whole. A project's search no longer grows
+  every space whole, and reads the work log whole, and each project once a week
+  ([below](#a-project-read-whole-each-week)). A project's search no longer grows
   with the age of its coverage, but misses an issue moved into it, or newly visible,
   whose last update predates the last fetch, until a `--since` reaches it, as it does
   the files of issues stored before `--max-file-mb` was raised. Its margin
@@ -66,6 +67,57 @@ server never fetches from the site.
   catch-up from the last fetch, a project's end exact, by
   plan 034; a space's coverage
   exact after a whole read without failure by plan 056.
+
+## A project read whole each week
+
+A search by update time sees no deletion. So a project is also read whole, every
+issue by its id, at its first fetch and a week after its last whole read
+([`whole_read_due`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)); what
+its last whole read named and this one does not is tracked and probed by its id, as a
+space's absent pages are, at each run until it is confirmed gone
+([`Fetching.track_project`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)).
+
+- **Why.** Until plan 061, an issue deleted in Jira stayed in the mirror for ever. Only
+  a whole read can start an absence, as [the concepts](../reference/concepts.md#document)
+  say; a week bounds how long a deleted issue stays, at one listing of the project's
+  keys a week, where a whole read at every run would ask for it at every run.
+- **Cost.** An issue deleted is answered gone at the next whole read, a week at most
+  after, confirmed at a run an hour or more later, and then leaves the mirror at the
+  next `prepare`. The first whole read of a project only names what is there: an issue
+  deleted before it, such as before the upgrade, is never found gone. An issue moved to
+  another project is unsettled until that project's whole read names it; a project kept
+  only by a source of another site is not kept, as its key there is another project.
+  A whole read that fails is counted, and the search by update time goes on.
+- **Rejected.** A whole read at every run, as a space's listing is: as many requests as
+  a project has thousands of issues, at each run. The first whole read's baseline taken
+  from the issues that the raw store holds of the project: it reads every snapshot of
+  the store, left for a later plan. Jira's audit log or webhooks: an administrator's
+  rights, and a server listening.
+- **Settled** by plan 061.
+
+## Folders, documents without a body
+
+A Confluence folder is a document of the type `folder`, a container of [the
+concepts](../reference/concepts.md#document): its file is its front matter and no body,
+in its space, under its parent; the index holds it with no section; `browse` places a
+folder's pages under it by its id, and `read` lists its children
+([`folder_files`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)).
+
+- **Why.** A folder was no document, but a title in a page's breadcrumb, so `browse` placed
+  a page under a folder by titles, which a page of the same titles beside it took over.
+  As a document it has a place in the tree, children, and a ref that an agent can read.
+- **Cost.** Its file follows its space's last listing of folders, as `_tree.md` does,
+  not a tombstone: a folder whose GET fails loses its file until a later run reads it.
+  It has no address, no people and no words: no search gives it. The index's schema
+  became 10, so that the first `index` after the upgrade rebuilds it whole, once
+  `prepare` has written the folders; `embed` finds every vector in its cache. `_tree.md`
+  stays, as it names the pages that a space lists and the mirror lacks, which `browse`
+  cannot.
+- **Rejected.** Absences for folders: the listing names only the folders above a listed
+  page, so a folder emptied of its pages would be probed at every run. A folder of one
+  section, its title alone: a hit with nothing to quote. `_tree.md` dropped for
+  `browse`: it would lose the pages not yet mirrored.
+- **Settled** by plan 061.
 
 ## Cookies and API tokens
 
@@ -368,9 +420,10 @@ parent's from its snapshot in the raw store
   not listed: for a parent that the index holds in another scope, below the first listed
   document that its parents reach by their ids, else at the top, never by titles, as its
   ancestors need not be those of a listed document of the same titles; for a parent that is
-  no document of the index, such as a folder, below the listed document whose own
-  titles are those above that parent, where one alone has them
-  ([`tree_order`](../../src/kb_mcp/search/domain/search.py)).
+  no document of the index, such as a page that its space lists and the mirror lacks,
+  below the listed document whose own titles are those above that parent, where one
+  alone has them ([`tree_order`](../../src/kb_mcp/search/domain/search.py)). A folder is
+  a document since plan 061, so that a page under one sits under it by its id.
 - **Cost.** Every hit, passage and link is a few characters longer, measured by
   [the budgets' tests](../../tests/test_budgets.py). A bare key that two documents hold
   is refused, so an agent citing it makes `eval agents` refuse its grading. An issue's
@@ -378,14 +431,13 @@ parent's from its snapshot in the raw store
   title. `browse` looks a listed document's parents of other scopes up through the index,
   one query a level. Under the chunkings `section-paths` and `small-to-big`, whose texts carry the
   breadcrumb, each issue's chunks were embedded again once, its breadcrumb changing
-  from keys to titles. `status` counts a scope that two sources hold as one. Two
-  folders of one title under one page show as one bracketed line, a folder being no
-  document until plan 061; and a page under a folder that shares its title and the
-  titles above it with a page beside it shows under that page.
+  from keys to titles. `status` counts a scope that two sources hold as one. Two pages
+  not mirrored of one title under one page would show as one bracketed line, which
+  Confluence's titles, unique within a space, rule out.
 - **Rejected.** Refs by key alone, as before: ambiguous across sources. Parents by key:
   broken by a move. A breadcrumb of parent keys, as Jira's was: meaningless to a model.
   Asking the site for each missing ancestor: the prepare reads the raw store alone.
-- **Settled** by plan 057.
+- **Settled** by plan 057; folders as documents by plan 061.
 
 ## As-of times through the mirror
 

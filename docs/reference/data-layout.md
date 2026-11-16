@@ -213,6 +213,11 @@ result of every page of each list:
 <data>/raw/<source>/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
+Each folder's response is read whole as a page's listing entry is: its id, title,
+status, `createdAt`, `version` (`number` and `createdAt`), `parentId` and `parentType`
+(`confluence_v2.folder`), as a folder is a document since plan 061 ([the mirror's
+tree](#the-markdown-mirror)).
+
 `<source>` is the name of the source of spaces, `confluence` by default; the users are
 its site's, which one source of spaces lists, so that two sites keep theirs apart and a
 store of before keeps its file, `confluence/users.json`, where it was.
@@ -234,6 +239,24 @@ outside the period fetched, folders included (`Page.parent_type` says whether a 
 is a page or a folder), and the names of Confluence authors, whom v2 gives by account id
 only.
 
+### A project's whole reads
+
+A project is searched by update time, which sees no deletion; a week after its last whole
+read (`ScopeType.whole_read_every`, by `coverage.whole_read_due`), and at its first fetch,
+a run also reads it whole (061), every issue by a search without a date bound that asks
+for the issues' keys alone (`jira_v3.listing_request`), and replaces its last whole read:
+
+```
+<data>/raw/<source>/projects/<KEY>/issues.json   every issue of the project, as the search returned it
+```
+
+`put_project(key, issues)` replaces the file whole; `listed_ids(holder, Issue)` reads
+the ids of its entries alone (`jira_v3.entry_ids`), as `listed_ids(space_id, Page |
+BlogPost)` reads a space's listing, and `holders(document_class)` gives the scopes whose
+last whole read of a type is kept: the spaces by id, the projects by key. A whole read
+that fails is counted, `fetch.scope_failed`, and the project's search goes on; its last
+whole read stays.
+
 ### Files
 
 Attached files: `<data>/raw/blobs/<sha256[:2]>/<sha256>`, written once, by
@@ -250,7 +273,9 @@ Two more of the store's own records, each replaced whole:
   `"exact": true` on an exact entry, a project's since plan 034 and a space's since plan
   056, `as_of`, the period's end
   when a run last left it exact, which each prepare copies into its source's file of
-  the mirror ([below](#a-sources-file)), and `whole_read_at`, when a run last listed it whole; each
+  the mirror ([below](#a-sources-file)), and `whole_read_at`, when a run last read it whole,
+  the time that the run started: a space's at each run that lists it, a project's at
+  each whole read ([above](#a-projects-whole-reads)), since plan 061; each
   time only once known. An entry without `type`, as plan 056 found them, is of its
   source's scope type, its source being its connector's name. A run that listed a
   scope whole joins its fetch window to that period when the two overlap or touch, or
@@ -273,23 +298,32 @@ Two more of the store's own records, each replaced whole:
   `exact` as false.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each document absent from its scope's whole read, a space's
-  listing, by its `source`, its document `type` and its `id`, with the key of that
+  listing or a project's, by its `source`, its document `type` and its `id`, with the key of that
   `scope` (`sources.atlassian.fetch.domain.deletions.Tombstone`); an entry as plan 056
   found them names the plural `kind` and the space's id, `space`, and is Confluence's,
   of the space that Confluence's view of the store lists under that id; one whose space
   no stored listing names keeps the space's id as its scope's key, until that space's
   next whole read takes it into its scope, and `raw.spaces_unresolved` says so once a
   read. A tombstone is pending until a probe answers,
-  then dated by its first answer of gone (404, trashed, or moved to a space the store
-  does not keep), and confirmed by a second, at least an hour later. A document found in
-  a kept space whose stored listing names it has moved, and loses its tombstone, as does
-  one listed again; one found in a kept space whose listing does not name it goes back
-  to pending. The absent are found from the last listing read by id alone
-  (`listed_ids(space_id, document_class)`), so that an entry the adapter would refuse is still
-  followed, and the ids that have a snapshot (`stored_ids(document_class)`); the record is written
-  before the space's listing is replaced, so that no absent document is lost to a run
-  that stops, and they are probed once every space of the run is listed. A fetch of
-  projects neither reads nor rewrites the record.
+  then dated by its first answer of gone (404, trashed, or found in a scope whose whole
+  read no source of the run's site keeps), and confirmed by a second, at least an hour
+  later. A page is probed by `GET /wiki/api/v2/{pages,blogposts}/{id}`, which gives its
+  space's id and its status; an issue by `GET /rest/api/3/issue/{id}?fields=project`,
+  which gives its project's key, each on its source's own site and sign-in. A document
+  found in a kept scope whose last whole read names it has moved, and loses its
+  tombstone, as does one that any whole read of its source names; one found in a kept
+  scope whose whole read does not name it goes back to pending. The scopes kept are
+  those whose whole reads the sources of the run's site keep (`holders`): another
+  site's, whose keys may be the same, never counts. The absent are found from the last
+  whole read by id alone (`listed_ids(holder, document_class)`), so that an entry the
+  adapter would refuse is still followed, and the ids that have a snapshot
+  (`stored_ids(document_class)`); the record is written before the whole read is
+  replaced, so that no absent document is lost to a run that stops, and they are probed
+  once every scope of the run is read. A project not due a whole read keeps its last,
+  so that what is absent is still probed at each run. Every fetch reads the record and
+  writes it again, each entry of another source or scope as it found it; one that
+  cannot be read fails that source's fetch alone, before any request, Confluence's by
+  its preflight.
 
 ## The work log's copy store
 
@@ -366,7 +400,7 @@ setting `site` alone, so they can be rebuilt without network, byte for byte:
 nothing in them depends on when they were prepared.
 
 ```
-<data>/docs/confluence/<SPACE>/<id>-<slug>.md        a page
+<data>/docs/confluence/<SPACE>/<id>-<slug>.md        a page, or a folder
 <data>/docs/confluence/<SPACE>/blog/<id>-<slug>.md   a blog post
 <data>/docs/confluence/<SPACE>/_tree.md              the space's tree
 <data>/docs/jira/<PROJECT>/<KEY>.md                  an issue
@@ -394,8 +428,14 @@ nothing in them depends on when they were prepared.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
 - `_tree.md`: one nested list item per page and folder of the listings, linking the
-  page's file, or naming the page as "not yet mirrored" when its body was not
-  downloaded.
+  page's or the folder's file, or naming the page as "not yet mirrored" when its body
+  was not downloaded. It stays beside the documents' parents, which `browse` follows,
+  as it names the pages that a space lists and the mirror lacks.
+- A folder (061) is a container: its file holds its front matter and no body, `type:
+  folder`, in the space whose freshest listing names it, as a page is. Its file follows
+  its space's last listing of folders, as the tree does, with no tombstone: that listing
+  names only the folders above a listed page, so a folder emptied, deleted or whose GET
+  failed loses its file at the next prepare that finds no problem.
 
 Each document starts with front matter written by `mirror.adapters.markdown.dump` and
 read by `mirror.adapters.markdown.load`, from a `mirror.domain.mirror.FrontMatter`;
@@ -415,7 +455,7 @@ order or type, by name.
 | Key | Type | Value |
 |---|---|---|
 | `source` | string | the source's name: `confluence`, `jira` or `worklog` today |
-| `type` | string | `page` or `blogpost` (Confluence), `issue` (Jira), `entry`, `day`, `meeting` or `transcript` (work log) |
+| `type` | string | `page`, `blogpost` or `folder` (Confluence), `issue` (Jira), `entry`, `day`, `meeting` or `transcript` (work log) |
 | `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
 | `title` | string | the title |
@@ -427,9 +467,9 @@ order or type, by name.
 | `parent` | string or null | the document id of the document above it at its origin, `<source>:<id>` (`kernel.names.DOCUMENT_ID`), mirrored or not: a page's parent page or folder, from its listing when it is listed; an issue's parent issue; `null` at the top, and for blog posts and the work log |
 | `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
-| `version` | integer or null | the Confluence version number; `null` for Jira |
+| `version` | integer or null | the Confluence version number, a folder's too; `null` for Jira |
 | `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
-| `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
+| `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, for a folder, whose response gives no web page, and for the work log |
 | `breadcrumb` | list of strings | the titles along the parents, root first: a page's ancestor pages and folders; an issue's parent, by the title that the issue's response gives it, then each further parent of the raw store, by its own response's; or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 
 Images: an image in the rendered HTML names its attachment by
@@ -442,7 +482,9 @@ placeholder; a backfill that reaches the other page fills it.
 A Confluence document goes in the space whose freshest listing (by `listed_at`)
 names it, which after a move is not the space its snapshot names; the front matter, the
 tree and the path all take that space. A document with a confirmed tombstone is left
-out, unless a listing taken after its first answer of gone names it again. The files of
+out: a page or a blog post unless a listing taken after its first answer of gone names
+it again; an issue, since plan 061, which a whole read naming it again rids of its
+tombstone. The files of
 documents gone, and the old file of a document that moved, are removed even by a run
 that reports problems; other files then stay.
 
@@ -808,7 +850,7 @@ reader takes it for a document.
 
 | Key | Value |
 |---|---|
-| `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
+| `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles, none for a container such as `folder`; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
 | `as_of` | each scope of the source whose [as-of time](concepts.md#scope) is known, as the front matter writes a scope, with that time in UTC; a scope left out has none, and its documents are served `as of: unknown` |
 
 Confluence's and Jira's prepares copy the as-of times of the record of coverage
@@ -920,7 +962,13 @@ table `scopes`, each source's scope with its as-of time, both written whole at e
 build and update; the view `typed`, each document with its type's roles and its scope's
 as-of time;
 and the meta row `sources`, their digest (`search.domain.indexes.sources_digest`), so
-that a change of a source's file alone is an update. An index of another schema is
+that a change of a source's file alone is an update. Schema 10 (061) holds documents
+of no section: a container's body is empty, and an empty body has no section
+(`search.domain.search.sections`), so that its row's `length` is 0 and its
+`last_section` one less than its `first_section`; its words are none, it has no chunk,
+and neither a search nor `ask` ever gives it, while `browse` and `read` do. An index of
+9 is refused as any other; the `prepare` that it names first writes the folders' files.
+An index of another schema is
 refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
 index, as a new schema can come with a new format of the files; one cut by a
