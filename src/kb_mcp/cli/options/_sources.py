@@ -19,6 +19,8 @@ READ = {
     "searched": "each {} searched by update time",
     "in place": "its {}, read whole, in place",
 }
+# How often a scope type searched by update time is read whole besides, said of its interval.
+WHOLE = ", read whole every {.days} days for what it no longer holds"
 
 
 def source_groups(
@@ -44,7 +46,9 @@ def source_groups(
             declared.name,
             f"{declared.connector.help}: "
             + "; ".join(
-                READ[each.enumeration].format(each.name) for each in declared.connector.scope_types
+                READ[each.enumeration].format(each.name)
+                + ("" if each.whole_read_every is None else WHOLE.format(each.whole_read_every))
+                for each in declared.connector.scope_types
             )
             + ".",
         )

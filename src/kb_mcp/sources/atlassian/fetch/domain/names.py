@@ -8,6 +8,8 @@ imports, reads it too (contract G).
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
 from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, key_of
 
@@ -39,4 +41,7 @@ PROJECT = ScopeType(
         parse=key_of("project", PROJECT_KEY),
         setting="projects",
     ),
+    # A search by update time sees no deletion: a week bounds how long a deleted issue
+    # stays, at the cost of one listing of the project's issue ids a week.
+    whole_read_every=timedelta(days=7),
 )
