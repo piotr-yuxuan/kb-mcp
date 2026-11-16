@@ -285,9 +285,8 @@ def folder_files(
     """Give the file of each folder of the source's spaces by its id: its path and its bytes.
 
     A folder is a container, its file a front matter without a body. It goes in the space
-    whose freshest listing names it, by ``times``, as a page does, which also dates a
-    folder whose response gave no time. One whose front matter is refused is a problem,
-    by its space's listing of folders.
+    whose freshest listing names it, by ``times``, as a page does. One whose front matter
+    is refused is a problem, by its space's listing of folders.
     """
     homes = {
         folder.id: (space_id, folder)
@@ -298,7 +297,7 @@ def folder_files(
     for space_id, folder in homes.values():
         space = catalogue.spaces[space_id]
         try:
-            matter = folder_front_matter(source, folder, space, catalogue, times[space_id])
+            matter = folder_front_matter(source, folder, space, catalogue)
         except RefusedError as error:
             where = f"{source}/spaces/{space_id}/folders.json"
             problems.append(Problem(where=where, reason=str(error)))

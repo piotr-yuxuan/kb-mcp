@@ -35,7 +35,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page, time_revision
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
 from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
-from kb_mcp.sources.atlassian.fetch.domain.period import Period
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_source
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
@@ -496,27 +496,31 @@ def test_a_folder_without_its_status_dates_or_version_is_still_a_document(
     """Review of 061: a folder's response of another shape marks no space damaged.
 
     Read without its status, its creation time and its version, which the sandbox site
-    never showed, it still has its file: no status, its dates the space's listing time,
-    no version, and a revision by that time.
+    never showed, it still has its file: no status, dated at the epoch, which no content
+    of the site precedes, no version, and a revision by that time. Listed again later, its
+    file stays as it was.
     """
     bare = {
         key: value for key, value in FOLDER.items() if key not in {"status", "createdAt", "version"}
     }
-    listed = datetime(2026, 10, 21, 9, tzinfo=UTC)
-    with sandbox.store.writing():
-        sandbox.store.put_space(
-            v2_space(id=SPACE_ID), LISTED, [POST_LISTED], [bare], listed_at=listed
-        )
-    assert sandbox.run()["confluence"].problems == ()
-    folder, body = load(sandbox.text("confluence/MFS/200-plans.md"), "folder")
+    path = "confluence/MFS/200-plans.md"
+    files = []
+    for listed in (datetime(2026, 10, 21, 9, tzinfo=UTC), datetime(2026, 10, 22, 9, tzinfo=UTC)):
+        with sandbox.store.writing():
+            sandbox.store.put_space(
+                v2_space(id=SPACE_ID), LISTED, [POST_LISTED], [bare], listed_at=listed
+            )
+        assert sandbox.run()["confluence"].problems == ()
+        files.append(sandbox.text(path))
+    folder, body = load(files[0], "folder")
     assert (folder.status, folder.created, folder.updated, folder.version, body) == (
         "",
-        listed,
-        listed,
+        EPOCH,
+        EPOCH,
         None,
         "",
     )
-    assert folder.revision == time_revision(listed)
+    assert (folder.revision, files[1]) == (time_revision(EPOCH), files[0])
 
 
 def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(

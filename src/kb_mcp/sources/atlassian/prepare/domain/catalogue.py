@@ -42,6 +42,7 @@ from kb_mcp.sources.atlassian.fetch.domain.names import (
     PROJECT,
     SPACE,
 )
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
@@ -222,19 +223,19 @@ def identity(person: SiteUser) -> str:
 
 
 def folder_front_matter(
-    source: str, folder: Folder, space: Space, catalogue: Catalogue, listed: datetime
+    source: str, folder: Folder, space: Space, catalogue: Catalogue
 ) -> FrontMatter:
     """Say what the mirror says of a source's folder in a space: a container, with no body.
 
     Its scope is the space's, its parent and its breadcrumb are as a page's would be,
     and its revision is its version's. It names no people, labels nor links, and has no
     address: its response gives no web page. A folder whose response gave no status has
-    none; no update time, the time ``listed`` of its space's listing, which last read it
-    so; no creation time, its update time; no version, none, and a revision by its
-    update time.
+    none; no update time, the epoch, which no content of the site precedes, so that its
+    file stays as it is from one run to the next; no creation time, its update time; no
+    version, none, and a revision by its update time.
     """
     parent = catalogue.parent(folder)
-    updated = folder.updated or listed
+    updated = folder.updated or EPOCH
     return AtlassianFrontMatter(
         source=source,
         type=FOLDER.name,

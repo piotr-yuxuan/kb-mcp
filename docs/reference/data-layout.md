@@ -448,9 +448,10 @@ nothing in them depends on when they were prepared.
   its space's last listing of folders, as the tree does, with no tombstone: that listing
   names only the folders above a listed page, so a folder emptied, deleted or whose GET
   failed loses its file at the next prepare that finds no problem. A folder whose
-  response gave no status has an empty one; no update time, its space's listing time
-  (`listed_at.json`), when it was last read so; no creation time, its update time; no
-  version, a `version` of `null` and a revision by its update time.
+  response gave no status has an empty one; no update time, the epoch,
+  `2000-01-01T00:00:00Z`, which no content of the site precedes, so that its file stays
+  as it is from run to run; no creation time, its update time; no version, a `version`
+  of `null` and a revision by its update time.
 
 Each document starts with front matter written by `mirror.adapters.markdown.dump` and
 read by `mirror.adapters.markdown.load`, from a `mirror.domain.mirror.FrontMatter`;
