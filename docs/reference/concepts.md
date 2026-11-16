@@ -244,7 +244,8 @@ connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py)
 [`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py);
 [`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
 which gives a page's and an issue's breadcrumb;
-the work log's [`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py);
+the work log's
+[`WorklogCopy.revision`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py);
 [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py),
 [`CONFIRM_AFTER`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py),
 [`too_many_gone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and

@@ -98,11 +98,11 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   `--until` before `--since`
   ([the fetcher's](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), or a work
   log that is not a folder
-  ([its preparer's](../../src/kb_mcp/sources/worklog/prepare/app/preparer.py)).
+  ([its fetcher's](../../src/kb_mcp/sources/worklog/fetch/app/fetcher.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
-  read in place has no fetcher: the work log's preparer reads its folder, and its
-  `preflight` checks it.
+  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). The work
+  log's reads its folder in place into its copy store
+  ([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)).
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
   fetcher plans ([`plan_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)), the
   work log's preparer counts
@@ -422,31 +422,33 @@ through the entry, with no line of `src/` naming it.
 
 The work log is the user's own folder, often a git repository, and stays theirs: the
 program reads it and never writes there, never runs git, and follows a link only inside
-it. Unlike the Atlassian sources, it has no raw store: re-reading it whole on every run
-costs less than keeping a copy, and its files of a few megabytes are converted again
-only when their text changed. A document whose file holds its revision, a digest of
-what pandoc reads and of pandoc's version
-([`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), keeps
-that file's body: an edit elsewhere in `todo.org`, which changes the file's time, moves
-no other entry's dates. A day, a meeting and a dated transcript are dated by their day,
-and linked, afresh at each run
-([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)): the
-transcript may be saved after the meeting's notes, so a meeting's links are not part of
-its revision, nor are its dates, so that a file that held another date takes its day
-without a conversion. The work log gives the day of a meeting, never its time, so no
-turn's time or timestamp dates a meeting or a transcript.
+it. Its fetch reads it whole at each run, as it is read in place, and keeps each
+document in a copy store of its own: its properties and its text, whose digest alone is
+its revision
+([`WorklogCopy.revision`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)).
+A document whose revision holds keeps its stored dates: an edit elsewhere in
+`todo.org`, which changes the file's time, moves no other entry's dates. A day, a
+meeting and a dated transcript are dated by their day, and linked, afresh at each read
+([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)): the transcript
+may be saved after the meeting's notes, so a meeting's links are not part of its
+revision, nor are its dates. The work log gives the day of a meeting, never its time,
+so no turn's time or timestamp dates a meeting or a transcript. Only fetch observes and
+only prepare derives, as [the concepts](../reference/concepts.md#stage) say: the prepare
+converts from the store alone, through the cache of conversions, so that the mirror is
+wholly derived and holds no memory of the work log
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
 its content could be anything, with what it holds back
 ([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
-and the run then removes no file, but the old one of a document written again under
-another title's path, nor writes one that the file not read builds: none
-for `todo.org` or its archive, which every day, meeting and entry draws on; for a
+and the fetch then finds no document gone, nor takes one that the file not read builds:
+none for `todo.org` or its archive, which every day, meeting and entry draws on; for a
 transcript, its own alone
 ([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)). A
 meeting needs nothing of its transcript but the id, which the path gives, so it is
-written, linking the transcript, read or not. So the last good copy of what a file
-builds stays until a run reads it, and one faulty file holds back no other document.
+taken, linking the transcript, read or not. So the last good copy of what a file builds
+stays in the store, and in the mirror, until a run reads it, and one faulty file holds
+back no other document.
 [The trade-offs](trade-offs.md#a-file-not-read-holds-back-its-own) give what this
 costs.
 

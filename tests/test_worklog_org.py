@@ -31,7 +31,6 @@ from kb_mcp.sources.worklog.fetch.domain import org
 from kb_mcp.sources.worklog.fetch.domain.worklog import (
     SUMMARY,
     TRANSCRIBED,
-    WORKLOG_REVISION,
     OrgText,
     WorklogDocument,
     WorklogFrontMatter,
@@ -40,7 +39,6 @@ from kb_mcp.sources.worklog.fetch.domain.worklog import (
     linked_back,
     meeting_ids,
     participants,
-    revision,
     speakers,
     transcript_ids,
     transcripts,
@@ -970,15 +968,6 @@ def test_without_archives_archived_transcripts_are_left_out() -> None:
         archives=False,
     )
     assert [str(each.file.path) for each in found] == ["transcripts/current/archive/1.org"]
-
-
-def test_a_revision_names_the_input_and_the_converter() -> None:
-    """16 hex digits; another input or another pandoc, another revision."""
-    first = revision("pandoc 3.7", "a")
-    assert WORKLOG_REVISION.fullmatch(first)
-    assert revision("pandoc 3.7", "a") == first
-    assert revision("pandoc 3.8", "a") != first
-    assert revision("pandoc 3.7", "b") != first
 
 
 # An entry's front matter, as the work log's preparer builds it.

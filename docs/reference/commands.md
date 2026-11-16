@@ -527,7 +527,7 @@ options:
   --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
-  --dry-run             count what a run would convert and remove, where a source can
+  --dry-run             count what a run would write and remove, where a source can
                         tell; write nothing
 
 confluence:
@@ -551,9 +551,10 @@ source's, which fails nothing of its own. Confluence's and Jira's counts: `docum
 how many it prepared; `converted`, the conversions pandoc ran, and `reused`, those the
 cache gave, a document's file and a space's tree being one each; `changes`, the files
 `written`, `unchanged` and `removed`; `unsupported`, what the mirror does not show, by
-name. The work log's: `documents`; `changes`; `html`, the HTML transcripts left out;
+name. The work log's: `documents`, `converted`, `reused` and `changes`, as theirs;
 `held_back`, by each problem's place, what keeps its last copy; in a dry run,
-`documents`, `to_convert`, `to_remove`, `html` and `held_back`.
+`documents` and `to_remove`, the files that a run would remove, what pandoc would
+convert not counted.
 ```
 
 ## `reranker`

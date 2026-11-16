@@ -1,4 +1,4 @@
-"""The work log served to agents, after ``prepare`` and ``index`` (plan 017's criterion 14).
+"""The work log served to agents, after ``fetch``, ``prepare`` and ``index`` (plan 017's 14).
 
 Search narrowed to the work log finds a transcript by a word only it holds; the ref that
 its hit shows opens it, its text inside the untrusted block, as is an entry's injected
@@ -58,6 +58,7 @@ def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
     )
     write(data / "docs", page("196845", f"Kafka {UNIQUE}"))
     monkeypatch.setenv("HOME", str(home))
+    assert main(["fetch", "--yes", "worklog"]) == 0
     assert main(["prepare", "--yes", "worklog"]) == 0
     assert main(["index", "--yes"]) == 0
     return home

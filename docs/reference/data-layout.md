@@ -626,20 +626,39 @@ may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not 
 
 ### The work log
 
-Owned by the work log's row of `prepare` (017), in `sources.worklog.prepare.app.prepare`:
-`<data>/docs/worklog/`, from the folder that `sources.worklog.path` names, read in place
-and never written. `sources.atlassian.prepare.adapters.owned.owned` and
-`sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files apart,
-so that Confluence's and Jira's rows and the work log's never remove each other's. A run
-that meets a problem (a file not read, a conversion that failed) removes none of its files
-but the
-old file of a document written again under another path, as an entry's or a transcript's
-whose title changed, and a file not read holds back the files of what it builds: every
-one for `todo.org` or `todo.org_archive`, on which days, meetings and entries' numbers
-draw; for a transcript, its own; for a folder not listed, or the files past the bound,
-the transcripts under it, but one whose id a file found takes, whose copy then replaces
-it. Each problem says what it held back, as `worklog.problem` ([prepare's
-telemetry](telemetry/prepare.md)), at each run until it is fixed.
+Owned by the work log's row of `prepare` (017, 060), in
+`sources.worklog.prepare.app.prepare`: `<data>/docs/worklog/`, from the work log's copy
+store alone ([above](#the-work-logs-copy-store)), which its row of `fetch`
+(`sources.worklog.fetch.app.fetching`) fills from the folder that `sources.worklog.path`
+names, read in place and never written. `sources.atlassian.prepare.adapters.owned.owned`
+and `sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files
+apart, so that Confluence's and Jira's rows and the work log's never remove each
+other's.
+
+The fetch keeps each document read, as the rules below give it, its properties and its
+text, and finds each document gone at once that a read without a problem no longer
+reads, as the work log is read in place; such a read's moment is the store's `as_of`. A
+read that meets a problem, a file not read, takes no document that the file builds,
+every one for `todo.org` or `todo.org_archive`, on which days, meetings and entries'
+numbers draw, for a transcript its own, for a folder not listed, or the files past the
+bound, the transcripts under it, but one whose id a file found takes, whose copy then
+replaces it; it finds no document gone, and leaves `as_of` as it was. So each last copy
+stays in the store, and in the mirror, which prepare writes from it. Each problem says
+what it held back, as `worklog.problem` ([fetch's telemetry](telemetry/fetch.md)), at
+each run until it is fixed. A store's first fetch, on a data directory without the
+source's copy store, first reads the `created` of each file of the source's folder of the
+mirror, in today's front matter or plan 058's, and writes them into the store, as
+`migrated`, before it reads the folder: a document read takes its date from there, and
+one that no read takes yet keeps its file of the mirror, which prepare removes nothing
+of meanwhile. A file of the mirror that does not read then is a warning by its path: its
+date is not carried over.
+
+Prepare converts each document's text through the source's rows of the cache of
+conversions ([below](#pandocs-conversions)), and writes every file again, those whose
+bytes changed: deleting `<data>/docs/worklog/` and preparing again gives the same files
+back, converting nothing. A prepare whose conversion fails is a problem by the
+document's org file and id, and removes no file; a prepare that finds no copy store is a
+problem naming `kb-mcp fetch worklog`, its row failed and the others going on.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2
@@ -717,22 +736,18 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   title's slug. A front matter whose id has another type's shape is refused. The id
   names the file, with the title's slug for an entry or a transcript, as for a page,
   and alone for a day or a meeting.
-- `revision` is the digest of pandoc's version and options, a NUL, and the org text
-  that pandoc converts: a document whose revision has not changed is not converted
-  again, and its file keeps its dates, but a day's, a meeting's and a dated
-  transcript's, their day, found at each run, so that a file that held another date
-  takes it without a conversion.
+- `revision` is the first 16 hex digits of the SHA-256 of the org text that pandoc
+  converts, and of nothing else: a document whose revision has not changed keeps its
+  stored dates, but a day's, a meeting's and a dated transcript's, their day, found at
+  each read.
 - `created` and `updated` are a day's date at midnight UTC; so are a meeting's, its
   day's, and a dated transcript's, the day that begins its folder's name or its own,
   whatever their lines, turns and timestamps hold, since the work log gives the day of a
   meeting and never its time; else the earliest and latest timestamps of the
   document's lines, as written, up to its file's modification time, a later one being a
-  plan; else, without any, the modification time, `created` keeping an existing file's.
-  The prepare reads every file of the source first, one of plan 058's front matter
-  too, and writes each again in today's; a file that does not read, such as one edited
-  by hand, is a problem by its path in the mirror, which holds back `its file, as it
-  is`: the run writes nothing over it and removes nothing, so that the date that it may
-  hold is not lost, until the file is moved away.
+  plan; else, without any, the modification time, `created` keeping the stored copy's,
+  else the one carried over from the mirror. A file of the mirror, edited by hand or
+  not reading, is written again from the store.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
@@ -750,8 +765,8 @@ Each source's prepare writes, beside its documents, `<source>/_source.json`
 its connector declares reaches the index through the mirror alone, as nothing past the
 mirror decides by a source's name. It is written with the source's documents, and no
 prepare removes it: it stays as the last prepare that wrote it left it, so that a source
-left with no documents keeps its former file, as the work log does after a run that met
-a problem. Its name begins with `_`, so that no reader takes it for a document.
+left with no documents keeps its former file. Its name begins with `_`, so that no
+reader takes it for a document.
 
 ```json
 {
@@ -772,12 +787,12 @@ a problem. Its name begins with `_`, so that no reader takes it for a document.
 Confluence's and Jira's prepares copy the as-of times of the record of coverage
 (`coverage.json`, [above](#coverage-and-tombstones)), those of their own source's
 scopes; a record that cannot be read is a problem of the source that lists spaces, as
-the tombstones are, and leaves every scope without one. The work log's prepare says the moment that it
-began its read; a run that met a problem writes no file, so that the file of the last
-run without one stays, with its time, the last moment that the work log was known
-complete. A
-prepare whose as-of times moved writes the file again, even when no document changed, so
-that the next `index` holds them.
+the tombstones are, and leaves every scope without one. The work log's prepare copies
+the `as_of` of its copy store, the moment at which the last read without a problem
+began, the last moment that the work log was known complete, and leaves its one scope
+out before any; its file changes only when a fetch read without a problem. A prepare
+whose as-of times moved writes the file again, even when no document changed, so that
+the next `index` holds them.
 
 `index` reads every source's file at each run (`source_files`); a file that is not JSON,
 or holds other keys or values, stops it, naming the file and `kb-mcp prepare`, which

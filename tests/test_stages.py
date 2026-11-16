@@ -352,8 +352,10 @@ def test_a_work_log_of_another_name_is_prepared_under_its_name(home: Path, workl
     config = home / "config.toml"
     config.write_text(f"[sources.notes]\npath = {json.dumps(str(worklog))}\n", "utf-8")
     data = home / "data"
-    given = ["prepare", "notes", "--yes", "--config", str(config), "--data-dir", str(data)]
-    assert main(given, registry) == ExitStatus.OK
+    given = ["notes", "--yes", "--config", str(config), "--data-dir", str(data)]
+    assert main(["fetch", *given], registry) == ExitStatus.OK
+    assert sorted(each.name for each in (data / "copies").iterdir()) == ["notes"]
+    assert main(["prepare", *given], registry) == ExitStatus.OK
     assert sorted(each.name for each in (data / "docs").iterdir()) == ["notes"]
     written = sorted((data / "docs" / "notes").rglob("*.md"))
     assert len(written) == WORKLOG_DOCUMENTS
@@ -498,9 +500,9 @@ def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
         (("fetch", "jira", "--yes"), ExitStatus.SIGN_IN_AGAIN),
         (("fetch", "jira", "--dry-run"), ExitStatus.SIGN_IN_AGAIN),
         (("prepare", "jira", "--yes"), ExitStatus.OK),
-        (("prepare", "worklog", "--yes"), ExitStatus.OK),
+        (("fetch", "worklog", "--yes"), ExitStatus.OK),
     ],
-    ids=["a fetch of Jira", "a dry run of Jira", "a prepare of Jira", "a prepare of the work log"],
+    ids=["a fetch of Jira", "a dry run of Jira", "a prepare of Jira", "a fetch of the work log"],
 )
 def test_a_record_of_confluence_s_stops_no_run_without_confluence(
     home: Path,
@@ -670,6 +672,7 @@ def test_pandoc_gone_fails_each_preparer_that_converts_and_writes_nothing(
     def gone() -> Pandoc:
         raise PandocMissingError(message)
 
+    assert fetcher_of(WORKLOG).fetch(run_of(WORKLOG, stored)).ending == "done"
     monkeypatch.setattr(Pandoc, "find", gone)
     with capture_logs() as logged:
         results = [
@@ -691,23 +694,41 @@ def test_pandoc_gone_fails_each_preparer_that_converts_and_writes_nothing(
 def test_the_work_log_s_preflight_refuses_a_path_that_is_not_a_folder(
     home: Path, settings: Settings, worklog: Path, name: str
 ) -> None:
-    """The work log's own folder passes; a file, or nothing, is refused by its setting."""
-    preparer = preparer_of(WORKLOG)
-    assert preparer.preflight(run_of(WORKLOG, settings)) is None
+    """The fetcher's: its own folder passes; a file, or nothing, is refused by its setting.
+
+    The preparer, which reads the copy store alone, refuses neither.
+    """
+    fetcher = fetcher_of(WORKLOG)
+    assert fetcher.preflight(run_of(WORKLOG, settings)) is None
     elsewhere = settings_of(home / "data", worklog / name)
-    refusal = preparer.preflight(run_of(WORKLOG, elsewhere))
+    refusal = fetcher.preflight(run_of(WORKLOG, elsewhere))
     assert refusal == "sources.worklog.path: not a folder"
+    assert preparer_of(WORKLOG).preflight(run_of(WORKLOG, elsewhere)) is None
 
 
-def test_the_work_log_s_preparer_counts_in_a_dry_run_then_mirrors_its_folder(
+def test_the_work_log_s_preparer_counts_in_a_dry_run_then_mirrors_its_copy_store(
     settings: Settings,
 ) -> None:
-    """A dry run converts and writes nothing; a run writes every document under worklog/."""
+    """Without a copy store, its row fails, naming the fetch; then a dry run, then a run.
+
+    Plan 060: a prepare never fetches; a dry run writes nothing, a run every document.
+    """
     preparer = preparer_of(WORKLOG)
+    with capture_logs() as logged:
+        unfetched = preparer.prepare(run_of(WORKLOG, settings))
+    assert (unfetched.ending, unfetched.counts, unfetched.problems) == (
+        "failed",
+        None,
+        (Problem(where="copy store", reason="none yet: `kb-mcp fetch worklog` writes it"),),
+    )
+    assert [(each["event"], each["log_level"]) for each in logged] == [
+        ("worklog.store_unread", "error")
+    ]
+    assert fetcher_of(WORKLOG).fetch(run_of(WORKLOG, settings)).ending == "done"
     planned = preparer.prepare(run_of(WORKLOG, settings, dry_run=True))
     assert planned.ending == "not run"
     assert isinstance(planned.counts, WorklogPlanned)
-    assert planned.counts.to_convert == WORKLOG_DOCUMENTS
+    assert (planned.counts.documents, planned.counts.to_remove) == (WORKLOG_DOCUMENTS, 0)
     assert not settings.docs.exists()
     done = preparer.prepare(run_of(WORKLOG, settings))
     assert done.ending == "done"
@@ -720,14 +741,16 @@ def test_the_work_log_s_text_is_what_prepare_writes_under_its_row(
     home: Path, settings: Settings, worklog: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     """The prepare's text, under its row, is what ``prepare worklog`` writes there."""
+    fetcher_of(WORKLOG).fetch(run_of(WORKLOG, settings))
     result = preparer_of(WORKLOG).prepare(run_of(WORKLOG, settings))
     copied = tmp_path / "copied"
     shutil.copytree(worklog, copied)
     settle(copied)
     config = home / "config.toml"
     config.write_text(f'[sources.worklog]\npath = "{copied}"\n', "utf-8")
-    command = ["prepare", "--yes", "--config", str(config), "worklog"]
-    given = [*command, "--data-dir", str(home / "other"), "--detail", "detailed"]
+    options = ["--yes", "--config", str(config), "worklog", "--data-dir", str(home / "other")]
+    assert main(["fetch", *options]) == ExitStatus.OK
+    given = ["prepare", *options, "--detail", "detailed"]
     capsys.readouterr()  # what the prepare logged, outside a run, which has no log file
     assert main(given) == ExitStatus.OK
     out = capsys.readouterr().out

@@ -17,6 +17,7 @@ flowchart LR
     site["Confluence and Jira Cloud"]
     worklog["work log, org files"]
     raw[("raw store")]
+    copies[("copy store")]
     docs[("Markdown mirror")]
     vectors[("vector cache")]
     index[("index")]
@@ -26,7 +27,8 @@ flowchart LR
     agents["coding agents"]
     site -- "fetch, GET only" --> raw
     raw -- "prepare, offline" --> docs
-    worklog -- "prepare, read in place" --> docs
+    worklog -- "fetch, read in place" --> copies
+    copies -- "prepare, offline" --> docs
     docs -- "index, embed" --> index
     endpoint -- "vectors of new texts" --> vectors
     vectors -- "embed" --> index
@@ -41,7 +43,8 @@ flowchart LR
 |---|---|---|---|---|
 | `fetch` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `prepare` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
-| `prepare`, of the work log | its folder, in place | `<data>/docs/worklog/` | each file renamed into place | the file or document is named by its path; no file is removed but the old one of a document written again under another title's path |
+| `fetch`, of the work log | its folder, in place; the mirror's created dates, once, when its copy store begins | `<data>/copies/worklog/` | a lock, and the store's file renamed into place | the file is named by its path, its documents keep their last copies; none is found gone |
+| `prepare`, of the work log | its copy store | `<data>/docs/worklog/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is named by its file and id, and no file is removed; without a copy store, the row fails, naming `fetch` |
 | `index` | the index; the mirror, each file digested and those changed read; the user's alias file, if any | `<data>/index.sqlite`, only when something changed | the index built aside, what did not change copied from the old, then renamed into place under the index's lock | the file is skipped and named; a name that could be several persons is the person by name of its key, and named; with an alias file refused, the old index stays |
 | `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its chunks or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector cache pruned under its own lock, its deletions one transaction | a chunk refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
@@ -50,7 +53,9 @@ flowchart LR
 
 A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
 fetch of the spaces or projects that its table names
-([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)); `prepare`, each
+([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)), or a read of
+the work log's folder
+([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)); `prepare`, each
 source's preparer, [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,
 [`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
@@ -66,9 +71,8 @@ names given choose among those that a command can take
 
 - **Writes** what each stage writes, as the sections below say.
 - **One row's failure** stops no other: each fetcher or preparer reads what is on disk, and
-  the next command reads what the last one left, so that the work log is prepared while the
-  site asks
-  to sign in again. What can be refused is refused before the first row: a space or
+  the next command reads what the last one left, so that the work log is fetched and
+  prepared while the site asks to sign in again. What can be refused is refused before the first row: a space or
   project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder
@@ -184,47 +188,61 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 - **Offline**, everything: the mirror is rebuilt from the raw store, byte for byte, as
   long as pandoc's version is the same.
 
-## The work log: from org files to Markdown
+## The work log: from org files to its copy store, then to Markdown
 
-[`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work log's
-row of `prepare`, reads its folder in place and never writes there, following a link
-only inside it ([`listed`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)).
-It has no raw store: its files are already on this machine, and reading them whole costs
-less than keeping a copy. They become documents, one per day of the journal, one per
-meeting of a day, one per other top-level entry of `todo.org` and of its archive
-([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), and one
-per transcript
+[`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py), the work log's
+row of `fetch`, reads its folder in place and never writes there, following a link only
+inside it ([`listed`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)). Its
+files become documents, one per day of the journal, one per meeting of a day, one per
+other top-level entry of `todo.org` and of its archive
+([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), and one per
+transcript
 ([`transcripts`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), each
-with an id that org's own edits leave alone. A document's revision is a digest of what
-pandoc reads, with pandoc's version and options
-([`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py),
-[`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)): a
-document whose file holds that revision keeps its body and its dates, but a day, a meeting
-or a dated transcript, dated afresh by its day; another is converted again
-([`Pandoc.org_markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)). So the work log's
-memory is its files of the mirror, an undated entry's created date among it: the
-prepare reads them first, those of plan 058's front matter too
-([`existing`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)), and writes each
-again in today's. Its source's file says the moment of the read as its one scope's as-of
-time, unless the run met a problem.
+with an id that org's own edits leave alone. The fetch keeps each document whole in the
+source's copy store ([`CopyStore`](../../src/kb_mcp/sources/worklog/fetch/adapters/copy_store.py)):
+the properties of its front matter, and the text that pandoc converts, whose digest
+alone is its revision
+([`WorklogCopy.revision`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)). A
+document whose revision holds keeps its stored dates, but a day, a meeting or a dated
+transcript, dated afresh by its day; another takes its own, an undated one keeping its
+stored created date ([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py),
+[`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)). A
+read without a problem finds each document gone at once that it no longer reads, and its
+moment is the store's as-of time. A store's first fetch first takes the created dates
+that the mirror's files hold, of today's front matter or plan 058's
+([`carried_over`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)), and writes
+them before it reads.
 
-- **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
-  [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
-  whose bytes differ, renamed into place, and the files of documents gone removed
-  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)).
+[`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work
+log's row of `prepare`, reads that store alone. It converts each document's text
+through the source's rows of the cache of conversions
+([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by
+pandoc's version and arguments
+([`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)) and the text,
+builds every file again, and hands them to the mirror's writer. So the mirror holds no
+memory of the work log: deleting the source's folder of it and preparing again gives the
+same files back, converting nothing, and its source's file says the store's as-of time.
+
+- **Writes**, by `fetch`, the source's file of `<data>/copies/` alone, under its lock,
+  replaced whole through a hidden file renamed into place; by `prepare`, the source's
+  folder of `<data>/docs/` alone, through the mirror's
+  [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py), each file whose
+  bytes differ, and the files of documents gone removed
+  ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)), and
+  `<data>/conversions.sqlite`.
 - **One document's failure**, a file that links out of the folder
   ([`listed`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)), is
   over 32 MiB or is not UTF-8
-  ([`org_text`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)), or a
-  conversion that fails, is named by its path, never by its content, with what it holds
-  back ([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py));
-  the run goes on, writes no file that a file not read builds, every one for `todo.org`
-  or its archive, else that file's own
-  ([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
-  and then removes no file but the old one of a document written again under another
-  title's path, so that the last good copy of each stays. A file of the mirror that
-  does not read is a problem too, by its path in the mirror: the run writes nothing over
-  it, so that the created date that it may hold is not lost, and removes nothing.
+  ([`org_text`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)), is named by
+  its path, never by its content, with what it holds back
+  ([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)): the fetch
+  takes no document that the file builds, none for `todo.org` or its archive, else that
+  file's own
+  ([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), finds none
+  gone, and leaves the as-of time as it was, so that the last good copy of each stays.
+  A conversion that fails is the prepare's, named by the document's org file and id;
+  that prepare removes no file. A prepare whose store no fetch wrote fails its row,
+  naming `kb-mcp fetch` and the source, and the other rows go on.
 - **Offline**, everything: the work log is on this machine.
 
 ## Index and embed: from Markdown to words and vectors
@@ -396,8 +414,9 @@ Jira has a new update time, its revision, and is fetched the same way.
 - **Not yet seen**: a change that makes no new version, such as labels changed or a
   file attached without an edit, and Jira's deletions; [the data
   layout](../reference/data-layout.md#snapshots) lists these limits.
-- **A work-log entry closed** makes no snapshot: the work log has no raw store, and
-  `prepare` reads its folder whole at each run (below).
+- **A work-log entry closed** is a new copy: the next `fetch` reads the work log's folder
+  whole, finds the entry's text changed, and keeps its new text and revision in the copy
+  store (below).
 
 ### 2. The mirror's file rewritten or removed
 
@@ -422,20 +441,21 @@ conversion is deleted once the files are written, with those of documents gone, 
 the run reported a problem
 ([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 
-The work log's row does the same from the folder itself. Closing an entry turns its
+The work log's row does the same from its copy store. Closing an entry turns its
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
 heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
 title, never from its keyword or planning lines
 ([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), so its
 file keeps its name. Its text changed, so its revision did
-([`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)): the
-entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
-its timestamps up to the file's time of change, usually the closing one
-([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
-Every other entry keeps its file as it was, dates included, though `todo.org`'s time
-changed ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
-entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled
-`ARCHIVE`, or removed when `archives = false`;
+([`WorklogCopy.revision`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)): the
+fetch keeps its new copy, its `status` `DONE`, its `updated` the latest of its
+timestamps up to the file's time of change, usually the closing one
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
+and the prepare converts its new text. Every other entry keeps its copy as it was, dates
+included, though `todo.org`'s time changed
+([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)), and its file
+its bytes, its conversion reused. An entry archived to `todo.org_archive` keeps its id
+too: its file is rewritten, labelled `ARCHIVE`, or removed when `archives = false`;
 [sources](sources.md#identity-that-survives-orgs-edits) says why identity is kept so.
 
 ### 3. The index updated aside, then renamed in
