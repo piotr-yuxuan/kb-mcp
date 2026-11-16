@@ -187,7 +187,7 @@ class WordsReader(Protocol):
         """Count the documents that pass the filters, and list a page of them, newest first.
 
         Newest by created date, or else by update; ties go to the newest update, then the
-        path.
+        path. A document of no section, a container, is never one of them.
         """
 
     def listing(self, filters: Filters) -> list[IndexedDocument]:

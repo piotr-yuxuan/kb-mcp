@@ -84,6 +84,20 @@ def test_words_spread_over_sections_rank_their_page_first(tmp_path: Path) -> Non
     assert refs(library.search("kafka retention compaction"))[:2] == ["196845", "196846"]
 
 
+def test_a_document_without_a_body_is_read_but_never_ranked(tmp_path: Path) -> None:
+    """Plan 061: a container named by its id, or newest, is no hit; read gives its front matter.
+
+    Its title's words find the page of the same words alone.
+    """
+    library = built(
+        tmp_path, [(page("200", "Plans", type="folder"), ""), (page("201", "Plans"), None)]
+    )
+    assert refs(library.search("200 plans")) == ["201"]
+    listed = library.search(filters={"scope": "space:ENG"}, sort="updated", limit=50)
+    assert "200" not in refs(listed)
+    assert "type: folder" in library.read("confluence:200")
+
+
 def test_an_unaccented_query_finds_an_accented_title(tmp_path: Path) -> None:
     """Diacritics are folded on both sides."""
     library = built(tmp_path, [(page("196845", "Économie générale"), None)])

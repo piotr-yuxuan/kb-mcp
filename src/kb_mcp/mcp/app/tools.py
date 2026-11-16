@@ -198,7 +198,8 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         named = identifiers(asked.query, held).named
         # Each document that the query names as it is cited: by its ref, else by its key,
         # else its id, alone; pinned in the order of its first name in the query, refs,
-        # keys and ids alike.
+        # keys and ids alike. A container, with no section to show, is browsed and read,
+        # never ranked.
         cited = {
             entry.path: [
                 named.index(each)
@@ -206,6 +207,7 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
                 if each in named
             ]
             for entry in reader.indexed_documents(refs=named, filters=filters)
+            if entry.sections
         }
         first = sorted((path for path, at in cited.items() if at), key=lambda p: min(cited[p]))
         words = rank((one for one, _ in found), first, sort=asked.sort)

@@ -175,9 +175,10 @@ def test_lines_that_are_not_headings_do_not_cut(line: str) -> None:
     assert len(sections(f"# Title\n{line}\n")) == 1
 
 
-def test_an_empty_body_is_one_empty_section() -> None:
-    """Every document has at least one section to open."""
-    assert [(section.start, section.text) for section in sections("")] == [(0, "")]
+def test_an_empty_body_has_no_section_and_white_space_one() -> None:
+    """Plan 061: a container has no body, so no section; a body of white space has one."""
+    assert sections("") == []
+    assert [(section.start, section.text) for section in sections("\n")] == [(0, "\n")]
 
 
 def test_trees_list_depth_first_with_numbers_in_order() -> None:
