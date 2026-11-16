@@ -661,8 +661,9 @@ class Library:
         """Find a document by path, else by ref, else by address; None for none.
 
         A ref is its key or id, alone or after its source, as ``jira:PRB-12``, which is
-        never looked for in another source; an address gives an issue's key or a page's
-        id, each naming a document that it cites, so that a page's id names no issue.
+        never looked for in another source, whatever surrounds it and in whatever case a
+        source of the index is written; an address gives an issue's key or a page's id,
+        each naming a document that it cites, so that a page's id names no issue.
         Raises UnanswerableError, listing their refs, for a ref or an address that names
         several documents, as a key or id alone may.
         """
@@ -670,12 +671,13 @@ class Library:
         found = reader.indexed_documents(paths=[path], refs=[path])
         exact = [entry for entry in found if entry.path == path]
         if not found and not DOCUMENT_ID.fullmatch(path):
-            named = identifiers(path)
+            named = identifiers(path, [source for source, _ in reader.values("source")])
             cited = [*named.keys[:1], *named.ids[:1]]
+            # A ref within the text finds what it finds alone, never its key elsewhere.
             found = [
                 entry
-                for entry in reader.indexed_documents(refs=cited)
-                if (entry.front.key or entry.front.id) in cited
+                for entry in reader.indexed_documents(refs=named.refs[:1] or cited)
+                if named.refs or (entry.front.key or entry.front.id) in cited
             ]
         if len(found) > 1 and not exact:
             listed = sorted(entry.front.ref for entry in found)

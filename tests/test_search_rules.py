@@ -121,6 +121,12 @@ def test_a_ref_is_never_cut_short(text: str, refs: tuple[str, ...]) -> None:
     assert (found.refs, found.keys) == (refs, ())
 
 
+def test_a_ref_s_source_is_read_in_any_case() -> None:
+    """A source written in capitals is that source, given in lower case; its key stays."""
+    found = identifiers("see JIRA:PRB-12 and (Jira:PRB-13)", ("jira",))
+    assert (found.refs, found.keys) == (("jira:PRB-12", "jira:PRB-13"), ())
+
+
 def test_a_key_that_breaks_the_rule_is_not_a_key() -> None:
     """A single-letter project or a key inside a longer word is not an issue key."""
     assert identifiers("a-1 xPROJ-1y PROJ-1-2").keys == ()

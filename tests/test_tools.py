@@ -294,6 +294,41 @@ def test_a_ref_after_its_source_is_never_found_in_another(tmp_path: Path, ref: s
     assert library.read(ref).startswith("Not mirrored:")
 
 
+@pytest.mark.parametrize(
+    ("ref", "found"),
+    [
+        ("jira:PAY-1.", []),
+        ("jira:PAY-1,", []),
+        ("(jira:PAY-1)", []),
+        ("`jira:PAY-1`", []),
+        ("<jira:PAY-1>", []),
+        ("jira:PAY-1:", []),
+        ("Jira:PAY-1", []),
+        ("worklog:PAY-1.", []),
+        ("(Jira:PAY-9)", ["jira:PAY-9"]),
+        ("`tracker:PAY-1`.", ["tracker:PAY-1"]),
+    ],
+)
+def test_a_ref_within_a_text_is_looked_for_in_its_source_alone(
+    tmp_path: Path, ref: str, found: list[str]
+) -> None:
+    """Whatever surrounds a ref, and in whatever case its source, it names its source's.
+
+    The tracker holds PAY-1, which neither Jira nor the work log holds; Jira holds PAY-9.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-9", "Payments"), None),
+            (replace(issue("PAY-1", "Rollout"), source="tracker"), None),
+            (worklog("transcript", "t-20261027-1", "Stand-up"), None),
+        ],
+    )
+    answer = library.read(ref)
+    assert re.findall(r"^ref: (\S+)$", parts(answer)[1], re.MULTILINE) == found
+    assert answer.startswith("Not mirrored:") == (not found)
+
+
 def test_a_page_s_address_names_the_page_not_an_issue_of_its_id(tmp_path: Path) -> None:
     """An address names its kind: a page's id names no issue, which is cited by its key.
 

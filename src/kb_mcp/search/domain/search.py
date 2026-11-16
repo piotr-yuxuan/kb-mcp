@@ -19,7 +19,7 @@ from numpy.typing import NDArray
 from pydantic import ConfigDict
 
 from kb_mcp.kernel.chunking import Chunking
-from kb_mcp.kernel.names import DOCUMENT_ID, ISSUE_KEY
+from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, SOURCE_NAME
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, document_id
 from kb_mcp.search.domain.people import Person
@@ -178,10 +178,12 @@ STOP_WORDS = frozenset(
 )
 # An issue key in any case, not inside a longer word; the domain's rule then checks it.
 KEY_IN_TEXT = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9_]*-[0-9]+(?![\w-])")
-# What reads as a ref, a source then a key or id, standing alone: not after an address's
-# scheme or a dot of its host, which would read alike, and whole, never its key or id cut
-# short before a letter, a digit or a hyphen.
-REF_IN_TEXT = re.compile(rf"(?<![\w/.:-])({DOCUMENT_ID.pattern})(?![\w-])")
+# What reads as a ref, a source in any case then a key or id, standing alone: not after
+# an address's scheme or a dot of its host, which would read alike, and whole, never its
+# key or id cut short before a letter, a digit or a hyphen.
+REF_IN_TEXT = re.compile(
+    rf"(?<![\w/.:-])(?i:({SOURCE_NAME.pattern})):({IDENTIFIER.pattern})(?![\w-])"
+)
 # The id in the address of a page or a blog post, as the site's address bar shows it.
 ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9]{2}/)([0-9]+)")
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
@@ -424,13 +426,18 @@ def quote(text: str) -> str:
 def identifiers(text: str, sources: Collection[str] = ()) -> Identifiers:
     """Find the refs, the issue keys, in any case, and the page ids that a text names.
 
-    A ref is one of ``sources``, then a key or id, as answers cite a document; its key or
-    id is not named apart, as another word before a colon leaves it. A page id is a
-    number standing alone between spaces, punctuation aside, or the id in a page's
-    address; those of addresses come first.
+    A ref is one of ``sources``, in any case, then a key or id, as answers cite a
+    document, given with its source in lower case; its key or id is not named apart, as
+    another word before a colon leaves it. A page id is a number standing alone between
+    spaces, punctuation aside, or the id in a page's address; those of addresses come
+    first.
     """
-    refs = [ref for ref in REF_IN_TEXT.findall(text) if ref.partition(":")[0] in sources]
-    rest = REF_IN_TEXT.sub(lambda found: " " if found[0] in refs else found[0], text)
+    refs = [
+        f"{found[1].lower()}:{found[2]}"
+        for found in REF_IN_TEXT.finditer(text)
+        if found[1].lower() in sources
+    ]
+    rest = REF_IN_TEXT.sub(lambda found: " " if found[1].lower() in sources else found[0], text)
     keys = (key.upper() for key in KEY_IN_TEXT.findall(rest))
     alone = (word.strip(string.punctuation) for word in rest.split())
     ids = (
