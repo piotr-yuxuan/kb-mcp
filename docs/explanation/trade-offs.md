@@ -41,8 +41,8 @@ server never fetches from the site.
   restored with an older version. A line of `&&`, or a shell function, makes the refresh
   one thing to remember, while each stage still runs alone, to redo one after a fix.
 - **Cost.** The mirror is as old as its last run. Each answer gives every document's
-  as-of time, its scope's, the last moment that the scope is known complete, or `as of:
-  unknown`, and `status` each scope's, so that an
+  as-of time, its scope's, the last moment that the scope is known complete, or
+  `as of: unknown`, and `status` each scope's, so that an
   agent can tell how old its evidence is. And catching up is not free: each run lists
   every space whole, and reads the work log whole. A project's search no longer grows
   with the age of its coverage, but misses an issue moved into it, or newly visible,
@@ -156,10 +156,9 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
   0.41 s more per prepare of both on a store of 1,474 documents. Two sign-in checks, holds
   on the store and reports per fetch of both. A preparer that converts finds pandoc for
   itself, so pandoc gone mid-run fails its row where it used to stop the run. And the
-  server's words for sources stay Atlassian-shaped until a fourth source needs otherwise:
-  a new source's hits name a ref that `read` does not look up
-  ([`ENTRIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and its path, which they
-  show too, opens them.
+  server's words for sources stay Atlassian-shaped until a fourth source needs otherwise,
+  its instructions naming Confluence, Jira and the work log; a new source's documents are
+  cited and read by their refs as any other's, since plan 057.
 - **Rejected.** One bundle per source, which suits a system where the three come as one,
   such as Google Drive, Notion or SharePoint, and fits neither git nor persons. Keeping
   each source by name in `cli` and `config`, on which `sync` dispatched since plan 017,
@@ -318,11 +317,67 @@ that what read the two keys, a hit's line among them
   `reporter` a role of its own, which would have changed the meaning of plan 040's
   filter: Jira's author stays its reporter, with its creator beside it. Generic names
   for the other keys that Atlassian shapes, `key`, `space`, `project`, `issue_type` and
-  `version`, which nothing yet needs.
+  `version`, which nothing yet needed, until plan 057 made the concepts' `scope` and
+  `subtype` of three of them.
 - **Settled** by plan
   041,
   on the user's feedback, its questions answered by their defaults when the
   user approved it.
+
+## Refs by source, parents by document id, breadcrumbs by title
+
+Every answer cites a document by its ref, its source, a colon, then its key or else its
+id, such as `jira:PRB-12` ([`FrontMatter.ref`](../../src/kb_mcp/mirror/domain/mirror.py));
+`read` takes that, or the key or id alone where no other document holds it, else refuses
+with the refs of those that do. The front matter names a parent and a link by document
+id, `<source>:<id>`, which `read` shows as the other document's ref while it is
+mirrored. A breadcrumb is the titles along the parents: a page's from its space's
+listings, an issue's from its parent's title in its own response, then each further
+parent's from its snapshot in the raw store
+([`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)).
+
+- **Why.** The concepts know a document by its source and id: a key changes when an
+  issue moves, and two sources of one connector, which plan 059 allows, may both hold
+  `PRB-12`, so a bare key is not a name. Titles, unlike keys, say something to an agent
+  and to an embedding model, and every source now builds its breadcrumb alike, so
+  `browse` places a document under its breadcrumb whatever its source.
+- **Cost.** Every hit, passage and link is a few characters longer, measured by
+  [the budgets' tests](../../tests/test_budgets.py). A bare key that two documents hold
+  is refused, so an agent citing it makes `eval agents` refuse its grading. An issue's
+  breadcrumb stops at the first parent that the raw store lacks, with that parent's
+  title. Under the chunkings `section-paths` and `small-to-big`, whose texts carry the
+  breadcrumb, each issue's chunks were embedded again once, its breadcrumb changing
+  from keys to titles. `status` counts a scope that two sources hold as one.
+- **Rejected.** Refs by key alone, as before: ambiguous across sources. Parents by key:
+  broken by a move. A breadcrumb of parent keys, as Jira's was: meaningless to a model.
+  Asking the site for each missing ancestor: the prepare reads the raw store alone.
+- **Settled** by plan 057.
+
+## As-of times through the mirror
+
+A document is served with its scope's as-of time, the last moment that the scope is
+known complete, else `as of: unknown`. Each prepare writes its source's scopes' times
+into the source's file of the mirror, Confluence's and Jira's copied from the coverage,
+the work log's the moment of its read, unless the run met a problem; `index` holds them
+beside the documents ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)).
+
+- **Why.** A snapshot's time of fetch says when one document was read, not whether its
+  scope is complete: a fetch that failed midway leaves older copies beside newer ones.
+  The coverage records when each scope was last known complete, and `index` reads the
+  mirror alone, as an import contract holds it, so the times reach it through a file of
+  the mirror.
+- **Cost.** A scope whose coverage was never exact, or a mirror not prepared since
+  plan 057, serves `as of: unknown`. Each prepare of the work log writes its source's
+  file again, its time moving on, so that the next `index` writes a build even when no
+  document changed; a fetch that moves a scope's as-of time does the same through
+  Confluence's and Jira's prepares. The instructions say it in a few words, within the
+  standing budget.
+- **Rejected.** Each document's time of fetch in its front matter, as before: per
+  document, and wrong for a scope that a failure left inexact. `index` reading the
+  coverage from the raw store: against the contract that keeps it to the mirror. The
+  work log dated by its files' modification times, which would write nothing on an
+  unchanged run, but says when the user last wrote, not when the copy was taken.
+- **Settled** by plan 057.
 
 ## The journal split by shape
 

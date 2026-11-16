@@ -166,9 +166,10 @@ context line in brackets.
 
 Says what the mirror holds, when its index was built, and whether it searches by
 meaning: the model, the chunks, and the chunking that cut them. A line counts the
-documents of each scope, the most first, each with its as-of time, else `as of:
-unknown`, such as `scopes: space:ENG 31 (as of 2026-11-10 08:30 UTC), project:PRB 2 (as
-of: unknown)`. A line counts the
+documents of each scope, the most first, each with its as-of time, else
+`as of: unknown`, such as
+`scopes: space:ENG 31 (as of 2026-11-10 08:30 UTC), project:PRB 2 (as of: unknown)`. A
+line counts the
 persons, those in more than one source and those by name alone, of no identity, then
 names the keys that names of several identities share, five at most, then how many
 more, each with the persons holding it, such as `persons: 42, 12 in more than one
