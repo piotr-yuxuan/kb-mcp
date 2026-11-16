@@ -13,6 +13,7 @@ resolved the data directory.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Mapping
 from functools import reduce
@@ -971,6 +972,38 @@ def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]
         ),
         replaced=frozenset(setting for setting, _, _ in said),
     )
+
+
+def without_secrets(settings: Settings) -> dict[str, object]:
+    """Give the settings' values as JSON, each table nested, every secret left out."""
+    values = settings.model_dump(mode="json")
+    for path, kind in setting_paths(type(settings)).items():
+        if kind == "secret":
+            reduce(getitem, path[:-1], values).pop(path[-1])
+    return values
+
+
+def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
+    """Build settings of the model of ``secrets`` from values without secrets, and its secrets.
+
+    ``values`` are as ``without_secrets`` gives them; each secret is the one that
+    ``secrets`` holds. Raises SettingsError naming each setting refused, never its value,
+    such as the table of a source that the model no longer holds.
+    """
+    model = type(secrets)
+    tree = copy.deepcopy(dict(values))
+    for path, kind in setting_paths(model).items():
+        if kind == "secret":
+            table = reduce(lambda inner, name: inner.setdefault(name, {}), path[:-1], tree)
+            table[path[-1]] = reduce(getattr, path, secrets)
+    try:
+        return model.model_validate(tree)
+    except ValidationError as error:
+        problems = [
+            f"{'.'.join(str(part) for part in problem['loc'])}: {problem['msg']}"
+            for problem in error.errors(include_input=False)
+        ]
+        raise SettingsError("; ".join(problems)) from None
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
