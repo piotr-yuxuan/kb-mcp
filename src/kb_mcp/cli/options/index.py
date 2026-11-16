@@ -30,7 +30,9 @@ def register(
         "index",
         help="update the search index of the mirror's words to what changed",
         epilog=(
-            "With --format json: `run`, the run's id, which refresh --resume takes;"
+            "With --format json: `run`, the run's id, which refresh --resume takes, but"
+            " for a run whose data directory does not exist, which records nothing, as its"
+            " text says after the id;"
             " `ending` (done, failed, interrupted); `counts`, null when nothing was built:"
             " `types`, the documents held by type, `sections`, `persons`, the join's"
             " `count`, the names `ambiguous` and the aliases `unused`, the documents"

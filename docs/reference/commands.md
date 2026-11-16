@@ -143,15 +143,17 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
 
-With --format json: `run`, the run's id, which refresh --resume takes; `ending` (done,
-failed, interrupted); `counts`, null when nothing was filled: `index`, its path;
-`model`, the one that embedded; `chunks`, those that the index holds; `documents`, its
-documents; `skipped`, how many files it lacks; `added` and `removed`, the chunks;
-`embedded`, the texts embedded now; `found`, those that the vector cache held;
-`unchanged`, whether nothing was written; `pruned`, what the prune of the vector cache
-kept and deleted, or why it did not prune; `problems`, each document with a chunk
-refused and each file that the index lacks, or why nothing was filled, and `warnings`,
-a mirror changed since the index, each with its `where` and `reason`.
+With --format json: `run`, the run's id, which refresh --resume takes, but for a run
+whose data directory does not exist, which records nothing, as its text says after the
+id; `ending` (done, failed, interrupted); `counts`, null when nothing was filled:
+`index`, its path; `model`, the one that embedded; `chunks`, those that the index
+holds; `documents`, its documents; `skipped`, how many files it lacks; `added` and
+`removed`, the chunks; `embedded`, the texts embedded now; `found`, those that the
+vector cache held; `unchanged`, whether nothing was written; `pruned`, what the prune
+of the vector cache kept and deleted, or why it did not prune; `problems`, each
+document with a chunk refused and each file that the index lacks, or why nothing was
+filled, and `warnings`, a mirror changed since the index, each with its `where` and
+`reason`.
 ```
 
 ## `eval`
@@ -433,15 +435,16 @@ options:
   -y, --yes             run without asking first, as a script does
   --rebuild             build the index whole, keeping nothing of it
 
-With --format json: `run`, the run's id, which refresh --resume takes; `ending` (done,
-failed, interrupted); `counts`, null when nothing was built: `types`, the documents
-held by type, `sections`, `persons`, the join's `count`, the names `ambiguous` and the
-aliases `unused`, the documents `copied`, `added`, `replaced` and `removed`,
-`awaiting`, those awaiting vectors, null when the index names no model, `unchanged`,
-whether nothing was written, `rebuilt`, why the index was rebuilt whole, if it was,
-and `index`, its path; `problems`, each file skipped, or why nothing was built, and
-`warnings`, each name that could be several persons and each alias that changed
-nothing, each with its `where` and `reason`.
+With --format json: `run`, the run's id, which refresh --resume takes, but for a run
+whose data directory does not exist, which records nothing, as its text says after the
+id; `ending` (done, failed, interrupted); `counts`, null when nothing was built:
+`types`, the documents held by type, `sections`, `persons`, the join's `count`, the
+names `ambiguous` and the aliases `unused`, the documents `copied`, `added`,
+`replaced` and `removed`, `awaiting`, those awaiting vectors, null when the index
+names no model, `unchanged`, whether nothing was written, `rebuilt`, why the index was
+rebuilt whole, if it was, and `index`, its path; `problems`, each file skipped, or why
+nothing was built, and `warnings`, each name that could be several persons and each
+alias that changed nothing, each with its `where` and `reason`.
 ```
 
 ## `login`

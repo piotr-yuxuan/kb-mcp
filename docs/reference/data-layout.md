@@ -387,9 +387,11 @@ the file, `<source>/copies.json`, and the field, never its value.
 ## Runs
 
 Owned by `cli.adapters.run_record.RunRecord`; nothing else reads or writes under
-`<data>/runs/`. Each run of `fetch`, `prepare`, `index`, `embed` and `refresh`, but a dry
-run, which writes nothing, records itself in a folder of its own,
-`<data>/runs/<run id>/`, its id 16 lower-case hex digits, as its result names it (062):
+`<data>/runs/`. Each run of `fetch`, `prepare`, `index`, `embed` and `refresh` records
+itself in a folder of its own, `<data>/runs/<run id>/`, its id 16 lower-case hex digits, as
+its result names it (062); but a dry run, which writes nothing, and an `index` or an
+`embed` whose data directory does not exist, which has nothing to read and makes none: the
+text of each says `, not recorded` after its id.
 
 | File | What it holds | Written |
 |---|---|---|

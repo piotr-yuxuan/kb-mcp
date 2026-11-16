@@ -49,9 +49,14 @@ class Ran(Record):
 
 
 class Ended(Outcome):
-    """What a run of one unit over the whole did: its run id, then its unit's outcome."""
+    """What a run of one unit over the whole did: its run id, then its unit's outcome.
+
+    ``recorded``, which its text says and JSON leaves out, is whether the run is recorded,
+    so that refresh --resume takes its id: not on a data directory that does not exist.
+    """
 
     run: str
+    recorded: bool = Field(default=True, exclude=True)
 
     @model_serializer(mode="wrap")
     def run_first(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:

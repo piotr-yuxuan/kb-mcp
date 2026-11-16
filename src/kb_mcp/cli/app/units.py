@@ -69,7 +69,8 @@ class Done(Record):
 
     ``entries`` are every unit's last, in their order, those of earlier invocations
     included; ``outcomes`` this invocation's, by unit, in their order. ``recorded`` says
-    whether the run is recorded under ``runs/``, which a dry run is not.
+    whether the run is recorded under ``runs/``, which a dry run is not, nor an index or
+    an embed whose data directory does not exist.
     """
 
     exit_status: ExitStatus

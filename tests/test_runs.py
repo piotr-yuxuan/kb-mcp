@@ -966,6 +966,23 @@ def test_the_run_s_start_and_the_invocation_recorded_are_its_log_file_s_instant(
     assert f"fetch-20260102T030405Z-{os.getpid()}.jsonl" in logs
 
 
+@pytest.mark.parametrize("stage", ["index", "embed"])
+def test_index_or_embed_on_a_data_directory_that_does_not_exist_makes_none(
+    home: Path, endpoint: str, capsys: CaptureFixture[str], stage: str
+) -> None:
+    """As before 062: a data directory mistyped is not made; the run fails, exit 1.
+
+    It has nothing to read, so it records nothing, which its text says after its id, and
+    no resume of it is offered.
+    """
+    mistyped = home / "typo"
+    options = [*given(home, endpoint)[:2], "--data-dir", str(mistyped)]
+    assert main([stage, "--yes", *options]) == ExitStatus.FAILED
+    assert capsys.readouterr().out.splitlines()[0].endswith(", not recorded")
+    assert not mistyped.exists()
+    assert logged_as(home, "run.resumable") == []
+
+
 def test_a_dry_run_records_nothing(
     home: Path, site: FakeSite, endpoint: str, capsys: CaptureFixture[str]
 ) -> None:

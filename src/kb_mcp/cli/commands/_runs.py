@@ -16,7 +16,7 @@ import structlog
 from kb_mcp.cli.adapters.run_record import RunBusyError, RunRecord
 from kb_mcp.cli.app.units import REFUSED, Planned, SourcesRefusedError, run_units
 from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint
-from kb_mcp.cli.domain.command import INDEX
+from kb_mcp.cli.domain.command import INDEX, WHOLE
 from kb_mcp.cli.domain.rows import Ended
 from kb_mcp.cli.domain.runs import Configuration, units_of
 from kb_mcp.config.domain.settings import without_secrets
@@ -50,7 +50,9 @@ def recorded(
     """Run a configuration from its record, ``runs/<run id>/``; give the status and what was done.
 
     ``configuration``, resolved by the invocation that starts the run at ``started``, is
-    recorded first: a dry run's in memory alone, so that it writes nothing; None resumes
+    recorded first: in memory alone for a dry run, so that it writes nothing, and for a
+    run of stages over the whole alone, index or embed, whose data directory does not
+    exist, so that, as before 062, it makes none, having nothing to read; None resumes
     the run recorded. Either way, the configuration is read back from the record, and
     the run's settings built from it, its secrets alone from this invocation's
     ``loaded``; ``planned`` gives its units' work from them, and each unit's entry is
@@ -64,8 +66,11 @@ def recorded(
     end done says, a warning ``run.resumable``, the command that resumes it, even as an
     error that no unit caught passes.
     """
-    dry = configuration is not None and configuration.dry_run
-    record = RunRecord(None if dry else loaded.settings.runs / run)
+    unrecorded = configuration is not None and (
+        configuration.dry_run
+        or (set(configuration.stages) <= WHOLE and not loaded.settings.data_dir.is_dir())
+    )
+    record = RunRecord(None if unrecorded else loaded.settings.runs / run)
     try:
         with record.holding():
             try:
@@ -148,9 +153,12 @@ def whole_run(
     if done is None:
         return status, None
     (outcome,) = done.outcomes.values()
-    return status, Ended(run=run, **dict(outcome))
+    return status, Ended(run=run, recorded=done.recorded, **dict(outcome))
 
 
 def ended_text(ended: Ended, detail: Detail) -> str:
-    """Write the run's id, then its one unit's outcome: its counts, its problems and warnings."""
-    return f"run {ended.run}\n{ended.text(detail)}"
+    """Write the run's id, then its one unit's outcome: its counts, its problems and warnings.
+
+    A run not recorded says so after its id, which no resume takes.
+    """
+    return f"run {ended.run}{'' if ended.recorded else ', not recorded'}\n{ended.text(detail)}"

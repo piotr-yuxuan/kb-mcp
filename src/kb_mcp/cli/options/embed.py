@@ -39,7 +39,9 @@ def register(
         "embed",
         help="give the index's chunks their vectors, then prune the vector cache",
         epilog=(
-            "With --format json: `run`, the run's id, which refresh --resume takes;"
+            "With --format json: `run`, the run's id, which refresh --resume takes, but"
+            " for a run whose data directory does not exist, which records nothing, as its"
+            " text says after the id;"
             " `ending` (done, failed, interrupted); `counts`, null when nothing was filled:"
             " `index`, its path; `model`, the one that embedded; `chunks`, those that"
             " the index holds; `documents`, its documents; `skipped`, how many files it"
