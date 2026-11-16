@@ -102,9 +102,12 @@ choose among those that a command can take
   run, before its first unit
   ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/units.py)), and a source's light check
   of its settings, which the entry asks before the run, refuses it too (plan 070 makes the
-  latter tolerant). Ctrl-C ends the unit it stops interrupted, and runs no later one. The
-  exit status folds how every unit last ended, whichever invocation ended it, and the run's
-  own: interrupted, then sign in again, then failed
+  latter tolerant). Ctrl-C ends the unit it stops interrupted, and runs no later one; an
+  error that nothing catches ends it failed, by the error's type, runs no later one, and
+  fails the run, exit 1, with its traceback, the units that it did not run left to a
+  resume ([`run_units`](../../src/kb_mcp/cli/app/units.py)). The exit status folds how
+  every unit last ended, whichever invocation ended it, and the run's own: interrupted,
+  then sign in again, then failed
   ([`folded`](../../src/kb_mcp/kernel/exit_status.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 

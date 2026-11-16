@@ -58,7 +58,8 @@ def recorded(
     Another invocation holding the run refuses this one, exit 2, an error ``run.busy``; a
     fetcher or a preparer that does not load refuses it alike, ``fetch.refused`` or
     ``prepare.refused``, without a source. A run recorded whose units did not all last
-    end done says, a warning ``run.resumable``, the command that resumes it.
+    end done says, a warning ``run.resumable``, the command that resumes it, even as an
+    error that no unit caught passes.
     """
     dry = configuration is not None and configuration.dry_run
     record = RunRecord(None if dry else loaded.settings.runs / run)
@@ -68,21 +69,25 @@ def recorded(
                 record.write_configuration(configuration)
             fixed = record.read_configuration()
             settings = with_secrets(fixed.settings, loaded.settings)
-            done = run_units(
-                planned(fixed, settings),
-                record.read_outcomes(),
-                started,
-                record.write_outcomes,
-                dry_run=fixed.dry_run,
-            )
+            try:
+                done = run_units(
+                    planned(fixed, settings),
+                    record.read_outcomes(),
+                    started,
+                    record.write_outcomes,
+                    dry_run=fixed.dry_run,
+                )
+            finally:
+                endings = {each.ending for each in record.read_outcomes()}
+                if record.folder is not None and endings - {"done"}:
+                    resume = f"{PROGRAM} refresh --resume {run}"
+                    structlog.get_logger().warning("run.resumable", resume=resume)
     except RunBusyError:
         structlog.get_logger().error("run.busy", hint=BUSY)
         return ExitStatus.REFUSED, None
     except SourcesRefusedError as error:
         structlog.get_logger().error(REFUSED[error.stage], reason=str(error))
         return ExitStatus.REFUSED, None
-    if not dry and any(entry.ending != "done" for entry in done.entries):
-        structlog.get_logger().warning("run.resumable", resume=f"{PROGRAM} refresh --resume {run}")
     return done.exit_status, done
 
 

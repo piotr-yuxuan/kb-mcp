@@ -452,7 +452,10 @@ Each unit's entry holds its `stage`, its `source`, null for `index` and `embed`,
 `warnings`, by place and reason, never content, and the start of the `invocation` that
 gave it, which names that invocation's log file. A unit of a prepare is a source's
 preparer: a source of several has an entry for each, in their order, by which a resume
-matches them. A unit that no invocation reached has no entry yet: a run that a fetcher or
+matches them. Ctrl-C ends the unit at work `interrupted`, and an error that nothing catches
+ends it `failed`, its problem naming the error's type alone, before the run fails; either
+way each later unit that the invocation takes is `not run`, so that a resume runs them. A
+unit that no invocation reached has no entry yet: a run that a fetcher or
 a preparer that does not load refuses, exit 2, keeps its configuration alone. A file that does not read, or that holds a field
 missing, of another type or refused, is refused by its path from the data directory and
 the field, never the value, and a resume of it with it.

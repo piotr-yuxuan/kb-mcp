@@ -265,17 +265,32 @@ def test_each_entry_is_written_as_its_unit_ends_and_ctrl_c_ends_the_invocation()
     assert [len(entries) for entries in written[1:]] == [len(units)]
 
 
-def test_an_error_that_no_unit_catches_passes_with_the_entries_before_it_written() -> None:
-    """The unit that raised has no entry of this invocation: a resume runs it."""
+def test_an_error_that_no_unit_catches_passes_once_its_unit_is_recorded_failed() -> None:
+    """The unit that raised fails, by the error's type alone; each later one taken, not run.
+
+    So a resume runs them; the error passes as it was raised. The entries are written as
+    the unit before it ends, then once more.
+    """
     written: list[tuple[Recorded, ...]] = []
 
     def broken() -> Outcome[FetchCounts]:
-        raise RuntimeError
+        message = "value-sentinel-062"
+        raise OSError(message)
 
-    planned = [acted("done"), Planned(unit=Unit(stage="embed"), act=broken)]
-    with pytest.raises(RuntimeError):
+    planned = [
+        Planned(unit=Unit(stage="fetch", source="jira"), act=lambda: Outcome(ending="done")),
+        Planned(unit=Unit(stage="prepare", source="jira"), act=broken),
+        acted("done"),
+    ]
+    with pytest.raises(OSError, match="value-sentinel-062"):
         run_units(planned, (), datetime(2026, 11, 16, tzinfo=UTC), written.append, dry_run=False)
-    assert [[entry.stage for entry in entries] for entries in written] == [["index"]]
+    assert [len(entries) for entries in written] == [1, 3]
+    fetched, failed, indexed = written[-1]
+    assert (fetched.ending, failed.ending, indexed.ending) == ("done", "failed", "not run")
+    (problem,) = failed.problems
+    assert problem.where == "jira"
+    assert "OSError" in problem.reason
+    assert "value-sentinel-062" not in problem.reason
 
 
 @pytest.fixture
@@ -467,6 +482,65 @@ def test_a_resume_after_an_interruption_runs_only_the_units_not_done(
     assert (tree(data / "raw"), tree(data / "copies"), tree(data / "docs" / "jira")) == kept
     assert (data / "docs" / "worklog").is_dir()
     assert (data / "index.sqlite").is_file()
+
+
+def test_a_resume_runs_again_a_unit_done_before_that_an_error_stopped_and_those_after(
+    home: Path,
+    site: FakeSite,
+    endpoint: str,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+) -> None:
+    """Q6: an index done once, run again after Jira's fetch, raises: it is recorded failed.
+
+    Jira's fetch fails first, the index and embed done. Its resume fetches Jira, then
+    the index raises an error that nothing catches: the run fails, exit 1, its traceback
+    logged, the index recorded failed by the error's type and embed not run, though both
+    were done, and resumable. A second resume runs the index and embed alone.
+    """
+    options = given(home, endpoint)
+    failed = Outcome(ending="failed", problems=(Problem(where="jira", reason="told"),))
+    with monkeypatch.context() as patch:
+        patch.setattr(fetcher, "run_fetch", lambda *_: failed)
+        status, first = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.FAILED
+    run = first["run"]
+    endings = {(each["stage"], each["source"]): each["ending"] for each in first["units"]}
+    assert (endings["index", None], endings["embed", None]) == ("done", "done")
+
+    def full(*_: object, **__: object) -> None:
+        message = "value-sentinel-062"
+        raise OSError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr("kb_mcp.cli.commands._runs.update_index", full)
+        assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.FAILED
+    capsys.readouterr()
+    _, entries = record_of(home, run)
+    last = {(each["stage"], each["source"]): each for each in entries}
+    assert [last[unit]["ending"] for unit in [("fetch", "jira"), ("index", None)]] == [
+        "done",
+        "failed",
+    ]
+    assert last["embed", None]["ending"] == "not run"
+    (problem,) = last["index", None]["problems"]
+    assert "OSError" in problem["reason"]
+    assert "value-sentinel-062" not in json.dumps(entries)
+    assert len(logged_as(home, "run.resumable")) == len(["first", "resumed"])
+    assert len(logged_as(home, "run.failed")) == 1
+    asked = len(site.asked)
+    status, resumed = refreshed(capsys, "--resume", run, *options)
+    assert status == ExitStatus.OK
+    ran = [
+        each
+        for each, before in zip(resumed["units"], entries, strict=True)
+        if each["invocation"] != before["invocation"]
+    ]
+    assert [(each["stage"], each["ending"]) for each in ran] == [
+        ("index", "done"),
+        ("embed", "done"),
+    ]
+    assert len(site.asked) == asked
 
 
 def test_since_7d_is_recorded_as_a_time_which_the_first_attempt_and_the_resume_use(

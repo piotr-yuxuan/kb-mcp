@@ -81,7 +81,7 @@ class Progress(Record):
 
     ``taken`` are the units that it runs; ``write`` is given every unit's last entry, in
     their order. ``acting`` is the unit at work, if any; ``own``, the invocation's own
-    ending, if any: interrupted.
+    ending, if any: interrupted, or failed by an error that no unit caught.
     """
 
     model_config = ConfigDict(frozen=False)
@@ -118,22 +118,25 @@ class Progress(Record):
         self.acting = None
         self.write(tuple(self.entries[each] for each in self.units if each in self.entries))
 
-    def interrupted(self) -> None:
-        """End the invocation interrupted: the unit at work so, each other taken not run.
+    def stopped(self, ending: Ending, reason: str | None = None) -> None:
+        """End the invocation as ``ending`` says: the unit at work so, each other taken not run.
 
-        Once: Ctrl-C interrupts an invocation once, however many units it reaches; every
-        unit's last entry is then written once.
+        ``reason``, if any, is the problem of the unit at work, by its source, or its stage
+        over the whole. Once: Ctrl-C, or an error, stops an invocation once, however many
+        units it reaches; every unit's last entry is then written once.
         """
         if self.own:
             return
-        self.own = ("interrupted",)
+        self.own = (ending,)
         ended = {
             unit: Outcome(ending="not run")
             for unit in self.units
             if unit in self.taken and unit not in self.outcomes
         }
         if self.acting is not None:
-            ended[self.acting] = Outcome(ending="interrupted")
+            where = self.acting.source or self.acting.stage
+            problems = () if reason is None else (Problem(where=where, reason=reason),)
+            ended[self.acting] = Outcome(ending=ending, problems=problems)
         self.end(ended)
 
     def done(self) -> Done:
@@ -180,7 +183,7 @@ def run_sources(
     except KeyboardInterrupt:
         acting = progress.acting
         log.warning(interrupted, source=None if acting is None else acting.source)
-        progress.interrupted()
+        progress.stopped("interrupted")
         raise
     finally:
         rows = [progress.entries[each.unit] for each in taken if each.unit in progress.outcomes]
@@ -203,8 +206,11 @@ def run_units(
     whatever the endings before it. ``write`` is given every unit's last entry, in their
     order, as each unit ends, those of this invocation started at ``invocation``. Ctrl-C
     ends the unit that it stops interrupted, each later one taken not run, and the
-    invocation interrupted, even once every unit ended. The status is the most severe of
-    the invocation's own ending and each unit's last, as ``folded`` gives it.
+    invocation interrupted, even once every unit ended. Any other error passes, once it
+    has ended the unit that it stops failed, a problem naming the error's type alone,
+    never its message, which may hold a value, and each later one taken not run, so that
+    a resume runs them. The status is the most severe of the invocation's own ending and
+    each unit's last, as ``folded`` gives it.
     """
     units = tuple(each.unit for each in planned)
     known = keyed(last)
@@ -224,5 +230,8 @@ def run_units(
                 progress.acting = each.unit
                 progress.end({each.unit: each.act()})
     except KeyboardInterrupt:
-        progress.interrupted()
+        progress.stopped("interrupted")
+    except Exception as error:
+        progress.stopped("failed", f"stopped by {type(error).__name__}, which nothing caught")
+        raise
     return progress.done()
