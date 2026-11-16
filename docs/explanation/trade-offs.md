@@ -438,9 +438,12 @@ Its prepare reads that store alone and converts through the cache of conversions
   above the sources may name. The prepare comparing each copy's revision with its file
   of the mirror, which keeps the mirror as a memory; the cache of conversions keyed by
   the text does it without one. A document's old file found by a path that the copy
-  store records: the fetch, which alone writes the store, would know the mirror's
-  layout, and could not tell which path a prepare last wrote; or by the id of each
-  file's front matter, the mirror read as a memory again.
+  store records for each document: the fetch, which alone writes the store, knows the
+  mirror's paths for its migration alone, before any prepare from the store, and so
+  records the path of each document carried over; past that, the prepare writes the
+  mirror, and the store cannot tell which path it last wrote for a document whose
+  conversion failed once retitled. Or by the id of each file's front matter, the mirror
+  read as a memory again.
 - **Settled** by plan 060, on 053's record of the concepts.
 
 ## The journal split by shape
