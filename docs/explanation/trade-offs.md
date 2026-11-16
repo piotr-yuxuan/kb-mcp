@@ -342,8 +342,9 @@ parent's from its snapshot in the raw store
   and to an embedding model, and every source now builds its breadcrumb alike. `browse`
   places a document under its parent by document id, since titles need not be unique,
   as Jira's summaries are not; under its breadcrumb's titles only where its parent is
-  not listed: at the top for a parent that the index holds in another scope, whose
-  ancestors are not those of a listed document of the same titles; for a parent that is
+  not listed: for a parent that the index holds in another scope, below the first listed
+  document that its parents reach by their ids, else at the top, never by titles, as its
+  ancestors need not be those of a listed document of the same titles; for a parent that is
   no document of the index, such as a folder, below the listed document whose own
   titles are those above that parent, where one alone has them
   ([`tree_order`](../../src/kb_mcp/search/domain/search.py)).
@@ -351,7 +352,8 @@ parent's from its snapshot in the raw store
   [the budgets' tests](../../tests/test_budgets.py). A bare key that two documents hold
   is refused, so an agent citing it makes `eval agents` refuse its grading. An issue's
   breadcrumb stops at the first parent that the raw store lacks, with that parent's
-  title. Under the chunkings `section-paths` and `small-to-big`, whose texts carry the
+  title. `browse` looks a listed document's parents of other scopes up through the index,
+  one query a level. Under the chunkings `section-paths` and `small-to-big`, whose texts carry the
   breadcrumb, each issue's chunks were embedded again once, its breadcrumb changing
   from keys to titles. `status` counts a scope that two sources hold as one. Two
   folders of one title under one page show as one bracketed line, a folder being no

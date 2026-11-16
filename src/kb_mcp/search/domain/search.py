@@ -521,14 +521,15 @@ def tree_key(path: tuple[str, ...]) -> tuple[tuple[str | int, ...], ...]:
 
 
 def tree_order(
-    entries: Sequence[IndexedDocument], elsewhere: Collection[str] = ()
+    entries: Sequence[IndexedDocument], elsewhere: Mapping[str, str | None] | None = None
 ) -> list[tuple[Place, IndexedDocument]]:
     """Place each document of one scope in its tree; give them in tree order, with places.
 
     A document sits under its parent where ``entries`` list it. Else under the titles of
-    its breadcrumb, as ancestors not listed: at the top where its parent is one of
-    ``elsewhere``, the document ids of documents mirrored outside ``entries``, whose
-    titles another's would only repeat; otherwise, as under a folder, below the listed
+    its breadcrumb, as ancestors not listed: where its parent is one of ``elsewhere``,
+    documents mirrored outside ``entries`` by their document ids, each with its own
+    parent's, below the first listed document that their parents reach, else at the top,
+    as titles another's would only repeat; otherwise, as under a folder, below the listed
     document whose breadcrumb and title are the longest run of them from the top, where
     one alone has them; the title of a parent not listed, the breadcrumb's last, is
     never that document's. A loop of parents is cut where it closes, climbing from its
@@ -540,15 +541,27 @@ def tree_order(
     for each in entries:
         titled.setdefault((*each.front.breadcrumb, each.front.title), []).append(each)
     places: dict[str, Place] = {}
+    outside = elsewhere or {}
+    # Each document mirrored elsewhere: the listed document that its parents reach, if
+    # any, and how many documents mirrored elsewhere lie on the way, itself included.
+    above: dict[str, tuple[IndexedDocument | None, int]] = {}
+    for start in outside:
+        hops, at = 1, outside[start]
+        while at in outside and hops <= len(outside):
+            hops, at = hops + 1, outside[at]
+        above[start] = (by_id.get(at or ""), hops)
 
     def place(entry: IndexedDocument, placing: frozenset[str]) -> Place:
         if entry.path not in places:
             front, placing = entry.front, placing | {entry.path}
             parent, unlisted = by_id.get(front.parent or ""), ()
-            if parent is None or parent.path in placing:
-                crumbs = front.breadcrumb
+            reached, hops = above.get(front.parent or "", (None, 0))
+            crumbs = front.breadcrumb
+            if parent is None and reached is not None and reached.path not in placing:
+                parent, unlisted = reached, crumbs[max(len(crumbs) - hops, 0) :]
+            elif parent is None or parent.path in placing:
                 top = len(crumbs) - (front.parent is not None)
-                sizes = range(0 if front.parent in elsewhere else top, 0, -1)
+                sizes = range(0 if front.parent in outside else top, 0, -1)
                 runs = ((size, titled.get(crumbs[:size], [])) for size in sizes)
                 size, parent = next(
                     (

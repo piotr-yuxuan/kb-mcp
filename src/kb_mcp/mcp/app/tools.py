@@ -984,16 +984,17 @@ class Library:
             )
             listed = reader.listing(kept)
             ids = {document_id(entry.front.source, entry.front.id) for entry in listed}
-            # The parents not listed that the index holds, documents of other scopes.
-            outside = [
-                each.front.parent
-                for each in listed
-                if each.front.parent is not None and each.front.parent not in ids
-            ]
-            elsewhere = {
-                document_id(other.front.source, other.front.id)
-                for other in reader.indexed_documents(refs=outside)
-            }
+            # The parents not listed that the index holds, documents of other scopes, each
+            # with its own parent, climbing until a parent is listed, not mirrored or met.
+            elsewhere: dict[str, str | None] = {}
+            outside = {each.front.parent for each in listed} - ids - {None}
+            while outside:
+                found = reader.indexed_documents(refs=sorted(outside))
+                elsewhere |= {
+                    document_id(other.front.source, other.front.id): other.front.parent
+                    for other in found
+                }
+                outside = {other.front.parent for other in found} - ids - elsewhere.keys() - {None}
             top = None if parent is None else self._find(reader, parent)
         # Refuses several scopes, or one of several sources; the scope itself is not
         # needed, as ``listed`` holds that one scope's documents alone.

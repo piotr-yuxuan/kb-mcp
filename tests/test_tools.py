@@ -1604,6 +1604,57 @@ def test_a_parent_of_another_scope_is_placed_by_no_title(tmp_path: Path) -> None
     assert tree_lines(library.browse(scope="PRB", parent="PRB-1")) == ["- Child (PRB-9)"]
 
 
+def test_a_parent_of_another_scope_under_a_listed_one_places_it_there(tmp_path: Path) -> None:
+    """Review round 3: PRB-2's parent PORT-5 is under PORT-1, itself under PRB-1, listed.
+
+    PRB-2 is a descendant of PRB-1: under it, the parents of another scope bracketed.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PRB-1", "Grow revenue"), None),
+            (
+                issue(
+                    "PORT-1",
+                    "Ports",
+                    id="20001",
+                    parent="jira:10001",
+                    breadcrumb=("Grow revenue",),
+                ),
+                None,
+            ),
+            (
+                issue(
+                    "PORT-5",
+                    "Payments v2",
+                    id="20005",
+                    parent="jira:20001",
+                    breadcrumb=("Grow revenue", "Ports"),
+                ),
+                None,
+            ),
+            (
+                issue(
+                    "PRB-2",
+                    "Epic in PRB",
+                    parent="jira:20005",
+                    breadcrumb=("Grow revenue", "Ports", "Payments v2"),
+                ),
+                None,
+            ),
+        ],
+    )
+    assert tree_lines(library.browse(scope="project:PRB")) == [
+        "- Grow revenue (PRB-1)",
+        "  - [Ports / Payments v2]",
+        "      - Epic in PRB (PRB-2)",
+    ]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-1")) == [
+        "- [Ports / Payments v2]",
+        "    - Epic in PRB (PRB-2)",
+    ]
+
+
 def test_a_page_under_a_folder_sits_under_the_folder_s_page(tmp_path: Path) -> None:
     """A folder is no document: its title, from the breadcrumb, is a bracketed line.
 
