@@ -53,7 +53,7 @@ TRACER = trace.get_tracer(__name__)
 # Why a meeting is a warning: its link reaches no transcript found.
 UNLINKED = "its :MEETING: link reaches no transcript found"
 # Why a file of the mirror is a warning when a store begins.
-NOT_CARRIED = "its created date is not carried over"
+NOT_CARRIED = "its dates are not carried over"
 
 
 class Read(Record):
@@ -168,16 +168,18 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     )
 
 
-def carried_over(docs: Path, source: str) -> tuple[dict[str, datetime], list[OutcomeWarning]]:
-    """Read the created date of each document of a work log's files of the mirror, by its id.
+def carried_over(
+    docs: Path, source: str
+) -> tuple[dict[str, tuple[datetime, datetime]], list[OutcomeWarning]]:
+    """Read the created and updated dates of each document of a work log's files of the mirror.
 
-    The files of ``source``'s folders of ``docs`` that ``worklog_globs`` finds, those that
-    its prepare writes, in today's front matter or plan 058's, so that each document keeps
-    its created date when its copy store begins. A file that does not read, or holds no
-    document of the work log's rules, is a warning by its path, never its content: its
-    date is not carried over.
+    By its id. The files of ``source``'s folders of ``docs`` that ``worklog_globs`` finds,
+    those that its prepare writes, in today's front matter or plan 058's, so that each
+    document keeps its dates when its copy store begins. A file that does not read, or
+    holds no document of the work log's rules, is a warning by its path, never its
+    content: its dates are not carried over.
     """
-    carried: dict[str, datetime] = {}
+    carried: dict[str, tuple[datetime, datetime]] = {}
     warnings: list[OutcomeWarning] = []
     for file in documents(docs, worklog_globs(source)):
         path = file.relative_to(docs).as_posix()
@@ -190,7 +192,7 @@ def carried_over(docs: Path, source: str) -> tuple[dict[str, datetime], list[Out
             reason = str(error) if named else type(error).__name__
             warnings.append(OutcomeWarning(where=path, reason=f"{reason}; {NOT_CARRIED}"))
             continue
-        carried[matter.id] = matter.created
+        carried[matter.id] = (matter.created, matter.updated)
     return carried, warnings
 
 
@@ -204,9 +206,9 @@ def fetch_worklog(
 ) -> Outcome[WorklogFetched]:
     """Read ``source``'s work log, as its table says, into its copy store; or say what changes.
 
-    A store never written first takes the created dates of the source's files of the
-    mirror, as ``carried_over`` reads them, and is written so before the read, whatever
-    the read then meets. The read, begun at ``now()``, is then kept as ``fetched`` says.
+    A store never written first takes the dates of the source's files of the mirror, as
+    ``carried_over`` reads them, and is written so before the read, whatever the read
+    then meets. The read, begun at ``now()``, is then kept as ``fetched`` says.
     Without the table's ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A dry run takes
     no lock and writes nothing, and ends not run, or failed for a problem found.

@@ -412,14 +412,15 @@ Its prepare reads that store alone and converts through the cache of conversions
   written again at each fetch, as its as-of time moves. One more command to refresh the
   work log alone, `fetch worklog` before `prepare worklog`, and a `prepare` without the
   copy store fails the work log's row, naming the fetch. One migration, at the first
-  fetch of a store: the created dates of the mirror are carried over before the read,
-  and until a read without a problem takes them all, `prepare` removes no file. A
+  fetch of a store: the created and updated dates of the mirror are carried over before
+  the read, and until a read without a problem takes them all, `prepare` removes no
+  file. A
   prepare whose conversion fails removes no file, so that a document retitled meanwhile
   keeps its old file beside its new one until a prepare converts everything, and the
   others' links to the document that failed are left out meanwhile, its file no
-  longer known to prepare. The first fetch after the upgrade dates afresh an entry whose
-  only timestamps were plans when its file was written, and whose text has not changed
-  since.
+  longer known to prepare. The first fetch after the upgrade takes the text that it reads
+  as the one that the mirror's dates are of: a document without a day edited since the
+  former version last prepared keeps its file's dates until its text changes again.
 - **Rejected.** A store in SQLite, row by row: a file written whole is atomic by its
   rename, and a fetch reads the whole folder anyway. The store under `<data>/raw/`,
   whose module the Atlassian sources own, or named after the work log, which no context

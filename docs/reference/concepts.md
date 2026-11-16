@@ -842,7 +842,7 @@ and transcripts.
   fetch, [`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py), which
   keeps each document in its copy store
   ([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)), the mirror's
-  created dates carried over when the store begins
+  dates carried over when the store begins
   ([`carried_over`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)).
 
 ### conversion cache

@@ -74,13 +74,13 @@ class Copies(Record):
     """What one work log's copy store holds.
 
     ``documents``, each document as last read whole, by its id, in the order read;
-    ``migrated``, by id, the created date that the mirror held of each document that no
-    read has taken since the store began, carried over before its first read; ``as_of``,
-    the moment of the last read that met no problem, None before any.
+    ``migrated``, by id, the created and updated dates that the mirror held of each
+    document that no read has taken since the store began, carried over before its first
+    read; ``as_of``, the moment of the last read that met no problem, None before any.
     """
 
     documents: Mapping[str, WorklogCopy]
-    migrated: Mapping[str, datetime]
+    migrated: Mapping[str, tuple[datetime, datetime]]
     as_of: datetime | None
 
     @model_validator(mode="after")
@@ -97,24 +97,27 @@ def fetched(
 ) -> Copies:
     """Say what the store holds once a read that began at ``at`` has taken ``read``.
 
-    Each document read is copied whole. Its dates are those of its stored copy while its
-    revision holds and it has no day, so that an edit elsewhere in its org file moves
-    neither; else they are its own, as ``WorklogDocument.dates`` gives them from the
-    created date of its stored copy, else of the mirror, carried over, else from none. A
-    ``complete`` read, which met no problem, confirms gone at once each document that it
-    did not take, which leaves the store with its carried date, and is the as-of time.
-    After any other, every document not read keeps its last copy, and each carried date
-    and the as-of time stay.
+    Each document read is copied whole. Its dates are its last ones while they hold and it
+    has no day, so that an edit elsewhere in its org file moves neither: its stored
+    copy's while its revision holds; at its first read, those that the mirror held,
+    carried over, its text taken as theirs. Else they are its own, as
+    ``WorklogDocument.dates`` gives them from the created date of its last ones, else from
+    none. A ``complete`` read, which met no problem, confirms gone at once each document
+    that it did not take, which leaves the store with its carried dates, and is the as-of
+    time. After any other, every document not read keeps its last copy, and each carried
+    date and the as-of time stay.
     """
     copies: dict[str, WorklogCopy] = {}
     for document in read:
         old = stored.documents.get(document.id)
         if old is None:
-            created, updated = document.dates(stored.migrated.get(document.id))
-        elif old.revision == digest(document.text) and document.day is None:
-            created, updated = old.created, old.updated
+            last, holds = stored.migrated.get(document.id), True
         else:
-            created, updated = document.dates(old.created)
+            last, holds = (old.created, old.updated), old.revision == digest(document.text)
+        if last is not None and holds and document.day is None:
+            created, updated = last
+        else:
+            created, updated = document.dates(None if last is None else last[0])
         copies[document.id] = WorklogCopy(
             type=document.type,
             id=document.id,

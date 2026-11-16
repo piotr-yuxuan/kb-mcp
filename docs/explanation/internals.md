@@ -43,7 +43,7 @@ flowchart LR
 |---|---|---|---|---|
 | `fetch` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `prepare` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
-| `fetch`, of the work log | its folder, in place; the mirror's created dates, once, when its copy store begins | `<data>/copies/worklog/` | a lock, and the store's file renamed into place | the file is named by its path, its documents keep their last copies; none is found gone |
+| `fetch`, of the work log | its folder, in place; the mirror's dates, once, when its copy store begins | `<data>/copies/worklog/` | a lock, and the store's file renamed into place | the file is named by its path, its documents keep their last copies; none is found gone |
 | `prepare`, of the work log | its copy store | `<data>/docs/worklog/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is named by its file and id, and no file is removed; without a copy store, the row fails, naming `fetch` |
 | `index` | the index; the mirror, each file digested and those changed read; the user's alias file, if any | `<data>/index.sqlite`, only when something changed | the index built aside, what did not change copied from the old, then renamed into place under the index's lock | the file is skipped and named; a name that could be several persons is the person by name of its key, and named; with an alias file refused, the old index stays |
 | `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its chunks or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector cache pruned under its own lock, its deletions one transaction | a chunk refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
@@ -208,10 +208,11 @@ transcript, dated afresh by its day; another takes its own, an undated one keepi
 stored created date ([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py),
 [`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)). A
 read without a problem finds each document gone at once that it no longer reads, and its
-moment is the store's as-of time. A store's first fetch first takes the created dates
-that the mirror's files hold, of today's front matter or plan 058's
+moment is the store's as-of time. A store's first fetch first takes the created and
+updated dates that the mirror's files hold, of today's front matter or plan 058's
 ([`carried_over`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)), and writes
-them before it reads.
+them before it reads: a document that its first read takes keeps them as its stored
+dates, its text read then taken as theirs.
 
 [`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work
 log's row of `prepare`, reads that store alone. It converts each document's text

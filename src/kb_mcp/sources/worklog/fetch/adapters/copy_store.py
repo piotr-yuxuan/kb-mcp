@@ -86,6 +86,7 @@ class CopyStore:
             reason = str(error) if isinstance(error, RepresentationError) else f"{where}: not JSON"
             raise RepresentationError(reason) from None
         migrated = fields.object("migrated")
+        carried = {key: migrated.object(key) for key in migrated.value}
         documents: dict[str, WorklogCopy] = {}
         for entry in fields.objects("documents"):
             links = tuple(
@@ -113,7 +114,10 @@ class CopyStore:
         with fields.refusals():
             return Copies(
                 documents=documents,
-                migrated={key: migrated.time(key) for key in migrated.value},
+                migrated={
+                    key: (each.time("created"), each.time("updated"))
+                    for key, each in carried.items()
+                },
                 as_of=None if fields.optional_text("as_of") is None else fields.time("as_of"),
             )
 
@@ -124,7 +128,10 @@ class CopyStore:
             raise RuntimeError(message)
         value = {
             "as_of": None if copies.as_of is None else copies.as_of.isoformat(),
-            "migrated": {key: moment.isoformat() for key, moment in copies.migrated.items()},
+            "migrated": {
+                key: {"created": created.isoformat(), "updated": updated.isoformat()}
+                for key, (created, updated) in copies.migrated.items()
+            },
             "documents": [
                 {
                     "type": each.type,

@@ -191,18 +191,20 @@ changed; a transcript's lines stay apart.
 
 Deleting `<data>/docs/worklog/` costs nothing: the next `prepare` writes the same files
 from the store, converting nothing. Deleting `<data>/copies/worklog/` costs one read:
-the next `fetch` reads the folder whole and takes the created dates from the mirror
-again, as below. A `prepare` that finds no copy store fails the work log's row, exit 1,
+the next `fetch` reads the folder whole and takes the dates from the mirror again, as
+below. A `prepare` that finds no copy store fails the work log's row, exit 1,
 naming `kb-mcp fetch worklog`, and prepares the other sources.
 
 ### After an upgrade from a version without the copy store
 
 Run `fetch` before `prepare`. The first `fetch` of the work log on a data directory
-without its copy store first takes, from each of its files of the mirror, the date that
-its document was first seen, its `created`, and keeps it in the store before it reads
-the folder: an entry without a timestamp, whose date the file of the mirror alone held,
-keeps it. A file of the mirror that does not read is a warning by its path, and its date
-is lost. Until a fetch reads the work log without a problem, `prepare` removes no file,
+without its copy store first takes, from each of its files of the mirror, its
+document's dates, `created` and `updated`, and keeps them in the store before it reads
+the folder: a document without a day keeps both, as the text that this fetch reads, so
+that an entry without a timestamp, whose dates the file of the mirror alone held, keeps
+them, and no document is dated afresh by its org file's time. One edited since the
+former version last prepared keeps them too, until its text changes again. A file of the
+mirror that does not read is a warning by its path, and its dates are lost. Until a fetch reads the work log without a problem, `prepare` removes no file,
 so that the file of a document that the first fetch could not read stays.
 
 `index` then brings the index of the mirror's words up to the mirror, without a model,

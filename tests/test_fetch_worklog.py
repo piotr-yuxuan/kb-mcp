@@ -297,32 +297,33 @@ def test_the_fetcher_says_each_problem_and_what_it_held_back(fetch: Fetch) -> No
     ]
 
 
-def mirrored(docs: Path, *, change: bool = False) -> dict[str, datetime]:
+def mirrored(docs: Path, *, change: bool = False) -> dict[str, tuple[datetime, datetime]]:
     """Copy the base's mirror into ``docs``, in plan 058's front matter if ``change``.
 
-    Give each document's created date, by id, as that mirror holds it.
+    Give each document's created and updated dates, by id, as that mirror holds them.
     """
-    created: dict[str, datetime] = {}
+    dates: dict[str, tuple[datetime, datetime]] = {}
     for path in sorted(MIRROR.rglob("*.md")):
         target = docs / path.relative_to(MIRROR)
         target.parent.mkdir(parents=True, exist_ok=True)
         text = path.read_text("utf-8")
         target.write_text(former(text) if change else text, "utf-8")
         matter, _ = load(text, path.name)
-        created[matter.id] = matter.created
-    return created
+        dates[matter.id] = (matter.created, matter.updated)
+    return dates
 
 
 @pytest.mark.parametrize("change", [False, True], ids=["today's", "plan 058's"])
-def test_a_store_s_first_fetch_carries_over_every_created_date_of_the_mirror(
+def test_a_store_s_first_fetch_carries_over_every_date_of_the_mirror(
     fetch: Fetch, *, change: bool
 ) -> None:
     """Plan 060, criterion 3, at the store: the org files' times have moved on.
 
     So that a date taken afresh would differ from the one that the mirror held, an
-    undated entry's among them, first seen earlier than its file's last change.
+    undated entry's among them, first seen earlier than its file's last change: each
+    document read takes both dates of its file, its text taken as theirs.
     """
-    created = mirrored(fetch.settings.docs)
+    dates = mirrored(fetch.settings.docs)
     (tidy,) = (fetch.settings.docs / "worklog" / "entries").glob(f"{TIDY}-*.md")
     matter, body = load(tidy.read_text("utf-8"), tidy.name)
     tidy.write_text(dump(copy.replace(matter, created=SEEN), body), "utf-8")
@@ -333,8 +334,9 @@ def test_a_store_s_first_fetch_carries_over_every_created_date_of_the_mirror(
         outcome = fetch()
     held = fetch.held()
     assert (outcome.ending, held.migrated) == ("done", {})
-    assert {key: each.created for key, each in held.documents.items()} == created | {TIDY: SEEN}
-    assert (held.documents[TIDY].created, held.documents[TIDY].updated) == (SEEN, LATER)
+    assert {key: (each.created, each.updated) for key, each in held.documents.items()} == (
+        dates | {TIDY: (SEEN, matter.updated)}
+    )
     (carried,) = [each for each in logged if each["event"] == "worklog.carried"]
     assert (carried["documents"], carried["not_read"]) == (DOCUMENTS, 0)
 
@@ -346,7 +348,7 @@ def test_a_store_s_first_fetch_reads_the_work_log_s_folders_of_the_mirror_alone(
 
     The copy, of an undated entry under another date, would else give its date.
     """
-    created = mirrored(fetch.settings.docs)
+    dates = mirrored(fetch.settings.docs)
     (tidy,) = (fetch.settings.docs / "worklog" / "entries").glob(f"{TIDY}-*.md")
     matter, body = load(tidy.read_text("utf-8"), tidy.name)
     aside = fetch.settings.docs / "worklog" / "old" / tidy.name
@@ -356,32 +358,33 @@ def test_a_store_s_first_fetch_reads_the_work_log_s_folders_of_the_mirror_alone(
     settle(fetch.root, LATER)
     with capture_logs() as logged:
         outcome = fetch()
-    assert (outcome.ending, fetch.held().documents[TIDY].created) == ("done", created[TIDY])
+    assert (outcome.ending, fetch.held().documents[TIDY].created) == ("done", dates[TIDY][0])
     (carried,) = [each for each in logged if each["event"] == "worklog.carried"]
     assert (carried["documents"], carried["not_read"]) == (DOCUMENTS, 0)
 
 
 def test_the_carried_dates_are_kept_while_a_file_is_not_read(fetch: Fetch) -> None:
     """Plan 060: one org file not read at the first fetch; its date waits until it is read."""
-    created = mirrored(fetch.settings.docs)
+    dates = mirrored(fetch.settings.docs)
     settle(fetch.root, LATER)
     text = (fetch.root / "transcripts/misc/a.org").read_bytes()
     (fetch.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
     assert fetch().ending == "failed"
     held = fetch.held()
-    assert (WAITING in held.documents, held.migrated) == (False, {WAITING: created[WAITING]})
+    assert (WAITING in held.documents, held.migrated) == (False, {WAITING: dates[WAITING]})
     (fetch.root / "transcripts/misc/a.org").write_bytes(text)
     settle(fetch.root / "transcripts/misc/a.org", LATER)
     assert fetch(SECOND).ending == "done"
     held = fetch.held()
-    assert (held.documents[WAITING].created, held.migrated) == (created[WAITING], {})
+    waiting = held.documents[WAITING]
+    assert ((waiting.created, waiting.updated), held.migrated) == (dates[WAITING], {})
 
 
 def test_the_carried_dates_are_written_before_the_read(
     fetch: Fetch, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """In one step, whatever the read then meets, even a failure that ends the run."""
-    created = mirrored(fetch.settings.docs)
+    dates = mirrored(fetch.settings.docs)
 
     def failing(*_: object, **__: object) -> None:
         message = "the read fails"
@@ -390,26 +393,26 @@ def test_the_carried_dates_are_written_before_the_read(
     monkeypatch.setattr(fetching, "read_worklog", failing)
     with pytest.raises(RuntimeError, match="the read fails"):
         fetch()
-    assert fetch.held().migrated == created
+    assert fetch.held().migrated == dates
 
 
 def test_a_file_of_the_mirror_that_does_not_read_is_a_warning_and_its_date_not_carried(
     fetch: Fetch,
 ) -> None:
     """By its path in the mirror, never its content; the fetch goes on and ends done."""
-    created = mirrored(fetch.settings.docs)
+    dates = mirrored(fetch.settings.docs)
     damaged = next((fetch.settings.docs / "worklog" / "entries").glob(f"{TIDY}-*.md"))
     damaged.write_text("not a file of the mirror\n", "utf-8")
     path = damaged.relative_to(fetch.settings.docs).as_posix()
     outcome = fetch()
     assert outcome.ending == "done"
-    reason = f"{path}: no front matter; its created date is not carried over"
+    reason = f"{path}: no front matter; its dates are not carried over"
     assert [(each.where, each.reason) for each in outcome.warnings] == [
         (path, reason),
         (UNLINKED_MEETING.where, UNLINKED_MEETING.reason),
     ]
     assert fetch.held().documents[TIDY].created == MODIFIED
-    assert len(created) == DOCUMENTS
+    assert len(dates) == DOCUMENTS
 
 
 def test_two_work_logs_keep_a_store_each(fetch: Fetch, tmp_path: Path) -> None:

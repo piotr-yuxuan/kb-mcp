@@ -23,7 +23,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -963,21 +963,28 @@ def test_the_mirror_deleted_comes_back_whole_from_the_store_converting_nothing(r
     assert {name: data for name, (data, _) in snapshot(run.docs).items()} == before
 
 
-def test_a_mirror_of_the_base_keeps_every_created_date_through_a_fetch_and_a_prepare(
-    run: Run,
-) -> None:
+def dated(files: list[MirrorFile]) -> dict[str, tuple[datetime, datetime]]:
+    """Give each file's created and updated dates, by its document's id."""
+    return {each.matter.id: (each.matter.created, each.matter.updated) for each in files}
+
+
+def test_a_mirror_of_the_base_keeps_every_date_through_a_fetch_and_a_prepare(run: Run) -> None:
     """Plan 060, criterion 3: a data folder that the base prepared, with no copy store.
 
-    The org files' times have moved on, so that a date taken afresh would differ, an
-    undated entry's among them; every file is written again, in today's front matter.
+    The org files' times have moved on, so that a date taken afresh would differ, those of
+    the undated entries and transcript among them: each document keeps both dates of its
+    file, as the base kept them while its text held, and every file is written again, in
+    today's front matter. So again after the copy store is deleted, the org files later.
     """
     base = base_mirror(run.docs)
-    created = {load(text, path)[0].id: load(text, path)[0].created for path, text in base.items()}
+    dates = dated([MirrorFile(path, *load(text, path)) for path, text in base.items()])
     settle(run.root, LATER)
     assert run().problems == ()
-    files = run.files()
-    assert {each.matter.id: each.matter.created for each in files} == created
-    assert run.by_title("Tidy the runbooks folder").matter.updated == LATER
+    assert dated(run.files()) == dates
+    shutil.rmtree(run.store.folder)
+    settle(run.root, LATER + timedelta(hours=1))
+    assert run().problems == ()
+    assert dated(run.files()) == dates
 
 
 def test_a_file_not_read_at_the_first_fetch_keeps_its_documents_files_and_dates(

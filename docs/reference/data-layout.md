@@ -304,7 +304,8 @@ place, so that it is the last write or the one before it, never part of one.
 ```json
 {
   "as_of": "2026-11-16T08:30:00.250000+00:00",
-  "migrated": {"t-20261021-notes-on-x": "2026-10-22T06:00:00+00:00"},
+  "migrated": {"t-20261021-notes-on-x": {"created": "2026-10-22T06:00:00+00:00",
+                                         "updated": "2026-10-22T06:00:00+00:00"}},
   "documents": [
     {"type": "meeting", "id": "m-20261027-payments-stand-up", "title": "Payments stand-up",
      "status": "current", "labels": ["work"],
@@ -320,7 +321,7 @@ place, so that it is the last write or the one before it, never part of one.
 | Key | Value |
 |---|---|
 | `as_of` | the moment at which the last read of the work log that met no problem began, the as-of time of its one scope; `null` before any |
-| `migrated` | by document id, the `created` that the mirror held of each document that no read has taken since the store began ([the work log](#the-work-log)) |
+| `migrated` | by document id, the `created` and `updated` that the mirror held of each document that no read has taken since the store began ([the work log](#the-work-log)) |
 | `documents` | each document as the last read that took it found it, in the order read: its `type`, `id` and `title`, its `status`, `labels`, `breadcrumb` and `people`, each name as written, its `links`, each a relation and the id of the other document, of the same source, its `created` and `updated`, `file`, the org file that holds it, from the work log's folder, and `text`, what pandoc converts |
 
 Times are ISO 8601 with their offset, to the microsecond. A document's revision is the
@@ -648,12 +649,12 @@ replaces it; it finds no document gone, and leaves `as_of` as it was. So each la
 stays in the store, and in the mirror, which prepare writes from it. Each problem says
 what it held back, as `worklog.problem` ([fetch's telemetry](telemetry/fetch.md)), at
 each run until it is fixed. A store's first fetch, on a data directory without the
-source's copy store, first reads the `created` of each file of the source's folders of
-the mirror that prepare writes, one of each document type (`worklog_globs`), in today's
-front matter or plan 058's, and writes them into the store, as
-`migrated`, before it reads the folder: a document read takes its date from there, and
-one that no read takes yet keeps its file of the mirror, which prepare removes nothing
-of meanwhile. A file of the mirror that does not read then is a warning by its path: its
+source's copy store, first reads the `created` and `updated` of each file of the
+source's folders of the mirror that prepare writes, one of each document type
+(`worklog_globs`), in today's front matter or plan 058's, and writes them into the
+store, as `migrated`, before it reads the folder: a document read takes its dates from
+there as its stored copy's, its text read then taken as theirs, and one that no read
+takes yet keeps its file of the mirror, which prepare removes nothing of meanwhile. A file of the mirror that does not read then is a warning by its path: its
 date is not carried over.
 
 Prepare converts each document's text through the source's rows of the cache of
@@ -741,8 +742,9 @@ problem naming `kb-mcp fetch worklog`, its row failed and the others going on.
   and alone for a day or a meeting.
 - `revision` is the first 16 hex digits of the SHA-256 of the org text that pandoc
   converts, and of nothing else: a document whose revision has not changed keeps its
-  stored dates, but a day's, a meeting's and a dated transcript's, their day, found at
-  each read. So a revision says no more than the text: what the text does not hold, such
+  stored dates, and one that its store's first read takes, those carried over from the
+  mirror, but a day's, a meeting's and a dated transcript's, their day, found at each
+  read. So a revision says no more than the text: what the text does not hold, such
   as a transcript's links back to the meetings that name it, its labels inherited from
   above, or its breadcrumb, may change while its revision holds, and is written all the
   same.
@@ -751,9 +753,8 @@ problem naming `kb-mcp fetch worklog`, its row failed and the others going on.
   whatever their lines, turns and timestamps hold, since the work log gives the day of a
   meeting and never its time; else the earliest and latest timestamps of the
   document's lines, as written, up to its file's modification time, a later one being a
-  plan; else, without any, the modification time, `created` keeping the stored copy's,
-  else the one carried over from the mirror. A file of the mirror, edited by hand or
-  not reading, is written again from the store.
+  plan; else, without any, the modification time, `created` keeping the stored copy's.
+  A file of the mirror, edited by hand or not reading, is written again from the store.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are

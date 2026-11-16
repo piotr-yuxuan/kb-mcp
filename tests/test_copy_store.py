@@ -2,7 +2,7 @@
 
 Expectations come from the plan's "The copy store" and the data layout's section on it:
 for each document, its type, properties, text and org file; the revision, the digest of
-the text alone; the created dates carried over from the mirror; the as-of time; one
+the text alone; the dates carried over from the mirror; the as-of time; one
 file per source, replaced whole, written by one run at a time.
 """
 
@@ -59,7 +59,7 @@ ENTRY = WorklogCopy(
 )
 HELD = Copies(
     documents={MEETING.id: MEETING, ENTRY.id: ENTRY},
-    migrated={"t-20261021-notes-on-x": SEEN},
+    migrated={"t-20261021-notes-on-x": (SEEN, DAY)},
     as_of=SEEN,
 )
 
