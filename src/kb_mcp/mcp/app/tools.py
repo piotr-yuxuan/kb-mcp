@@ -195,10 +195,10 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
         found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
         # A ref holds a colon: a query without one needs no list of the index's sources.
         held = [source for source, _ in reader.values("source")] if ":" in asked.query else []
-        given = identifiers(asked.query, held)
-        named = [*given.refs, *given.keys, *given.ids]
+        named = identifiers(asked.query, held).named
         # Each document that the query names as it is cited: by its ref, else by its key,
-        # else its id, alone; each at the place of its first name in the query.
+        # else its id, alone; pinned in the order of its first name in the query, refs,
+        # keys and ids alike.
         cited = {
             entry.path: [
                 named.index(each)

@@ -121,6 +121,17 @@ def test_a_ref_is_never_cut_short(text: str, refs: tuple[str, ...]) -> None:
     assert (found.refs, found.keys) == (refs, ())
 
 
+def test_every_name_comes_in_the_order_of_its_first_mention() -> None:
+    """Refs, keys and ids alike, wherever refs stand before them; a name again adds nothing."""
+    found = identifiers(
+        "jira:PRB-12 jira:PRB-14 PRB-13 196900 "
+        "https://x.atlassian.net/wiki/spaces/ENG/pages/229377/X prb-13 jira:PRB-12",
+        ("jira",),
+    )
+    assert found.named == ("jira:PRB-12", "jira:PRB-14", "PRB-13", "196900", "229377")
+    assert found.ids == ("229377", "196900")
+
+
 def test_a_ref_s_source_is_read_in_any_case() -> None:
     """A source written in capitals is that source, given in lower case; its key stays."""
     found = identifiers("see JIRA:PRB-12 and (Jira:PRB-13)", ("jira",))

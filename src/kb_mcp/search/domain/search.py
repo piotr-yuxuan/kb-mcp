@@ -205,11 +205,12 @@ Place = tuple[tuple[str, str], ...]
 
 
 class Identifiers(Record):
-    """The refs, issue keys and page ids that a text names, in its order."""
+    """The refs, issue keys and page ids that a text names, each kind in its order."""
 
     refs: tuple[str, ...]
     keys: tuple[str, ...]
-    ids: tuple[str, ...]
+    ids: tuple[str, ...]  # those of addresses first
+    named: tuple[str, ...]  # every one of them, in the order of its first mention
 
 
 class Plan(Record):
@@ -430,24 +431,30 @@ def identifiers(text: str, sources: Collection[str] = ()) -> Identifiers:
     document, given with its source in lower case; its key or id is not named apart, as
     another word before a colon leaves it. A page id is a number standing alone between
     spaces, punctuation aside, or the id in a page's address; those of addresses come
-    first.
+    first. ``named`` gives refs, keys and ids alike in the order of their first mention.
     """
     refs = [
-        f"{found[1].lower()}:{found[2]}"
+        (found.start(), f"{found[1].lower()}:{found[2]}")
         for found in REF_IN_TEXT.finditer(text)
         if found[1].lower() in sources
     ]
-    rest = REF_IN_TEXT.sub(lambda found: " " if found[1].lower() in sources else found[0], text)
-    keys = (key.upper() for key in KEY_IN_TEXT.findall(rest))
-    alone = (word.strip(string.punctuation) for word in rest.split())
-    ids = (
-        *ID_IN_ADDRESS.findall(rest),
-        *(word for word in alone if word.isascii() and word.isdigit()),
+    # Each ref blanked to its length, so that every other name keeps its place.
+    rest = REF_IN_TEXT.sub(
+        lambda found: " " * len(found[0]) if found[1].lower() in sources else found[0], text
     )
+    upper = ((found.start(), found[0].upper()) for found in KEY_IN_TEXT.finditer(rest))
+    keys = [(at, key) for at, key in upper if ISSUE_KEY.fullmatch(key)]
+    words = re.finditer(r"\S+", rest)
+    alone = ((found.start(), found[0].strip(string.punctuation)) for found in words)
+    ids = [
+        *((found.start(1), found[1]) for found in ID_IN_ADDRESS.finditer(rest)),
+        *((at, word) for at, word in alone if word.isascii() and word.isdigit()),
+    ]
     return Identifiers(
-        refs=tuple(dict.fromkeys(refs)),
-        keys=tuple(dict.fromkeys(key for key in keys if ISSUE_KEY.fullmatch(key))),
-        ids=tuple(dict.fromkeys(ids)),
+        refs=tuple(dict.fromkeys(ref for _, ref in refs)),
+        keys=tuple(dict.fromkeys(key for _, key in keys)),
+        ids=tuple(dict.fromkeys(each for _, each in ids)),
+        named=tuple(dict.fromkeys(name for _, name in sorted([*refs, *keys, *ids]))),
     )
 
 

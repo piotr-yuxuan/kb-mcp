@@ -169,6 +169,32 @@ def test_a_ref_as_answers_cite_it_comes_first(tmp_path: Path) -> None:
     assert sorted(cited("kafka issue:PROJ-7")[:2]) == ["jira:PROJ-7", "tracker:PROJ-7"]
 
 
+@pytest.mark.parametrize(
+    ("query", "first"),
+    [
+        ("kafka PRB-13 jira:PRB-12", ["jira:PRB-13", "jira:PRB-12"]),
+        ("kafka jira:PRB-12 PRB-13", ["jira:PRB-12", "jira:PRB-13"]),
+        ("196900 kafka PRB-13", ["confluence:196900", "jira:PRB-13"]),
+        ("PRB-13 kafka confluence:196900", ["jira:PRB-13", "confluence:196900"]),
+    ],
+)
+def test_documents_named_come_in_the_order_of_their_first_mention(
+    tmp_path: Path, query: str, first: list[str]
+) -> None:
+    """Refs, keys and ids alike: the one named first in the query comes first."""
+    library = built(
+        tmp_path,
+        [
+            (page("196845", "Kafka"), "# Kafka\n\nKafka kafka kafka.\n"),
+            (page("196900", "Unrelated"), None),
+            (issue("PRB-12", "Unrelated too"), None),
+            (issue("PRB-13", "Unrelated as well"), None),
+        ],
+    )
+    answer = parts(library.search(query))[1]
+    assert re.findall(r"^ {3}(\S+) \|", answer, re.MULTILINE)[:3] == [*first, "confluence:196845"]
+
+
 def test_a_query_without_a_colon_reads_no_source(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """A ref holds a colon: only a query that holds one has the index list its sources.
 

@@ -305,9 +305,9 @@ it copies from the site inside a block marked as untrusted
 `as of: unknown` ([`as_of`](../../src/kb_mcp/mcp/app/responses.py)). In the lexical mode
 it never opens the endpoint. A search ranks in the mode that `search_mode` sets
 ([`ranking`](../../src/kb_mcp/mcp/app/tools.py)); refs, issue keys and page ids
-named in a query put their documents first, in every mode, each the documents that it
-cites: a ref after its source, in any case, its source's alone, where the index holds
-that source;
+named in a query put their documents first, in every mode, in the order of their first
+mention, each the documents that it cites: a ref after its source, in any case, its
+source's alone, where the index holds that source;
 after another word and a colon, a key or id stays bare.
 
 ### By words
