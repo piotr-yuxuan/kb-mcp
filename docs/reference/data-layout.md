@@ -281,7 +281,10 @@ Two more of the store's own records, each replaced whole:
   the mirror ([below](#a-sources-file)), and `whole_read_at`, when a run last read it whole,
   the time that the run started: a space's at each run that lists it, a project's at
   each whole read ([above](#a-projects-whole-reads)), since plan 061; each
-  time only once known. An entry without `type`, as plan 056 found them, is of its
+  time only once known. A scope read whole and not yet covered, as a project whose
+  first search failed, has an entry without `start` and `end`, which keeps its
+  `whole_read_at`, so that its next run is no whole read again within the week;
+  versions before plan 061 refuse such a record. An entry without `type`, as plan 056 found them, is of its
   source's scope type, its source being its connector's name. A run that listed a
   scope whole joins its fetch window to that period when the two overlap or touch, or
   replaces an inexact period that the window starts at or before. Without a failure, such a

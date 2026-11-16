@@ -575,7 +575,8 @@ class RawStore:
         Whether it is exact, its as-of time and the time of its last whole read. An entry
         without ``type``, as every entry was before plan 056, is of its connector's one
         scope type; one without ``exact``, as before plan 034, is not exact; one without a
-        time has none.
+        time has none; one without ``start``, a scope read whole and not yet covered, has
+        no period.
         """
         path = self.root / COVERAGE
         if not path.exists():
@@ -592,7 +593,8 @@ class RawStore:
                     raise RefusedError(message)
                 scope = Scope(source=source, type=SCOPE_TYPES[named], key=item.text("key"))
             try:
-                periods[scope] = Period(item.time("start"), item.time("end"))
+                if "start" in item.value:
+                    periods[scope] = Period(item.time("start"), item.time("end"))
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
@@ -606,18 +608,26 @@ class RawStore:
     def put_coverage(self, coverage: Coverage) -> None:
         """Replace the record of coverage, whole; each entry with what it holds beside its period.
 
-        Its scope type, whether it is exact, and its times. The keys of plan 034's record
-        keep their meaning, so that its versions still read the record.
+        Its scope type, whether it is exact, and its times. A scope read whole and not yet
+        covered, its search having failed, has an entry without a period, which versions
+        before plan 061 refuse. The keys of plan 034's record keep their meaning, so that
+        its versions still read a record of periods alone.
         """
         self._check_writing()
         times = {name: getattr(coverage, name) for name in COVERAGE_TIMES}
+        periods = {
+            scope: {
+                "start": covered.start.astimezone(UTC).isoformat(),
+                "end": covered.end.astimezone(UTC).isoformat(),
+            }
+            for scope, covered in coverage.periods.items()
+        }
         entries = [
             {
                 "source": scope.source,
                 "type": scope.type.name,
                 "key": scope.key,
-                "start": covered.start.astimezone(UTC).isoformat(),
-                "end": covered.end.astimezone(UTC).isoformat(),
+                **periods.get(scope, {}),
                 **({"exact": True} if scope in coverage.exact else {}),
                 **{
                     name: held[scope].astimezone(UTC).isoformat()
@@ -625,9 +635,9 @@ class RawStore:
                     if scope in held
                 },
             }
-            for scope, covered in sorted(
-                coverage.periods.items(),
-                key=lambda item: (item[0].source, item[0].type.name, item[0].key),
+            for scope in sorted(
+                periods.keys() | coverage.whole_read_at.keys(),
+                key=lambda scope: (scope.source, scope.type.name, scope.key),
             )
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))

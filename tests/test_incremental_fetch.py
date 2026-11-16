@@ -1634,10 +1634,12 @@ def test_an_issue_moved_to_a_project_is_followed_only_where_a_source_of_its_site
 class ProjectSite(RefreshSite):
     """The scripted site whose searches answer by project: ``projects`` holds each one's issues.
 
-    An issue of any project answers its GET, and any other 404, as deleted.
+    An issue of any project answers its GET, and any other 404, as deleted. With
+    ``searches_fail``, a search by update time answers 400, and a whole read still answers.
     """
 
     projects: dict[str, dict[str, dict[str, object]]] = field(default_factory=dict)
+    searches_fail: bool = False
 
     def __post_init__(self) -> None:
         """Serve every project's issues by id."""
@@ -1653,7 +1655,10 @@ class ProjectSite(RefreshSite):
 
     def by_project(self, request: httpx.Request) -> httpx.Response:
         """Answer a search, whole or by update time, with every issue of its project."""
-        key = request.url.params["jql"].split('"')[1]
+        jql = request.url.params["jql"]
+        if self.searches_fail and "updated" in jql:
+            return httpx.Response(400, json={"errorMessages": ["refused"]})
+        key = jql.split('"')[1]
         issues = list(self.projects.get(key, {}).values())
         return httpx.Response(200, json={"issues": issues, "isLast": True})
 
@@ -1752,3 +1757,22 @@ def test_a_run_reads_the_stored_issues_and_the_scopes_kept_once(
         ("confluence", "holders", Issue): 1,
         ("confluence", "listed_ids", "PRB", Issue): 1,
     }
+
+
+def test_a_whole_read_is_kept_for_a_project_without_a_period_yet(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: a first run whose search fails still records its whole read.
+
+    The project has no covered period, and the next run, within the interval, searches
+    it by update time alone.
+    """
+    chosen = settings(tmp_path)
+    issues = {"PRB": {"20001": issue_at("20001", FIRST - timedelta(days=1), files=False)}}
+    failing = ProjectSite(projects=issues, searches_fail=True)
+    run(chosen, monkeypatch, failing, first_week([], ["PRB"]), FIRST)
+    coverage = RawStore(chosen.raw, "jira").coverage()
+    assert (coverage.periods, coverage.whole_read_at) == ({}, {PRB: FIRST})
+    later = ProjectSite(projects=issues)
+    run(chosen, monkeypatch, later, catch_up([], ["PRB"]), FIRST + timedelta(hours=1))
+    assert whole_reads(later) == [False]
