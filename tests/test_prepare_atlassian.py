@@ -32,7 +32,7 @@ from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page, time_revision
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
 from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
 from kb_mcp.sources.atlassian.fetch.domain.period import Period
@@ -488,6 +488,35 @@ def test_each_folder_is_a_document_without_a_body(sandbox: Sandbox) -> None:
         {"page": ["author", "commenter"], "blogpost": ["author", "commenter"], "folder": []},
         ["folder"],
     )
+
+
+def test_a_folder_without_its_status_dates_or_version_is_still_a_document(
+    sandbox: Sandbox,
+) -> None:
+    """Review of 061: a folder's response of another shape marks no space damaged.
+
+    Read without its status, its creation time and its version, which the sandbox site
+    never showed, it still has its file: no status, its dates the space's listing time,
+    no version, and a revision by that time.
+    """
+    bare = {
+        key: value for key, value in FOLDER.items() if key not in {"status", "createdAt", "version"}
+    }
+    listed = datetime(2026, 10, 21, 9, tzinfo=UTC)
+    with sandbox.store.writing():
+        sandbox.store.put_space(
+            v2_space(id=SPACE_ID), LISTED, [POST_LISTED], [bare], listed_at=listed
+        )
+    assert sandbox.run()["confluence"].problems == ()
+    folder, body = load(sandbox.text("confluence/MFS/200-plans.md"), "folder")
+    assert (folder.status, folder.created, folder.updated, folder.version, body) == (
+        "",
+        listed,
+        listed,
+        None,
+        "",
+    )
+    assert folder.revision == time_revision(listed)
 
 
 def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(

@@ -62,17 +62,19 @@ class Space(Record):
 class Folder(Record):
     """A Confluence folder: a container, a node of the space's tree with a title and no body.
 
-    It is versioned as a page is, and its parent is a page or a folder, as a page's is.
+    It is versioned as a page is, and its parent is a page or a folder, as a page's is. Its
+    status, its creation and update times and its version are each None when its response
+    gives none.
     """
 
     document_type: ClassVar[DocumentType] = FOLDER
 
     id: str
     title: str
-    status: str
-    created: datetime
-    updated: datetime
-    version: int
+    status: str | None = None
+    created: datetime | None = None
+    updated: datetime | None = None
+    version: int | None = None
     parent_id: str | None = None
     parent_type: str | None = None  # a page or a folder, as for a page
 
@@ -81,11 +83,6 @@ class Folder(Record):
         """Refuse an id that could not name a node."""
         require(IDENTIFIER, self.id, "id")
         return self
-
-    @property
-    def revision(self) -> str:
-        """Name this state by its version."""
-        return version_revision(self.version)
 
 
 class Attachment(Record):

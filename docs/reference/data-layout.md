@@ -213,10 +213,11 @@ result of every page of each list:
 <data>/raw/<source>/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
-Each folder's response is read whole as a page's listing entry is: its id, title,
-status, `createdAt`, `version` (`number` and `createdAt`), `parentId` and `parentType`
-(`confluence_v2.folder`), as a folder is a document since plan 061 ([the mirror's
-tree](#the-markdown-mirror)).
+Each folder's response is read as a page's listing entry is: its id and title, and its
+`parentId` and `parentType` when given; since plan 061, as a folder is a document
+([the mirror's tree](#the-markdown-mirror)), also its status, `createdAt` and `version`
+(`number` and `createdAt`), each only when given, as the sandbox site never showed
+them (`confluence_v2.folder`).
 
 `<source>` is the name of the source of spaces, `confluence` by default; the users are
 its site's, which one source of spaces lists, so that two sites keep theirs apart and a
@@ -446,7 +447,10 @@ nothing in them depends on when they were prepared.
   folder`, in the space whose freshest listing names it, as a page is. Its file follows
   its space's last listing of folders, as the tree does, with no tombstone: that listing
   names only the folders above a listed page, so a folder emptied, deleted or whose GET
-  failed loses its file at the next prepare that finds no problem.
+  failed loses its file at the next prepare that finds no problem. A folder whose
+  response gave no status has an empty one; no update time, its space's listing time
+  (`listed_at.json`), when it was last read so; no creation time, its update time; no
+  version, a `version` of `null` and a revision by its update time.
 
 Each document starts with front matter written by `mirror.adapters.markdown.dump` and
 read by `mirror.adapters.markdown.load`, from a `mirror.domain.mirror.FrontMatter`;
@@ -478,7 +482,7 @@ order or type, by name.
 | `parent` | string or null | the document id of the document above it at its origin, `<source>:<id>` (`kernel.names.DOCUMENT_ID`), mirrored or not: a page's parent page or folder, from its listing when it is listed; an issue's parent issue; `null` at the top, and for blog posts and the work log |
 | `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
-| `version` | integer or null | the Confluence version number, a folder's too; `null` for Jira |
+| `version` | integer or null | the Confluence version number, a folder's too, unless its response gave none; `null` for Jira |
 | `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, for a folder, whose response gives no web page, and for the work log |
 | `breadcrumb` | list of strings | the titles along the parents, root first: a page's ancestor pages and folders; an issue's parent, by the title that the issue's response gives it, then each further parent of the raw store, by its own response's; or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |

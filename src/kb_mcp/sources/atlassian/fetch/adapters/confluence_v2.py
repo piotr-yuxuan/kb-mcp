@@ -47,16 +47,21 @@ def space(fields: Fields) -> Space:
 
 
 def folder(fields: Fields) -> Folder:
-    """Read a folder from GET /wiki/api/v2/folders/{id}: a page's fields, but its body's."""
-    version = fields.object("version")
+    """Read a folder from GET /wiki/api/v2/folders/{id}: a page's fields, but its body's.
+
+    Its status, creation time and version, which the sandbox site never showed, are each
+    read only when given, so that a response without them still makes a folder.
+    """
+    version = fields.optional_object("version", absent=True)
+    created = fields.time("createdAt") if fields.optional_text("createdAt", absent=True) else None
     with fields.refusals():
         return Folder(
             id=fields.text("id"),
             title=fields.text("title"),
-            status=fields.text("status"),
-            created=fields.time("createdAt"),
-            updated=version.time("createdAt"),
-            version=version.integer("number"),
+            status=fields.optional_text("status", absent=True),
+            created=created,
+            updated=None if version is None else version.time("createdAt"),
+            version=None if version is None else version.integer("number"),
             parent_id=fields.optional_text("parentId"),
             parent_type=fields.optional_text("parentType"),
         )

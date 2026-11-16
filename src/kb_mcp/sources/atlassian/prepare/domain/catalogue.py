@@ -29,6 +29,8 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Issue,
     Page,
     Space,
+    time_revision,
+    version_revision,
 )
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.atlassian.fetch.domain.deletions import DocumentKey, Tombstone
@@ -67,9 +69,10 @@ class AtlassianFrontMatter(FrontMatter):
     def check_atlassian(self) -> Self:
         """Refuse what the layout's table rules out for Confluence and Jira.
 
-        A type of neither, a key that only another type has, a scope not of its type's
-        scope type or off its key's rule, a revision off ``REVISION``, and a role that its
-        type does not take.
+        A type of neither, a key that only another type has, or that its type always has
+        and it lacks, but a container's version, a scope not of its type's scope type or off
+        its key's rule, a revision off ``REVISION``, and a role that its type does not
+        take.
         """
         if self.type not in {
             each.name for each in (*SPACE.document_types, *PROJECT.document_types)
@@ -78,7 +81,9 @@ class AtlassianFrontMatter(FrontMatter):
             raise RefusedError(message)
         for name, scope_type in ONLY.items():
             held = self.type in {each.name for each in scope_type.document_types}
-            if (getattr(self, name) is not None) != held:
+            given = getattr(self, name) is not None
+            # A container's response may give no version, which it then lacks.
+            if given != held and not (name == "version" and self.type in CONTAINERS):
                 message = f"{name}: only and always in a {scope_type.name}"
                 raise RefusedError(message)
         kind, key = self.scope.split(":", 1)
@@ -217,15 +222,19 @@ def identity(person: SiteUser) -> str:
 
 
 def folder_front_matter(
-    source: str, folder: Folder, space: Space, catalogue: Catalogue
+    source: str, folder: Folder, space: Space, catalogue: Catalogue, listed: datetime
 ) -> FrontMatter:
     """Say what the mirror says of a source's folder in a space: a container, with no body.
 
     Its scope is the space's, its parent and its breadcrumb are as a page's would be,
     and its revision is its version's. It names no people, labels nor links, and has no
-    address: its response gives no web page.
+    address: its response gives no web page. A folder whose response gave no status has
+    none; no update time, the time ``listed`` of its space's listing, which last read it
+    so; no creation time, its update time; no version, none, and a revision by its
+    update time.
     """
     parent = catalogue.parent(folder)
+    updated = folder.updated or listed
     return AtlassianFrontMatter(
         source=source,
         type=FOLDER.name,
@@ -233,16 +242,18 @@ def folder_front_matter(
         key=None,
         title=one_line(folder.title),
         scope=scope_name(SPACE.name, space.key),
-        status=one_line(folder.status),
+        status=one_line(folder.status or ""),
         subtype=None,
         labels=(),
         people=(),
         parent=None if parent is None else document_id(source, parent),
         links=(),
-        created=folder.created.astimezone(UTC),
-        updated=folder.updated.astimezone(UTC),
+        created=(folder.created or updated).astimezone(UTC),
+        updated=updated.astimezone(UTC),
         version=folder.version,
-        revision=folder.revision,
+        revision=time_revision(updated)
+        if folder.version is None
+        else version_revision(folder.version),
         url=None,
         breadcrumb=catalogue.breadcrumb(folder),
     )

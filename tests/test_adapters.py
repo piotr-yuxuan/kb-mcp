@@ -299,7 +299,21 @@ def test_a_folder_is_read_with_its_title_parent_and_version() -> None:
         parent_id="196725",
         parent_type="page",
     )
-    assert folder.revision == "000002"
+
+
+def test_a_folder_reads_without_its_status_dates_or_version_not_without_its_title() -> None:
+    """Review of 061: what main read stays as strict; what 061 added is read when given."""
+    bare = {
+        key: value
+        for key, value in v2_folder().items()
+        if key not in {"status", "createdAt", "version"}
+    }
+    assert confluence_v2.folder(Fields(bare, "folder")) == Folder(
+        id="197001", title="A folder", parent_id="196725", parent_type="page"
+    )
+    del bare["title"]
+    with pytest.raises(RepresentationError, match=r"^folder\.title: missing$"):
+        confluence_v2.folder(Fields(bare, "folder"))
 
 
 def test_a_project_key_that_is_a_path_is_refused() -> None:
