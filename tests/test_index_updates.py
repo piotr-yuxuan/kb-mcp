@@ -359,6 +359,26 @@ def test_a_type_named_a_container_since_the_last_build_is_read_again(data: Path)
         assert reader.bounds(path) == []
 
 
+def test_a_type_no_longer_a_container_is_read_again_with_its_sections(data: Path) -> None:
+    """Review of 061: a folder indexed with no section, its file unchanged, gets one.
+
+    Its source's file, written again, no longer names its type a container: the update
+    reads the folder again, and holds what a whole build holds.
+    """
+    docs = data / "docs"
+    step = Step(data)
+    path = write(docs, page("1002", "Guides", type="folder"), "")
+    step.equal()
+    with reading(data / "index.sqlite") as reader:
+        assert reader.bounds(path) == []
+    declared = SourceFile(roles={"page": (), "blogpost": (), "folder": ()}, as_of={})
+    (docs / "confluence" / SOURCE_FILE).write_bytes(dumped(declared))
+    step.run()
+    assert rows(data / "index.sqlite") == rows(step.whole())
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.bounds(path)) == 1
+
+
 def test_a_scope_s_as_of_time_changed_alone_is_indexed_and_served(data: Path) -> None:
     """Plan 057, criterion 3: ``index`` reads each scope's as-of time from its source's file.
 
