@@ -1986,3 +1986,26 @@ def test_an_issue_named_by_this_run_s_whole_read_ends_the_run_without_a_tombston
     back = ProjectSite(projects={"OPS": {}, "PRB": {"20002": in_project("20002", "PRB")}})
     run(chosen, monkeypatch, back, catch_up([], order), FIRST + timedelta(days=3) + WEEK)
     assert RawStore(chosen.raw, "jira").tombstones() == {}
+
+
+@pytest.mark.parametrize(("first", "then"), [("PRB", "OPS"), ("OPS", "PRB")])
+def test_a_first_answer_of_gone_in_one_project_is_confirmed_by_the_other_s_probe(
+    tmp_path: Path, monkeypatch: MonkeyPatch, first: str, then: str
+) -> None:
+    """Review of 061: another project's tombstone keeps its date, not only once confirmed.
+
+    Both whole reads named 20002 before it was deleted; the first project read whole
+    again dates it gone, the other, two hours later, confirms that tombstone.
+    """
+    chosen = settings(tmp_path)
+    deleted = moved_then_deleted(chosen, monkeypatch)
+    due = FIRST + timedelta(days=3) + WEEK
+    run(chosen, monkeypatch, deleted, catch_up([], [first]), due)
+    run(chosen, monkeypatch, deleted, catch_up([], [then]), due + 2 * CONFIRM_AFTER)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert (stone.key, stone.scope.key, stone.first_gone, stone.confirmed) == (
+        ("jira", "issue", "20002"),
+        first,
+        due,
+        True,
+    )
