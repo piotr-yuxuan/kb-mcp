@@ -108,9 +108,10 @@ def arguments(stage: str, *given: str) -> argparse.Namespace:
 @pytest.mark.parametrize(
     ("stage", "given", "taken"),
     [
-        ("fetch", (), ["confluence", "jira"]),
+        ("fetch", (), ["confluence", "jira", "worklog"]),
         ("fetch", ("jira",), ["jira"]),
         ("fetch", ("jira", "confluence", "jira"), ["confluence", "jira"]),
+        ("fetch", ("worklog", "jira"), ["jira", "worklog"]),
         ("prepare", (), ["confluence", "jira", "worklog"]),
         ("prepare", ("jira",), ["jira"]),
         ("prepare", ("worklog", "jira"), ["jira", "worklog"]),
@@ -125,11 +126,21 @@ def test_names_choose_among_the_sources_each_once_in_the_registry_s_order(
 
 
 def test_what_each_command_leaves_out_says_why() -> None:
-    """A fetch needs a source's setting; a prepare, of a source read in place alone."""
+    """A fetch needs a source's setting; a prepare, of a source of one scope alone.
+
+    The work log has a fetcher since plan 060; a source read in place without one has
+    nothing to fetch.
+    """
     settings = CONFIGURED | {"sources.jira.projects": (), "sources.worklog.path": None}
     found, left = chosen(arguments("fetch"), settings)
     assert [source.name for source in found] == ["confluence"]
-    assert left == {"jira": "not configured", "worklog": "read in place, it has nothing to fetch"}
+    assert left == {"jira": "not configured", "worklog": "not configured"}
+    memo = sourced(CONFLUENCE, replace(WORKLOG, name="memo", fetcher=None))
+    found, left = chosen(parser(sources=memo).parse_args(["fetch"]), settings)
+    assert ([source.name for source in found], left) == (
+        ["confluence"],
+        {"memo": "read in place, it has nothing to fetch"},
+    )
     found, left = chosen(arguments("prepare"), settings)
     assert [source.name for source in found] == ["confluence", "jira"]
     assert left == {"worklog": "not configured"}
@@ -216,20 +227,23 @@ def test_a_source_that_does_not_exist_is_refused_by_the_options(
 
 
 def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declares_none() -> None:
-    """Of the sources taken: --since by Jira, under a registry whose Jira has no option."""
+    """Of the sources taken: --since by Jira, under a registry whose Jira has no option.
+
+    And by the work log, whose fetch reads its folder whole, whatever the period.
+    """
     plain = replace(
         JIRA, scope_types=(replace(names.PROJECT, option=None),), options=(), described=None
     )
     registry = sourced(CONFLUENCE, plain, WORKLOG)
     given = parser(sources=registry).parse_args(["fetch", "--since", "7d"])
-    assert "--since: ignored by jira" in fetch_described(given, CONFIGURED)
+    assert "--since: ignored by jira, worklog" in fetch_described(given, CONFIGURED)
     alone = parser(sources=registry).parse_args(["fetch", "--since", "7d", "confluence"])
     assert not [line for line in fetch_described(alone, CONFIGURED) if "ignored" in line]
 
 
 def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
     """A source's options are its fetch's: the parser offers none, and the summary reads none."""
-    noted = replace(WORKLOG, options=(Option(flag="--tag", help="a tag"),))
+    noted = replace(WORKLOG, options=(Option(flag="--tag", help="a tag"),), fetcher=None)
     registry = sourced(CONFLUENCE, JIRA, noted)
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
@@ -267,7 +281,7 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
             (
                 f"source confluence: spaces MFS, site {SITE}\n",
                 "source jira: left out, not named\n",
-                "source worklog: left out, read in place, it has nothing to fetch\n",
+                "source worklog: left out, not named\n",
             ),
         ),
         (
@@ -307,13 +321,18 @@ def test_an_index_with_nothing_prepared_says_so_and_names_the_command(
     assert "nothing is prepared yet; `kb-mcp prepare` writes it" in capsys.readouterr().err
 
 
-def test_a_machine_with_the_work_log_alone_has_nothing_to_fetch_and_something_to_prepare(
+def test_a_machine_with_the_work_log_alone_fetches_it_then_prepares_it(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The first exits 2, saying of its own sources, as the how-to tells; the second runs."""
+    """Plan 060, criterion 5: a fetch without a name takes the work log, a row of its own.
+
+    The prepare that follows runs from what it fetched.
+    """
     config = settings_file(home, worklog)
-    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.REFUSED
-    assert "nothing to fetch: none of its sources is configured" in capsys.readouterr().err
+    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.OK
+    assert capsys.readouterr().out.startswith(
+        f"worklog: done\n  documents read: {WORKLOG_DOCUMENTS}\n"
+    )
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
 
 
@@ -348,13 +367,18 @@ def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
     assert [err.count(line) for line in lines] == [0, 1]
 
 
+@pytest.mark.usefixtures("signed_in")
 def test_a_false_value_of_a_source_left_out_is_said_not_applied_as_a_true_one_is(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """What holds a value is not the same as what is true: ``archives = false`` is one."""
-    config = settings_file(home, worklog)
+    """What holds a value is not the same as what is true: ``archives = false`` is one.
+
+    A setting of the work log's fetch, said by a fetch that leaves the work log out.
+    """
+    config = settings_file(home, worklog, atlassian=True)
     config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
-    assert main(command(home, config, "prepare", "--dry-run", "confluence")) == ExitStatus.OK
+    given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02", "jira")
+    assert main(given) == ExitStatus.OK
     err = capsys.readouterr().err
     assert "sources.worklog.archives: False (not applied: worklog not named)\n" in err
     assert "not in the command: sources.worklog.archives" not in err
@@ -375,10 +399,12 @@ def test_a_list_emptied_of_a_source_not_named_is_not_said_to_be_lost_by_the_comm
 def test_a_source_read_in_place_is_said_by_its_settings(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """What it covers, in a prepare, as a store's is in a fetch."""
+    """What it covers, in a fetch; in a prepare, all that its store holds, as a store's."""
     config = settings_file(home, worklog)
-    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
+    assert main(command(home, config, "fetch", "worklog", "--dry-run")) == 0
     assert f"source worklog: path {worklog}, archives True\n" in capsys.readouterr().err
+    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
+    assert "source worklog: all that its store holds\n" in capsys.readouterr().err
 
 
 @pytest.fixture
@@ -415,9 +441,11 @@ def test_json_is_one_document_with_a_row_per_source(
     assert [(row["source"], row["ending"]) for row in document["sources"]] == [
         ("confluence", "failed"),
         ("jira", "done"),
+        ("worklog", "done"),
     ]
     assert all(list(row) == ROW_KEYS for row in document["sources"])
     assert "confluence pages: fetched" in document["sources"][0]["counts"]
+    assert document["sources"][2]["counts"]["documents"] == WORKLOG_DOCUMENTS
     assert signed_in.asked
     assert main(command(home, config, "prepare", "--yes", "--format", "json")) == ExitStatus.OK
     document = json.loads(capsys.readouterr().out)

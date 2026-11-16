@@ -324,7 +324,7 @@ def test_a_source_that_names_neither_fetcher_nor_preparer_is_refused(tmp_path: P
     with pytest.raises(ValueError, match=r"^source 'worklog': names neither fetcher nor preparer"):
         main(
             ["check", "--config", str(tmp_path / "none.toml")],
-            sourced(CONFLUENCE, JIRA, replace(WORKLOG, preparers=())),
+            sourced(CONFLUENCE, JIRA, replace(WORKLOG, preparers=(), fetcher=None)),
         )
     refuse(sourced(replace(CONFLUENCE, preparers=())))
 

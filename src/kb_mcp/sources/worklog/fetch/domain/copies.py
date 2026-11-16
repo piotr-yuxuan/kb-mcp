@@ -2,14 +2,15 @@
 
 A fetch reads the work log's folder in place and keeps, for each document, the properties
 that the mirror's front matter says of it and the text that pandoc converts, whose digest
-alone is its revision. Only the copy store's adapter knows how the store is written.
+alone is its revision; ``fetched`` says what the store holds once a read is done. Only the
+copy store's adapter knows how the store is written.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from pydantic import model_validator
 
@@ -17,6 +18,11 @@ from kb_mcp.kernel.names import IDENTIFIER, WORKLOG_TYPES, RefusedError, require
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import RELATIONS
 from kb_mcp.sources.worklog.fetch.domain.worklog import digest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from kb_mcp.sources.worklog.fetch.domain.worklog import WorklogDocument
 
 
 class WorklogCopy(Record):
@@ -84,3 +90,52 @@ class Copies(Record):
             message = "documents: a document kept under another id"
             raise RefusedError(message)
         return self
+
+
+def fetched(
+    stored: Copies, read: Iterable[WorklogDocument], at: datetime, *, complete: bool
+) -> Copies:
+    """Say what the store holds once a read that began at ``at`` has taken ``read``.
+
+    Each document read is copied whole. Its dates are those of its stored copy while its
+    revision holds and it has no day, so that an edit elsewhere in its org file moves
+    neither; else they are its own, as ``WorklogDocument.dates`` gives them from the
+    created date of its stored copy, else of the mirror, carried over, else from none. A
+    ``complete`` read, which met no problem, confirms gone at once each document that it
+    did not take, which leaves the store with its carried date, and is the as-of time.
+    After any other, every document not read keeps its last copy, and each carried date
+    and the as-of time stay.
+    """
+    copies: dict[str, WorklogCopy] = {}
+    for document in read:
+        old = stored.documents.get(document.id)
+        if old is None:
+            created, updated = document.dates(stored.migrated.get(document.id))
+        elif old.revision == digest(document.text) and document.day is None:
+            created, updated = old.created, old.updated
+        else:
+            created, updated = document.dates(old.created)
+        copies[document.id] = WorklogCopy(
+            type=document.type,
+            id=document.id,
+            title=document.title,
+            status=document.status,
+            labels=document.labels,
+            breadcrumb=document.breadcrumb,
+            people=document.people,
+            links=document.links,
+            created=created,
+            updated=updated,
+            file=document.file.path.as_posix(),
+            text=document.text,
+        )
+    if complete:
+        return Copies(documents=copies, migrated={}, as_of=at)
+    return Copies(
+        documents={
+            **copies,
+            **{key: each for key, each in stored.documents.items() if key not in copies},
+        },
+        migrated={key: moment for key, moment in stored.migrated.items() if key not in copies},
+        as_of=stored.as_of,
+    )

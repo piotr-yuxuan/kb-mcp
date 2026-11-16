@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import copy
 import time
-from collections import Counter
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
@@ -29,8 +28,8 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE, WORKLOG_SCOPE_TYPE
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
+from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
@@ -47,20 +46,11 @@ from kb_mcp.mirror.domain.mirror import (
 )
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
-from kb_mcp.sources.worklog.fetch.adapters import files
+from kb_mcp.sources.worklog.fetch.app.fetching import read_worklog
 from kb_mcp.sources.worklog.fetch.domain.worklog import (
-    TODO,
-    TODO_ARCHIVE,
     TYPE_ROLES,
-    WorklogDocument,
     WorklogFrontMatter,
-    held_back,
-    journal,
-    linked_back,
     revision,
-    transcript_ids,
-    transcripts,
-    writable,
 )
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from kb_mcp.sources.worklog.prepare.domain.layout import worklog_globs, worklog_path
@@ -72,32 +62,11 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.output import Detail
     from kb_mcp.mirror.adapters.pandoc import Pandoc
     from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.sources.worklog.fetch.domain.worklog import OrgText
 
 TRACER = trace.get_tracer(__name__)
-# Why a meeting is a warning: its link reaches no transcript found.
-UNLINKED = "its :MEETING: link reaches no transcript found"
 # What a file of the mirror that does not read holds back: itself, neither written over
 # nor removed, with the created date that it may hold.
 AS_IT_IS = "its file, as it is"
-
-
-class Read(Record):
-    """The work log's documents to write, in order, and the HTML transcripts left out.
-
-    The documents are those read that draw on no file not read. Problems stop removals
-    but of a written document's old files; warnings, such as two transcripts of one id,
-    do not. A problem's ``where`` is the path from the work log's folder, or a
-    document's file and id, never its content; ``held_back`` gives, by that place, what
-    keeps its last copy for it: for a file not read, as the domain's function
-    ``held_back`` says; for a conversion, the document's id.
-    """
-
-    documents: tuple[WorklogDocument, ...]
-    html: int
-    problems: tuple[Problem, ...]
-    held_back: dict[str, str]
-    warnings: tuple[OutcomeWarning, ...]
 
 
 class WorklogCounts(Record):
@@ -142,74 +111,6 @@ class WorklogPlanned(Record):
             f"files to remove: {self.to_remove}\n"
             f"HTML left out: {self.html}\n"
         )
-
-
-def read_worklog(folder: Path, *, archives: bool) -> Read:
-    """Read the work log under ``folder``: its entries, days and meetings, then its transcripts.
-
-    A meeting links to the id of its transcript, found in this run, read or not, and a
-    transcript read links back to it. Without ``archives``, the archive file,
-    ``transcripts/archive/``, ``meetings/archive/`` and the subtrees tagged ARCHIVE are
-    left out. A file not read is a problem, named by its path, with what it holds back,
-    as ``held_back`` says; the documents that draw on it are left out, as ``writable``
-    says, so that a run writes none of their files. The span
-    ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
-    ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
-    transcript found, and the first by its file, else its id: never a problem, so that it
-    holds no removal back, but a warning of the outcome, each meeting by its file or id.
-    Two transcripts of one id are a warning too, and each one an event,
-    ``worklog.same_id``.
-    """
-    with TRACER.start_as_current_span("worklog.read"):
-        org_files = files.listed(folder, archives=archives)
-        unread = [(each.where, each.reason) for each in org_files.problems]
-        org_texts: list[OrgText] = []
-        for relative in org_files.paths:
-            try:
-                org_texts.append(files.org_text(org_files.root, relative))
-            except files.UnreadableError as error:
-                unread.append((str(relative), str(error)))
-        found = {each.path: each for each in org_texts}
-        # A file linking out is a problem, never listed: its path names it all the same.
-        # A folder not listed, though its name may end in .org, names none.
-        out = [
-            PurePosixPath(each.where)
-            for each in org_files.problems
-            if each.reason == files.LINKS_OUT
-        ]
-        ids, warnings = transcript_ids([*org_files.paths, *out], archives=archives)
-        problems = [Problem(where=where, reason=reason) for where, reason in unread]
-        named = transcripts(org_texts, ids, archives=archives)
-        todo, archive = found.get(PurePosixPath(TODO)), found.get(PurePosixPath(TODO_ARCHIVE))
-        journaled, unlinked = journal(todo, archive, archives=archives, transcripts=ids)
-        documents_read = writable(
-            [*journaled, *linked_back(named, journaled)], [where for where, _ in unread]
-        )
-    log = structlog.get_logger()
-    types = Counter(each.type for each in journaled)
-    log.info(
-        "worklog.read",
-        entries=types[ENTRY_TYPE],
-        days=types[DAY_TYPE],
-        meetings=types[MEETING_TYPE],
-        transcripts=len(named),
-        html=org_files.html,
-        problems=len(problems),
-    )
-    if unlinked:
-        log.warning("worklog.unlinked", meetings=len(unlinked), first=unlinked[0])
-    for each in warnings:
-        log.warning("worklog.same_id", reason=f"{each.where}: {each.reason}")
-    return Read(
-        documents=tuple(documents_read),
-        html=org_files.html,
-        problems=tuple(problems),
-        held_back={where: held_back(where, ids) for where, _ in unread},
-        warnings=(
-            *warnings,
-            *(OutcomeWarning(where=each, reason=UNLINKED) for each in unlinked),
-        ),
-    )
 
 
 def existing(

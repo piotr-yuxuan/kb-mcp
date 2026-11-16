@@ -233,14 +233,17 @@ def test_each_preparer_that_the_registry_names_loads_as_a_preparer(path: str) ->
     assert isinstance(pkgutil.resolve_name(path), Preparer)
 
 
-def test_confluence_and_jira_share_their_roles_and_the_work_log_has_no_fetcher() -> None:
-    """One fetcher and one preparer serve both sources of the site; one preparer each."""
+def test_confluence_and_jira_share_their_roles_and_the_work_log_has_its_own() -> None:
+    """One fetcher and one preparer serve both sources of the site; one preparer each.
+
+    The work log's fetcher reads its folder into its copy store, since plan 060.
+    """
     assert {
         each.name: (each.connector.fetcher, len(each.connector.preparers)) for each in SOURCES
     } == {
         "confluence": (CONFLUENCE.fetcher, 1),
         "jira": (CONFLUENCE.fetcher, 1),
-        "worklog": (None, 1),
+        "worklog": ("kb_mcp.sources.worklog.fetch.app.fetcher", 1),
     }
     assert CONFLUENCE.fetcher is not None
     assert JIRA.preparers == CONFLUENCE.preparers

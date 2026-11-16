@@ -165,9 +165,20 @@ class Source:
         """
         return tuple(map(self.path, self.connector.settings))
 
+    @property
+    def keeps_scopes(self) -> bool:
+        """Say whether its store keeps scopes that its settings may not name: scopes by key.
+
+        A fetcher of scopes by key, such as spaces, keeps those that a run's option named
+        and those that the settings no longer name; a source of one scope, the whole
+        source, has none until it is configured.
+        """
+        keyed = any(each.key is not None for each in self.connector.scope_types)
+        return self.connector.fetcher is not None and keyed
+
     def prepared_by_default(self, settings: Mapping[str, object]) -> bool:
-        """Say whether it holds documents to prepare: it keeps a store, or is configured.
+        """Say whether it holds documents to prepare: it keeps scopes, or is configured.
 
         ``settings`` holds every setting's value by its path; configured is its first set.
         """
-        return self.connector.fetcher is not None or bool(settings[self.paths[0]])
+        return self.keeps_scopes or bool(settings[self.paths[0]])

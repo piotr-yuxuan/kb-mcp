@@ -1,8 +1,9 @@
-"""The work log's connector: what it reads in place, its table, and its preparer.
+"""The work log's connector: what it reads in place, its table, its fetcher and preparer.
 
 Its one scope type, read in place, holds a document type for each of the work log's:
 entries, days and meetings split from ``todo.org`` and its archive at their headings,
-transcripts read from ``transcripts/`` and ``meetings/``. Read in place, it has no fetcher.
+transcripts read from ``transcripts/`` and ``meetings/``. Its fetcher reads the folder
+into a copy store of the source's, from which its preparer writes the mirror.
 """
 
 from __future__ import annotations
@@ -26,4 +27,5 @@ WORKLOG = Connector(
     settings=("path", "archives"),
     table_path="kb_mcp.sources.worklog.settings:WorklogTable",
     preparers=("kb_mcp.sources.worklog.prepare.app.preparer",),
+    fetcher="kb_mcp.sources.worklog.fetch.app.fetcher",
 )

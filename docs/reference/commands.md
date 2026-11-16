@@ -348,10 +348,11 @@ usage: kb-mcp fetch [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
                     [--detail {short,detailed}] [-y] [--dry-run] [--space SPACE]
                     [--since SINCE] [--until UNTIL] [--max-file-mb MAX_FILE_MB]
                     [--project PROJECT]
-                    [{confluence,jira} ...]
+                    [{confluence,jira,worklog} ...]
 
 positional arguments:
-  {confluence,jira}     the sources to fetch, given together; by default each one
+  {confluence,jira,worklog}
+                        the sources to fetch, given together; by default each one
                         configured
 
 options:
@@ -380,6 +381,10 @@ jira:
 
   --project PROJECT     a project key, in place of the setting's; repeat for more
 
+worklog:
+  The user's work log: org files read in place, never written: its folder, read
+  whole, in place.
+
 several sources:
   The options of confluence, jira.
 
@@ -393,10 +398,14 @@ With --format json: `exit_status`, the run's; `sources`, a row per source taken,
 the registry's order, each with its `source`, its `ending` (done, failed, sign in
 again, interrupted, not run), its `counts`, null when it gave none, and its `problems`
 and `warnings`, each with its `where` and `reason`, a scope, a document or a file and
-why it failed. The counts: each count by its name, of what the fetch did, or with
---dry-run would do; `windows`, each scope's: its `scope`, by its source, type and key,
-its `start`, `end` and `reason`, and its `coverage`, extended, capped at a failure,
-held, or null when not written; `dry_run`, whether the fetch only planned.
+why it failed. Confluence's and Jira's counts: each count by its name, of what the
+fetch did, or with --dry-run would do; `windows`, each scope's: its `scope`, by its
+source, type and key, its `start`, `end` and `reason`, and its `coverage`, extended,
+capped at a failure, held, or null when not written; `dry_run`, whether the fetch only
+planned. The work log's: `documents`, those read; `new` and `changed`, of another
+revision; `gone`, those that a read without a problem no longer found; `html`, the
+HTML transcripts left out; `held_back`, by each problem's place, what keeps its last
+copy.
 ```
 
 ## `index`

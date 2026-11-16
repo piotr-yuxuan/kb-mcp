@@ -23,10 +23,11 @@ def register(
     """Add ``prepare`` to the command, for every source.
 
     The settings read are the data directory, each source's location, such as its site,
-    which links resolve by, and the settings of each source read in place: a source that
-    keeps a store is prepared from what it holds, whatever its settings cover. A source
-    named comes with the others, after the options or before them: its ``dest`` is
-    ``source``, as ``sources`` holds the sources.
+    which links resolve by, and the first setting of each source that keeps no scopes by
+    key, which says whether it is taken, every setting of one without a fetcher, which its
+    preparer reads: a source that keeps a store is prepared from what it holds, whatever
+    its settings cover. A source named comes with the others, after the options or before
+    them: its ``dest`` is ``source``, as ``sources`` holds the sources.
     """
     parser = subparsers.add_parser(
         "prepare",
@@ -78,8 +79,8 @@ def register(
                 *(
                     path
                     for each in sources
-                    if each.connector.fetcher is None
-                    for path in each.paths
+                    if not each.keeps_scopes
+                    for path in (each.paths if each.connector.fetcher is None else each.paths[:1])
                 ),
             ),
             flags=flags,

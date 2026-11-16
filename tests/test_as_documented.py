@@ -135,7 +135,8 @@ def test_fetch_records_as_documented(
     from their last fetch, without --since. Then a space whose pages the site cannot
     serve, retried until they fail; a space not found; a period refused, a store busy,
     Ctrl-C, and a session no longer saved; then the session kept before it was a site's,
-    of this site, which moves, then of another, which stays.
+    of this site, which moves, then of another, which stays. Then the work log: whole,
+    its store begun; then a problem and two transcripts of one id.
     """
     emitted = Emitted()
     since = ("--since", "2026-10-02")
@@ -177,6 +178,16 @@ def test_fetch_records_as_documented(
         write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": domain}])
         with emitted.gathering(telemetry, "fetch"):
             main(fetch_arguments(data, "--space", "MFS", *since))
+    worklog = tmp_path / "todo"
+    shutil.copytree(WORKLOG_FIXTURE, worklog)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
+    worklog_alone = [*fetch_arguments(data), "worklog"]
+    with emitted.gathering(telemetry, "fetch"):
+        assert main(worklog_alone) == ExitStatus.OK
+    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
+    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
+    with emitted.gathering(telemetry, "fetch"):
+        assert main(worklog_alone) == ExitStatus.FAILED
     assert undocumented("fetch", emitted) == []
 
 

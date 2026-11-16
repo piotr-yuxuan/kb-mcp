@@ -31,7 +31,8 @@ with their front matter ([`FrontMatter`](../../src/kb_mcp/mirror/domain/mirror.p
 
 Each source's package is nested by stage: `sources/atlassian/fetch/` brings the site's
 changes into the raw store, and `sources/atlassian/prepare/` writes Confluence's and
-Jira's files from it; the work log, read in place, has `sources/worklog/prepare/` alone.
+Jira's files from it; `sources/worklog/fetch/` reads the work log's folder in place into
+its copy store, and `sources/worklog/prepare/` writes its files.
 Each writes through the mirror's common part: the front matter, which search reads back,
 the writer of the files that changed, and pandoc. So the mirror imports no source, and no
 source another ([the code's layout](code-layout.md#the-stages-within-a-source)).

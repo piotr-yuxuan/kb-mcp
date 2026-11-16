@@ -39,10 +39,11 @@ from kb_mcp.mirror.domain.mirror import Link
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.fetch.adapters import files
+from kb_mcp.sources.worklog.fetch.app import fetching
+from kb_mcp.sources.worklog.fetch.app.fetching import UNLINKED
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
     AS_IT_IS,
-    UNLINKED,
     WorklogCounts,
     WorklogPlanned,
     plan_worklog,
@@ -728,7 +729,7 @@ def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
 
     The day is read from the fixture, then given a meeting's id, which no org file gives.
     """
-    read = prepare.read_worklog(run.root, archives=True)
+    read = fetching.read_worklog(run.root, archives=True)
     (day, *_) = [each for each in read.documents if each.type == "day"]
     wrong = copy.replace(read, documents=(copy.replace(day, id="m-20261027-payments-stand-up"),))
     monkeypatch.setattr(prepare, "read_worklog", lambda *_, **__: wrong)
