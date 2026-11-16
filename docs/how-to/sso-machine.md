@@ -117,8 +117,8 @@ as a script needs: where no terminal can answer, the command is refused without 
 `--dry-run` lists and decides as a run would, then says what it would fetch, and
 fetches nothing; it does not ask.
 
-The counts are printed, a row per source, and saved in `~/kb-mcp/runs/`, a report per
-source. The exit status is
+The run's id is printed first, then the counts, a row per source; the run is recorded in
+`~/kb-mcp/runs/<run id>/`, its configuration and each source's outcome. The exit status is
 0 when all went well, 1 when something failed (a space key that finds nothing is named
 on stderr) or you answered no, 2 for refused settings or options, or no terminal to ask
 on, 3 when you must sign in again, 130 when stopped by Ctrl-C. `kb-mcp
@@ -154,7 +154,9 @@ session that they held: only the first step does.
 
 ## What may leave the machine
 
-The run reports in `~/kb-mcp/runs/` hold counts and the paths of fields
-that a response no longer had, never titles, keys, names or content. They are what to
+Each run's record in `~/kb-mcp/runs/<run id>/` holds no secret and no content, but its
+configuration names the site, the spaces and projects, and the account's email, and its
+outcomes name where each problem lies, such as a space's key or a file's path: read it
+before any of it leaves the machine. Its counts, which name none of these, are what to
 bring back if something needs fixing. Nothing under `raw/` or `session/` ever leaves
 the managed machine.

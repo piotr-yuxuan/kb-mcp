@@ -39,6 +39,8 @@ positional arguments:
     login        sign in once, in a Chrome window, for a source or each one configured
     model        check the embedding model and its endpoint
     prepare      turn what each source holds into the Markdown mirror
+    refresh      bring each source, the mirror, the index and its vectors up to date:
+                 one run
     reranker     check the reranking server and its model
     serve        serve the mirror over MCP on stdio
 
@@ -47,13 +49,13 @@ options:
   --version      show the version
 
 The commands that write under the data directory (embed, eval, eval-agents, eval-
-rerank, fetch, index, login, prepare) first say what they will do, with the command to
-copy, then ask; --yes, or --dry-run where taken, runs them without asking, and with no
-terminal to ask on, they are refused. Exit statuses: 0 done; 1 something failed (a
-document, a file, a check, the endpoint), or the question was declined; 2 refused
-before acting: settings, options or input, or no terminal to ask on; 3 sign in again:
-no session saved, it no longer holds, or the site refused the API token; 130 stopped
-by Ctrl-C.
+rerank, fetch, index, login, prepare, refresh) first say what they will do, with the
+command to copy, then ask; --yes, or --dry-run where taken, runs them without asking,
+and with no terminal to ask on, they are refused. Exit statuses: 0 done; 1 something
+failed (a document, a file, a check, the endpoint), or the question was declined; 2
+refused before acting: settings, options or input, or no terminal to ask on; 3 sign in
+again: no session saved, it no longer holds, or the site refused the API token; 130
+stopped by Ctrl-C.
 ```
 
 ## `check`
@@ -141,15 +143,15 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
 
-With --format json: `ending` (done, failed); `counts`, null when nothing was filled:
-`index`, its path; `model`, the one that embedded; `chunks`, those that the index
-holds; `documents`, its documents; `skipped`, how many files it lacks; `added` and
-`removed`, the chunks; `embedded`, the texts embedded now; `found`, those that the
-vector cache held; `unchanged`, whether nothing was written; `pruned`, what the prune
-of the vector cache kept and deleted, or why it did not prune; `problems`, each
-document with a chunk refused and each file that the index lacks, or why nothing was
-filled, and `warnings`, a mirror changed since the index, each with its `where` and
-`reason`.
+With --format json: `run`, the run's id, which refresh --resume takes; `ending` (done,
+failed, interrupted); `counts`, null when nothing was filled: `index`, its path;
+`model`, the one that embedded; `chunks`, those that the index holds; `documents`, its
+documents; `skipped`, how many files it lacks; `added` and `removed`, the chunks;
+`embedded`, the texts embedded now; `found`, those that the vector cache held;
+`unchanged`, whether nothing was written; `pruned`, what the prune of the vector cache
+kept and deleted, or why it did not prune; `problems`, each document with a chunk
+refused and each file that the index lacks, or why nothing was filled, and `warnings`,
+a mirror changed since the index, each with its `where` and `reason`.
 ```
 
 ## `eval`
@@ -395,18 +397,18 @@ several sources:
   --max-file-mb MAX_FILE_MB
                         the largest file kept, in MiB; 50 by default
 
-With --format json: `exit_status`, the run's; `sources`, a row per source taken, in
-the registry's order, each with its `source`, its `ending` (done, failed, sign in
-again, interrupted, not run), its `counts`, null when it gave none, and its `problems`
-and `warnings`, each with its `where` and `reason`, a scope, a document or a file and
-why it failed. Confluence's and Jira's counts: each count by its name, of what the
-fetch did, or with --dry-run would do; `windows`, each scope's: its `scope`, by its
-source, type and key, its `start`, `end` and `reason`, and its `coverage`, extended,
-capped at a failure, held, or null when not written; `dry_run`, whether the fetch only
-planned. The work log's: `documents`, those read; `new` and `changed`, of another
-revision; `gone`, those that a read without a problem no longer found; `html`, the
-HTML transcripts left out; `held_back`, by each problem's place, what keeps its last
-copy.
+With --format json: `run`, the run's id, which refresh --resume takes; `exit_status`,
+the run's; `sources`, a row per source taken, in the registry's order, each with its
+`source`, its `ending` (done, failed, sign in again, interrupted, not run), its
+`counts`, null when it gave none, and its `problems` and `warnings`, each with its
+`where` and `reason`, a scope, a document or a file and why it failed. Confluence's
+and Jira's counts: each count by its name, of what the fetch did, or with --dry-run
+would do; `windows`, each scope's: its `scope`, by its source, type and key, its
+`start`, `end` and `reason`, and its `coverage`, extended, capped at a failure, held,
+or null when not written; `dry_run`, whether the fetch only planned. The work log's:
+`documents`, those read; `new` and `changed`, of another revision; `gone`, those that
+a read without a problem no longer found; `html`, the HTML transcripts left out;
+`held_back`, by each problem's place, what keeps its last copy.
 ```
 
 ## `index`
@@ -430,14 +432,15 @@ options:
   -y, --yes             run without asking first, as a script does
   --rebuild             build the index whole, keeping nothing of it
 
-With --format json: `ending` (done, failed); `counts`, null when nothing was built:
-`types`, the documents held by type, `sections`, `persons`, the join's `count`, the
-names `ambiguous` and the aliases `unused`, the documents `copied`, `added`,
-`replaced` and `removed`, `awaiting`, those awaiting vectors, null when the index
-names no model, `unchanged`, whether nothing was written, `rebuilt`, why the index was
-rebuilt whole, if it was, and `index`, its path; `problems`, each file skipped, or why
-nothing was built, and `warnings`, each name that could be several persons and each
-alias that changed nothing, each with its `where` and `reason`.
+With --format json: `run`, the run's id, which refresh --resume takes; `ending` (done,
+failed, interrupted); `counts`, null when nothing was built: `types`, the documents
+held by type, `sections`, `persons`, the join's `count`, the names `ambiguous` and the
+aliases `unused`, the documents `copied`, `added`, `replaced` and `removed`,
+`awaiting`, those awaiting vectors, null when the index names no model, `unchanged`,
+whether nothing was written, `rebuilt`, why the index was rebuilt whole, if it was,
+and `index`, its path; `problems`, each file skipped, or why nothing was built, and
+`warnings`, each name that could be several persons and each alias that changed
+nothing, each with its `where` and `reason`.
 ```
 
 ## `login`
@@ -544,19 +547,89 @@ worklog:
   The user's work log: org files read in place, never written: its folder, read
   whole, in place.
 
-With --format json: `exit_status`, the run's; `sources`, a row per source taken, in
-the registry's order, each with its `source`, its `ending` (done, failed, interrupted,
-not run), its `counts`, null when it gave none, as a dry run of Confluence or Jira,
-which counts nothing, and its `problems` and `warnings`, each with its `where` and
-`reason`; a warning of Confluence or Jira may be what it could not read of the other
-source's, which fails nothing of its own. Confluence's and Jira's counts: `documents`,
-how many it prepared; `converted`, the conversions pandoc ran, and `reused`, those the
-cache gave, a document's file and a space's tree being one each; `changes`, the files
-`written`, `unchanged` and `removed`; `unsupported`, what the mirror does not show, by
-name. The work log's: `documents`, `converted`, `reused` and `changes`, as theirs;
-`held_back`, by each problem's place, what keeps its last copy; in a dry run,
-`documents` and `to_remove`, the files that a run would remove, what pandoc would
-convert not counted.
+With --format json: `run`, the run's id, which refresh --resume takes; `exit_status`,
+the run's; `sources`, a row per source taken, in the registry's order, each with its
+`source`, its `ending` (done, failed, interrupted, not run), its `counts`, null when
+it gave none, as a dry run of Confluence or Jira, which counts nothing, and its
+`problems` and `warnings`, each with its `where` and `reason`; a warning of Confluence
+or Jira may be what it could not read of the other source's, which fails nothing of
+its own. Confluence's and Jira's counts: `documents`, how many it prepared;
+`converted`, the conversions pandoc ran, and `reused`, those the cache gave, a
+document's file and a space's tree being one each; `changes`, the files `written`,
+`unchanged` and `removed`; `unsupported`, what the mirror does not show, by name. The
+work log's: `documents`, `converted`, `reused` and `changes`, as theirs; `held_back`,
+by each problem's place, what keeps its last copy; in a dry run, `documents` and
+`to_remove`, the files that a run would remove, what pandoc would convert not counted.
+```
+
+## `refresh`
+
+```text
+usage: kb-mcp refresh [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                      --log-level {debug,info,warning,error}] [--format {text,json}]
+                      [--detail {short,detailed}] [-y] [--allow-remote-embeddings]
+                      [--resume RUN_ID] [--space SPACE] [--since SINCE]
+                      [--until UNTIL] [--max-file-mb MAX_FILE_MB] [--project PROJECT]
+                      [{confluence,jira,worklog} ...]
+
+positional arguments:
+  {confluence,jira,worklog}
+                        the sources to refresh, given together; by default each one
+                        configured
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       the settings file
+  --data-dir DATA_DIR   the data directory, overriding the settings
+  -q                    say errors alone, and write no result as text
+  -v                    the level info, or debug with -vv
+  --log-level {debug,info,warning,error}
+                        say what is of this level or above; warning by default
+  --format {text,json}  write the result as text, or as one JSON document
+  --detail {short,detailed}
+                        write what matters of the result, or all of it
+  -y, --yes             run without asking first, as a script does
+  --allow-remote-embeddings
+                        let this run send the mirror's text to an embedding endpoint
+                        off this machine
+  --resume RUN_ID       run again the units of this run that did not end done, by its
+                        configuration
+
+confluence:
+  Confluence, on the Atlassian site: the pages and blog posts of its spaces, with
+  their files: each space listed whole.
+
+  --space SPACE         a space key, in place of the setting's; repeat for more
+
+jira:
+  Jira, on the Atlassian site: the issues of its projects, with their comments and
+  files: each project searched by update time, read whole every 7 days for what it
+  no longer holds.
+
+  --project PROJECT     a project key, in place of the setting's; repeat for more
+
+worklog:
+  The user's work log: org files read in place, never written: its folder, read
+  whole, in place.
+
+several sources:
+  The options of confluence, jira.
+
+  --since SINCE         12h, 7d, 6mo, an ISO date or time, or all; by default, each
+                        scope's last fetch
+  --until UNTIL         12h, 7d, or an ISO date or time, excluded; by default, now
+  --max-file-mb MAX_FILE_MB
+                        the largest file kept, in MiB; 50 by default
+
+One run of fetch, prepare, index and embed, recorded under <data>/runs/<run id>/:
+fetch and prepare a unit per source, a source's prepare only once its fetch is done;
+index and embed over the whole. --resume runs again the units of a run, any command's,
+that did not end done, by the configuration that it recorded. With --format json:
+`run`, the run's id; `exit_status`, the run's; `units`, each unit's last entry, in the
+order in which they run: its `stage`, its `source`, null for index and embed, its
+`ending` (done, failed, sign in again, interrupted, not run), its `counts`, as its
+stage's command writes them, its `problems` and `warnings`, and `invocation`, when the
+invocation that gave it started.
 ```
 
 ## `reranker`

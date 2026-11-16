@@ -119,15 +119,22 @@ settings loaded.
 
 ### 3. A row per source
 
-[`run`](../../src/kb_mcp/cli/commands/sources.py) turns the settings into
-a [`SourceRun`](../../src/kb_mcp/sources/stages.py) for each source taken, a small frozen
-record: its declaration, the settings, its table, its options' values by flag, here `--since`, the clock and the pause, which tests replace. No work log is
-configured, so no run is of it.
+[`run`](../../src/kb_mcp/cli/commands/sources.py) resolves the run's
+[`Configuration`](../../src/kb_mcp/cli/domain/runs.py): its stage, the sources taken, its
+options by flag, here `--since` as a time
+([`fetch_options`](../../src/kb_mcp/cli/domain/sources.py)), and the settings, secrets
+left out. [`recorded`](../../src/kb_mcp/cli/commands/_runs.py) writes it under
+`<data>/runs/<run id>/`, reads it back, and builds from it alone the settings, the secrets
+taken from the environment, and a [`SourceRun`](../../src/kb_mcp/sources/stages.py) for
+each source taken ([`planned`](../../src/kb_mcp/cli/commands/_stages.py)), a small frozen
+record: its declaration, the settings, its table, its options' values by flag, the clock
+and the pause, which tests replace. No work log is configured, so no unit is of it.
 
-[`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each fetcher or preparer that a source's
-declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), refusing the run
-for one that does not load, then runs each row, which its
-[`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) begins: here it
+[`source_planned`](../../src/kb_mcp/cli/app/sources.py) loads each fetcher or preparer that
+a source's declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), refusing the
+run for one that does not load; [`run_units`](../../src/kb_mcp/cli/app/units.py) then runs
+each unit, writing its entry in the run's record as it ends, each of a source begun by its
+[`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py): here it
 finds an `--until` before `--since` from the
 [`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the
 period's options, one space here.
@@ -226,8 +233,7 @@ when each scope was read whole, a project a week apart; writes it, each change o
 tombstones having been written where it was made; writes back the
 cookies that the site renewed
 ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
-and saves the run's report under `<data>/runs/`, named by its source, even when the run
-was stopped.
+and gives its outcome, which the run's record keeps, as Ctrl-C's interruption is.
 
 ### 5. Strict reading
 
@@ -472,8 +478,9 @@ outcome has no problem.
 
 ### 10. The result
 
-[`run_each`](../../src/kb_mcp/cli/app/sources.py) returns a
-[`Ran`](../../src/kb_mcp/cli/domain/rows.py), the status and a
+[`recorded`](../../src/kb_mcp/cli/commands/_runs.py) gives what the run did, which
+[`run`](../../src/kb_mcp/cli/commands/sources.py) makes a
+[`Ran`](../../src/kb_mcp/cli/domain/rows.py): the run's id, the status and a
 [`Row`](../../src/kb_mcp/cli/domain/rows.py) per source.
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
@@ -605,7 +612,7 @@ from each document fetched, and a call of a tool is one trace:
 | Span | Opened by |
 |---|---|
 | `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
-| `fetch.source`, `prepare.source`, one a row | [`run_each`](../../src/kb_mcp/cli/app/sources.py) |
+| `fetch.source`, `prepare.source`, one a row | [`run_sources`](../../src/kb_mcp/cli/app/units.py) |
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |

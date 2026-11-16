@@ -518,7 +518,8 @@ Of the stages, embed alone calls a service that computes; index asks none.
 **In the code.** [`Fetcher`](../../src/kb_mcp/sources/stages.py),
 [`Preparer`](../../src/kb_mcp/sources/stages.py) and
 [`SourceRun`](../../src/kb_mcp/sources/stages.py); the commands `fetch`, `prepare`,
-`index` and `embed`, in [`cli/commands/`](../../src/kb_mcp/cli/commands/).
+`index` and `embed`, and `refresh`, which enables the four, in
+[`cli/commands/`](../../src/kb_mcp/cli/commands/); [`STAGES`](../../src/kb_mcp/cli/domain/command.py).
 
 ### run
 
@@ -636,7 +637,19 @@ status; telemetry tags every span and event of a run with its run id.
 
 **In the code.** [`Run`](../../src/kb_mcp/observability/app/observed.py), one
 invocation, with its run id, log and trace; the event `run.start`, which logs the
-settings, secrets masked. The outcome:
+settings, secrets masked. The configuration:
+[`Configuration`](../../src/kb_mcp/cli/domain/runs.py), resolved by each command that
+enables a stage, [`Command.stages`](../../src/kb_mcp/cli/domain/command.py), recorded and
+read back by [`RunRecord`](../../src/kb_mcp/cli/adapters/run_record.py), whose settings
+are [`without_secrets`](../../src/kb_mcp/config/domain/settings.py) and, read back,
+[`with_secrets`](../../src/kb_mcp/config/domain/settings.py), relative values made
+absolute by [`Option.absolute`](../../src/kb_mcp/sources/declaration.py). The units:
+[`Unit`](../../src/kb_mcp/cli/domain/runs.py), [`units_of`](../../src/kb_mcp/cli/domain/runs.py),
+[`followed`](../../src/kb_mcp/cli/domain/runs.py) and, for a resume,
+[`attempted`](../../src/kb_mcp/cli/domain/runs.py); each run by
+[`run_units`](../../src/kb_mcp/cli/app/units.py), its last entry a
+[`Recorded`](../../src/kb_mcp/cli/domain/runs.py); `refresh`, and its `--resume`,
+[`resumption`](../../src/kb_mcp/cli/app/resumption.py). The outcome:
 [`Outcome`](../../src/kb_mcp/kernel/outcome.py), with
 [`OutcomeWarning`](../../src/kb_mcp/kernel/outcome.py), whose counts are each
 stage's record, such as

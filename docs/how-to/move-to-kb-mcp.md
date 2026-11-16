@@ -228,13 +228,14 @@ run says and keeps has changed since the former name:
   period, and then the tag, and every version up to 0.1.4, refuses the whole
   record, every source's, rather than ignore that entry: to go back, put back the two
   files as they were before the first fetch, so keep a copy of them first.
-- **A report per source.** A download's report is
-  `<data>/runs/<time>-confluence.json` or `<time>-jira.json`, one for each source that it
-  fetches, where it was `<time>.json`. Reports already there stay as they are. No code
-  reads them; a script of yours may.
+- **A record per run.** Each run of `fetch`, `prepare`, `index`, `embed` and `refresh`
+  is recorded in `<data>/runs/<run id>/`, its configuration and each unit's outcome, as
+  [the data layout](../reference/data-layout.md#runs) says, where a download wrote a
+  report `<data>/runs/<time>.json`. Reports already there stay as they are. No code reads
+  them; a script of yours may.
 - **A row per source.** `fetch` and `prepare` write a row for each source, under `sources`
   with `--format json`. `prepare confluence` prepares Confluence alone: [bring every source
-  up to date](refresh.md#3-take-some-of-the-sources) says what that leaves.
+  up to date](refresh.md#4-take-some-of-the-sources) says what that leaves.
 - **A stray `.md` file under the mirror is read.** The index reports it as a file without
   front matter, and exits 1, where it was ignored: move it out of `docs/`.
 - **The first `index` rebuilds the index whole.** An index written before records no

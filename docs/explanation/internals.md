@@ -3,8 +3,9 @@
 How the program turns its sources into answers for agents: Confluence and Jira, on the
 site, and the user's work log, a folder of org files on this machine
 ([sources](sources.md) says why these three are put together as they are). Four stages,
-each a command that the user composes, each reading what an earlier one wrote, then
-`serve`, which answers agents from what they wrote. Only `fetch` reads the site; every
+each reading what an earlier one wrote, which `refresh` runs as one run and each of which
+is a command of its own, then `serve`, which answers agents from what they wrote. Only
+`fetch` reads the site; every
 later command can be run again offline, from what is on the disk. This page follows the data through them, then follows one change, from a
 page edited on the site, or an entry of the work log closed, to the next search. The
 formats of what each stage writes are in [the data layout](../reference/data-layout.md);
@@ -49,38 +50,61 @@ flowchart LR
 | `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its chunks or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector cache pruned under its own lock, its deletions one transaction | a chunk refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
 
-## The stages, each one command
+## The stages, as units of a run
 
-A refresh is what the user composes: `fetch`, each source taken that has a fetcher, a
-fetch of the spaces or projects that its table names
+A run is what the program does for one command ([run](../reference/concepts.md#run)):
+`refresh` enables the four stages, `fetch`, `prepare`, `index` and `embed` each its own. Its
+work is units, in pipeline order
+([`units_of`](../../src/kb_mcp/cli/domain/runs.py)): `fetch`, a unit per source taken that
+has a fetcher, a fetch of the spaces or projects that its table names
 ([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)), or a read of
 the work log's folder
-([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)); `prepare`, each
-source's preparer, [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
+([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)); `prepare`, a
+unit per source's preparer,
+[`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) for
 Confluence's and Jira's,
 [`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py) for the work log;
 `index`, the words of the mirror's files that changed, whichever sources were prepared
 ([`update_index`](../../src/kb_mcp/search/app/indexing.py)); and `embed`, the vectors of
 the chunks that the index lacks, then the prune
-([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). `fetch` and `prepare` share one
-use case ([`run_each`](../../src/kb_mcp/cli/app/sources.py)). A [source](../reference/concepts.md#connector)'s declaration
-names its table, its fetcher and its preparers ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the
-names given choose among those that a command can take
+([`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py)). One runner runs them
+([`run_units`](../../src/kb_mcp/cli/app/units.py)). A
+[source](../reference/concepts.md#connector)'s declaration names its table, its fetcher and
+its preparers ([`SOURCES`](../../src/kb_mcp/sources/registry.py)), and the names given
+choose among those that a command can take
 ([`chosen`](../../src/kb_mcp/cli/domain/sources.py));
 [sources](sources.md#three-stages-not-a-bundle) says why a source is put together so.
 
+- **Recorded.** The run resolves its configuration as it starts, from the settings and the
+  options, reading no store: the stages, the sources that each takes, `--since 7d` made a
+  time, an end left to now made the start
+  ([`fetch_options`](../../src/kb_mcp/cli/domain/sources.py)). It writes it under
+  `<data>/runs/<run id>/`, every secret left out
+  ([`without_secrets`](../../src/kb_mcp/config/domain/settings.py)), then reads it back,
+  takes the secrets from its environment
+  ([`with_secrets`](../../src/kb_mcp/config/domain/settings.py)), and runs its units from
+  that alone ([`recorded`](../../src/kb_mcp/cli/commands/_runs.py)); each unit's entry is
+  written as it ends ([`Progress`](../../src/kb_mcp/cli/app/units.py)), as [the data
+  layout](../reference/data-layout.md#runs) says. A dry run records nothing.
+- **Resumed.** `refresh --resume <run id>` reads the record of any run, checks it
+  ([`resumption`](../../src/kb_mcp/cli/app/resumption.py)), and runs each unit that did not
+  last end done, and each that follows one of those
+  ([`attempted`](../../src/kb_mcp/cli/domain/runs.py)), from the configuration recorded.
 - **Writes** what each stage writes, as the sections below say.
-- **One row's failure** stops no other: each fetcher or preparer reads what is on disk, and
-  the next command reads what the last one left, so that the work log is fetched and
-  prepared while the site asks to sign in again. What a source's preflight refuses
-  fails its row alone: a space or project with nowhere to start
+- **One unit's failure** stops no other source: each fetcher or preparer reads what is on
+  disk, so that the work log is fetched and prepared while the site asks to sign in again.
+  A source's prepare runs only once its fetch is done, else it is `not run`, its files of the
+  mirror kept; index and embed run whatever the units before them ended
+  ([`followed`](../../src/kb_mcp/cli/domain/runs.py)). What a source's preflight refuses
+  fails its unit alone: a space or project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
-  or a work log that is not a folder; a fetcher or a preparer that does not load, and
-  a source's light check of its settings, which the entry asks before the run (plan 070
-  makes the latter tolerant too), refuse the run, before its first row
-  ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
-  the row it stops and runs no later one. The exit status folds how the rows ended:
-  interrupted, then sign in again, then failed
+  or a work log that is not a folder; a fetcher or a preparer that does not load refuses the
+  run, before its first unit
+  ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/units.py)), and a source's light check
+  of its settings, which the entry asks before the run, refuses it too (plan 070 makes the
+  latter tolerant). Ctrl-C ends the unit it stops interrupted, and runs no later one. The
+  exit status folds how every unit last ended, whichever invocation ended it, and the run's
+  own: interrupted, then sign in again, then failed
   ([`folded`](../../src/kb_mcp/kernel/exit_status.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 
