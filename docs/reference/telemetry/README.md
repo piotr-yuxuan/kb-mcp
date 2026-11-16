@@ -54,7 +54,7 @@ such as `fetch-20261022T210509Z-4242.jsonl`; a step's command names its file, as
 | `level` | `debug`, `info`, `warning`, `error` or `critical` |
 | `event` | The event, `<area>.<what>`; a library's record, its message |
 | `logger` | The module that logged it |
-| `run` | The run's id, 16 random hex digits, also its telemetry's `service.instance.id` |
+| `run` | The run's id, 16 random hex digits, also its telemetry's `service.instance.id`: a resumed run's, by each invocation that resumes it, each with its own file and trace |
 | `command` | The command run |
 | `trace_id`, `span_id` | Within a span, its trace's and its own ids, in hex, as Tempo shows them |
 | `exception` | A traceback, structured, without any frame's locals |
@@ -152,6 +152,8 @@ What any command may log.
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |
 | `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone, after the values that the settings loaded ignored, unless at the level error |
+| `run.busy` | error | `hint` | Another invocation holds the run that this one resumes: no unit runs, its record is untouched, exit 2 |
+| `run.resumable` | warning | `resume` | A recorded run ended with a unit not done, as of its last ending: the command that resumes it, `kb-mcp refresh --resume <run id>`. Not of a dry run |
 | `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone; when the program's former name left settings, data or variables, the steps to move them follow, as [move to kb-mcp](../../how-to/move-to-kb-mcp.md) says |
 | `progress` | info | `task`, `done`, `total`, `remaining` | A task's heartbeat, every 10 s at most, and at its end; `remaining` in whole seconds |
 | `raw.spaces_unresolved` | warning | `spaces` | A record of what answered as gone, in its former format, names spaces by an id that no stored listing of Confluence names: their entries keep the id as their scope's key, until a whole read of the space finds it |
