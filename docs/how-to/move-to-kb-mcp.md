@@ -223,8 +223,9 @@ run says and keeps has changed since the former name:
 - **No way back without a copy.** The first fetch of spaces writes `raw/tombstones.json`
   in a new format, which the tag `pre-kb-mcp` cannot read, and `raw/coverage.json` with
   keys that it ignores, a space's coverage then read inexact. A fetch of a project whose
-  whole read succeeds and whose search fails writes into `raw/coverage.json` an entry
-  without a period, and then the tag, and every version up to 0.1.4, refuses the whole
+  whole read succeeds but that stores no period, as when its search fails or stops on a
+  response the program refuses, writes into `raw/coverage.json` an entry without a
+  period, and then the tag, and every version up to 0.1.4, refuses the whole
   record, every source's, rather than ignore that entry: to go back, put back the two
   files as they were before the first fetch, so keep a copy of them first.
 - **A report per source.** A download's report is
