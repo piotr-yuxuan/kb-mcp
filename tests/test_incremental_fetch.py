@@ -17,7 +17,7 @@ from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
@@ -123,8 +123,12 @@ class RefreshSite(FakeSite):
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory, and a saved session, under the scratch folder."""
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=tmp_path / "data"
+    )
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     return chosen
 
 
@@ -413,7 +417,8 @@ def test_a_plan_lists_and_decides_and_writes_nothing(
     left = sorted(
         path.relative_to(chosen.data_dir).as_posix() for path in chosen.data_dir.rglob("*")
     )
-    assert left == ["session", "session/cookies.json"]
+    host = "session/sandbox.example.invalid"
+    assert left == ["session", host, f"{host}/cookies.json"]
 
 
 def without(page_id: str) -> dict[str, dict[str, object]]:
@@ -676,6 +681,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
     data = (home / "kb-mcp").resolve()
     (data / "raw").mkdir(parents=True)
     (data / "raw" / "coverage.json").write_text("[{}]", "utf-8")
@@ -684,8 +690,6 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
         "--yes",
         "--config",
         str(home / "none.toml"),
-        "--site",
-        SITE,
         "--space",
         "MFS",
     ]

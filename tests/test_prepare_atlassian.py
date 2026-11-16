@@ -844,7 +844,11 @@ def test_a_source_prepared_for_some_of_its_types_keeps_the_files_of_the_others(
         path, lambda: "a writer", str, source="confluence", adopted=()
     ) as cache:
         prepare_atlassian(
-            RawStore(sandbox.store.root, "confluence"), sandbox.docs, None, cache, sources
+            RawStore(sandbox.store.root, "confluence"),
+            sandbox.docs,
+            dict.fromkeys(sources),
+            cache,
+            sources,
         )
     assert before
     assert {path: data for path, data in sandbox.files().items() if other in path} == before
@@ -864,7 +868,7 @@ def test_a_source_that_the_sources_given_lack_is_refused_before_anything_is_read
         prepare_atlassian(
             RawStore(sandbox.store.root, "confluence"),
             sandbox.docs,
-            None,
+            {"jira": None},
             cache,
             {"jira": ATLASSIAN["jira"]},
         )
@@ -1069,7 +1073,8 @@ def prepared(
     """Prepare one source as its preparer does; give how it ended, and what it warned."""
     settings = MODEL(data_dir=sandbox.data)
     with capture_logs() as events:
-        done = prepare_source(settings, SITE, Pandoc.find(), source, ATLASSIAN)
+        sites = dict.fromkeys(ATLASSIAN, SITE)
+        done = prepare_source(settings, sites, Pandoc.find(), source, ATLASSIAN)
     return done, [each for each in events if each["log_level"] == "warning"]
 
 

@@ -25,26 +25,25 @@ its subcommands and options with Tab, see [shell completions](shell-completions.
 Create `~/.config/kb-mcp/config.toml`:
 
 ```toml
-[accounts.atlassian]
-site = "https://<your-site>.atlassian.net"
-
-# Optional: what to fetch when no --space or --project is given.
+# What to fetch when no --space or --project is given, and from which site.
 [sources.confluence]
 spaces = ["ENG", "OPS"]
+site = "https://<your-site>.atlassian.net"
 
 [sources.jira]
 projects = ["PLAT"]
+site = "https://<your-site>.atlassian.net"
 ```
 
-`site` belongs to the Atlassian account's table, `spaces` and `projects` to their
-sources': at the top of the file, where they were before, they are refused, and the
-message names their table.
+`site`, `spaces` and `projects` belong to each source's table: at the top of the file, or
+under `[accounts.atlassian]`, where they were before, they are refused, and the message
+names the setting of each source that they moved to.
 
 Each setting can also come from a variable, `KB_MCP_` then its path in
 capitals joined by `__`, a list or a table in JSON
-(`KB_MCP_ACCOUNTS__ATLASSIAN__SITE`,
+(`KB_MCP_SOURCES__JIRA__SITE`,
 `KB_MCP_SOURCES__JIRA__PROJECTS='["PLAT"]'`), and some from a flag
-(`--site`, `--data-dir`, `--space`, `--project`). A flag wins over a variable, which
+(`--data-dir`, `--space`, `--project`). A flag wins over a variable, which
 wins over the file, and a list replaces a weaker one whole. Each command says on stderr
 which values it ignores: one replaced, a variable that names no setting, or one the
 command does not use.
@@ -76,16 +75,17 @@ one, where pandoc is among them.
 ## 4. Sign in
 
 ```bash
-kb-mcp login atlassian
+kb-mcp login
 ```
 
-Like every command that writes under the data directory, it first says what it will do,
-then asks `Proceed? [y/N]`: answer `y`.
+It signs in each site of the sources in use, a site or scopes set, once a site: `kb-mcp login jira` signs in
+Jira's alone. Like every command that writes under the data directory, it first says what
+it will do, then asks `Proceed? [y/N]`: answer `y`.
 
 Chrome opens on the site with a profile of its own (under
-`~/kb-mcp/session/`). Sign in as usual; the window closes once Jira or
-Confluence answers with your account. The session's cookies are kept in
-`~/kb-mcp/session/cookies.json`, readable by you alone. If the sign-in
+`~/kb-mcp/session/<host>/`, a folder a site). Sign in as usual; the window closes once
+Jira or Confluence answers with your account. The session's cookies are kept in
+`~/kb-mcp/session/<host>/cookies.json`, readable by you alone. If the sign-in
 needs a browser extension, add `--keep-extensions`; if Playwright does not find Chrome,
 add `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`.
 
@@ -145,7 +145,7 @@ or as soon as that folder may have been copied:
    ```
 
 A run signed in by the session then stops at once with exit status 3, and says to run
-`login atlassian` again. Running it again replaces the saved cookies, but does not end the
+`login` again. Running it again replaces the saved cookies, but does not end the
 session that they held: only the first step does.
 [Credentials](../explanation/credentials.md) explains what the folder holds and why.
 

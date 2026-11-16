@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import sys
 import time
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
@@ -63,12 +64,14 @@ def open_sign_in_window(
 ) -> list[dict[str, object]]:
     """Open the site in Chrome, wait until the user is signed in, return every cookie.
 
-    No script runs in the identity provider's pages: only once back on the site. The
-    caller keeps those of the site. ``extensions`` lets Chrome load extensions, in case
-    the sign-in needs one. Raises SignInFailedError when no sign-in completes within
-    ``SIGN_IN_TIMEOUT_S``, or when the window is closed.
+    What to do in the window goes to stderr first, a line for the user, so that stdout
+    holds the command's result alone. No script runs in the identity provider's pages:
+    only once back on the site. The caller keeps those of the site. ``extensions`` lets
+    Chrome load extensions, in case the sign-in needs one. Raises SignInFailedError when
+    no sign-in completes within ``SIGN_IN_TIMEOUT_S``, or when the window is closed.
     """
     paths = [confluence_v2.current_user_request().path, jira_v3.myself_request().path]
+    sys.stderr.write(f"Sign in to {site} in the Chrome window that opens.\n")
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             profile,

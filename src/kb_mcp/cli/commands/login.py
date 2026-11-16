@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pkgutil
-import sys
 from typing import TYPE_CHECKING
 
+from kb_mcp.cli.domain.echo import values_of
+from kb_mcp.cli.options.login import signing
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
     import argparse
@@ -15,25 +15,40 @@ if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Detail
     from kb_mcp.kernel.record import Record
+    from kb_mcp.sources.declaration import Source
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Record | None]:
-    """Sign in by the account named, which the declaration requires; exit 3 when none completes.
+def run(
+    arguments: argparse.Namespace, loaded: Loaded
+) -> tuple[ExitStatus, tuple[Record, ...] | None]:
+    """Sign in each source that ``signing`` gives; exit 3 when a sign-in does not complete.
 
-    The run is the one that its account's declaration names, loaded by that path, so that
-    this module imports neither the browser's adapter nor Playwright. What to do in the
-    window goes to stderr, a line for the user, so that stdout holds the result alone; the
-    run says why a sign-in did not complete.
+    The sources of one connector's login are signed in by the run that it names, loaded by
+    that path, so that this module imports neither the browser's adapter nor Playwright,
+    in the order of their first source; the run says why a sign-in did not complete, and
+    none after it is tried. The result holds the places signed in before, if any.
     """
-    settings = loaded.settings
-    account = accounts_of(arguments.sources)[arguments.account]
-    site = getattr(getattr(settings.accounts, account.name), account.settings[0])
-    sys.stderr.write(f"Sign in to {site} in the Chrome window that opens.\n")
-    signing = pkgutil.resolve_name(account.login)
-    signed = signing(settings, arguments.chrome, extensions=arguments.keep_extensions)
-    return (ExitStatus.SIGN_IN_AGAIN, None) if signed is None else (ExitStatus.OK, signed)
+    taken = signing(arguments, values_of(loaded))
+    logins: dict[str, list[Source]] = {}
+    for each in taken:
+        logins.setdefault(str(each.connector.login), []).append(each)
+    signed: list[Record] = []
+    for path, sources in logins.items():
+        done, complete = pkgutil.resolve_name(path)(
+            loaded.settings,
+            tuple(sources),
+            arguments.chrome,
+            extensions=arguments.keep_extensions,
+            named=arguments.source is not None,
+        )
+        signed += done
+        if not complete:
+            return ExitStatus.SIGN_IN_AGAIN, tuple(signed) or None
+    return ExitStatus.OK, tuple(signed)
 
 
-def text(_signed_in: Record, _detail: Detail) -> str:
-    """Say that the session is saved."""
-    return "Signed in; the session is saved.\n"
+def text(signed: tuple[Record, ...], _detail: Detail) -> str:
+    """Say each site signed in to, whose session is saved, or that none was."""
+    return "".join(f"Signed in to {each.site}; the session is saved.\n" for each in signed) or (
+        "Signed in to no site: each source signs in otherwise.\n"
+    )

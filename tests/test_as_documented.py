@@ -37,7 +37,7 @@ from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
@@ -100,10 +100,17 @@ def signed_in(
     """Save a session in the data directory ``data``; have ``handle`` answer the site's client.
 
     The client is the site's own, observed, over the scripted site; no run waits between
-    requests. Give the settings of a run that names the site and the data directory.
+    requests; each Atlassian source's site is the scripted one, by its variable. Give the
+    settings of a run that names the site and the data directory.
     """
-    chosen = MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=data.resolve())
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
+    chosen = MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=data.resolve()
+    )
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     transport = httpx.MockTransport(handle)
     monkeypatch.setattr(
         http, "client", lambda site, cookies, hooks=(): CLIENT(site, cookies, hooks, transport)
@@ -115,7 +122,7 @@ def signed_in(
 def fetch_arguments(data: Path, *options: str) -> list[str]:
     """Give the arguments of a fetch of the site into ``data``, without settings file."""
     settings = ("--config", str(data.parent / "none.toml"), "--data-dir", str(data))
-    return ["fetch", "--yes", *settings, "--site", SITE, *options]
+    return ["fetch", "--yes", *settings, *options]
 
 
 def test_fetch_records_as_documented(
@@ -127,7 +134,8 @@ def test_fetch_records_as_documented(
     video skipped and a file gone, over the period given; the next catches up on both
     from their last fetch, without --since. Then a space whose pages the site cannot
     serve, retried until they fail; a space not found; a period refused, a store busy,
-    Ctrl-C, and a session no longer saved.
+    Ctrl-C, and a session no longer saved; then the session kept before it was a site's,
+    of this site, which moves, then of another, which stays.
     """
     emitted = Emitted()
     since = ("--since", "2026-10-02")
@@ -161,9 +169,14 @@ def test_fetch_records_as_documented(
     monkeypatch.setattr(time, "sleep", interrupted)
     with emitted.gathering(telemetry, "fetch"):
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.INTERRUPTED
-    (chosen.session / COOKIES).unlink()
+    (folder_of(chosen.session, SITE) / COOKIES).unlink()
     with emitted.gathering(telemetry, "fetch"):
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.SIGN_IN_AGAIN
+    folder_of(chosen.session, SITE).rmdir()
+    for domain in (httpx.URL(SITE).host, "elsewhere.invalid"):
+        write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": domain}])
+        with emitted.gathering(telemetry, "fetch"):
+            main(fetch_arguments(data, "--space", "MFS", *since))
     assert undocumented("fetch", emitted) == []
 
 
@@ -551,11 +564,12 @@ def test_doctor_records_as_documented(
 
     data = tmp_path / "data"
     signed_in(monkeypatch, busy, data)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     arguments = ["doctor", "--config", str(tmp_path / "none.toml"), "--data-dir", str(data)]
     emitted = Emitted()
     with emitted.gathering(telemetry, "doctor"):
-        assert main([*arguments, "--site", SITE]) == ExitStatus.FAILED
+        assert main(arguments) == ExitStatus.FAILED
     assert undocumented("doctor", emitted) == []
 
 
@@ -563,15 +577,8 @@ def test_login_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Signed in, then a window closed: the browser is a stand-in, which signs in nowhere."""
-    arguments = [
-        "login",
-        "atlassian",
-        "--yes",
-        "--config",
-        str(tmp_path / "none.toml"),
-        "--site",
-        SITE,
-    ]
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    arguments = ["login", "confluence", "--yes", "--config", str(tmp_path / "none.toml")]
     emitted = Emitted()
     monkeypatch.setattr(login_module, "save_session", lambda *_, **__: None)
     with emitted.gathering(telemetry, "login"):

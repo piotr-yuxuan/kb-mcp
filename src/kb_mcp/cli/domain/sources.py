@@ -1,15 +1,14 @@
 """What ``fetch`` and ``prepare`` choose and say, as pure functions of arguments and settings.
 
-The sources are the registry's, which the arguments hold (``sources``), and those named
-among them (``source``). A source is configured when its first setting, which names what
-it covers, is set. ``fetch`` takes every source that has a fetcher and is configured, or
-those named. ``prepare`` takes every source that keeps a store, which its fetcher says,
-whatever the store holds, and each read in place when it is configured, or those named.
-Each is taken once, in the registry's order, whatever the order typed. A source's options
-and light checks are its connector's fetch's: each source taken says what the echo says
-of it, by its connector; an option that no setting holds, given, is said ignored by each
-source taken whose connector does not declare it. Beside them, ``accounts_to_check``: which sign-ins
-``doctor`` checks, by the same settings.
+The sources are those that the settings configure, which the arguments hold
+(``sources``), and those named among them (``source``). A source is configured when its
+first setting, which names what it covers, is set. ``fetch`` takes every source that has
+a fetcher and is configured, or those named. ``prepare`` takes every source that keeps a
+store, which its fetcher says, whatever the store holds, and each read in place when it
+is configured, or those named. Each is taken once, in the sources' order, whatever the
+order typed. A source's options and light checks are its connector's fetch's: each
+source taken says what the echo says of it, by its connector; an option that no setting
+holds, given, is said ignored by each source taken whose connector does not declare it.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Iterable, Mapping
 
-    from kb_mcp.sources.declaration import Account, Source
+    from kb_mcp.sources.declaration import Source
 
 # The commands over sources, whose names a run reads.
 FETCH, PREPARE = "fetch", "prepare"
@@ -78,27 +77,12 @@ def chosen(
     return choose(arguments, settings)
 
 
-def accounts_to_check(
-    sources: Iterable[Source], settings: Mapping[str, object]
-) -> dict[str, Account]:
-    """Give each account for ``doctor`` to check, by its name: those that this machine uses.
-
-    An account is used when a source naming it is configured, or its first setting, where it
-    signs in, is set: a machine with neither needs none.
-    """
-    return {
-        account.name: account
-        for declared in sources
-        if (account := declared.connector.account) is not None
-        and (settings[declared.paths[0]] or settings[account.paths[0]])
-    }
-
-
 def source_line(declared: Source, settings: Mapping[str, object]) -> str:
-    """Say a source taken, with the value of each of its settings."""
+    """Say a source taken, with the value of each of its settings that holds one."""
     values = {
         path: ", ".join(value) if isinstance(value := settings[path], tuple) else str(value)
         for path in declared.paths
+        if settings[path] is not None
     }
     shown = (f"{path.rpartition('.')[2]} {value}" for path, value in values.items())
     return f"source {declared.name}: {', '.join(shown)}"
@@ -111,22 +95,25 @@ def fetch_described(
 
     The lines that a source taken says follow, each once, as its connector's
     ``described`` gives them. An option that no setting holds, given, is ignored by each
-    source taken whose connector does not declare it; one that replaces a setting is said
-    by ``unapplied``, as for any setting.
+    source taken whose connector does not declare it, as is one that replaces a setting of
+    no source named (``Command.narrowed``); another that replaces a setting is said by
+    ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
     lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
-    for connector in (declared.connector for declared in taken):
+    for declared in taken:
+        connector = declared.connector
         options = given(arguments, connector.flags)
-        said += connector.described(options, settings) if connector.described else ()
+        said += connector.described(declared, options, settings) if connector.described else ()
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
+    unbound = {flag for flag, left in arguments.command.narrowed(arguments).items() if not left}
     flags = {
         flag
         for connector in (declared.connector for declared in arguments.sources)
         for flag, option in connector.flags.items()
-        if connector.fetcher is not None and option.setting is None
+        if connector.fetcher is not None and (option.setting is None or flag in unbound)
     }
     for flag, value in sorted(given(arguments, flags).items()):
         ignoring = [each.name for each in taken if flag not in each.connector.flags]
@@ -138,25 +125,18 @@ def fetch_described(
 def prepare_described(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[str, ...]:
-    """Say each source taken, each left out and why, and each account's site not set.
+    """Say each source taken, each left out and why, and each one's location not set.
 
     A source read in place is said by its settings; one that keeps a store gives all that
-    its store holds, whatever its settings cover. Without its account's first setting, the
-    site, a prepare still runs, its documents without an address there.
+    its store holds, whatever its settings cover. Without its location, such as its site,
+    a prepare still runs, its documents without an address there.
     """
     taken, left = chosen_to_prepare(arguments, settings)
-    accounts = {
-        account.name: account
-        for account in (declared.connector.account for declared in taken)
-        if account is not None
-    }
     unset = [
-        (
-            account.paths[0],
-            ", ".join(each.name for each in taken if each.connector.account == account),
-        )
-        for account in accounts.values()
-        if settings[account.paths[0]] is None
+        (path, declared.name)
+        for declared in taken
+        if declared.connector.location is not None
+        and settings[path := declared.path(declared.connector.location)] is None
     ]
     return (
         *(

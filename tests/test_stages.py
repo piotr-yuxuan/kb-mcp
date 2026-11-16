@@ -36,7 +36,7 @@ from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
@@ -81,7 +81,6 @@ NAMED = frozenset(
         each.table_path,
         *each.preparers,
         *(() if each.fetcher is None else (each.fetcher,)),
-        *(() if each.account is None else (each.account.table_path,)),
     )
 )
 
@@ -108,11 +107,10 @@ def worklog(tmp_path: Path) -> Path:
 def settings_of(data: Path, worklog: Path) -> Settings:
     """Give settings with the site, a data folder, MFS, PRB and the work log."""
     return MODEL(
-        accounts={"atlassian": {"site": SITE}},
         data_dir=data,
         sources={
-            "confluence": {"spaces": ["MFS"]},
-            "jira": {"projects": ["PRB"]},
+            "confluence": {"spaces": ["MFS"], "site": SITE},
+            "jira": {"projects": ["PRB"], "site": SITE},
             "worklog": {"path": worklog},
         },
     )
@@ -134,7 +132,9 @@ def site(monkeypatch: MonkeyPatch) -> FakeSite:
 
 def signed_in(settings: Settings) -> Settings:
     """Save a session in the settings' data folder, and give the settings."""
-    write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(settings.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     return settings
 
 
@@ -163,13 +163,11 @@ def run_of(
     At FIRST. Each option that it declares is held, as ``fetch``'s command gives them: None
     when not among ``options``.
     """
-    account = declared.account
     return SourceRun(
         source=Source(name=declared.name, connector=declared),
         sources=SOURCES,
         settings=settings,
         source_table=getattr(settings.sources, declared.name),
-        account_table=None if account is None else getattr(settings.accounts, account.name),
         options={**dict.fromkeys(declared.flags), **(options or {})},
         now=lambda: FIRST,
         sleep=lambda _: None,
@@ -316,23 +314,24 @@ def test_a_source_of_another_name_is_fetched_and_prepared_under_its_name(home: P
 
     Fetched, then prepared, from the scripted site: its raw folder, its mirror's folder
     and each of its documents' front matter carry its name; nothing carries the
-    connector's, but the site's users, which are the site's, beside its first source's.
+    connector's, the site's users neither, which plan 059 keeps in its folder.
     """
     registry = (Source(name="wiki", connector=CONFLUENCE), *sourced(JIRA, WORKLOG))
     config = home / "config.toml"
-    config.write_text(f'[accounts.atlassian]\nsite = "{SITE}"\n[sources.wiki]\nspaces = ["MFS"]\n')
+    config.write_text(f'[sources.wiki]\nspaces = ["MFS"]\nsite = "{SITE}"\n')
     data = home / "data"
-    write_cookies(data / "session" / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(data / "session", SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     given = ["--yes", "--config", str(config), "--data-dir", str(data), "wiki"]
     # A file of the scripted site fails, which fails the fetch.
     assert main(["fetch", *given, "--since", SINCE["--since"]], registry) == ExitStatus.FAILED
     assert main(["prepare", *given], registry) == ExitStatus.OK
     assert sorted(each.name for each in (data / "raw").iterdir() if each.is_dir()) == [
         "blobs",
-        "confluence",
         "wiki",
     ]
-    assert [each.name for each in (data / "raw" / "confluence").iterdir()] == ["users.json"]
+    assert (data / "raw" / "wiki" / "users.json").is_file()
     assert (data / "raw" / "wiki" / "pages").is_dir()
     assert (data / "raw" / "wiki" / "spaces").is_dir()
     assert sorted(each.name for each in (data / "docs").iterdir()) == ["assets", "wiki"]
@@ -403,11 +402,11 @@ def test_a_damaged_record_of_what_answered_as_gone_refuses_fetch_before_its_firs
     (data / "raw" / "tombstones.json").write_text("not json", "utf-8")
     config = home / "config.toml"
     config.write_text(
-        f'[accounts.atlassian]\nsite = "{SITE}"\nemail = "someone@example.invalid"\n'
-        '[sources.confluence]\nspaces = ["MFS"]\n',
+        f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        'email = "someone@example.invalid"\n',
         "utf-8",
     )
-    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "made-up")
     given = ["fetch", "--yes", "--config", str(config), "--data-dir", str(data)]
     assert main(given) == ExitStatus.REFUSED
     err = capsys.readouterr().err
@@ -434,11 +433,11 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
     (data / "raw" / name).mkdir(parents=True)
     config = home / "config.toml"
     config.write_text(
-        f'[accounts.atlassian]\nsite = "{SITE}"\nemail = "someone@example.invalid"\n'
-        '[sources.confluence]\nspaces = ["MFS"]\n',
+        f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        'email = "someone@example.invalid"\n',
         "utf-8",
     )
-    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "made-up")
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "made-up")
     given = ["--yes", "--config", str(config), "--data-dir", str(data)]
     for command in (["fetch"], ["fetch", "confluence"]):
         assert main([*command, *given]) == ExitStatus.REFUSED
@@ -517,8 +516,8 @@ def test_a_record_of_confluence_s_stops_no_run_without_confluence(
     stones.write_text("not json", "utf-8")
     config = home / "config.toml"
     config.write_text(
-        f'[accounts.atlassian]\nsite = "{SITE}"\n'
-        '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n'
+        f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        f'[sources.jira]\nprojects = ["PRB"]\nsite = "{SITE}"\n'
         f"[sources.worklog]\npath = {json.dumps(str(worklog))}\n",
         "utf-8",
     )
@@ -589,7 +588,11 @@ def test_what_a_preflight_refuses_once_the_run_began_fails_the_fetch_saying_why(
 
 @pytest.mark.usefixtures("site")
 def test_the_fetch_s_text_is_what_download_writes(
-    home: Path, settings: Settings, worklog: Path, capsys: CaptureFixture[str]
+    home: Path,
+    settings: Settings,
+    worklog: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
 ) -> None:
     """Confluence's fetch writes the counts that ``fetch --space MFS`` writes under its row.
 
@@ -600,7 +603,8 @@ def test_the_fetch_s_text_is_what_download_writes(
     other = signed_in(settings_of(home / "other", worklog))
     command = ["fetch", "--yes", "--config", str(home / "none.toml"), "--space", "MFS"]
     period = ["--since", SINCE["--since"]]
-    given = [*command, "--data-dir", str(other.data_dir), "--site", SITE, *period]
+    given = [*command, "--data-dir", str(other.data_dir), *period]
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
     capsys.readouterr()  # what the fetch logged, outside a run, which has no log file
     assert main(given) == ExitStatus.FAILED
     indented = "".join(f"  {line}\n" for line in fetched.text("short").splitlines())
@@ -628,7 +632,7 @@ def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for
 
 
 def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
-    home: Path, stored: Settings, capsys: CaptureFixture[str]
+    home: Path, stored: Settings, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Confluence's preparer, then Jira's, write the command's files and rows byte for byte."""
     other = home / "other"
@@ -639,7 +643,9 @@ def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
         said += row_text(declared.name, result.ending, result.text("detailed"))
     command = ["prepare", "--yes", "--config", str(home / "none.toml"), "--detail", "detailed"]
     capsys.readouterr()  # what the prepares logged, outside a run, which has no log file
-    assert main([*command, "--data-dir", str(other), "--site", SITE]) == ExitStatus.OK
+    for source in ("CONFLUENCE", "JIRA"):
+        monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
+    assert main([*command, "--data-dir", str(other)]) == ExitStatus.OK
     assert capsys.readouterr().out == said
     assert files(stored.docs) == files(other / "docs")
 

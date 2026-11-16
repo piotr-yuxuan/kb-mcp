@@ -46,12 +46,13 @@ A connector is data that names the code of its stages
 instance of one connector, its name and its connector
 ([`Source`](../../src/kb_mcp/sources/declaration.py)); everything that runs per source
 reads its connector from it, and its name alone names its table, its folders and the
-front matter's `source`. The registry gives each connector one source, of its own name.
+front matter's `source`. The registry gives each connector one source, of its own name,
+and the settings may name others of its connectors.
 
 | Part | Where | Holds | Loaded |
 |---|---|---|---|
-| Declaration | `sources/<package>/declared.py` | its name, summary, scope types and options, its settings' names, its account, its table, its fetcher and preparers by module path, and its light checks | at every parse: standard library alone |
-| Tables | `sources/<package>/settings.py` | the Pydantic models of `[sources.<name>]` and of its account | with the settings |
+| Declaration | `sources/<package>/declared.py` | its name, summary, scope types and options, its settings' names and location, its table, its fetcher, preparers, login and checks by module path, and its light checks | at every parse: standard library alone |
+| Tables | `sources/<package>/settings.py` | the Pydantic model of `[sources.<name>]`, its sign-in's settings included | with the settings |
 | Fetcher | `sources/<package>/fetch/app/` | a `Fetcher`; none for a source read in place | by the run that uses it |
 | Preparers | `sources/<package>/prepare/app/` | a `Preparer` each, one per source today | by the run that uses it |
 
@@ -156,17 +157,17 @@ opening with its connector's help.
 [`CONNECTORS`](../../src/kb_mcp/sources/registry.py) holds the connectors in name order,
 and [`SOURCES`](../../src/kb_mcp/sources/registry.py) a source of each, of its name. The
 entry, [`main`](../../src/kb_mcp/cli/main.py), takes the sources as a parameter, `SOURCES`
-by default, and hands it to the parser's declarations and to
-[`enter`](../../src/kb_mcp/cli/commands/_shared.py), so that a test registers a source of
-its own without touching `src/`
+by default, adds those that the settings name, and hands them to the parser's declarations
+and to [`enter`](../../src/kb_mcp/cli/commands/_shared.py), so that a test registers a
+source of its own without touching `src/`
 ([`registry`](../../tests/test_memo_source.py)).
 
 Its rules hold for any registry that the entry is given
 ([`refuse`](../../src/kb_mcp/sources/registry.py)), and refuse, naming the source: a
-name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), or `assets`;
-two of one name, or of one connector, whose options replace its one source's settings;
-two connectors naming one account differently; a connector naming no setting, or neither
-a fetcher nor a preparer; an option that another connector declares otherwise, or that
+name off `[a-z][a-z0-9]*` ([`SOURCE_NAME`](../../src/kb_mcp/kernel/names.py)), or one of
+[`RESERVED`](../../src/kb_mcp/kernel/names.py), `assets`, `blobs`, `http` and `https`; two of one
+name; a connector naming no setting, or neither a fetcher nor a preparer, or a login
+without a location among its settings; an option that another connector declares otherwise, or that
 takes a flag of `fetch`'s own
 ([`add_source_options`](../../src/kb_mcp/cli/options/_sources.py)); a scope type enumerated
 in a way that the help has no words for
@@ -204,14 +205,24 @@ deferred: [the trade-offs](trade-offs.md#a-list-not-entry-points) say why, and a
 declaration is what one would name, so that adding them later changes the registry's
 module alone.
 
-## Settings and accounts, composed from the registry
+## Settings, composed from the configured sources
 
-The settings file holds a table per source, `[sources.confluence]`, `[sources.jira]`,
-`[sources.worklog]`, and the entry composes them into the settings' model, in name order,
-each at its place among the fields
+The settings file holds a table per source, `[sources.<name>]`, and the entry composes
+them into the settings' model, in name order, each at its place among the fields
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py)), which
 [`Loaded`](../../src/kb_mcp/config/domain/settings.py) carries for all that reads a
-setting's path. So `config` imports no source: each table lives in its package
+setting's path. The sources are the registry's, `confluence`, `jira` and `worklog`, which
+always exist, and each other that the settings file or the environment names, of the
+connector that its `connector` names, by default its own name's
+([`named_sources`](../../src/kb_mcp/config/adapters/settings_file.py),
+[`configured`](../../src/kb_mcp/sources/registry.py)): `[sources.clientjira]` with
+`connector = "jira"` is a second Jira site, beside `[sources.jira]`. The entry reads those
+names before it builds the parser, standard library alone, so that each command's choices,
+help and settings read are declared by source, as they were by the registry. A source of no
+connector that the registry holds, or of a name off the rule, is refused by the settings,
+naming it ([`refuse_not_a_source`](../../src/kb_mcp/config/domain/settings.py)).
+
+So `config` imports no source: each table lives in its package
 ([`ConfluenceTable`](../../src/kb_mcp/sources/atlassian/settings.py),
 [`JiraTable`](../../src/kb_mcp/sources/atlassian/settings.py),
 [`WorklogTable`](../../src/kb_mcp/sources/worklog/settings.py)), with the rules that only
@@ -219,35 +230,34 @@ it uses ([`site_address`](../../src/kb_mcp/sources/atlassian/settings.py)). The 
 environment (`KB_MCP_SOURCES__CONFLUENCE__SPACES`), the flags, layers, secrets and messages
 work as for the core's settings, and a table with a setting of a type of no known kind is
 refused, naming its source, as is a list of other than text, which no echo can show and
-no rule of a path reads, and a table inside a table. Raw tables validated when their source runs were rejected:
-they would let a misspelt key pass until then. `fetch` and `prepare` take their names from
-the registry alone, and the names given choose among them. What a run does not apply, such
-as Jira's projects in a `fetch confluence`, is said, not refused: the same settings serve
-every run.
+no rule of a path reads, and a table inside a table. Raw tables validated when their
+source runs were rejected: they would let a misspelt key pass until then, and a secret's
+or a path's rule could not be known before the merge. What a run does not apply, such as
+Jira's projects in a `fetch confluence`, is said, not refused: the same settings serve
+every run. `--space` and `--project` override the list of the one source that declares
+them, among those named if any declares it: given for several, they are refused, naming
+them ([`Command.narrowed`](../../src/kb_mcp/cli/domain/command.py)).
 
-An [account](../reference/concepts.md#account), what a fetcher signs in with, is a light record in the
-declaration
-([`ATLASSIAN`](../../src/kb_mcp/sources/atlassian/declared.py), an
-[`Account`](../../src/kb_mcp/sources/declaration.py)) and a table in the package
-([`AtlassianAccountTable`](../../src/kb_mcp/sources/atlassian/settings.py)). Confluence and Jira
-name `atlassian`: `[accounts.atlassian]` holds `site`, `email` and `api_token`, the last
-from `KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN` alone. So the core knows no Atlassian setting,
-and another sign-in is another account. `--site`, which
-[`add_settings_options`](../../src/kb_mcp/cli/options/_common.py) gives every parser but
-`completion`'s, replaces `accounts.atlassian.site`: so the
-core still offers it under a registry without that account, as only a test gives, where it
-exits 2, `not a setting`. The places `session/` and `runs/` stay `config`'s
-([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)), which the data guard
-judges.
+A source's way to sign in is its connector's, in its own table: Confluence's and Jira's
+hold `site`, `email` and `api_token`, the last from the source's variable alone, such as
+`KB_MCP_SOURCES__JIRA__API_TOKEN`. So the core knows no Atlassian setting, and two
+sources of two sites sign in apart. A connector that signs in names its `location`, the
+setting where a source of it is, and its run of `login` and its checks of `doctor`
+([`Connector`](../../src/kb_mcp/sources/declaration.py)). The places `session/` and
+`runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)),
+which the data guard judges.
 
 A settings file of the former name, the default's or one that `--config` names, holding
-these keys at its top is stopped before its entries are refused, each key named by its
-final one ([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py)), a token by the
-variable that alone sets it, so that the existing file gets its advice, and a value that
-the former default's file holds and a setting refuses names that file's path as its layer
-([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding
-a top-level `site` or `email` is refused by
-[`MOVED`](../../src/kb_mcp/config/domain/settings.py), naming `[accounts.atlassian]`.
+these keys at its top is stopped before its entries are refused, each key named by the
+key of each source that holds it now
+([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py),
+[`moved_to`](../../src/kb_mcp/config/domain/settings.py)), a token by the variables that
+alone set it, so that the existing file gets its advice, and a value that the former
+default's file holds and a setting refuses names that file's path as its layer
+([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding a top-level `site`
+or `email`, or an `[accounts.atlassian]` table, and a variable
+`KB_MCP_ACCOUNTS__ATLASSIAN__…`, are refused with the same advice
+([`refuse_moved`](../../src/kb_mcp/config/domain/settings.py)).
 
 ## What every source's documents share
 
@@ -349,7 +359,7 @@ result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed
 `index` reading the mirror whatever sources it holds, and `embed` the index.
 
 What a run says of a source comes from the declarations: the names that each command takes
-are the registry's ([`register`](../../src/kb_mcp/cli/options/fetch.py),
+are those of the sources configured ([`register`](../../src/kb_mcp/cli/options/fetch.py),
 [`register`](../../src/kb_mcp/cli/options/prepare.py)); a source is configured when its first
 setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)); and so do the echo's
 lines ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py)), the settings not applied
@@ -357,9 +367,10 @@ of the sources left out ([`left_unapplied`](../../src/kb_mcp/cli/options/_source
 light refusals ([`refused`](../../src/kb_mcp/cli/options/fetch.py)) and the options, each flag once. A
 source's options and light checks are its fetch's, so a site not set refuses `fetch`, never
 `prepare`. Both commands run by one module
-([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` read each account
-from the registry: its run, its checks and its light rules, each named by its
-[`Account`](../../src/kb_mcp/sources/declaration.py).
+([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` read each source
+that signs in: its connector's run, checks and light rules, each named by its
+[`Connector`](../../src/kb_mcp/sources/declaration.py), once for the sources of one run or
+one checks' function, which group them by site.
 
 ## Kept for the extras, later
 

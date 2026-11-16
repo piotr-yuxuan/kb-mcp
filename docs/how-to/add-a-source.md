@@ -414,9 +414,10 @@ Remove `~/notes-try` once you have seen it.
 A source that reaches a system also has a fetcher: `fetch/app/fetcher.py`, a module with
 `preflight` and `fetch` ([`Fetcher`](../../src/kb_mcp/sources/stages.py)), its declaration's
 `fetcher`, which keeps its system's responses raw, for its preparer to read. Preparing may
-use what fetching keeps, never the reverse (contract J). One that signs in names an
-[`Account`](../../src/kb_mcp/sources/declaration.py), whose table is `[accounts.<name>]`, read
-by `run.account_table`. [Confluence and Jira](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)
+use what fetching keeps, never the reverse (contract J). One that signs in names its
+`location`, `login` and `checks` in its
+[`Connector`](../../src/kb_mcp/sources/declaration.py), the settings of its sign-in in its
+own table, read by `run.source_table`. [Confluence and Jira](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)
 are the worked example: one fetcher, reading the scope types of the connector of the source
 that it runs for from `run.source`. No other source keeps a store yet: its place under the data directory is a
 plan's to add, since the data guard judges each

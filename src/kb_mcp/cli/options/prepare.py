@@ -8,7 +8,6 @@ from kb_mcp.cli.domain.command import Command
 from kb_mcp.cli.domain.sources import PREPARE, prepare_described
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_groups
-from kb_mcp.sources.registry import accounts_of
 
 if TYPE_CHECKING:
     import argparse
@@ -21,13 +20,13 @@ def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     sources: Sequence[Source],
 ) -> None:
-    """Add ``prepare`` to the command, for every source of the registry.
+    """Add ``prepare`` to the command, for every source.
 
-    The settings read are each account's first, which links resolve by, the data
-    directory and the settings of each source read in place: a source that keeps a store
-    is prepared from what it holds, whatever its settings cover. A source named comes with
-    the others, after the options or before them: its ``dest`` is ``source``, as
-    ``sources`` holds the registry.
+    The settings read are the data directory, each source's location, such as its site,
+    which links resolve by, and the settings of each source read in place: a source that
+    keeps a store is prepared from what it holds, whatever its settings cover. A source
+    named comes with the others, after the options or before them: its ``dest`` is
+    ``source``, as ``sources`` holds the sources.
     """
     parser = subparsers.add_parser(
         "prepare",
@@ -70,8 +69,12 @@ def register(
             PREPARE,
             "kb_mcp.cli.commands.sources",
             reads=(
-                *(account.paths[0] for account in accounts_of(sources).values()),
                 "data_dir",
+                *(
+                    each.path(each.connector.location)
+                    for each in sources
+                    if each.connector.location is not None
+                ),
                 *(
                     path
                     for each in sources

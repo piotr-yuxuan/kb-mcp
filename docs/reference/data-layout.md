@@ -31,6 +31,7 @@ no location and is not for commands.
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_cache.lock_of` | `embed`, `eval`, `eval-rerank` (023) | `embed`, `eval`, `eval-rerank` (023) |
 | `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011) | `eval`, `eval-rerank` (011); its indexes, `embed` (023) |
 | `<data>/session/` | `session` | `login`, a `fetch` whose site renews its cookies (004) | a run signed in by the saved session (004, 015) |
+| `<data>/session/.lock` | `session`, by `adopt_former_session` | `login`, a `fetch` that moves the former session (059) | the same, which leaves the move to a run holding it (059) |
 | `<data>/runs/` | `runs` | `fetch` (004) | the user |
 
 No code builds these paths otherwise.
@@ -208,11 +209,12 @@ result of every page of each list:
 <data>/raw/<source>/spaces/<space id>/pages.json      every page, from GET /wiki/api/v2/spaces/{id}/pages, without bodies
 <data>/raw/<source>/spaces/<space id>/blogposts.json  every blog post, likewise
 <data>/raw/<source>/spaces/<space id>/folders.json    every folder that is an ancestor of a listed page, from GET /wiki/api/v2/folders/{id}
-<data>/raw/confluence/users.json                      every author seen, from GET /wiki/rest/api/user/bulk
+<data>/raw/<source>/users.json                        every author seen, from GET /wiki/rest/api/user/bulk
 ```
 
-`<source>` is the name of the source of spaces, `confluence` by default; the site's
-users are the site's, kept at one path whatever the sources' names.
+`<source>` is the name of the source of spaces, `confluence` by default; the users are
+its site's, which one source of spaces lists, so that two sites keep theirs apart and a
+store of before keeps its file, `confluence/users.json`, where it was.
 
 `put_space(space, pages, blog_posts, folders, listed_at=...)` replaces one space's
 listings, each file whole, one after another, and records in `listed_at.json` when they
@@ -315,8 +317,8 @@ finds there (030):
 
 A source that attaches files keeps them under `<name>/_assets/`, in its own folder, so that
 no other source removes them, and under a name beginning with `_`, which keeps them out of
-the documents. Confluence's and Jira's parts are derived from the raw store and the setting
-`accounts.atlassian.site` alone, so they can be rebuilt without network, byte for byte:
+the documents. Confluence's and Jira's parts are derived from the raw store and each source's
+setting `site` alone, so they can be rebuilt without network, byte for byte:
 nothing in them depends on when they were prepared.
 
 ```
@@ -382,7 +384,7 @@ order or type, by name.
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
-| `url` | string or null | the absolute address of the web page: the setting `accounts.atlassian.site` and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
+| `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
 | `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 | `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
 
@@ -1036,12 +1038,26 @@ A `<data>/models/` folder left by plan 011 is read by nothing.
 
 ## The session
 
-Owned by `login` (004). `<data>/session/` has mode `0700`; it holds the browser profile
-of the sign-in window and the saved session cookies (mode `0600`). Agents are never
-given access to it: only `<data>/docs/` is shared with them.
+Owned by `login` (004). `<data>/session/` has mode `0700`; it holds a folder per site,
+named after its host, `<data>/session/<host>/`, mode `0700` too, which two sources of one
+site share (059): the browser profile of the sign-in window, `browser/`, and the saved
+session cookies, `cookies.json` (mode `0600`). Agents are never given access to it: only
+`<data>/docs/` is shared with them.
 
-`sources.atlassian.fetch.adapters.sign_in` chooses how a run signs in (015): by an API
-token when the setting `accounts.atlassian.api_token` is set, else by the saved session,
-whose cookies a run writes back as the site renews them. A run signed in by a token reads and writes
+A session kept before sessions were a site's, `<data>/session/cookies.json` and
+`<data>/session/browser/`, still signs in the site whose host its cookies are of, while that
+site has none of its own, and no other; the first `fetch` that writes, or `login`, of that
+site moves it into the site's folder, once (`session.moved`), the profile first and the
+cookies last, holding `<data>/session/.lock`, an empty file, which a run that finds it held
+leaves the move to; a dry run, `doctor` or `serve` moves nothing. Cookies of no site that
+the settings name, or of several, or of a site with cookies of its own, stay, with one
+warning a run (`session.not_moved`), by the first source of the site, until removed;
+none when that source signs in by an API token. A move that fails is a warning of each
+source that tries it, and a run signed in by the session not moved keeps its cookies there,
+for the next run to move.
+
+`sources.atlassian.fetch.adapters.sign_in` chooses how each source signs in (015, 059): by
+an API token when its setting `api_token`, such as `sources.jira.api_token`, is set, else
+by the saved session of its site, whose cookies a run writes back as the site renews them. A run signed in by a token reads and writes
 nothing under `<data>/session/`, and keeps nothing of the token, which the environment
 gives to each run and no file under `<data>` holds.

@@ -12,7 +12,8 @@ each path setting, and the settings file given, that holds a folder or a file wh
 begins with the former name, a place to move with the setting, never a site or an
 e-mail, which a user cannot rename. Where a former place and its new one both exist, the
 new one is used and nothing stops. Each name the stop gives a setting or a variable is
-its final one, by ``RENAMED``; a secret, which no file may hold, is named by its variable.
+its final one: a key of ``RENAMED`` is that of each source's table that holds it, as
+``moved_to`` gives them; a secret, which no file may hold, is named by its variable.
 
 Once the user's machine has moved, a later plan removes this module, its
 call in ``load_settings``, ``advice``'s use in ``enter``, its tests, its line in
@@ -28,11 +29,12 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.config.domain.settings import (
     DEFAULT_DATA_DIR,
-    NESTING,
     SettingsError,
     at_home,
+    moved_to,
     variable,
 )
+from kb_mcp.kernel.names import NESTING
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
@@ -47,14 +49,9 @@ FORMER_DATA_DIR = Path("~/atlassian-offline-mcp")
 # start of a folder's or a file's name: a folder above whose name holds it elsewhere,
 # such as a clone's under an agent's scratch, names no place of the program's.
 FORMER_NAME = re.compile(r"(?:^|/)atlassian.offline.mcp", re.IGNORECASE)
-# Each setting renamed since, by its former path, to its path now, so that the stop
-# prints final names: plan 030's, the sign-in's, now the Atlassian account's table.
-# Plan 036 adds its own.
-RENAMED: dict[tuple[str, ...], tuple[str, ...]] = {
-    ("site",): ("accounts", "atlassian", "site"),
-    ("email",): ("accounts", "atlassian", "email"),
-    ("api_token",): ("accounts", "atlassian", "api_token"),
-}
+# The keys at the top of the former settings that each source's table holds since, so
+# that the stop prints final names: plan 030's, the sign-in's, in each Atlassian source.
+RENAMED = ("site", "email", "api_token")
 # What the program cannot do for the user, as it reads no other program's configuration.
 BY_HAND = (
     "- uv tool uninstall atlassian-offline-mcp, then uv tool install --force <checkout>",
@@ -74,7 +71,9 @@ BY_HAND = (
     "- another search engine over the mirror: each collection on ~/atlassian-offline-mcp/docs/",
     "  added again on ~/kb-mcp/docs/",
     "- scripts, aliases, crontabs and agents' setups: each command that went, sync, download",
-    "  and mirror, and index for search by meaning, as that page's section 9 says",
+    "  and mirror, and index for search by meaning, as that page's section 9 says; --site,",
+    "  which went, as sources.<name>.site or KB_MCP_SOURCES__<NAME>__SITE; login atlassian,",
+    "  as login <source>, or login alone for each site",
 )
 
 
@@ -121,10 +120,10 @@ class Found(Record):
 
         That is rule 1's file, or the settings file given when rule 4 names it. No layer
         reads them, and the stop names each by its path now. Any other file has none: the
-        settings refuse a key that names no setting there, or one moved (``MOVED``).
+        settings refuse a key that names no setting there, or one moved (``refuse_moved``).
         """
         return (
-            tuple(key for key, *inner in RENAMED if not inner and key in self.keys_read)
+            tuple(key for key in RENAMED if key in self.keys_read)
             if self.former_file_judged or FORMER_NAME.search(str(self.settings_given))
             else ()
         )
@@ -160,11 +159,14 @@ def refuse_former_name(
         and not found.former_data_in_git
     ):
         moves.append(f"mv {FORMER_DATA_DIR} {default_data}")
+    sources = loaded.settings.sources
     keys = [
-        f"{key}: delete it, and set {variable(RENAMED[(key,)])} in the environment"
-        if loaded.paths.get(RENAMED[(key,)]) == "secret"
-        else f"{key} to {'.'.join(RENAMED[(key,)])}"
-        for key in found.renamed_keys
+        f"{key}: delete it, as each source holds its own"
+        if not to
+        else f"{key}: delete it, and set {' and '.join(map(variable, to))} in the environment"
+        if any(loaded.paths.get(path) == "secret" for path in to)
+        else f"{key} to {' and '.join('.'.join(path) for path in to)}"
+        for key, to in ((key, moved_to(key, sources)) for key in found.renamed_keys)
     ]
     given = {name.lower() for name, value in environ.items() if value}
     variables = []
@@ -172,9 +174,13 @@ def refuse_former_name(
         if not (environ[name] and name.lower().startswith(FORMER_PREFIX.lower())):
             continue
         path = tuple(name[len(FORMER_PREFIX) :].lower().split(NESTING))
-        renamed = variable(RENAMED.get(path, path))
-        if renamed.lower() not in given:
-            variables.append(f"{name} to {renamed}")
+        renamed = [
+            each
+            for each in map(variable, moved_to(path[0], sources) if path[0] in RENAMED else [path])
+            if each.lower() not in given
+        ]
+        if renamed:
+            variables.append(f"{name} to {' and '.join(renamed)}")
     judged = [
         *(
             (setting, layer, reduce(getattr, setting.split("."), loaded.settings))

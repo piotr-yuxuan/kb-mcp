@@ -28,9 +28,17 @@ from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.endpoint import Scripted, serving
-from tests.test_api_token import CREDENTIAL, EMAIL, HOST, KEY, served
+from tests.test_api_token import (
+    CREDENTIAL,
+    EMAIL,
+    HOST,
+    JIRA_CREDENTIAL,
+    JIRA_EMAIL,
+    KEY,
+    served,
+)
 from tests.test_fetching import SITE, FakeSite
 from tests.test_observed import said
 from tests.test_serve import talk
@@ -49,7 +57,13 @@ COOKIE = "cookie-sentinel-4e9a"
 # What no file, stdout nor stderr may hold: the Basic form holds the base64, and the
 # Bearer form the key as it is.
 SECRETS = (SENTINEL, ENCODED, API_KEY)
-ENVIRONMENT = {EMAIL: ADDRESS, CREDENTIAL: SENTINEL, KEY: API_KEY}
+ENVIRONMENT = {
+    EMAIL: ADDRESS,
+    CREDENTIAL: SENTINEL,
+    JIRA_EMAIL: ADDRESS,
+    JIRA_CREDENTIAL: SENTINEL,
+    KEY: API_KEY,
+}
 
 
 @dataclass
@@ -99,7 +113,7 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
     runs' are.
     """
     data = tmp_path / "data"
-    session = data / "session" / COOKIES
+    session = folder_of(data / "session", SITE) / COOKIES
     write_cookies(session, [{"name": "tenant.session.token", "value": COOKIE, "domain": HOST}])
     sent = served(monkeypatch, FakeSite().handle)
     endpoint = Keyed()
@@ -107,8 +121,8 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
         config = tmp_path / "config.toml"
         config.write_text(
             f'model = "tiny"\nembedding_url = {json.dumps(url)}\n'
-            f'[accounts.atlassian]\nsite = "{SITE}"\n'
-            '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n'
+            f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+            f'[sources.jira]\nprojects = ["PRB"]\nsite = "{SITE}"\n'
             "[rerank]\nenabled = false\n",  # no reranking server here
             "utf-8",
         )
@@ -118,6 +132,7 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
         by_token, files_by_token = list(sent), left(tmp_path)
         with monkeypatch.context() as session_alone:
             session_alone.delenv(CREDENTIAL)
+            session_alone.delenv(JIRA_CREDENTIAL)
             assert main(["fetch", "--yes", *options]) == ExitStatus.FAILED
         assert main(["index", "--yes", *options]) == ExitStatus.OK
         assert main(["embed", "--yes", *options]) == ExitStatus.OK
@@ -155,14 +170,14 @@ def test_no_run_at_debug_says_or_leaves_a_secret(
     ("case", "named"),
     [
         (
-            ({"KB_MCP_ACCOUNTS__ATLASSIAN__SITE": SENTINEL}, "", []),
-            "accounts.atlassian.site (KB_MCP_ACCOUNTS__ATLASSIAN__SITE)",
+            ({"KB_MCP_SOURCES__JIRA__SITE": SENTINEL}, "", []),
+            "sources.jira.site (KB_MCP_SOURCES__JIRA__SITE)",
         ),
         (
-            ({}, f'[accounts.atlassian]\nsite = "{SENTINEL}"\n', []),
-            "accounts.atlassian.site (config.toml)",
+            ({}, f'[sources.jira]\nsite = "{SENTINEL}"\n', []),
+            "sources.jira.site (config.toml)",
         ),
-        (({}, "", ["--site", SENTINEL]), "accounts.atlassian.site (--site)"),
+        (({}, "", ["--data-dir", SENTINEL]), "data_dir (--data-dir)"),
         (
             ({"KB_MCP_EMBEDDING_URL": API_KEY}, "", []),
             "embedding_url (KB_MCP_EMBEDDING_URL)",

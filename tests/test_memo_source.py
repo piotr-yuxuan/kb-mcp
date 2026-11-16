@@ -265,9 +265,12 @@ def test_a_folder_of_notes_that_is_not_one_is_refused_before_any_row(
 def test_without_that_line_its_table_is_no_setting_and_its_name_no_choice(
     config: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The registry is the only way in: the same file is refused, the same flag too."""
+    """The registry is the only way in: the same file is refused, the same flag too.
+
+    Plan 059: the settings name a source of no connector that the registry holds.
+    """
     assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
-    assert "sources.memo.folder (config.toml): not a setting" in capsys.readouterr().err
+    assert "sources.memo (config.toml): not a source" in capsys.readouterr().err
     with pytest.raises(SystemExit) as stopped:
         main(["prepare", "memo", "--yes", "--config", str(config)])
     assert stopped.value.code == ExitStatus.REFUSED

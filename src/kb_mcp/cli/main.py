@@ -12,16 +12,19 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import pkgutil
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, override
 
 import argcomplete
 
 from kb_mcp.cli import options
+from kb_mcp.config.adapters.settings_file import SETTINGS_PATH, named_sources
 from kb_mcp.kernel.exit_status import MEANINGS
 from kb_mcp.kernel.names import PROGRAM
-from kb_mcp.sources.registry import SOURCES, refuse
+from kb_mcp.sources.registry import SOURCES, configured, refuse
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -63,12 +66,12 @@ def parser(
 ) -> argparse.ArgumentParser:
     """Return the command's parser, of this class, with every subcommand declared.
 
-    Each declaration is given the registry, ``sources``, ``SOURCES`` unless a test gives
-    one of its own, as ``fetch``'s takes its sources and their options. Its help ends
-    with who asks before acting, the subcommands whose declaration says they write, and
-    every exit status with what it means. What it parses holds ``commands``, every
+    Each declaration is given the sources, ``SOURCES`` unless the entry gives those that
+    the settings configure, as ``fetch``'s takes its sources and their options. Its help
+    ends with who asks before acting, the subcommands whose declaration says they write,
+    and every exit status with what it means. What it parses holds ``commands``, every
     subcommand's name and each of ``RETIRED``, whose old log files a run removes, and
-    ``sources``, the registry, which a run and its declaration's checks read.
+    ``sources``, which a run and its declaration's checks read.
     """
     program = parser_class(
         prog=PROGRAM,
@@ -107,20 +110,28 @@ def parser(
 def main(argv: Sequence[str] | None = None, sources: Sequence[Source] = SOURCES) -> int:
     """Parse the arguments, run the chosen subcommand, and return its exit status.
 
-    ``sources`` is the registry, ``SOURCES`` unless a test gives one of its own: first
-    refused, raising ValueError, when it breaks a rule of every registry, then handed to
-    the parser and to the entry, whose settings hold each of its sources' tables. When
-    the shell asks for completions, argcomplete answers them and exits instead, as
-    --help and --version do. A command that is not ``observed``, ``completion``, is run
-    as they are: its run alone is imported, and writes its output. Else, from then on,
-    events and records go to stderr from WARNING, never to stdout, until the run's
-    settings are read.
+    ``sources`` is the registry, ``SOURCES`` unless a test gives one of its own, to which
+    the sources that the settings file given by --config and the environment name are
+    added (``configured``): first refused, raising ValueError, when they break a rule of
+    every registry, then handed to the parser and to the entry, whose settings hold each
+    of their tables. When the shell asks for completions, argcomplete answers them and
+    exits instead, as --help and --version do; they read the default settings file. A
+    command that is not ``observed``, ``completion``, is run as they are: its run alone
+    is imported, and writes its output. Else, from then on, events and records go to
+    stderr from WARNING, never to stdout, until the run's settings are read.
     """
+    # Agents start the command with no arguments, which serves MCP over stdio.
+    given = list(sys.argv[1:] if argv is None else argv) or ["serve"]
+    config = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    config.add_argument("--config", type=Path, default=SETTINGS_PATH)
+    try:
+        path = config.parse_known_args(given)[0].config
+    except argparse.ArgumentError:  # --config without its file: the parser refuses it
+        path = SETTINGS_PATH
+    sources = configured(sources, named_sources(path, os.environ))
     refuse(sources)
     program = parser(sources=sources)
     argcomplete.autocomplete(program)
-    # Agents start the command with no arguments, which serves MCP over stdio.
-    given = list(sys.argv[1:] if argv is None else argv) or ["serve"]
     arguments = program.parse_args(given)
     if not arguments.command.observed:
         return importlib.import_module(arguments.command.run).run(arguments)

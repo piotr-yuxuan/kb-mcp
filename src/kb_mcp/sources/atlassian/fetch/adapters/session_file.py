@@ -1,12 +1,20 @@
-"""The saved session: the site's cookies, in a file that the user alone can read."""
+"""The saved session: a site's cookies, in a file that the user alone can read.
+
+Each site's session is a folder of the session's place, named after its host: its
+cookies and the browser profile that signed it in.
+"""
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
+
+import structlog
 
 from kb_mcp.kernel.fields import Fields
 
@@ -14,6 +22,86 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
 COOKIES = "cookies.json"
+# The browser profile of the sign-in window, beside the cookies.
+PROFILE = "browser"
+
+
+def folder_of(root: Path, site: str) -> Path:
+    """Give the folder that keeps a site's session, under the session's place ``root``."""
+    return root / (urlsplit(site).hostname or "")
+
+
+def kept_why(root: Path, source: str, sites: Mapping[str, str]) -> str | None:
+    """Say why the session kept before stays, or None when this source's site takes it.
+
+    ``sites`` gives the site of every source that names one, ``source``'s among them, in
+    their order. The session is a site's when every cookie is of its host, as ``login``
+    saved them filtered to one host, and of no other site's, and the site has no cookies
+    of its own yet. Only the first source of the host that it is of, or of the first host
+    when it is of none, says why it stays: an empty reason is another's to say.
+    """
+    try:
+        cookies = read_cookies(root / COOKIES)
+    except OSError, ValueError:
+        cookies = []
+    hosts = {name: urlsplit(site).hostname or "" for name, site in sites.items()}
+    host = hosts[source]
+    matching = sorted(
+        {
+            each
+            for each in hosts.values()
+            if cookies and len(for_site(cookies, each)) == len(cookies)
+        }
+    )
+    speaking = (matching or sorted(hosts.values()))[0]
+    if matching == [host] and not (root / host / COOKIES).exists():
+        return None
+    if source != next(name for name, each in hosts.items() if each == speaking):
+        return ""
+    if matching == [host]:
+        return "this site has a session of its own; remove the former one"
+    if not matching:
+        return "its cookies are of no site that the settings name; remove it"
+    return (
+        f"its cookies are of several sites, {', '.join(matching)}: log in to each, then remove it"
+    )
+
+
+def adopt_former_session(root: Path, source: str, sites: Mapping[str, str]) -> None:
+    """Move the session kept before sessions were a site's into a source's site's folder, once.
+
+    That is ``root/cookies.json`` and the profile beside it, as ``kept_why`` judges,
+    under a lock of ``root``, which another run holding skips the move: it makes it. The
+    profile goes first, unless the site has one, then the cookies, whose place says that
+    the move is done: ``session.moved``, at INFO. Else, or when the lock or a move fails,
+    they stay, with a warning, ``session.not_moved``, saying why. With none, nothing is
+    said.
+    """
+    former, folder = root / COOKIES, folder_of(root, sites[source])
+    if not former.exists():
+        return
+    log = structlog.get_logger()
+    handle = -1
+    try:
+        handle = os.open(root / ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        why = kept_why(root, source, sites)
+        if why is None:
+            folder.mkdir(mode=0o700, exist_ok=True)
+            if (root / PROFILE).exists() and not (folder / PROFILE).exists():
+                (root / PROFILE).rename(folder / PROFILE)
+            former.rename(folder / COOKIES)
+            log.info("session.moved", host=folder.name, session=str(folder))
+        elif why:
+            log.warning("session.not_moved", host=folder.name, session=str(former), reason=why)
+    except BlockingIOError:
+        return
+    except OSError as error:
+        why = f"not moved: {type(error).__name__}"
+        log.warning("session.not_moved", host=folder.name, session=str(former), reason=why)
+    finally:
+        if handle >= 0:
+            os.close(handle)
 
 
 def read_cookies(path: Path) -> list[dict[str, str]]:

@@ -42,7 +42,7 @@ from kb_mcp.mirror.adapters.pandoc import (
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.fetch.domain import names
@@ -73,13 +73,18 @@ if TYPE_CHECKING:
     from kb_mcp.sources.declaration import Connector, Source
     from tests.conftest import InMemory
 
+# Jira's site, by its variable.
+JIRA_SITE = {"KB_MCP_SOURCES__JIRA__SITE": SITE}
 # Each setting that chooses a source, as the declaration's functions take them.
 CONFIGURED = {
-    "accounts.atlassian.site": SITE,
-    "accounts.atlassian.email": None,
-    "accounts.atlassian.api_token": None,
     "sources.confluence.spaces": ("MFS",),
+    "sources.confluence.site": SITE,
+    "sources.confluence.email": None,
+    "sources.confluence.api_token": None,
     "sources.jira.projects": ("PRB",),
+    "sources.jira.site": SITE,
+    "sources.jira.email": None,
+    "sources.jira.api_token": None,
     "sources.worklog.path": Path("/work/todo"),
     "sources.worklog.archives": True,
 }
@@ -154,8 +159,8 @@ def settings_file(home: Path, worklog: Path | None, *, atlassian: bool = False) 
     """Write a settings file naming the work log, and with ``atlassian``, MFS and PRB."""
     text = ""
     if atlassian:
-        text += f'[accounts.atlassian]\nsite = "{SITE}"\n[sources.confluence]\nspaces = ["MFS"]\n'
-        text += '[sources.jira]\nprojects = ["PRB"]\n'
+        text += f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        text += f'[sources.jira]\nprojects = ["PRB"]\nsite = "{SITE}"\n'
     if worklog is not None:
         text += f'[sources.worklog]\npath = "{worklog}"\n'
     config = home / "config.toml"
@@ -226,7 +231,7 @@ def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -
     registry = sourced(CONFLUENCE, JIRA, noted)
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
-    assert "source confluence: spaces MFS" in fetch_described(given, CONFIGURED)
+    assert f"source confluence: spaces MFS, site {SITE}" in fetch_described(given, CONFIGURED)
 
 
 def test_a_dry_run_of_the_work_log_alone_writes_nothing_and_ignores_nothing(
@@ -258,7 +263,7 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
         (
             "fetch",
             (
-                "source confluence: spaces MFS\n",
+                f"source confluence: spaces MFS, site {SITE}\n",
                 "source jira: left out, not named\n",
                 "source worklog: left out, read in place, it has nothing to fetch\n",
             ),
@@ -321,19 +326,24 @@ def test_a_work_log_named_by_an_empty_variable_is_not_configured(
 
 
 def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
-    home: Path, worklog: Path, capsys: CaptureFixture[str]
+    home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Its documents get no address: said once, of a source of that account alone."""
+    """Its documents get no address: said once a source, of each source taken alone."""
     config = settings_file(home, worklog)
-    line = (
-        "accounts.atlassian.site: not set; any documents of confluence, jira get no address there\n"
-    )
+    lines = [
+        f"sources.{name}.site: not set; any documents of {name} get no address there\n"
+        for name in ("confluence", "jira")
+    ]
     assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
-    assert capsys.readouterr().err.count(line) == 1
+    err = capsys.readouterr().err
+    assert [err.count(line) for line in lines] == [1, 1]
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
-    assert line not in capsys.readouterr().err
-    assert main(command(home, config, "prepare", "--yes", "--site", SITE)) == ExitStatus.OK
-    assert line not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert not any(line in err for line in lines)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
+    err = capsys.readouterr().err
+    assert [err.count(line) for line in lines] == [0, 1]
 
 
 def test_a_false_value_of_a_source_left_out_is_said_not_applied_as_a_true_one_is(
@@ -373,9 +383,13 @@ def test_a_source_read_in_place_is_said_by_its_settings(
 def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
     """Save a session in the home's data folder, and serve the scripted site of plan 004."""
     chosen_settings = MODEL(
-        accounts={"atlassian": {"site": SITE}}, data_dir=(home / "data").resolve()
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
+        data_dir=(home / "data").resolve(),
     )
-    write_cookies(chosen_settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen_settings.session, SITE) / COOKIES,
+        [{"name": "s", "value": "v", "domain": "x"}],
+    )
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     return fake
@@ -502,9 +516,6 @@ def runs(
             sources=SOURCES,
             settings=settings,
             source_table=getattr(settings.sources, each.name),
-            account_table=None
-            if each.connector.account is None
-            else getattr(settings.accounts, each.connector.account.name),
             options={flag: (options or {}).get(flag) for flag in each.connector.flags},
             now=lambda: now,
             sleep=lambda _: None,
@@ -522,15 +533,16 @@ def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, obj
 def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
     """Give settings with a site, a data folder with a saved session, MFS, PRB and the work log."""
     settings = MODEL(
-        accounts={"atlassian": {"site": SITE}},
         data_dir=tmp_path / "data",
         sources={
-            "confluence": {"spaces": ["MFS"]},
-            "jira": {"projects": ["PRB"]},
+            "confluence": {"spaces": ["MFS"], "site": SITE},
+            "jira": {"projects": ["PRB"], "site": SITE},
             "worklog": {"path": worklog},
         },
     )
-    write_cookies(settings.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(settings.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     return settings
 
 
@@ -559,9 +571,12 @@ def test_a_fetch_that_must_sign_in_leaves_each_prepare_to_run_on_what_is_stored(
 ) -> None:
     """No session saved: the fetch says to sign in, exit 3; each prepare then runs, exit 0."""
     settings = MODEL(
-        accounts={"atlassian": {"site": SITE}},
         data_dir=tmp_path / "data",
-        sources={"confluence": {"spaces": ["MFS"]}, "worklog": {"path": worklog}},
+        sources={
+            "confluence": {"spaces": ["MFS"], "site": SITE},
+            "jira": {"site": SITE},
+            "worklog": {"path": worklog},
+        },
     )
     first = runs(settings, FIRST, CONFLUENCE, options=SINCE)
     with capture_logs() as logged:
@@ -898,8 +913,7 @@ def test_the_settings_of_sources_left_out_are_said_not_applied(
     config = settings_file(home, worklog, atlassian=True)
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     said = capsys.readouterr().err
-    unsigned = "no source of the atlassian account in this prepare"
-    assert f"ignored: accounts.atlassian.site (config.toml): {unsigned}\n" in said
+    assert "ignored: sources.confluence.site (config.toml): confluence not named\n" in said
     assert "sources.jira.projects" not in said
     assert main(command(home, config, "fetch", "--dry-run", "confluence")) == 0
     assert "ignored: sources.jira.projects (config.toml): jira not named\n" in (
@@ -1135,14 +1149,13 @@ def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
     home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The site is used; the email, without its token, signs nothing in."""
-    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__EMAIL", "someone@example.invalid")
     config = settings_file(home, None, atlassian=True)
     given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02")
     assert main(given) == ExitStatus.OK
     said = capsys.readouterr().err
-    assert "no source of the atlassian account" not in said
     assert (
-        "accounts.atlassian.email: someone@example.invalid (not applied: without an API token"
+        "sources.confluence.email: someone@example.invalid (not applied: without an API token"
         in said
     )
     assert signed_in.asked
@@ -1151,18 +1164,21 @@ def test_with_a_site_source_an_email_without_a_token_alone_is_not_applied(
 def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """The email and the token, given, are said ignored, by their variables."""
-    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL", "someone@example.invalid")
-    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "token-sentinel-7f2b")
+    """The email and the token, given, are said ignored in detail, by their variables.
+
+    A prepare reads neither.
+    """
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__EMAIL", "someone@example.invalid")
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
-    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == ExitStatus.OK
+    given = command(home, config, "prepare", "worklog", "--dry-run", "--detail", "detailed")
+    assert main(given) == ExitStatus.OK
     said = capsys.readouterr().err
     for setting, variable in (
-        ("accounts.atlassian.email", "KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL"),
-        ("accounts.atlassian.api_token", "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"),
+        ("sources.confluence.email", "KB_MCP_SOURCES__CONFLUENCE__EMAIL"),
+        ("sources.confluence.api_token", "KB_MCP_SOURCES__CONFLUENCE__API_TOKEN"),
     ):
-        unsigned = "no source of the atlassian account in this prepare"
-        assert f"ignored: {setting} ({variable}): {unsigned}\n" in said
+        assert f"ignored: {setting} ({variable}): not read by prepare\n" in said
     assert "token-sentinel-7f2b" not in said
 
 
@@ -1343,14 +1359,14 @@ def test_every_role_s_preflight_runs_before_the_first_row(
 @pytest.mark.parametrize(
     "case",
     [
-        ((), {}, "accounts.atlassian.site: not set; add it to the settings or pass --site"),
+        ((), {}, "sources.jira.site: not set; add it to the settings"),
         (
-            ("--site", SITE),
-            {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-7f2b"},
-            "accounts.atlassian.email: not set; an API token signs in with its account's email",
+            (),
+            {**JIRA_SITE, "KB_MCP_SOURCES__JIRA__API_TOKEN": "token-sentinel-7f2b"},
+            "sources.jira.email: not set; an API token signs in with its account's email",
         ),
-        (("--site", SITE, "--max-file-mb", "0"), {}, "--max-file-mb: at least 1"),
-        (("--site", SITE, "--until", "soon"), {}, "--until: a length before now"),
+        (("--max-file-mb", "0"), JIRA_SITE, "--max-file-mb: at least 1"),
+        (("--until", "soon"), JIRA_SITE, "--until: a length before now"),
     ],
 )
 def test_the_site_s_light_checks_refuse_a_fetch_and_never_a_prepare(
@@ -1386,21 +1402,25 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
     """
     config = settings_file(home, None, atlassian=True)
 
-    def said(_options: Mapping[str, object], _settings: Mapping[str, object]) -> tuple[str, ...]:
-        return ("a declaration's line",)
+    def said(
+        source: Source, _options: Mapping[str, object], _settings: Mapping[str, object]
+    ) -> tuple[str, ...]:
+        return (f"{source.name}: a declaration's line",)
 
-    def unused(_options: Mapping[str, object], settings: Mapping[str, object]) -> dict[str, str]:
-        assert settings["sources.jira.projects"] == ("PRB",)
-        return {"sources.jira.projects": "a declaration's reason"}
+    def unused(
+        source: Source, _options: Mapping[str, object], settings: Mapping[str, object]
+    ) -> dict[str, str]:
+        assert settings[source.path("projects")] == ("PRB",)
+        return {source.path("projects"): "a declaration's reason"}
 
     checked = replace(JIRA, described=said, unapplied=unused)
     registry = sourced(CONFLUENCE, checked, WORKLOG)
     given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02")
     assert main(given, registry) == ExitStatus.OK
     err = capsys.readouterr().err
-    assert "  a declaration's line\n" in err
+    assert "  jira: a declaration's line\n" in err
     assert "(not applied: a declaration's reason)" in err
-    refusing = replace(JIRA, refused=lambda _options, _settings: "a declaration's refusal")
+    refusing = replace(JIRA, refused=lambda _source, _options, _settings: "a declaration's refusal")
     registry = sourced(CONFLUENCE, refusing, WORKLOG)
     assert main(given, registry) == ExitStatus.REFUSED
     assert "a declaration's refusal" in capsys.readouterr().err
@@ -1510,10 +1530,10 @@ def test_a_prepare_refused_by_a_token_without_its_email_is_none_of_its_concern(
     home: Path, worklog: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Prepare signs in nowhere: an API token without its email refuses no prepare."""
-    monkeypatch.setenv("KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN", "token-sentinel-7f2b")
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
-    assert "accounts.atlassian.email: not set" not in capsys.readouterr().err
+    assert "sources.confluence.email: not set" not in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("signed_in")
@@ -1528,7 +1548,8 @@ def test_the_same_command_runs_either_way_round_its_options(
     given = [stage, "confluence", "--config", str(config), "--data-dir", data, "--dry-run", *period]
     assert main(given) == ExitStatus.OK
     copied = capsys.readouterr().err.split(f"kb-mcp {stage} \\\n")[1]
-    assert copied.rstrip().rsplit("\n", 1)[-1].strip() == "confluence"
+    command = [line for line in copied.splitlines() if not line.startswith("not in the command")]
+    assert command[-1].strip() == "confluence"
 
 
 def test_the_span_of_a_row_names_its_source_and_how_it_ended(

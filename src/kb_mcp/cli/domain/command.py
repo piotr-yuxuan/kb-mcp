@@ -34,7 +34,9 @@ class Command:
     (``sources.confluence.spaces``); for every command that it observes, the entry reads
     those of ``OBSERVING`` too, which ``reads`` need not name, and so loads the settings
     even for one that reads no other. ``flags`` maps each option that overrides a
-    setting, by the option's ``dest``, to that setting's path.
+    setting, by the option's ``dest``, to that setting's path; ``scoped`` each that
+    overrides a setting of one source, of those that declare it, to that setting's path
+    by source.
     ``actions`` are the options and positionals as ``add_argument`` returned them, those
     of the output aside: each flag among them is named by its option, and the command to
     copy carries them. A command that ``writes`` under the data directory shows its
@@ -66,6 +68,7 @@ class Command:
     run: str
     reads: tuple[str, ...] = ()
     flags: Mapping[str, str] = field(default_factory=dict)
+    scoped: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     actions: tuple[argparse.Action, ...] = ()
     writes: bool = False
     dry_run: bool = False
@@ -78,14 +81,37 @@ class Command:
     files: tuple[str, ...] = ()
     unlogged: tuple[str, ...] = ()
 
-    def setting_flags(self) -> dict[str, tuple[str, str]]:
+    def narrowed(self, arguments: argparse.Namespace) -> dict[str, dict[str, str]]:
+        """Give each flag of ``scoped`` the settings that it may override, by source.
+
+        Those of the sources named (``arguments.source``, as ``fetch`` names them), none
+        when none of them declares it; with none named, those of every source that does.
+        """
+        if not self.scoped:
+            return {}
+        named = set(arguments.source)
+        return {
+            dest: {name: path for name, path in by.items() if name in named or not named}
+            for dest, by in self.scoped.items()
+        }
+
+    def setting_flags(self, arguments: argparse.Namespace) -> dict[str, tuple[str, str]]:
         """Map the ``dest`` of each flag among the actions to its option and its setting.
 
         The option is the action's longest, such as ``--data-dir``, which names the
-        flag's layer.
+        flag's layer. A flag of ``scoped`` overrides the setting that ``narrowed`` leaves
+        it, when it leaves one; with several, none.
         """
+        settings = {
+            **self.flags,
+            **{
+                dest: next(iter(left.values()))
+                for dest, left in self.narrowed(arguments).items()
+                if len(left) == 1
+            },
+        }
         return {
-            action.dest: (max(action.option_strings, key=len), self.flags[action.dest])
+            action.dest: (max(action.option_strings, key=len), settings[action.dest])
             for action in self.actions
-            if action.dest in self.flags
+            if action.dest in settings
         }

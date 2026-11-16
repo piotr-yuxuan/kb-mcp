@@ -1,11 +1,11 @@
 """What a connector declares, and a source: one configured instance of one connector.
 
 Standard library alone, since ``--help`` imports every declaration (contract G), so its
-classes are dataclasses, as ``Command`` is. A connector names its table, and its
-account's, by module path, ``module:name``, which the entry loads once the arguments are
-parsed; and its fetcher and preparers, each a module that the run using it loads, a
-``Fetcher`` or a ``Preparer`` of ``sources.stages``. Its light checks, which ``fetch`` asks
-before anything is asked of the user, are functions that it holds.
+classes are dataclasses, as ``Command`` is. A connector names its table by module path,
+``module:name``, which the entry loads once the arguments are parsed; its fetcher and
+preparers, each a module that the run using it loads, a ``Fetcher`` or a ``Preparer`` of
+``sources.stages``; and its sign-in's run and checks alike. Its light checks, which
+``fetch`` asks before anything is asked of the user, are functions that it holds.
 """
 
 from __future__ import annotations
@@ -21,14 +21,14 @@ if TYPE_CHECKING:
 # How a fetch enumerates the documents of a scope: listed whole, searched by update time,
 # or read whole, in place.
 type Enumeration = Literal["listed", "searched", "in place"]
-# A connector's light checks, each a pure function of its options' values, by flag, None
-# when not given, and of every setting's value, by its path joined by dots: why its run
-# cannot go on, or None when it can;
-type Refused = Callable[[Mapping[str, object], Mapping[str, object]], str | None]
+# A connector's light checks, each a pure function of the source that it is asked of, of
+# its options' values, by flag, None when not given, and of every setting's value, by its
+# path joined by dots: why the source's run cannot go on, or None when it can;
+type Refused = Callable[[Source, Mapping[str, object], Mapping[str, object]], str | None]
 # what its run does not apply of the settings given, by setting, and why;
-type Unapplied = Callable[[Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
+type Unapplied = Callable[[Source, Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
 # and the lines that a run's echo says of it.
-type Described = Callable[[Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
+type Described = Callable[[Source, Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
 
 
 def key_of(name: str, rule: re.Pattern[str]) -> Callable[[str], str]:
@@ -88,37 +88,6 @@ class ScopeType:
 
 
 @dataclass(frozen=True)
-class Account:
-    """What a connector's fetcher signs in with: its name, its table, its login and its checks.
-
-    ``name`` is its table, ``[accounts.<name>]``, which every source of a connector naming
-    it shares. ``table_path`` names the model by module path; ``settings`` are its
-    settings, by name, in their order, the first where it signs in. ``login`` names by
-    module path, as ``table_path`` does, the run of ``kb-mcp login <name>``: a function of
-    the settings, the browser's path and, by name, ``extensions``, which gives a record of
-    what it signed in to, or None when no sign-in completed, having said so. ``checks``
-    names alike ``doctor``'s of it: a function of the settings, which gives its checks,
-    each a ``Check``. ``refused`` and ``unapplied``, if any, are its light checks, which
-    ``doctor`` asks with no options: what cannot be signed in with, and what the sign-in
-    does not apply. A path that does not load raises as it does, as a table's: a
-    programmer's error, as no setting can cause it.
-    """
-
-    name: str
-    table_path: str
-    settings: tuple[str, ...]
-    login: str
-    checks: str
-    refused: Refused | None = None
-    unapplied: Unapplied | None = None
-
-    @property
-    def paths(self) -> tuple[str, ...]:
-        """Give its settings by their paths, joined by dots: ``accounts.<name>.<setting>``."""
-        return tuple(f"accounts.{self.name}.{setting}" for setting in self.settings)
-
-
-@dataclass(frozen=True)
 class Connector:
     """The code that reads one kind of origin: its scope types, its source's settings, its stages.
 
@@ -129,8 +98,20 @@ class Connector:
     configured. ``table_path`` is the Pydantic model of that table, by module path.
     ``preparers`` name the modules that write a source's documents, in their order, and
     ``fetcher`` the one that brings its origin's changes into its store, None for a
-    connector read in place. ``account``, if any, is what its fetcher signs in with.
-    ``refused``, ``unapplied`` and ``described``, if any, are its light checks.
+    connector read in place. ``location``, if any, is the setting that says where a
+    source of it is, such as a site's address, without which it is not signed in to,
+    nor its documents given an address.
+
+    A connector whose origin asks to sign in names, by module path as ``table_path``
+    does, the run of ``kb-mcp login`` (``login``): a function of the settings, the
+    sources to sign in, the browser's path and, by name, ``extensions`` and ``named``,
+    whether the user named the one source, which gives a record of each place it signed
+    in to, with its ``site``, and whether every sign-in completed, having said why not;
+    and ``doctor``'s
+    checks (``checks``): a function of the settings and of the sources configured, which
+    gives its checks, each a ``Check``. A path that does not load raises as it does, as a
+    table's: a programmer's error, as no setting can cause it. ``refused``,
+    ``unapplied`` and ``described``, if any, are its light checks.
     """
 
     name: str
@@ -140,7 +121,9 @@ class Connector:
     table_path: str
     preparers: tuple[str, ...]
     fetcher: str | None = None
-    account: Account | None = None
+    location: str | None = None
+    login: str | None = None
+    checks: str | None = None
     options: tuple[Option, ...] = ()
     refused: Refused | None = None
     unapplied: Unapplied | None = None
@@ -169,10 +152,18 @@ class Source:
     name: str
     connector: Connector
 
+    def path(self, setting: str) -> str:
+        """Give one of its settings by its path, joined by dots: ``sources.<name>.<setting>``."""
+        return f"sources.{self.name}.{setting}"
+
     @property
     def paths(self) -> tuple[str, ...]:
-        """Give its settings by their paths, joined by dots: ``sources.<name>.<setting>``."""
-        return tuple(f"sources.{self.name}.{setting}" for setting in self.connector.settings)
+        """Give its connector's settings by their paths, in their order.
+
+        Its table's ``connector`` aside, which every command reads, as the entry composes
+        the settings' model by it.
+        """
+        return tuple(map(self.path, self.connector.settings))
 
     def prepared_by_default(self, settings: Mapping[str, object]) -> bool:
         """Say whether it holds documents to prepare: it keeps a store, or is configured.

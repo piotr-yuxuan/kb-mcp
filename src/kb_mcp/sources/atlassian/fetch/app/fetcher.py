@@ -115,6 +115,9 @@ def fetch_purview(
 ) -> Outcome[FetchCounts]:
     """Fetch these scopes, one source's, or plan their fetch; say what went wrong.
 
+    A fetch, not its plan, first takes the session kept before sessions were a site's, as
+    ``SignIn.adopt_former`` says.
+
     Another run writing the raw store fails the fetch before it starts, a problem by the
     raw store and an error, ``fetch.store_busy``; each scope that failed is a warning,
     ``fetch.scope_failed``, and a sign-in that no longer holds an error,
@@ -123,6 +126,8 @@ def fetch_purview(
     """
     act = plan_fetch if dry_run else run_fetch
     source = purview.source
+    if not dry_run:
+        choose_sign_in(settings, source).adopt_former()
     try:
         outcome = act(settings, purview, now, sleep)
     except StoreBusyError:
@@ -132,6 +137,6 @@ def fetch_purview(
         return Outcome.of(problems=(Problem(where="raw store", reason=BUSY),))
     if outcome.ending == "sign in again":
         structlog.get_logger().error(
-            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings).again
+            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings, source).again
         )
     return outcome

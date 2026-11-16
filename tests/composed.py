@@ -1,7 +1,7 @@
 """The settings' model of a registry, composed as the entry composes it, for the tests.
 
-``MODEL`` is the program's, of ``SOURCES``: each connector's table, and its account's,
-loaded by its module path, composed by ``settings_model``. ``sourced`` makes a registry of
+``MODEL`` is the program's, of ``SOURCES``: each connector's table, loaded by its module
+path, composed by ``settings_model``. ``sourced`` makes a registry of
 connectors, as ``SOURCES`` is made.
 """
 
@@ -27,7 +27,7 @@ def sourced(*connectors: Connector) -> tuple[Source, ...]:
 
 def model_of(sources: Iterable[Source]) -> type[Settings]:
     """Compose the settings' model of a registry, each table loaded by its module path."""
-    return settings_model(*tables(sources))
+    return settings_model(tables(sources))
 
 
 MODEL = model_of(SOURCES)

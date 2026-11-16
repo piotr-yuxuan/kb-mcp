@@ -29,7 +29,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
     """Run each source taken in this stage; exit as the rows' endings fold, 2 when refused.
 
     The entry refused what it could before asking. Each source taken is run with its
-    table, its account's, and, in a fetch, its options' values by flag. A fetcher or a
+    table and, in a fetch, its options' values by flag. A fetcher or a
     preparer that does not load, or what its ``preflight`` refuses, such as an --until
     before --since, or a work log that is not a folder, is refused here, before any row
     runs, an error, ``fetch.refused`` or ``prepare.refused``. Each row's problems are said
@@ -44,11 +44,6 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran 
             sources=arguments.sources,
             settings=settings,
             source_table=getattr(settings.sources, declared.name),
-            account_table=(
-                None
-                if declared.connector.account is None
-                else getattr(settings.accounts, declared.connector.account.name)
-            ),
             options=given(arguments, declared.connector.flags) if stage == FETCH else {},
             now=lambda: datetime.now(UTC),
             sleep=time.sleep,

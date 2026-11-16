@@ -3,9 +3,9 @@
 The rules are plan 027's: the former settings file in place of a missing default, the
 former data directory where the default is used and missing, a variable of the former
 prefix, and a path setting with a folder or file named after the former name. Every test
-builds the former places in its scratch home; none is ever moved. By plan 030, the stop
-names each setting by its final name, the sign-in's in ``[accounts.atlassian]``: a key
-of the former file, and a variable, the former prefix's or 027's own.
+builds the former places in its scratch home; none is ever moved. By plans 030 and 059,
+the stop names each setting by its final name, the sign-in's in each Atlassian source's
+table: a key of the former file, and a variable, the former prefix's or 027's own.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,19 +44,22 @@ FILE_MOVE = (
 )
 DATA_MOVE = "mv ~/atlassian-offline-mcp ~/kb-mcp"
 SITE = "https://secret.example.invalid"
-# The site's variable since plan 030, in the Atlassian account's table.
-SITE_VARIABLE = "KB_MCP_ACCOUNTS__ATLASSIAN__SITE"
+# The site's variables since plan 059, in each Atlassian source's table, and as the stop
+# names them.
+SITE_VARIABLES = ("KB_MCP_SOURCES__CONFLUENCE__SITE", "KB_MCP_SOURCES__JIRA__SITE")
+SITE_RENAMED = " and ".join(SITE_VARIABLES)
 # The former settings file of a machine that signs in, as the user's machine's: its site and
 # its email at its top, where plan 030 moved them from.
 SIGNING_IN = f'site = "{SITE}"\nemail = "someone@secret.example.invalid"\n'
 KEYS = [
     "Rename each key of the settings file:",
-    "site to accounts.atlassian.site",
-    "email to accounts.atlassian.email",
+    "site to sources.confluence.site and sources.jira.site",
+    "email to sources.confluence.email and sources.jira.email",
 ]
 # A token at the top of a former file: no file may hold it, so it is not renamed to a key.
 NOT_RENAMED = (
-    "api_token: delete it, and set KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN in the environment"
+    "api_token: delete it, and set KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and"
+    " KB_MCP_SOURCES__JIRA__API_TOKEN in the environment"
 )
 # The page that says the same as the stop, line for line.
 PAGE = ROOT / "docs" / "how-to" / "move-to-kb-mcp.md"
@@ -118,9 +122,12 @@ def test_the_former_data_directory_alone_is_moved(home: Path) -> None:
 @pytest.mark.parametrize(
     ("name", "renamed"),
     [
-        ("ATLASSIAN_OFFLINE_MCP_SITE", SITE_VARIABLE),
-        ("atlassian_offline_mcp_site", SITE_VARIABLE),
-        ("ATLASSIAN_OFFLINE_MCP_API_TOKEN", "KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN"),
+        ("ATLASSIAN_OFFLINE_MCP_SITE", SITE_RENAMED),
+        ("atlassian_offline_mcp_site", SITE_RENAMED),
+        (
+            "ATLASSIAN_OFFLINE_MCP_API_TOKEN",
+            "KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and KB_MCP_SOURCES__JIRA__API_TOKEN",
+        ),
         ("ATLASSIAN_OFFLINE_MCP_LOGS__DIR", "KB_MCP_LOGS__DIR"),
     ],
 )
@@ -213,8 +220,19 @@ def test_the_defaults_named_through_a_linked_home_are_the_defaults(
 def test_an_empty_new_variable_is_not_set(home: Path, monkeypatch: MonkeyPatch) -> None:
     """An empty variable is ignored, as the loader ignores it: the former one still stops."""
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
-    monkeypatch.setenv(SITE_VARIABLE, "")
-    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLE}" in refusal(home).advice.splitlines()
+    for variable in SITE_VARIABLES:
+        monkeypatch.setenv(variable, "")
+    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_RENAMED}" in refusal(home).advice.splitlines()
+
+
+def test_a_former_variable_names_the_new_ones_not_set_yet(
+    home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Plan 059: of each source's variable, those that hold no value yet."""
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
+    monkeypatch.setenv(SITE_VARIABLES[0], SITE)
+    line = f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLES[1]}"
+    assert line in refusal(home).advice.splitlines()
 
 
 def test_plan_027_s_name_of_the_site_is_not_its_final_one(
@@ -223,7 +241,7 @@ def test_plan_027_s_name_of_the_site_is_not_its_final_one(
     """Set beside the former one, ``KB_MCP_SITE`` is not the site's: the stop still names it."""
     monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_SITE", SITE)
     monkeypatch.setenv("KB_MCP_SITE", SITE)
-    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLE}" in refusal(home).advice.splitlines()
+    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_RENAMED}" in refusal(home).advice.splitlines()
 
 
 @pytest.mark.parametrize("name", ["KB_MCP_SITE", "KB_MCP_EMAIL", "KB_MCP_API_TOKEN"])
@@ -259,7 +277,7 @@ def test_a_run_refused_for_want_of_the_site_says_plan_027_s_names_that_it_ignore
     err = capsys.readouterr().err
     said = err.index("ignored: KB_MCP_SITE: names no setting\n")
     assert said < err.index("run.refused")
-    assert "accounts.atlassian.site: not set" in err
+    assert re.search(r"sources\.(confluence|jira)\.site: not set", err)
     assert SITE not in err
     assert main([*given, "-q"]) == ExitStatus.REFUSED
     err = capsys.readouterr().err
@@ -322,13 +340,13 @@ def test_a_new_file_naming_the_default_data_directory_moves_the_former(home: Pat
         pytest.param((NEW_FILE, NEW_DATA), {"ATLASSIAN_OFFLINE_MCP_SITE": ""}, id="empty variable"),
         pytest.param(
             (NEW_FILE, NEW_DATA),
-            {"ATLASSIAN_OFFLINE_MCP_SITE": SITE, SITE_VARIABLE: SITE},
+            {"ATLASSIAN_OFFLINE_MCP_SITE": SITE, **dict.fromkeys(SITE_VARIABLES, SITE)},
             id="variable renamed already",
         ),
         pytest.param((NEW_FILE, FORMER_DATA / ".git"), {}, id="former data in git"),
         pytest.param(
             (NEW_FILE, NEW_DATA),
-            {"KB_MCP_ACCOUNTS__ATLASSIAN__EMAIL": "me+atlassian-offline-mcp@example.invalid"},
+            {"KB_MCP_SOURCES__JIRA__EMAIL": "me+atlassian-offline-mcp@example.invalid"},
             id="no path naming it",
         ),
         pytest.param(
@@ -385,7 +403,7 @@ def test_check_stops_before_any_log_file_and_moves_nothing(tmp_path: Path) -> No
     assert done.returncode == ExitStatus.REFUSED
     assert "settings.refused" in done.stderr
     assert block(done.stderr) == ["# Move the files:", FILE_MOVE, DATA_MOVE]
-    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_VARIABLE}" in said
+    assert f"ATLASSIAN_OFFLINE_MCP_SITE to {SITE_RENAMED}" in said
     assert "Then, by hand, as docs/how-to/move-to-kb-mcp.md says:" in said
     assert (
         "- uv tool uninstall atlassian-offline-mcp, then uv tool install --force <checkout>" in said
@@ -466,11 +484,19 @@ def test_the_former_file_s_site_and_email_are_named_by_their_keys_now(tmp_path: 
 def test_the_former_file_s_keys_are_named_whatever_replaces_their_values(
     home: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A stronger layer replaces the site, not the key that the file holds: still named."""
+    """A stronger layer replaces the site, not the key that the file holds: still named.
+
+    Review round 2: to be deleted, as each source holds its own.
+    """
     place(home, FORMER_FILE, SIGNING_IN)
-    monkeypatch.setenv(SITE_VARIABLE, SITE)
-    advice = refusal(home, flags={"--site": ("accounts.atlassian.site", SITE)}).advice
-    assert advice.splitlines()[3:6] == KEYS
+    for variable in SITE_VARIABLES:
+        monkeypatch.setenv(variable, SITE)
+    advice = refusal(home).advice
+    assert advice.splitlines()[3:6] == [
+        KEYS[0],
+        "site: delete it, as each source holds its own",
+        KEYS[2],
+    ]
 
 
 def test_a_value_that_the_former_file_holds_and_a_setting_refuses_names_the_file(
@@ -556,10 +582,59 @@ def test_an_empty_former_file_stops_as_before_plan_030(tmp_path: Path) -> None:
 def test_a_file_that_the_stop_leaves_alone_is_refused_its_site_at_its_top(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 015's refusal of a moved key, with its table now: the new file is never renamed."""
+    """Plan 015's refusal of a moved key, with each table now: the new file is never renamed."""
     place(home, FORMER_FILE, SIGNING_IN)
     place(home, NEW_FILE, f'site = "{SITE}"\n')
     assert main(["check"]) == ExitStatus.REFUSED
     err = capsys.readouterr().err
-    assert "site (config.toml): moved, as site under [accounts.atlassian]" in err
+    assert "site (config.toml): moved into the table of each source" in err
+    assert "  site (config.toml) to sources.confluence.site and sources.jira.site\n" in err
     assert "Rename each key" not in err
+
+
+# The settings file and the environment of a machine left on the tag pre-kb-mcp: its site
+# and email at the top, its spaces and projects in their sources' tables, its token by the
+# former prefix.
+PRE_KB_MCP = (
+    f'site = "{SITE}"\nemail = "someone@secret.example.invalid"\n'
+    '[sources.confluence]\nspaces = ["MFS"]\n[sources.jira]\nprojects = ["PRB"]\n'
+)
+
+
+def test_a_machine_left_before_the_rename_needs_one_round_of_edits(
+    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 059: the advice names the final keys and variables at once.
+
+    Each move run, each key and each variable renamed as said, the next run goes on.
+    """
+    place(home, FORMER_FILE, PRE_KB_MCP)
+    place(home, FORMER_DATA)
+    monkeypatch.setenv("ATLASSIAN_OFFLINE_MCP_API_TOKEN", "token-sentinel-5d0e")
+    assert main(["check"]) == ExitStatus.REFUSED
+    said = capsys.readouterr().err.splitlines()
+    assert "token-sentinel-5d0e" not in "\n".join(said)
+    (home / NEW_FILE).parent.mkdir(parents=True)
+    (home / FORMER_FILE).rename(home / NEW_FILE)
+    (home / FORMER_DATA).rename(home / NEW_DATA)
+    settings = tomllib.loads((home / NEW_FILE).read_text("utf-8"))
+    for key, to in (line.split(" to ") for line in said if re.fullmatch(r"[a-z_]+ to \S.*", line)):
+        value = settings.pop(key)
+        for path in to.split(" and "):
+            _, source, name = path.split(".")
+            settings["sources"][source][name] = value
+    for name, to in (line.split(" to ") for line in said if line.startswith("ATLASSIAN_")):
+        value = os.environ[name]
+        monkeypatch.delenv(name)
+        for variable in to.split(" and "):
+            monkeypatch.setenv(variable, value)
+    tables = "".join(
+        f"[sources.{source}]\n"
+        + "".join(f"{key} = {json.dumps(value)}\n" for key, value in table.items())
+        for source, table in settings.pop("sources").items()
+    )
+    assert settings == {}
+    (home / NEW_FILE).write_text(tables, "utf-8")
+    assert main(["check", "--format", "json"]) == ExitStatus.OK
+    loaded = json.loads(capsys.readouterr().out)["settings"]["sources"]
+    assert [loaded[name]["site"] for name in ("confluence", "jira")] == [SITE, SITE]

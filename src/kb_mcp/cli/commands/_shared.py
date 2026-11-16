@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence[Source]) -> int:
     """Load the settings, run the chosen command, write its result; return the exit status.
 
-    The settings are loaded with the flags given, by the model of the registry's
-    ``sources`` and of the accounts they name. Before the command's module is imported,
+    The settings are loaded with the flags given, by the model of ``sources``, those
+    that the settings configure. Before the command's module is imported,
     the run ends refused, 2, for refused settings, ``settings.refused``, and for what the
     command refuses of them or of its arguments, a program missing from PATH or a file
     that it reads missing or a folder, ``run.refused``, after the values that the settings
@@ -61,10 +61,10 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     )
     flags = {
         option: (setting, getattr(arguments, dest))
-        for dest, (option, setting) in command.setting_flags().items()
+        for dest, (option, setting) in command.setting_flags(arguments).items()
     }
-    model = settings_model(*tables(sources))
     try:
+        model = settings_model(tables(sources))
         loaded = load_settings(arguments.config, flags, Path.home().resolve(), model)
     except SettingsError as error:
         structlog.get_logger().error("settings.refused", reason=str(error))

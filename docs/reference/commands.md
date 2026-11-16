@@ -36,7 +36,7 @@ positional arguments:
                  the bar
     fetch        bring what changed in each source into its store
     index        update the search index of the mirror's words to what changed
-    login        sign in once, in a Chrome window
+    login        sign in once, in a Chrome window, for a source or each one configured
     model        check the embedding model and its endpoint
     prepare      turn what each source holds into the Markdown mirror
     reranker     check the reranking server and its model
@@ -59,15 +59,14 @@ by Ctrl-C.
 ## `check`
 
 ```text
-usage: kb-mcp check [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--detail {short,detailed}]
+usage: kb-mcp check [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}] [--format {text,json}]
+                    [--detail {short,detailed}]
 
 options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -99,15 +98,14 @@ options:
 ## `doctor`
 
 ```text
-usage: kb-mcp doctor [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                     -v | --log-level {debug,info,warning,error}]
-                     [--format {text,json}] [--detail {short,detailed}]
+usage: kb-mcp doctor [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                     --log-level {debug,info,warning,error}] [--format {text,json}]
+                     [--detail {short,detailed}]
 
 options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -123,16 +121,14 @@ state: well, failed, or sign in again.
 ## `embed`
 
 ```text
-usage: kb-mcp embed [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--detail {short,detailed}] [-y]
-                    [--allow-remote-embeddings]
+usage: kb-mcp embed [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}] [--format {text,json}]
+                    [--detail {short,detailed}] [-y] [--allow-remote-embeddings]
 
 options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -159,8 +155,8 @@ filled, and `warnings`, a mirror changed since the index, each with its `where` 
 ## `eval`
 
 ```text
-usage: kb-mcp eval [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                   -v | --log-level {debug,info,warning,error}] [--format {text,json}]
+usage: kb-mcp eval [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                   --log-level {debug,info,warning,error}] [--format {text,json}]
                    [--detail {short,detailed}] [-y] [--allow-remote-embeddings]
                    [--model MODEL]
                    [--chunking {sections,windows,section-paths,small-to-big}]
@@ -173,7 +169,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -227,9 +222,9 @@ verdict on ask and the runs counted.
 ## `eval-agents prepare`
 
 ```text
-usage: kb-mcp eval-agents prepare [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                  [--site SITE] [-y] [--allow-remote-embeddings]
-                                  --out OUT --model {haiku,sonnet} [--sample SAMPLE]
+usage: kb-mcp eval-agents prepare [-h] [--config CONFIG] [--data-dir DATA_DIR] [-y]
+                                  [--allow-remote-embeddings] --out OUT
+                                  --model {haiku,sonnet} [--sample SAMPLE]
                                   [--seed SEED] [--dry-run]
                                   golden
 
@@ -240,7 +235,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -y, --yes             run without asking first, as a script does
   --allow-remote-embeddings
                         let this run send the mirror's text to an embedding endpoint
@@ -257,7 +251,7 @@ options:
 
 ```text
 usage: kb-mcp eval-agents call [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                               [--site SITE] [--allow-remote-embeddings]
+                               [--allow-remote-embeddings]
                                directory run tool arguments
 
 positional arguments:
@@ -270,7 +264,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   --allow-remote-embeddings
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
@@ -280,7 +273,6 @@ options:
 
 ```text
 usage: kb-mcp eval-agents answer [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                 [--site SITE]
                                  directory run answer
 
 positional arguments:
@@ -292,14 +284,12 @@ options:
   -h, --help           show this help message and exit
   --config CONFIG      the settings file
   --data-dir DATA_DIR  the data directory, overriding the settings
-  --site SITE          the site, as https://<name>.atlassian.net
 ```
 
 ## `eval-agents grade`
 
 ```text
-usage: kb-mcp eval-agents grade [-h] [--config CONFIG] [--data-dir DATA_DIR]
-                                [--site SITE] [-y]
+usage: kb-mcp eval-agents grade [-h] [--config CONFIG] [--data-dir DATA_DIR] [-y]
                                 directory
 
 positional arguments:
@@ -309,15 +299,14 @@ options:
   -h, --help           show this help message and exit
   --config CONFIG      the settings file
   --data-dir DATA_DIR  the data directory, overriding the settings
-  --site SITE          the site, as https://<name>.atlassian.net
   -y, --yes            run without asking first, as a script does
 ```
 
 ## `eval-rerank`
 
 ```text
-usage: kb-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
-                          [-q | -v | --log-level {debug,info,warning,error}]
+usage: kb-mcp eval-rerank [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                          --log-level {debug,info,warning,error}]
                           [--format {text,json}] [--detail {short,detailed}] [-y]
                           [--allow-remote-embeddings] [--depth DEPTH]
                           [--sample SAMPLE] [--seed SEED]
@@ -330,7 +319,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -355,11 +343,11 @@ verdicts and default depth; results, the file that keeps them.
 ## `fetch`
 
 ```text
-usage: kb-mcp fetch [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--detail {short,detailed}] [-y]
-                    [--dry-run] [--space SPACE] [--since SINCE] [--until UNTIL]
-                    [--max-file-mb MAX_FILE_MB] [--project PROJECT]
+usage: kb-mcp fetch [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}] [--format {text,json}]
+                    [--detail {short,detailed}] [-y] [--dry-run] [--space SPACE]
+                    [--since SINCE] [--until UNTIL] [--max-file-mb MAX_FILE_MB]
+                    [--project PROJECT]
                     [{confluence,jira} ...]
 
 positional arguments:
@@ -370,7 +358,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -415,16 +402,14 @@ held, or null when not written; `dry_run`, whether the fetch only planned.
 ## `index`
 
 ```text
-usage: kb-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--detail {short,detailed}] [-y]
-                    [--rebuild]
+usage: kb-mcp index [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}] [--format {text,json}]
+                    [--detail {short,detailed}] [-y] [--rebuild]
 
 options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -448,20 +433,20 @@ alias that changed nothing, each with its `where` and `reason`.
 ## `login`
 
 ```text
-usage: kb-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--detail {short,detailed}] [-y]
-                    [--chrome CHROME] [--keep-extensions]
-                    {atlassian}
+usage: kb-mcp login [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}] [--format {text,json}]
+                    [--detail {short,detailed}] [-y] [--chrome CHROME]
+                    [--keep-extensions]
+                    [{confluence,jira}]
 
 positional arguments:
-  {atlassian}           the sign-in
+  {confluence,jira}     the source whose site to sign in to; by default each one in
+                        use
 
 options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -473,17 +458,16 @@ options:
   --chrome CHROME       Chrome's executable, where the chrome channel fails
   --keep-extensions     let Chrome load extensions, for SSO
 
-With --format json: site, the site signed in to; session, the folder that keeps the
-session.
+With --format json: a list, a row per site signed in to: site, the site; session, the
+folder that keeps its session.
 ```
 
 ## `model`
 
 ```text
-usage: kb-mcp model [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
-                    [--format {text,json}] [--detail {short,detailed}]
-                    [--allow-remote-embeddings]
+usage: kb-mcp model [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}] [--format {text,json}]
+                    [--detail {short,detailed}] [--allow-remote-embeddings]
                     {check} [name]
 
 positional arguments:
@@ -494,7 +478,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -513,10 +496,9 @@ model's, empty when the endpoint reports none.
 ## `prepare`
 
 ```text
-usage: kb-mcp prepare [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                      -v | --log-level {debug,info,warning,error}]
-                      [--format {text,json}] [--detail {short,detailed}] [-y]
-                      [--dry-run]
+usage: kb-mcp prepare [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                      --log-level {debug,info,warning,error}] [--format {text,json}]
+                      [--detail {short,detailed}] [-y] [--dry-run]
                       [{confluence,jira,worklog} ...]
 
 positional arguments:
@@ -528,7 +510,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -569,9 +550,9 @@ name. The work log's: `documents`; `changes`; `html`, the HTML transcripts left 
 ## `reranker`
 
 ```text
-usage: kb-mcp reranker [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE]
-                       [-q | -v | --log-level {debug,info,warning,error}]
-                       [--format {text,json}] [--detail {short,detailed}]
+usage: kb-mcp reranker [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                       --log-level {debug,info,warning,error}] [--format {text,json}]
+                       [--detail {short,detailed}]
                        {check} [name]
 
 positional arguments:
@@ -582,7 +563,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}
@@ -599,8 +579,8 @@ rerank.depth texts as long as a search sends, timed.
 ## `serve`
 
 ```text
-usage: kb-mcp serve [-h] [--config CONFIG] [--data-dir DATA_DIR] [--site SITE] [-q |
-                    -v | --log-level {debug,info,warning,error}]
+usage: kb-mcp serve [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
+                    --log-level {debug,info,warning,error}]
                     [--allow-remote-embeddings]
                     [--tools ask,search,read,browse,status] [--rerank | --no-rerank]
 
@@ -608,7 +588,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       the settings file
   --data-dir DATA_DIR   the data directory, overriding the settings
-  --site SITE           the site, as https://<name>.atlassian.net
   -q                    say errors alone, and write no result as text
   -v                    the level info, or debug with -vv
   --log-level {debug,info,warning,error}

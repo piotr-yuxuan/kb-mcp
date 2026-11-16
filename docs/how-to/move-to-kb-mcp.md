@@ -25,14 +25,14 @@ former name left in what it would use:
 - the former settings file, `~/.config/atlassian-offline-mcp/config.toml`, when the run
   reads the default one, `~/.config/kb-mcp/config.toml`, and that is missing; the
   former file is then judged in its place, and its keys renamed since, `site` and
-  `email` at its top, which `[accounts.atlassian]` holds now, are named by their final
-  keys;
+  `email` at its top, which the table of each Atlassian source holds now, such as
+  `[sources.jira]`, are named by their final keys;
 - the former data directory, `~/atlassian-offline-mcp`, when the data directory is the
   default, `~/kb-mcp`, and that is missing; a folder in a git working tree, such as a
   clone, is never taken for the data;
 - a variable named `ATLASSIAN_OFFLINE_MCP_…`, in any case, set and not empty, whose
-  final name, `KB_MCP_…`, is not set: the sign-in's are
-  `KB_MCP_ACCOUNTS__ATLASSIAN__SITE`, `…__EMAIL` and `…__API_TOKEN`;
+  final name, `KB_MCP_…`, is not set: the sign-in's are each Atlassian source's, such as
+  `KB_MCP_SOURCES__JIRA__SITE`, `…__EMAIL` and `…__API_TOKEN`;
 - a setting whose path holds a folder or a file whose name begins with the former name,
   such as `data_dir = "~/atlassian-offline-mcp"`, or a `--config` naming a file in such
   a folder, or such a file, whose keys renamed since are named too; a data directory
@@ -56,11 +56,11 @@ mkdir -p ~/.config/kb-mcp && mv ~/.config/atlassian-offline-mcp/config.toml ~/.c
 mv ~/atlassian-offline-mcp ~/kb-mcp
 
 Rename each key of the settings file:
-site to accounts.atlassian.site
-email to accounts.atlassian.email
+site to sources.confluence.site and sources.jira.site
+email to sources.confluence.email and sources.jira.email
 
 Rename each variable where it is set (a shell's profile, an MCP client, sops):
-ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_ACCOUNTS__ATLASSIAN__SITE
+ATLASSIAN_OFFLINE_MCP_SITE to KB_MCP_SOURCES__CONFLUENCE__SITE and KB_MCP_SOURCES__JIRA__SITE
 
 Change each setting whose path names the former name, moving what it names:
 logs.dir (KB_MCP_LOGS__DIR)
@@ -83,17 +83,24 @@ Then, by hand, as docs/how-to/move-to-kb-mcp.md says:
 - another search engine over the mirror: each collection on ~/atlassian-offline-mcp/docs/
   added again on ~/kb-mcp/docs/
 - scripts, aliases, crontabs and agents' setups: each command that went, sync, download
-  and mirror, and index for search by meaning, as that page's section 9 says
+  and mirror, and index for search by meaning, as that page's section 9 says; --site,
+  which went, as sources.<name>.site or KB_MCP_SOURCES__<NAME>__SITE; login atlassian,
+  as login <source>, or login alone for each site
 ```
 
 Keys and variables are named, and settings with their layer, never with their values.
+A key or a variable of the sign-in names the setting of `confluence` and `jira`, the
+sources that read it, each that holds no value of its own: those configured, whose spaces
+or projects are set, or both when neither is, so that one round of edits moves them all
+and no source left out is given a value. A key that every one holds already is to be
+deleted.
 The layer of a value that the former settings file holds is that file's path, also when
 a setting refuses the value, before anything is said to move. A token left at a file's
 top, which no run ever took from there, is named by the variable that alone sets it,
 under the heading of the keys:
 
 ```text
-api_token: delete it, and set KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN in the environment
+api_token: delete it, and set KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and KB_MCP_SOURCES__JIRA__API_TOKEN in the environment
 ```
 
 ## 3. Move the files
@@ -105,28 +112,39 @@ moved; remove a link that leads nowhere, then run `check` again. Once the settin
 is moved, its former folder, `~/.config/atlassian-offline-mcp`, may be removed. The data
 directory's files hold no path of their own: the index, the vectors, the conversions,
 the raw store, the sign-in and the aliases keep working where they are moved, and moving
-them makes the next run rebuild nothing.
+them makes the next run rebuild nothing. The saved session, `session/cookies.json` and
+the browser profile beside it, moves into its site's folder, `session/<host>/`, at the
+first `fetch` or `login` that signs in by it: no sign-in again.
 
 ## 4. Rename the keys, the variables and the settings
 
 In the settings file, once moved, rename each key named: `site` becomes
-`accounts.atlassian.site`, which TOML reads as the key `site` of the table
-`[accounts.atlassian]`. Rename it where it is, at the file's top, or write it under that
-table:
+`sources.confluence.site` and `sources.jira.site`, which TOML reads as the key `site` of
+the tables `[sources.confluence]` and `[sources.jira]`. Write it under each table, beside
+its spaces or its projects:
 
 ```toml
-[accounts.atlassian]
+[sources.confluence]
+spaces = ["ENG"]
+site = "https://<name>.atlassian.net"
+email = "<you>@<company>"
+
+[sources.jira]
+projects = ["PLAT"]
 site = "https://<name>.atlassian.net"
 email = "<you>@<company>"
 ```
 
 Rename each variable named, wherever it is set: a shell's profile, an MCP client's entry
 for the server, a `sops exec-env` command, whose `KB_MCP_SITE="$ATLASSIAN_SITE"` becomes
-`KB_MCP_ACCOUNTS__ATLASSIAN__SITE="$ATLASSIAN_SITE"`, as
-[an API token kept by sops](api-token-with-sops.md) shows. The sign-in's variables that
+`KB_MCP_SOURCES__CONFLUENCE__SITE="$ATLASSIAN_SITE" KB_MCP_SOURCES__JIRA__SITE="$ATLASSIAN_SITE"`,
+as [an API token kept by sops](api-token-with-sops.md) shows. The sign-in's variables that
 the rename first gave, `KB_MCP_SITE`, `KB_MCP_EMAIL` and `KB_MCP_API_TOKEN`, name no
-setting since its settings moved to `[accounts.atlassian]`: each run says it ignored
-them, a run refused for want of the site first of all; rename them alike. For each
+setting since its settings moved: each run says it ignored them, a run refused for want
+of the site first of all; rename them alike. A machine set up between the two renames,
+whose settings hold `[accounts.atlassian]` or whose environment sets
+`KB_MCP_ACCOUNTS__ATLASSIAN__…`, is refused with the same advice, naming each source's
+key or variable. For each
 setting named, move the folder or file that it names, then change it in its layer: the
 settings file, a variable, or a flag in a script.
 
@@ -255,8 +273,10 @@ refuses each, exit 2, and its message lists the commands. What replaces each:
 | `download` | `fetch` |
 | `mirror` | `prepare confluence jira`, since `prepare` alone takes the work log too |
 | `index`, for search by meaning | `index`, then `embed`, which takes `--allow-remote-embeddings`; `index` writes the words alone, asks no endpoint, and refuses that flag |
-| `login` | `login atlassian` |
+| `login` | `login`, each site of the sources whose site or scopes are set, or `login jira` for one source |
 | `--summary short` or `--summary detailed` | `--detail short` or `--detail detailed`; `--summary` is refused, exit 2 |
+| `login atlassian` | `login confluence` or `login jira`, or `login` for each site; `login atlassian` is refused, saying so |
+| `--site <site>` | the site of each source, `sources.<name>.site` in the settings file or `KB_MCP_SOURCES__<NAME>__SITE`; `--site` is refused, saying so |
 
 A script that wants search by meaning ends with `index`, then `embed`, never with
 `prepare && embed`: `embed` reads the index, not the mirror, so a page that `prepare`
@@ -285,6 +305,14 @@ What reads a run's output follows:
   `eval`'s result and results file give each evaluated index under `indexes`, formerly
   `runs`, with its `costs.chunks`, formerly `costs.pieces`; results files already
   written keep `runs`.
+- **`login` and `doctor`.** `login`'s result is a list, a row per site signed in, each
+  with its `site` and `session`, the site's folder `<data>/session/<host>/`, where it was
+  one object naming `<data>/session/`. `doctor`'s checks of a site are `tls <host>` once,
+  then for each source `sign-in <source>` and one named after the source, `confluence` or
+  `jira` by default, where they were `tls`, `sign-in`, `confluence` and `jira`. `check`'s
+  `settings` hold `site`, `email` and `api_token` under each source, `sources.confluence`
+  and `sources.jira`, with its `connector`, where `accounts.atlassian` held them once, and
+  its `layers` name them so.
 - **`embed`'s text.** Its lines say `chunks:`, where they said `pieces:`, and "vector
   cache", where they said "vector store".
 - **Endings.** A row says `sign in again` where it said `sign in`. The events
@@ -316,8 +344,9 @@ What reads a run's output follows:
   that `summary` links name but that have summaries themselves, as does `index.built`.
 - **Dashboards.** Those of [observe with Grafana](observe-with-grafana.md) are `fetch`,
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
-- **`doctor`.** A machine with neither a site nor a Confluence or Jira source gets the
-  machine's checks alone, exit 0, where it failed `site: not set`.
+- **`doctor`.** A machine with no Confluence or Jira source whose site or scopes are set
+  gets the machine's checks alone, exit 0, where it failed `site: not set`; one whose
+  source has scopes and no site is refused, exit 2, naming the setting.
 
 ## 10. Check again
 

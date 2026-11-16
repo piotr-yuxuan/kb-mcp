@@ -8,6 +8,7 @@ kept, and a run signed in by one reads and writes nothing of the session.
 from __future__ import annotations
 
 import base64
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlsplit
@@ -20,7 +21,10 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
+    adopt_former_session,
+    folder_of,
     for_site,
+    kept_why,
     read_cookies,
     write_cookies,
 )
@@ -32,11 +36,13 @@ if TYPE_CHECKING:
 
 
 class SignIn(Protocol):
-    """A way to sign in to the site: what it is, a client for the site, what a run keeps.
+    """A way to sign in to a site: what it is, a client for the site, what a run keeps.
 
-    ``name`` says which it is, and ``again`` what the user does once the site refuses it.
+    ``site`` is where it signs in, ``name`` says which it is, and ``again`` what the user
+    does once the site refuses it.
     """
 
+    site: str
     name: str
     again: str
 
@@ -46,27 +52,57 @@ class SignIn(Protocol):
     def keep(self, client: httpx.Client) -> None:
         """Keep what a run has left of the sign-in, for the next run."""
 
+    def adopt_former(self) -> None:
+        """Take what a run that writes finds of the sign-in kept before it was a site's."""
+
 
 class SavedSession(Record):
-    """The site's cookies, which ``login`` saved under the session's folder."""
+    """The site's cookies, which ``login`` saved under the site's folder of the session.
+
+    ``source`` is the source that signs in, and ``sites`` the site of every source that
+    names one, its own among them, as ``kept_why`` takes them for the session kept before
+    sessions were a site's.
+    """
 
     site: str
     folder: Path
+    again: str
+    source: str
+    sites: Mapping[str, str]
     name: str = "the session saved by login"
-    again: str = "run kb-mcp login atlassian"
+
+    def cookies(self) -> Path:
+        """Give the file of the site's cookies: its own, or the session kept before.
+
+        Until a run that writes moves it, the session kept before sessions were a site's
+        is this site's when ``kept_why`` judges it so and the site has no cookies of its
+        own, so that a dry run or ``doctor`` before it needs no login; never another site's.
+        """
+        own, former = self.folder / COOKIES, self.folder.parent / COOKIES
+        if not own.exists() and kept_why(former.parent, self.source, self.sites) is None:
+            return former
+        return own
 
     def client(self) -> httpx.Client:
         """Return a client carrying the saved cookies; raise SignInNeededError if none are."""
         try:
-            cookies = read_cookies(self.folder / COOKIES)
+            cookies = read_cookies(self.cookies())
         except OSError, ValueError:
             raise SignInNeededError from None
         return http.client(self.site, cookies)
 
     def keep(self, client: httpx.Client) -> None:
-        """Write back the site's cookies that the client holds, renewed ones included."""
+        """Write back the site's cookies that the client holds, renewed ones included.
+
+        Into the file that signed it in, so that a session kept before and not moved yet,
+        as when its move failed, stays whole for the next run to move.
+        """
         host = urlsplit(self.site).hostname or ""
-        write_cookies(self.folder / COOKIES, for_site(http.jar(client), host))
+        write_cookies(self.cookies(), for_site(http.jar(client), host))
+
+    def adopt_former(self) -> None:
+        """Move the session kept before sessions were a site's into this site's folder."""
+        adopt_former_session(self.folder.parent, self.source, self.sites)
 
 
 class ApiToken(Record):
@@ -74,11 +110,8 @@ class ApiToken(Record):
 
     site: str
     authorisation: str = Field(repr=False)
+    again: str
     name: str = "an API token"
-    again: str = (
-        f"check {variable(('accounts', 'atlassian', 'email'))}"
-        f" and {variable(('accounts', 'atlassian', 'api_token'))}"
-    )
 
     def client(self) -> httpx.Client:
         """Return a client that sends the header to the site's host, and to no other."""
@@ -98,19 +131,38 @@ class ApiToken(Record):
     def keep(self, client: httpx.Client) -> None:
         """Keep nothing: the environment gives the token to each run."""
 
+    def adopt_former(self) -> None:
+        """Take nothing: a token reads and writes nothing of a session."""
 
-def choose_sign_in(settings: Settings) -> SignIn:
-    """Sign in by the API token when one is set, else by the session that ``login`` saved.
 
-    Either signs in as the Atlassian account, ``[accounts.atlassian]``, to its site. The
-    token goes with the account's email; the commands refuse a token without one before
-    they run, and the site would refuse it.
+def sites_of(settings: Settings) -> dict[str, str]:
+    """Give the site of every source whose table holds one, by its name, in name order."""
+    return {
+        name: str(table.site) for name, table in settings.sources if getattr(table, "site", None)
+    }
+
+
+def choose_sign_in(settings: Settings, source: str) -> SignIn:
+    """Sign in by the source's API token when one is set, else by the session that ``login`` saved.
+
+    Either signs in as the account that the source's table, ``[sources.<source>]``, gives,
+    to its site. The token goes with the account's email; the commands refuse a token
+    without one before they run, and the site would refuse it.
     """
-    account = settings.accounts.atlassian
-    token = account.api_token
+    table = getattr(settings.sources, source)
+    token = table.api_token
     if token is None:
-        return SavedSession(site=str(account.site), folder=settings.session)
-    pair = f"{account.email or ''}:{token.get_secret_value()}"
+        again = f"run kb-mcp login {source}"
+        site = str(table.site)
+        folder = folder_of(settings.session, site)
+        sites = {**sites_of(settings), source: site}
+        return SavedSession(site=site, folder=folder, again=again, source=source, sites=sites)
+    pair = f"{table.email or ''}:{token.get_secret_value()}"
     return ApiToken(
-        site=str(account.site), authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}"
+        site=str(table.site),
+        authorisation=f"Basic {base64.b64encode(pair.encode()).decode()}",
+        again=(
+            f"check {variable(('sources', source, 'email'))}"
+            f" and {variable(('sources', source, 'api_token'))}"
+        ),
     )

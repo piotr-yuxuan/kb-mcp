@@ -24,6 +24,7 @@ from kb_mcp.config.domain.settings import (
     at_home,
     environment_entries,
     file_entries,
+    refuse_moved,
     settings_of,
     shared_entries,
     unsafe_location,
@@ -46,7 +47,7 @@ def load_settings(
     """Read the settings file, the environment and the flags given, each stronger, and check.
 
     The settings are of ``model``, which ``settings_model`` composed. ``flags`` maps
-    each flag, such as ``--site``, to the setting it overrides, by its path joined by
+    each flag, such as ``--data-dir``, to the setting it overrides, by its path joined by
     dots, and its value, None when it was not given. The file's layer is its name, the
     former settings file's its path from ``~``, and a variable's its name. ``~`` in a
     path is ``home``, which must be resolved. What was ignored is each variable that
@@ -68,7 +69,9 @@ def load_settings(
     default one when that is missing, so that its values are judged too, but for its
     keys renamed since, which the stop names, as it does of a file given under the former
     name. The settings file given and the data directory are compared with the defaults
-    once resolved, so that any path naming a default is taken for it.
+    once resolved, so that any path naming a default is taken for it. Then
+    ``refuse_moved`` refuses the settings given where they were before, naming the
+    sources' settings they moved to.
     """
     defaults = {
         place: at_home(place, home)
@@ -93,14 +96,12 @@ def load_settings(
     judged = found.model_copy(update={"keys_read": frozenset(values)})
     environment, unread = environment_entries(os.environ, EnvSettingsSource(model), model)
     below, above, unshared = shared_entries(os.environ)
+    kept = {name: value for name, value in values.items() if name not in judged.renamed_keys}
+    layer = str(FORMER_SETTINGS_FILE) if found.former_file_judged else path.name
     loaded = settings_of(
         [
             *below,
-            *file_entries(
-                {name: value for name, value in values.items() if name not in judged.renamed_keys},
-                str(FORMER_SETTINGS_FILE) if found.former_file_judged else path.name,
-                model,
-            ),
+            *file_entries(kept, layer, model),
             *environment,
             *(
                 LayerValue(path=tuple(setting.split(".")), value=value, layer=flag)
@@ -120,6 +121,7 @@ def load_settings(
         }
     )
     refuse_former_name(judged, loaded, settings.data_dir, os.environ, home)
+    refuse_moved(kept, layer, os.environ, loaded.settings)
     places = [
         ("data_dir", settings.data_dir, ""),
         *(("data_dir", part, f"{part.name}: ") for part in settings.parts),

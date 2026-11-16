@@ -16,14 +16,19 @@ from kb_mcp.sources.atlassian.fetch.adapters.browser import (
 )
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
+    PROFILE,
+    adopt_former_session,
+    folder_of,
     for_site,
     write_cookies,
 )
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import sites_of
 
 if TYPE_CHECKING:
-    from kb_mcp.config.domain.settings import Settings
+    from collections.abc import Sequence
 
-PROFILE = "browser"
+    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.sources.declaration import Source
 
 
 class SignedIn(Record):
@@ -36,23 +41,48 @@ class SignedIn(Record):
 def save_session(settings: Settings, site: str, chrome: Path | None, *, extensions: bool) -> None:
     """Open the sign-in window, wait for the user, and save the site's cookies.
 
-    The browser profile and the cookies stay under ``Settings.session``, readable by the
-    user alone. Raises SignInFailedError when the user does not finish in time.
+    The browser profile and the cookies stay in the site's folder of ``Settings.session``,
+    readable by the user alone, where a session kept before sessions were a site's first
+    moves, its profile signed in, as the first source of the site takes it. Raises
+    SignInFailedError when the user does not finish in time.
     """
-    profile = settings.session / PROFILE
+    folder = folder_of(settings.session, site)
+    sites = sites_of(settings)
+    source = next(name for name, each in sites.items() if each == site)
+    adopt_former_session(settings.session, source, sites)
+    profile = folder / PROFILE
     profile.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.session.chmod(0o700)
+    folder.chmod(0o700)
     disable_password_saving(profile)
     cookies = open_sign_in_window(site, profile, chrome, extensions=extensions)
-    write_cookies(settings.session / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
+    write_cookies(folder / COOKIES, for_site(cookies, urlsplit(site).hostname or ""))
 
 
-def login(settings: Settings, chrome: Path | None, *, extensions: bool) -> SignedIn | None:
-    """Sign in to the account's site; a sign-in that does not complete is an error, and None."""
-    site = str(settings.accounts.atlassian.site)
-    try:
-        save_session(settings, site, chrome, extensions=extensions)
-    except SignInFailedError as error:
-        structlog.get_logger().error("login.not_signed_in", reason=str(error))
-        return None
-    return SignedIn(site=site, session=settings.session)
+def login(
+    settings: Settings,
+    sources: Sequence[Source],
+    chrome: Path | None,
+    *,
+    extensions: bool,
+    named: bool,
+) -> tuple[tuple[SignedIn, ...], bool]:
+    """Sign in to the site of each source, once a site, one after another; say if all did.
+
+    A source not ``named`` that signs in by an API token is left: a session would serve it
+    nothing. Each site signed in is said at INFO, ``login.signed_in``; one whose sign-in
+    does not complete is an error, ``login.not_signed_in``, and no site after it is tried.
+    Give the sites signed in, then whether none failed.
+    """
+    tables = [getattr(settings.sources, each.name) for each in sources]
+    sites = dict.fromkeys(str(each.site) for each in tables if named or each.api_token is None)
+    signed: list[SignedIn] = []
+    for site in sites:
+        try:
+            save_session(settings, site, chrome, extensions=extensions)
+        except SignInFailedError as error:
+            structlog.get_logger().error("login.not_signed_in", site=site, reason=str(error))
+            return tuple(signed), False
+        signed.append(SignedIn(site=site, session=folder_of(settings.session, site)))
+        structlog.get_logger().info("login.signed_in", site=site)
+    return tuple(signed), True

@@ -28,6 +28,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
 )
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
+    folder_of,
     for_site,
     read_cookies,
     write_cookies,
@@ -485,7 +486,9 @@ def test_a_run_sends_the_site_nothing_but_gets(tmp_path: Path) -> None:
 
 def settings(tmp_path: Path) -> Settings:
     """Return settings with a data directory under the scratch folder."""
-    return MODEL(accounts={"atlassian": {"site": SITE}}, data_dir=tmp_path / "data")
+    return MODEL(
+        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=tmp_path / "data"
+    )
 
 
 def purview(spaces: list[str], projects: list[str]) -> Purview:
@@ -498,7 +501,9 @@ def purview(spaces: list[str], projects: list[str]) -> Purview:
 def saved_session(tmp_path: Path, monkeypatch: MonkeyPatch, fake: FakeSite) -> Settings:
     """Save a session, and let the run's client reach the fake site."""
     chosen = settings(tmp_path)
-    write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": "x"}])
+    write_cookies(
+        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
+    )
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     return chosen
 
@@ -631,9 +636,9 @@ def test_only_the_site_cookies_with_a_value_are_saved_back(
     fake = FakeSite(set_cookies=["rolled=2; Domain=.example.invalid; Path=/wiki", "empty"])
     chosen = saved_session(tmp_path, monkeypatch, fake)
     run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
-    saved = read_cookies(chosen.session / COOKIES)
+    saved = read_cookies(folder_of(chosen.session, SITE) / COOKIES)
     assert {cookie["name"] for cookie in saved} == {"rolled"}
-    assert (chosen.session / COOKIES).stat().st_mode & 0o777 == OWNER_ONLY
+    assert (folder_of(chosen.session, SITE) / COOKIES).stat().st_mode & 0o777 == OWNER_ONLY
     assert for_site(
         [
             {"name": "kept", "value": "1", "domain": ".example.invalid"},

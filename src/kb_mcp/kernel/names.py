@@ -12,11 +12,21 @@ from typing import NamedTuple
 # The program's name, as pyproject.toml names its script: its command, its log folder,
 # and the name by which MCP clients know its server.
 PROGRAM = "kb-mcp"
+# Each setting's environment variable: the prefix, then its path in capitals, joined.
+PREFIX = "KB_MCP_"
+NESTING = "__"
 # The mirror's folder of the files that Confluence's and Jira's documents attach,
 # docs/assets/: no document is under it, and no source's folder may be it.
 ASSETS = "assets"
-# A source's name, and a type of its documents, as the front matter names them.
+# The raw store's folder of the files that documents attach, beside each source's.
+BLOBS = "blobs"
+# A source's name, and a type of its documents, as the front matter names them; no
+# source takes ``assets`` nor ``blobs``, folders beside the sources', nor the schemes of
+# a web address, which a link to a source's document would read as.
 SOURCE_NAME = re.compile(r"[a-z][a-z0-9]*")
+RESERVED = (ASSETS, BLOBS, "http", "https")
+# The setting of each source's table that names its connector.
+CONNECTOR = "connector"
 TYPE_NAME = re.compile(r"[a-z]+")
 # An id names a folder of the raw store, so it must be one safe path part.
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
