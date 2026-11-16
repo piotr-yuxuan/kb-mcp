@@ -854,7 +854,8 @@ def test_a_resume_refuses_a_record_that_lacks_what_a_stage_needs_naming_its_file
     """The data layout: a field missing, or refused, is refused by its file and field, exit 2.
 
     Its options emptied, whose index's --rebuild its index reads; its fetch without an
-    option that Jira's fetch declares; a setting refused, by its path in the settings.
+    option that Jira's fetch declares; a setting refused, by its path in the settings. A
+    folder copied under another run's id, whose record names its own, is refused alike.
     """
     options = given(home, endpoint)
     with monkeypatch.context() as patch:
@@ -880,6 +881,12 @@ def test_a_resume_refuses_a_record_that_lacks_what_a_stage_needs_naming_its_file
         assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
         (line,) = [each for each in capsys.readouterr().err.splitlines() if where in each]
         assert said in line
+    configured.write_text(json.dumps(held), "utf-8")
+    copied = "fedcba9876543210"
+    shutil.copytree(configured.parent, configured.parent.parent / copied)
+    assert main(["refresh", "--yes", "--resume", copied, *options]) == ExitStatus.REFUSED
+    assert f"run {copied}: runs/{copied}/configuration.json: run: " in capsys.readouterr().err
+    assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.OK
 
 
 def test_a_dry_run_records_nothing(

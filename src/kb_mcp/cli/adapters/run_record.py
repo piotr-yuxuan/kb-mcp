@@ -73,9 +73,14 @@ class RunRecord:
         """Read the run's configuration.
 
         Raises FileNotFoundError when none was written, and RepresentationError, naming
-        the file and the field, never its value, for one that cannot be read.
+        the file and the field, never its value, for one that cannot be read, or that
+        names another run than its folder does, as a folder copied or renamed would.
         """
-        return self._read(CONFIGURATION, Configuration)
+        configuration = self._read(CONFIGURATION, Configuration)
+        if self.folder is not None and configuration.run != self.folder.name:
+            message = f"{self.where(CONFIGURATION)}: run: not the id that its folder names"
+            raise RepresentationError(message)
+        return configuration
 
     def settings(self, configuration: Configuration, secrets: Settings) -> Settings:
         """Build the settings that its configuration records, each secret as ``secrets`` has it.
