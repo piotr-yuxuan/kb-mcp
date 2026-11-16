@@ -320,12 +320,12 @@ def test_a_key_that_is_not_one_is_refused_by_the_options(
     assert "key" in capsys.readouterr().err
 
 
-def test_a_period_that_ends_before_it_starts_is_refused(
+def test_a_period_that_ends_before_it_starts_fails_the_fetch(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """The option at fault is named, by the error fetch.refused, in the log file too."""
     options = ("--space", "MFS", "--since", "2026-10-22", "--until", "2026-10-01")
-    assert main(command(home, *options)) == REFUSED
+    assert main(command(home, *options)) == SOME_FAILED
     err = capsys.readouterr().err
     assert ("error", "fetch.refused") in said(err)
     assert "--until" in err
@@ -605,7 +605,7 @@ def test_a_source_named_but_not_configured_is_refused_naming_its_setting(
 def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left_out(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Jira has no project; the work log is read in place: each named, with why."""
+    """Jira has no project, the work log no folder: each named, with why."""
     monkeypatch.setattr(
         fetcher,
         "run_fetch",
@@ -616,22 +616,22 @@ def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left
     assert captured.out.splitlines()[0] == "confluence: done"
     assert "jira:" not in captured.out
     assert "\n  source jira: left out, not configured\n" in captured.err
-    assert "\n  source worklog: left out, read in place, it has nothing to fetch\n" in captured.err
+    assert "\n  source worklog: left out, not configured\n" in captured.err
 
 
-@pytest.mark.parametrize("name", ["worklog", "memo"])
-def test_a_source_without_a_fetcher_is_no_choice(
-    home: Path, capsys: CaptureFixture[str], name: str
-) -> None:
-    """Argparse refuses the work log, and a source of the tests read in place alike: exit 2."""
-    memo = replace(WORKLOG, name="memo")
+def test_a_source_without_a_fetcher_is_no_choice(home: Path, capsys: CaptureFixture[str]) -> None:
+    """Argparse refuses a source of the tests read in place without a fetcher: exit 2.
+
+    The choices are the sources that have one, the work log's among them since plan 060.
+    """
+    memo = replace(WORKLOG, name="memo", fetcher=None)
     with pytest.raises(SystemExit) as stopped:
-        main(command(home, name), (*SOURCES, *sourced(memo)))
+        main(command(home, "memo"), (*SOURCES, *sourced(memo)))
     assert stopped.value.code == REFUSED
     refusal = capsys.readouterr().err.splitlines()[-1]
-    assert f"invalid choice: {name!r}" in refusal
+    assert "invalid choice: 'memo'" in refusal
     named = set(re.findall(r"[\w-]+", refusal)) & {"confluence", "jira", "worklog", "memo"}
-    assert named == {name, "confluence", "jira"}
+    assert named == {"memo", "confluence", "jira", "worklog"}
 
 
 def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
@@ -639,14 +639,15 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
 ) -> None:
     """Each with its scope types, how each is enumerated, and the options that it alone declares.
 
-    Those that both declare, in a group of their own; none of the work log.
+    Those that both declare, in a group of their own; the work log, read in place, has none.
     """
     with pytest.raises(SystemExit):
         main(["fetch", "--help"])
     said_of = " ".join(capsys.readouterr().out.split())
     _, confluence = said_of.split(" confluence: Confluence, on the Atlassian site", 1)
     confluence, jira = confluence.split(" jira: Jira, on the Atlassian site", 1)
-    jira, both = jira.split(" several sources: The options of confluence, jira.", 1)
+    jira, worklog = jira.split(" worklog: The user's work log", 1)
+    worklog, both = worklog.split(" several sources: The options of confluence, jira.", 1)
     assert "each space listed whole." in confluence
     assert "--space SPACE" in confluence
     assert "--project" not in confluence
@@ -654,7 +655,7 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     assert "--project PROJECT" in jira
     assert "--since" not in jira
     assert all(flag in both for flag in ("--since SINCE", "--until UNTIL", "--max-file-mb"))
-    assert "worklog:" not in said_of
+    assert worklog.endswith("its folder, read whole, in place.")
 
 
 def test_a_source_alone_keeps_its_options_in_its_own_group(capsys: CaptureFixture[str]) -> None:

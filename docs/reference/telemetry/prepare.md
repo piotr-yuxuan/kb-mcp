@@ -5,11 +5,12 @@ one trace: its root `prepare`, then a span of each source taken, `prepare.source
 registry's order. Confluence's and Jira's hold a span to read the raw store, one to build the
 source's files and one to write them, within which each reads the whole store and places
 every document, so that a link or an image of either reaches its file. The work log's
-holds its own three, and the task `work-log documents` reports each of its documents, by
-its title, as the README says of tasks. So a run gives each Atlassian event below once per
+holds its own two, to build its files from its copy store and to write them, and the task
+`work-log documents` reports each of its documents, by its title, as the README says of
+tasks. So a run gives each Atlassian event below once per
 source, `prepare.document` once per document, `prepare.not_mirrored` once per problem and
 per source that meets it, and `prepare.cache_adopted` and `prepare.cache_replaced` once at
-most. A document is counted
+most, by the first row that opens the cache, the work log's among them. A document is counted
 and timed, never a span of its own: a span each would make a run's trace too large.
 
 ## Events
@@ -19,7 +20,7 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 | `prepare.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only counts |
 | `prepare.source` | info | `source`, `ending` | A source's row ended: `done`, `failed` or, in a dry run, `not run` |
 | `prepare.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
-| `prepare.refused` | error | `reason` | What the run cannot go on with, before its first row: a preparer that does not load, naming the source and the path, or what a preparer's preflight refuses, after its source and its stage (`source 'worklog': prepare: ...`), such as a work log that is not a folder, or scope types that are not a space's or a project's: exit 2 |
+| `prepare.refused` | error | `source`, `reason` | What a preparer's preflight refuses as its source's row begins, such as two sources of the pages of one site, or scope types that are not a space's or a project's, a problem by the source: that row fails alone, and the next rows go on. Without `source`, a preparer that does not load, naming the source and the path: the run stops before its first row, exit 2 |
 | `prepare.interrupted` | warning | `source` | Ctrl-C stopped the row of this source, none once every row ended: later rows do not run, exit 130 |
 | `prepare.placed` | info | `source`, `documents`, `assets`, `problems` | The raw store is read and every document placed, so that links reach the other source's: the source's documents placed in the mirror, the files they attach, its problems so far |
 | `prepare.document` | debug | `path`, `id`, `title`, `seconds` | A document's file is built, or fails to be: its path in the mirror, its id or key, its title |
@@ -29,14 +30,12 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 | `prepare.cache_adopted` | info | `sources`, `rows` | The cache of conversions was of the layout without `source`, as the tag `pre-kb-mcp` wrote it: each of its `rows` became a row of each of the `sources`, so that the run converts nothing that it holds |
 | `prepare.cache_replaced` | warning | `reason` | The cache of conversions was damaged, no database, of a format that SQLite cannot read or may not write, or with a schema that names other columns: deleted and started empty, so that the run converts everything; `reason`, SQLite's error name, `integrity_check`, or `UnicodeDecodeError` when SQLite's report quotes a name of the schema that is no longer UTF-8, never content |
 | `prepare.pandoc_missing` | error | `reason` | Pandoc went from PATH once the run began: each of Confluence's and Jira's rows fails, writing nothing, the run exiting as its rows rank |
-| `worklog.read` | info | `entries`, `days`, `meetings`, `transcripts`, `html`, `problems` | The work log is read: its entries, days, meetings and transcripts, the HTML transcripts left out, the files not read |
-| `worklog.document` | debug | `path`, `id`, `title`, `type`, `outcome` | A document's file is built: its path in the mirror, its id, its title, `entry`, `day`, `meeting` or `transcript`, and `mirrored`, converted, or `kept`, its revision held |
-| `worklog.end` | info | `documents`, `written`, `unchanged`, `removed`, `to_convert`, `to_remove`, `problems` | The work log's files are written, or in a dry run, counted: those that a run would convert and remove |
-| `worklog.problem` | warning | `where`, `reason`, `held_back` | A file not read, or a document not converted, by its path, never its content, and what keeps its last copy for it, once a run until it is fixed: `every document` for `todo.org`, its archive or the work log's folder itself; a transcript's id for a transcript, whose last copy, if it has one, stays; `the transcripts not read under it` for a folder, the bound's problem or an HTML file linking out, which a path does not tell apart; the document's id for a conversion; `its file, as it is` for a file of the work log's folder of the mirror that does not read, by its path in the mirror, which the run neither writes over nor removes. Every other document is written, but the row fails |
-| `worklog.same_id` | warning | `reason` | Two transcripts of one id: the second by the name of the folder that holds it, then by its own name, then in path order, is named by its whole path, both paths said. While the first is not read, a link to the id reaches the copy that the id last named, which may be the other file's |
-| `worklog.unlinked` | warning | `meetings`, `first` | Meetings whose `:MEETING:` links no transcript found, read or not, once a run: how many, and the first one: by the file that its link names, from the work log's folder, when the link is in brackets or a path after `file:` or `./` and that file was not found, such as one in a folder other than `transcripts/` and `meetings/`; else by its id, for a path alone too, since any text reads as one. A link to a file found but not read is not counted: that file's `worklog.problem` names it. Never the link as written, which may be a meeting room's URL with its passcode. Each such meeting is written without the link, and the row neither fails nor holds a removal back |
-| `worklog.nothing_removed` | warning | `problems` | A run with problems removes no work-log file but the old one of a document written again under another title's path, nor writes one that draws on a file not read, so that each last good copy stays: how many problems, each `worklog.problem` saying what it held back |
-| `worklog.pandoc_failed` | error | `reason` | Pandoc gave no version, so that no revision can be named, or went from PATH once the run began: the work log's row fails |
+| `worklog.store_unread` | error | `source`, `reason` | The work log's copy store cannot be read: none yet, which `kb-mcp fetch` and the source write, or a file that does not read, by its path and field: the row fails, writing nothing, and the others go on |
+| `worklog.document` | debug | `path`, `id`, `title`, `type` | A document's file is built from its copy: its path in the mirror, its id, its title, `entry`, `day`, `meeting` or `transcript` |
+| `worklog.end` | info | `documents`, `written`, `unchanged`, `removed`, `converted`, `reused`, `pruned`, `problems`; in a dry run, `documents` and `to_remove` | The work log's files are written: how many changed, were already so, were removed; the conversions pandoc ran, those the cache gave, and those deleted from the source's rows, which this run did not use, none when it has problems. Or, in a dry run, counted: the documents to write, the files to remove |
+| `worklog.problem` | warning | `where`, `reason`, `held_back` | A document not converted, by its org file and id, never its content, and what keeps its last copy for it, its id, once a run until it is fixed. Every other document is written, but the row fails |
+| `worklog.nothing_removed` | warning | `problems` | A run with problems removes no work-log file but the old file of a document written again under another path, whose name no document not written could take, so that each last good copy stays: how many problems, each `worklog.problem` saying what it held back |
+| `worklog.pandoc_failed` | error | `reason` | Pandoc gave no version, so that no conversion can be keyed, or went from PATH once the run began: the work log's row fails, writing nothing |
 
 ## Spans
 
@@ -46,13 +45,12 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 | `prepare.read` | internal | | The raw store read: spaces, users, listings, the newest snapshot of each document |
 | `prepare.build` | internal | | Each of the source's documents' files built, through pandoc or the cache, then, for Confluence, each space's tree |
 | `prepare.write` | internal | | The source's files that changed written, those no longer wanted removed, then the source's conversions this run did not use deleted |
-| `worklog.read` | internal | | The work log's folder listed, its files read and split into documents |
-| `worklog.convert` | internal | | Each document's file built, through pandoc when no file holds its revision |
-| `worklog.write` | internal | | The work log's files that changed written, those of documents gone removed |
+| `worklog.convert` | internal | | Each document's file built from its copy, through pandoc or the cache |
+| `worklog.write` | internal | | The work log's files that changed written, those of documents gone removed, then the source's conversions this run did not use deleted |
 
 ## Instruments
 
 | Instrument | Kind | Unit | Attributes | What |
 |---|---|---|---|---|
-| `kb_mcp.prepare.documents` | counter | `{document}` | `kb_mcp.outcome`, `kb_mcp.type` | The documents whose file was built, `mirrored`, or not, `failed`; the work log's, by `kb_mcp.type`, `entry`, `day`, `meeting` or `transcript`, `mirrored`, converted, or `kept`, its revision held |
+| `kb_mcp.prepare.documents` | counter | `{document}` | `kb_mcp.outcome`, `kb_mcp.type` | The documents whose file was built, `mirrored`, or not, `failed`; the work log's by `kb_mcp.type` too, `entry`, `day`, `meeting` or `transcript` |
 | `kb_mcp.prepare.conversion.duration` | histogram | `s` | `kb_mcp.type` | How long each document's file took to build, pandoc's conversion included; a conversion reused costs the lookup alone; the work log's, by its type |

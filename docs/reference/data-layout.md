@@ -22,6 +22,7 @@ no location and is not for commands.
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
 | `<data>/raw/` | `raw` | `fetch` (004) | `prepare` (005) |
+| `<data>/copies/` | `copies` | `fetch`, of a work log (060) | `prepare`, of a work log (060) |
 | `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006); `embed`, for the files' digests alone (035) |
 | `<data>/conversions.sqlite` | `conversions` | `prepare` (039) | `prepare` (039) |
 | `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006), `embed`'s prune (023), `index` and `embed`, which update it (035) |
@@ -187,11 +188,11 @@ every other file of its source. A raw store that is missing, a regular file, a d
 link or unreadable yields no snapshot and no problem, so `prepare` removes every file of
 the Confluence and Jira sources from the mirror, with their attached files and their
 conversions, and exits 0; the next `index` then drops their documents. The work log
-alike: a folder that lists no file removes every work-log file, and a journal
-(`todo.org`) that is missing, not a regular file or empty removes the documents drawn
-from it. Check that `raw/` and the work log's folder are in place before a `prepare`;
-`kb-mcp fetch`, with a `--since` that reaches back far enough, fills the raw store
-again.
+alike: a fetch of a folder that lists no file finds every document gone, and a journal
+(`todo.org`) that is missing, not a regular file or empty, the documents drawn from it,
+whose files the next `prepare` removes. Check that `raw/` is in place before a
+`prepare`, and the work log's folder before a `fetch`; `kb-mcp fetch`, with a `--since`
+that reaches back far enough, fills the raw store again, and reads the work log again.
 
 **Some broken files end in a traceback, not a refusal.** A damaged vector cache ends
 `embed` and `eval`; an attached file missing from the raw store ends `prepare`; one
@@ -290,6 +291,48 @@ Two more of the store's own records, each replaced whole:
   that stops, and they are probed once every space of the run is listed. A fetch of
   projects neither reads nor rewrites the record.
 
+## The work log's copy store
+
+Owned by `sources.worklog.fetch.adapters.copy_store.CopyStore`; nothing else reads or
+writes under `<data>/copies/`. Each work log, each source of the `worklog` connector, has
+a folder of its own, `<data>/copies/<source>/`, which holds one file, `copies.json`, and
+its writers' lock, `.lock`: one run at a time writes a source's store, inside
+`CopyStore.writing()`, which raises `CopyStoreBusyError` when another run holds it, and `put`
+refuses to run outside it. The file is replaced whole, through a hidden file renamed into
+place, so that it is the last write or the one before it, never part of one.
+
+```json
+{
+  "as_of": "2026-11-16T08:30:00.250000+00:00",
+  "migrated": {"t-20261021-notes-on-x": {
+    "path": "worklog/transcripts/t-20261021-notes-on-x-notes-on-the-ledger.md",
+    "created": "2026-10-22T06:00:00+00:00", "updated": "2026-10-22T06:00:00+00:00"}},
+  "documents": [
+    {"type": "meeting", "id": "m-20261027-payments-stand-up", "title": "Payments stand-up",
+     "status": "current", "labels": ["work"],
+     "breadcrumb": ["todo.org", "Entries", "<2026-10-27 Tue>"],
+     "people": ["Alex Example", "Sam Sample"],
+     "links": [{"relation": "transcript", "document": "t-20261027-1"}],
+     "created": "2026-10-27T00:00:00+00:00", "updated": "2026-10-27T00:00:00+00:00",
+     "file": "todo.org", "text": "#+TODO: TODO WAITING | DONE\n* Payments stand-up\n"}
+  ]
+}
+```
+
+| Key | Value |
+|---|---|
+| `as_of` | the moment at which the last read of the work log that met no problem began, the as-of time of its one scope; before any, the one that the source's file of the mirror held as the store began ([a source's file](#a-sources-file)), else `null` |
+| `migrated` | by document id, what the mirror held of each document that no read has taken since the store began: the `path` of its file, from `<data>/docs/`, and the `created` and `updated` of its front matter ([the work log](#the-work-log)) |
+| `documents` | each document as the last read that took it found it, in the order read: its `type`, `id` and `title`, its `status`, `labels`, `breadcrumb` and `people`, each name as written, its `links`, each a relation and the id of the other document, of the same source, its `created` and `updated`, `file`, the org file that holds it, from the work log's folder, and `text`, what pandoc converts |
+
+Times are ISO 8601 with their offset, to the microsecond. A document's revision is the
+first 16 hex digits of the SHA-256 of its `text` alone
+(`sources.worklog.fetch.domain.copies.WorklogCopy.revision`), so it is not written. `read()`
+gives the store as a `Copies`, or None for one never written, and raises
+`RepresentationError` for a file that cannot be read, is not JSON, or holds a field
+missing, of another type, a document off the work log's rules or an id given twice, naming
+the file, `<source>/copies.json`, and the field, never its value.
+
 ## Run reports
 
 Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
@@ -362,7 +405,7 @@ does `load`: `source` a source's name, `type` a lower-case word, `id` one safe p
 `revision` a token, each key its own rule when it is set. What a source fills is checked
 by the code that builds its front matter
 (`sources.atlassian.prepare.domain.catalogue.AtlassianFrontMatter`,
-`sources.worklog.prepare.domain.worklog.WorklogFrontMatter`): a key that one Atlassian
+`sources.worklog.fetch.domain.worklog.WorklogFrontMatter`): a key that one Atlassian
 source alone has is `null` for the other and never for its own, and the work log fills
 none of them. Every text is one line, with no line break of any kind;
 times are in UTC, written as quoted strings to the second; strings that YAML 1.1 could
@@ -445,7 +488,7 @@ A document has one `author`, one `creator` and one `assignee` at most, and each
 commenter and each participant once by name and identity. Each connector declares the roles that each of its document types takes, in the order
 of the roles, and its front matter's check refuses any other
 (`sources.atlassian.prepare.domain.catalogue.TYPE_ROLES`,
-`sources.worklog.prepare.domain.worklog.TYPE_ROLES`): a page and a blog post take
+`sources.worklog.fetch.domain.worklog.TYPE_ROLES`): a page and a blog post take
 `author` and `commenter`, an issue every role but `participant`, a work-log meeting
 and transcript `participant` alone, and an entry and a day none, so that no document
 names people of both kinds. Each prepare writes them into its source's file of the
@@ -522,29 +565,37 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A link
-always names a file: in a run where a document is not read, or its conversion fails,
-and it has no file yet, the links to it are left out of the other documents' files,
-until a run reads and converts it. A link added or removed while a work-log transcript
-is not read is written on its meeting alone until a run reads the transcript, whose
-last copy stays as it was; and while a problem holds removals back, the file of a
-meeting or a transcript gone from the work log stays, naming documents that no longer
-name it back.
+names a document whose place holds a file once the prepare is done, never one found by
+its name alone, though that file may be another document's, left at that place when two
+names are alike and the document's conversion fails (see the trade-offs' cost): for a document of the store, the path of its id and title, where the
+prepare writes it, or where it stays when its conversion fails in that prepare, which
+keeps its file and its links; for one carried over from the mirror that no read has
+taken, the path where the store's first fetch found its file, while the file is there.
+A document of the work log without a file there then, not read before it has a copy,
+or whose conversion fails before it has one at its path, as in the prepare after a new
+title, whose old file stays, is left out of the other documents' links until a run
+reads and converts it. A link added or removed while a work-log
+transcript is not read is written on its meeting alone until a run reads the
+transcript, whose last copy stays as it was; and while a fetch's problem keeps a meeting
+or a transcript gone from the work log in the copy store, its file stays, naming
+documents that no longer name it back.
 `load` refuses any other relation, a field other than these or out of their order, a
 `null` and a document off its rule, naming the entry, such as `links[0]`; and a link to
 the document itself, by its document id, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
-Owned by `mirror.adapters.conversions`, which each prepare of Confluence and Jira opens
-around the mirror, which converts through it (039):
+Owned by `mirror.adapters.conversions`, which each prepare of Confluence, Jira and the
+work log opens around the mirror, which converts through it (039, 060):
 `<data>/conversions.sqlite`, one table, `conversions`, a row per conversion, its `source`
 the source whose prepare asked for it, `source` and `key` the primary key, and its
 `markdown` what pandoc wrote; each prepare reads and prunes its own source's rows alone, so
 that a text that both convert is a row of each, which neither prune takes from the other
 (030). The key is the SHA-256, in hex, of
-the UTF-8 bytes of the converter's name, a NUL, then the HTML given to pandoc; the name
-is pandoc's version line, then its arguments, one a line
-(`mirror.adapters.pandoc.Pandoc.html_converter`). A document's file and a space's tree
+the UTF-8 bytes of the converter's name, a NUL, then the HTML or the org text given to
+pandoc; the name is pandoc's version line, then its arguments, one a line
+(`mirror.adapters.pandoc.Pandoc.html_converter`, `Pandoc.org_converter` for the work
+log's org). A document's file and a space's tree
 are one conversion each; the front matter, written after pandoc, is outside the key. A
 conversion is committed as soon as it is made, in WAL mode with `synchronous = NORMAL`,
 and a write waits up to 60 seconds for another run's. Once its files are written, a
@@ -554,8 +605,8 @@ that reports a problem deletes none, as it removes none of its source's files.
 The file changes no byte of the mirror while its rows are sound. Deleting it costs one
 conversion of everything at the next run, and downloads nothing: the one way to start
 afresh after installing a pandoc rebuilt under the same version line, which the key
-cannot tell apart. The work log does not use the file: its `revision`
-([below](#the-work-log)) already skips what has not changed.
+cannot tell apart. A file of rows that name no source, adopted by the work log's prepare
+when it opens the file first, gives its rows to every source configured.
 
 As the file is opened, the run takes its write lock, then `PRAGMA integrity_check`
 judges it, each index against its table. A file whose one table holds `key` and
@@ -585,20 +636,53 @@ may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not 
 
 ### The work log
 
-Owned by the work log's row of `prepare` (017), in `sources.worklog.prepare.app.prepare`:
-`<data>/docs/worklog/`, from the folder that `sources.worklog.path` names, read in place
-and never written. `sources.atlassian.prepare.adapters.owned.owned` and
-`sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files apart,
-so that Confluence's and Jira's rows and the work log's never remove each other's. A run
-that meets a problem (a file not read, a conversion that failed) removes none of its files
-but the
-old file of a document written again under another path, as an entry's or a transcript's
-whose title changed, and a file not read holds back the files of what it builds: every
-one for `todo.org` or `todo.org_archive`, on which days, meetings and entries' numbers
-draw; for a transcript, its own; for a folder not listed, or the files past the bound,
-the transcripts under it, but one whose id a file found takes, whose copy then replaces
-it. Each problem says what it held back, as `worklog.problem` ([prepare's
-telemetry](telemetry/prepare.md)), at each run until it is fixed.
+Owned by the work log's row of `prepare` (017, 060), in
+`sources.worklog.prepare.app.prepare`: `<data>/docs/worklog/`, from the work log's copy
+store alone ([above](#the-work-logs-copy-store)), which its row of `fetch`
+(`sources.worklog.fetch.app.fetching`) fills from the folder that `sources.worklog.path`
+names, read in place and never written. `sources.atlassian.prepare.adapters.owned.owned`
+and `sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files
+apart, so that Confluence's and Jira's rows and the work log's never remove each
+other's.
+
+The fetch keeps each document read, as the rules below give it, its properties and its
+text, and finds each document gone at once that a read without a problem no longer
+reads, as the work log is read in place; such a read's moment is the store's `as_of`. A
+read that meets a problem, a file not read, takes no document that the file builds,
+every one for `todo.org` or `todo.org_archive`, on which days, meetings and entries'
+numbers draw, for a transcript its own, for a folder not listed, or the files past the
+bound, the transcripts under it, but one whose id a file found takes, whose copy then
+replaces it; it finds no document gone, and leaves `as_of` as it was. So each last copy
+stays in the store, and in the mirror, which prepare writes from it. Each problem says
+what it held back, as `worklog.problem` ([fetch's telemetry](telemetry/fetch.md)), at
+each run until it is fixed. A store's first fetch, on a data directory without the
+source's copy store, first reads the path, `created` and `updated` of each file of the
+source's folders of the mirror that prepare writes, one of each document type
+(`worklog_globs`), in today's front matter or plan 058's, and writes them into the
+store, as `migrated`, with the as-of time that the source's file of the mirror holds
+([below](#a-sources-file)), as `as_of`, before it reads the folder: a document read
+takes its dates from there as its stored copy's, its text read then taken as theirs, one
+that no read takes yet keeps its file of the mirror at the path found, which prepare
+removes nothing of meanwhile but the old file of a document written again under another
+path, and a fetch with a problem leaves the as-of time as the former version served it. A file of the
+mirror that does not read then is a problem of the fetch by its path, never its content:
+what it holds is lost, a document dated afresh when read, and, as by any problem, the
+read finds no document gone and leaves `as_of`.
+
+Prepare converts each document's text through the source's rows of the cache of
+conversions ([below](#pandocs-conversions)), and writes every file again, those whose
+bytes changed: deleting `<data>/docs/worklog/` and preparing again gives the same files
+back, converting nothing, but while a carried date waits: the file of a document that no
+read has taken yet is in no store, so that deleting the folder loses it, and the links to
+it, until its org file reads. A prepare whose conversion fails is a problem by the
+document's org file and id, and removes no file but the old file of a document written
+again under another path: a file at no document's path (`places`), that of each
+document of the store and the one found for each carried over, whose name only the ids
+of documents written begin, alone or before a dash (`retired`). A name that the id of
+a document of the store not written, or carried over, also begins stays, such as
+`e-<digest>-2-notes.md`, which `e-<digest>` titled `2 notes` would take as well as
+`e-<digest>-2` titled `Notes`. A prepare that finds no copy store is a problem naming
+`kb-mcp fetch worklog`, its row failed and the others going on.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2
@@ -676,22 +760,21 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   title's slug. A front matter whose id has another type's shape is refused. The id
   names the file, with the title's slug for an entry or a transcript, as for a page,
   and alone for a day or a meeting.
-- `revision` is the digest of pandoc's version and options, a NUL, and the org text
-  that pandoc converts: a document whose revision has not changed is not converted
-  again, and its file keeps its dates, but a day's, a meeting's and a dated
-  transcript's, their day, found at each run, so that a file that held another date
-  takes it without a conversion.
+- `revision` is the first 16 hex digits of the SHA-256 of the org text that pandoc
+  converts, and of nothing else: a document whose revision has not changed keeps its
+  stored dates, and one that its store's first read takes, those carried over from the
+  mirror, but a day's, a meeting's and a dated transcript's, their day, found at each
+  read. So a revision says no more than the text: what the text does not hold, such
+  as a transcript's links back to the meetings that name it, its labels inherited from
+  above, or its breadcrumb, may change while its revision holds, and is written all the
+  same.
 - `created` and `updated` are a day's date at midnight UTC; so are a meeting's, its
   day's, and a dated transcript's, the day that begins its folder's name or its own,
   whatever their lines, turns and timestamps hold, since the work log gives the day of a
   meeting and never its time; else the earliest and latest timestamps of the
   document's lines, as written, up to its file's modification time, a later one being a
-  plan; else, without any, the modification time, `created` keeping an existing file's.
-  The prepare reads every file of the source first, one of plan 058's front matter
-  too, and writes each again in today's; a file that does not read, such as one edited
-  by hand, is a problem by its path in the mirror, which holds back `its file, as it
-  is`: the run writes nothing over it and removes nothing, so that the date that it may
-  hold is not lost, until the file is moved away.
+  plan; else, without any, the modification time, `created` keeping the stored copy's.
+  A file of the mirror, edited by hand or not reading, is written again from the store.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
@@ -709,8 +792,8 @@ Each source's prepare writes, beside its documents, `<source>/_source.json`
 its connector declares reaches the index through the mirror alone, as nothing past the
 mirror decides by a source's name. It is written with the source's documents, and no
 prepare removes it: it stays as the last prepare that wrote it left it, so that a source
-left with no documents keeps its former file, as the work log does after a run that met
-a problem. Its name begins with `_`, so that no reader takes it for a document.
+left with no documents keeps its former file. Its name begins with `_`, so that no
+reader takes it for a document.
 
 ```json
 {
@@ -731,12 +814,13 @@ a problem. Its name begins with `_`, so that no reader takes it for a document.
 Confluence's and Jira's prepares copy the as-of times of the record of coverage
 (`coverage.json`, [above](#coverage-and-tombstones)), those of their own source's
 scopes; a record that cannot be read is a problem of the source that lists spaces, as
-the tombstones are, and leaves every scope without one. The work log's prepare says the moment that it
-began its read; a run that met a problem writes no file, so that the file of the last
-run without one stays, with its time, the last moment that the work log was known
-complete. A
-prepare whose as-of times moved writes the file again, even when no document changed, so
-that the next `index` holds them.
+the tombstones are, and leaves every scope without one. The work log's prepare copies
+the `as_of` of its copy store, the moment at which the last read without a problem
+began, the last moment that the work log was known complete, which the store took from
+this file as it began, and leaves its one scope out before any; its file changes only
+when a fetch read without a problem. A prepare
+whose as-of times moved writes the file again, even when no document changed, so that
+the next `index` holds them.
 
 `index` reads every source's file at each run (`source_files`); a file that is not JSON,
 or holds other keys or values, stops it, naming the file and `kb-mcp prepare`, which

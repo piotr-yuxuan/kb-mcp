@@ -1,1 +1,1 @@
-"""The work log's rules: org's syntax, its documents, their identity and their paths."""
+"""The work log's rules of the mirror: the paths of its documents."""

@@ -340,6 +340,11 @@ class Settings(BaseSettings):
         return self.data_dir / "raw"
 
     @property
+    def copies(self) -> Path:
+        """The copy stores of the sources read in place, a folder each: their documents as read."""
+        return self.data_dir / "copies"
+
+    @property
     def docs(self) -> Path:
         """The Markdown mirror that agents read."""
         return self.data_dir / "docs"
@@ -389,6 +394,7 @@ class Settings(BaseSettings):
         """Every place under the data directory where data is written."""
         return (
             self.raw,
+            self.copies,
             self.docs,
             self.index,
             self.vectors,

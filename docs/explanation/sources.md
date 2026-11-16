@@ -31,7 +31,8 @@ with their front matter ([`FrontMatter`](../../src/kb_mcp/mirror/domain/mirror.p
 
 Each source's package is nested by stage: `sources/atlassian/fetch/` brings the site's
 changes into the raw store, and `sources/atlassian/prepare/` writes Confluence's and
-Jira's files from it; the work log, read in place, has `sources/worklog/prepare/` alone.
+Jira's files from it; `sources/worklog/fetch/` reads the work log's folder in place into
+its copy store, and `sources/worklog/prepare/` writes its files.
 Each writes through the mirror's common part: the front matter, which search reads back,
 the writer of the files that changed, and pandoc. So the mirror imports no source, and no
 source another ([the code's layout](code-layout.md#the-stages-within-a-source)).
@@ -92,16 +93,16 @@ it against the runtime-checkable protocol. It may use the interfaces, the mirror
 [`LocalPath`](../../src/kb_mcp/config/domain/settings.py)), `observability` and the
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
-- **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk before any source
-  starts, so that a run is refused before its first row, whichever source is at fault: an
+- **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk as
+  its row begins, so that this row fails alone, naming why, and the other sources run: an
   `--until` before `--since`
   ([the fetcher's](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), or a work
   log that is not a folder
-  ([its preparer's](../../src/kb_mcp/sources/worklog/prepare/app/preparer.py)).
+  ([its fetcher's](../../src/kb_mcp/sources/worklog/fetch/app/fetcher.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). A source
-  read in place has no fetcher: the work log's preparer reads its folder, and its
-  `preflight` checks it.
+  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). The work
+  log's reads its folder in place into its copy store
+  ([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)).
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
   fetcher plans ([`plan_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)), the
   work log's preparer counts
@@ -270,11 +271,11 @@ that `read` stays within its budget. What `load` checks is this alone, so that a
 a source that no registry names loads. Each builder checks its own, each by a subclass:
 which source fills which key, its types, ids and revisions
 ([`AtlassianFrontMatter`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
-[`WorklogFrontMatter`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)). The keys
+[`WorklogFrontMatter`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)). The keys
 and their order do not change. The names follow: the Atlassian revision's rule moved to
 the fetch's records ([`REVISION`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)),
 the work log's to its domain
-([`WORKLOG_REVISION`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`WORKLOG_REVISION`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 
 **One rule says which files are documents**
 ([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)): every `.md` file under
@@ -352,7 +353,7 @@ package, but each is a source: a row, a report and a set of files of its own.
 ## `fetch` and `prepare` through the registry
 
 [`run_each`](../../src/kb_mcp/cli/app/sources.py) is one use case over the sources taken:
-every `preflight`, then each fetcher or preparer, a row each. Each row runs even when an earlier one failed,
+each fetcher or preparer, a row each, which its `preflight` begins. Each row runs even when an earlier one failed,
 since the next reads what is on disk, Ctrl-C stops the rest, and the rows' endings fold into
 the exit status ([`folded`](../../src/kb_mcp/kernel/exit_status.py)). A row names its source, with its
 result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,
@@ -421,31 +422,33 @@ through the entry, with no line of `src/` naming it.
 
 The work log is the user's own folder, often a git repository, and stays theirs: the
 program reads it and never writes there, never runs git, and follows a link only inside
-it. Unlike the Atlassian sources, it has no raw store: re-reading it whole on every run
-costs less than keeping a copy, and its files of a few megabytes are converted again
-only when their text changed. A document whose file holds its revision, a digest of
-what pandoc reads and of pandoc's version
-([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), keeps
-that file's body: an edit elsewhere in `todo.org`, which changes the file's time, moves
-no other entry's dates. A day, a meeting and a dated transcript are dated by their day,
-and linked, afresh at each run
-([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)): the
-transcript may be saved after the meeting's notes, so a meeting's links are not part of
-its revision, nor are its dates, so that a file that held another date takes its day
-without a conversion. The work log gives the day of a meeting, never its time, so no
-turn's time or timestamp dates a meeting or a transcript.
+it. Its fetch reads it whole at each run, as it is read in place, and keeps each
+document in a copy store of its own: its properties and its text, whose digest alone is
+its revision
+([`WorklogCopy.revision`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)).
+A document whose revision holds keeps its stored dates: an edit elsewhere in
+`todo.org`, which changes the file's time, moves no other entry's dates. A day, a
+meeting and a dated transcript are dated by their day, and linked, afresh at each read
+([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)): the transcript
+may be saved after the meeting's notes, so a meeting's links are not part of its
+revision, nor are its dates. The work log gives the day of a meeting, never its time,
+so no turn's time or timestamp dates a meeting or a transcript. Only fetch observes and
+only prepare derives, as [the concepts](../reference/concepts.md#stage) say: the prepare
+converts from the store alone, through the cache of conversions, so that the mirror is
+wholly derived and holds no memory of the work log
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 
 A file that breaks a bound, links out, or is not UTF-8 is named by its path alone, as
 its content could be anything, with what it holds back
-([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
-and the run then removes no file, but the old one of a document written again under
-another title's path, nor writes one that the file not read builds: none
-for `todo.org` or its archive, which every day, meeting and entry draws on; for a
+([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
+and the fetch then finds no document gone, nor takes one that the file not read builds:
+none for `todo.org` or its archive, which every day, meeting and entry draws on; for a
 transcript, its own alone
-([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)). A
+([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)). A
 meeting needs nothing of its transcript but the id, which the path gives, so it is
-written, linking the transcript, read or not. So the last good copy of what a file
-builds stays until a run reads it, and one faulty file holds back no other document.
+taken, linking the transcript, read or not. So the last good copy of what a file builds
+stays in the store, and in the mirror, until a run reads it, and one faulty file holds
+back no other document.
 [The trade-offs](trade-offs.md#a-file-not-read-holds-back-its-own) give what this
 costs.
 
@@ -457,16 +460,16 @@ its summary, details and actions ([the
 how-to](../how-to/work-log.md#the-journal-days-and-meetings)). Read as one entry, it was
 one document of megabytes, whose meetings no filter or hit could tell apart; read by its
 headings, each day and each meeting is a document of its own
-([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 which search ranks, `read` opens and the filters narrow to. The rule reads the
 outline's shape, not the journal's name: a day is a heading titled by a date alone
-([`date_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)),
+([`date_title`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py)),
 a meeting a child of a day with a meeting's property
-([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 So a renamed journal reads as the old one, and so does the archive file, where org
 moves a day to the top and names, in `:ARCHIVE_OLPATH:`, the day of a meeting archived
 alone
-([`days_and_meetings`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`days_and_meetings`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 [The trade-offs](trade-offs.md#the-journal-split-by-shape) give what this costs.
 
 ## Identity that survives org's edits
@@ -477,14 +480,14 @@ works. An entry's id is therefore taken from what those edits leave alone: its `
 property, else its title and `:CREATED:`, else its title. Planning lines, notes, the
 keyword, tags and cookies never count. A day is named by its date, so that every part
 of one date, archived or not, makes one document
-([`days_and_meetings`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
+([`days_and_meetings`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py));
 a meeting by its day's date and its title's slug, numbered in the journal's order where
 two share one
-([`meeting_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`meeting_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 so that archiving it keeps its id, but for two of one slug archived apart ([the
 trade-offs](trade-offs.md#the-journal-split-by-shape)). Transcripts are named by their day and file name, or
 that name's slug, never by their folders, and by their path alone, read or not
-([`transcript_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 so that moving one under `transcripts/archive/` keeps its id, and a copy left beside
 its original is told apart by its path, with a warning. A name is a label: no number,
 order or time is read from it.
@@ -510,15 +513,15 @@ assignee, and each commenter with the times of their comments. The work log fill
 `participant` alone
 ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)):
 a meeting's names as its `:PARTICIPANTS:` writes them
-([`participants`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`participants`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 a transcript's speakers
-([`speakers`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`speakers`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 So the filters by person read every source alike
 ([`KEPT`](../../src/kb_mcp/search/adapters/sqlite_index.py)), and a role
 that a source adds is one more value of `role`, where a key of its own would change
 every file and the index's schema, as the work log's own keys would. No other source
 holds `participant`, and the work log holds no other role
-([`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 so that no front matter, which `read` never cuts, names people of both kinds: an issue
 with every role at its largest already fills most of a read's budget. A document's
 `scope`, `subtype` and `parent` are every source's, as the concepts name them; the keys
@@ -533,11 +536,11 @@ the relations a closed set
 ([`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py)):
 a meeting's `transcript`, and a transcript's `summary`, each meeting that links it. The
 work log's prepare writes each link both ways
-([`linked_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`linked_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 since a program that reads one file cannot find those that link to it without reading
 them all. A meeting finds its transcript by the path that its `:MEETING:` names, else by
 the id that the path gives
-([`Meeting.read`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`Meeting.read`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 whether the file is read or not, as the link needs the id alone: org rewrites no link
 when the user moves a transcript under `archive/`, and the move keeps its id.
 

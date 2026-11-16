@@ -34,7 +34,7 @@ from kb_mcp.kernel.outcome import OutcomeWarning
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, scope_name
-from kb_mcp.sources.worklog.prepare.domain import org
+from kb_mcp.sources.worklog.fetch.domain import org
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -58,7 +58,7 @@ MEETING_FILE = "meeting-"
 # The folder of each that holds archived transcripts.
 ARCHIVED = "archive"
 ORG = ".org"
-# A document's revision: a digest of what pandoc converts, and how.
+# A document's revision: the digest of what pandoc converts, as ``digest`` gives it.
 WORKLOG_REVISION = re.compile(r"[0-9a-f]{16}")
 # The roles that each type of the work log's documents takes: a meeting's participants
 # and a transcript's speakers; an entry and a day name nobody.
@@ -189,6 +189,11 @@ class WorklogFrontMatter(FrontMatter):
         return self
 
 
+def worklog_globs(source: str) -> tuple[str, ...]:
+    """Give where a work log source's documents lie, relative to <data>/docs: its folders."""
+    return tuple(f"{source}/{each.plural}/*.md" for each in WORKLOG_TYPES.values())
+
+
 class PlacedHeading(Record):
     """A heading of ``todo.org`` or its archive, and the titles above it: org's outline.
 
@@ -266,11 +271,6 @@ class PlacedHeading(Record):
 def digest(text: str) -> str:
     """Return the first 16 hex digits of the text's SHA-256."""
     return hashlib.sha256(text.encode()).hexdigest()[:DIGITS]
-
-
-def revision(converter: str, text: str) -> str:
-    """Name what pandoc makes of a document: its input, with pandoc's version and options."""
-    return digest(f"{converter}\0{text}")
 
 
 def participants(value: str) -> tuple[str, ...]:

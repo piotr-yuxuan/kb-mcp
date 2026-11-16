@@ -348,10 +348,11 @@ usage: kb-mcp fetch [-h] [--config CONFIG] [--data-dir DATA_DIR] [-q | -v |
                     [--detail {short,detailed}] [-y] [--dry-run] [--space SPACE]
                     [--since SINCE] [--until UNTIL] [--max-file-mb MAX_FILE_MB]
                     [--project PROJECT]
-                    [{confluence,jira} ...]
+                    [{confluence,jira,worklog} ...]
 
 positional arguments:
-  {confluence,jira}     the sources to fetch, given together; by default each one
+  {confluence,jira,worklog}
+                        the sources to fetch, given together; by default each one
                         configured
 
 options:
@@ -380,6 +381,10 @@ jira:
 
   --project PROJECT     a project key, in place of the setting's; repeat for more
 
+worklog:
+  The user's work log: org files read in place, never written: its folder, read
+  whole, in place.
+
 several sources:
   The options of confluence, jira.
 
@@ -393,10 +398,14 @@ With --format json: `exit_status`, the run's; `sources`, a row per source taken,
 the registry's order, each with its `source`, its `ending` (done, failed, sign in
 again, interrupted, not run), its `counts`, null when it gave none, and its `problems`
 and `warnings`, each with its `where` and `reason`, a scope, a document or a file and
-why it failed. The counts: each count by its name, of what the fetch did, or with
---dry-run would do; `windows`, each scope's: its `scope`, by its source, type and key,
-its `start`, `end` and `reason`, and its `coverage`, extended, capped at a failure,
-held, or null when not written; `dry_run`, whether the fetch only planned.
+why it failed. Confluence's and Jira's counts: each count by its name, of what the
+fetch did, or with --dry-run would do; `windows`, each scope's: its `scope`, by its
+source, type and key, its `start`, `end` and `reason`, and its `coverage`, extended,
+capped at a failure, held, or null when not written; `dry_run`, whether the fetch only
+planned. The work log's: `documents`, those read; `new` and `changed`, of another
+revision; `gone`, those that a read without a problem no longer found; `html`, the
+HTML transcripts left out; `held_back`, by each problem's place, what keeps its last
+copy.
 ```
 
 ## `index`
@@ -518,7 +527,7 @@ options:
   --detail {short,detailed}
                         write what matters of the result, or all of it
   -y, --yes             run without asking first, as a script does
-  --dry-run             count what a run would convert and remove, where a source can
+  --dry-run             count what a run would write and remove, where a source can
                         tell; write nothing
 
 confluence:
@@ -542,9 +551,10 @@ source's, which fails nothing of its own. Confluence's and Jira's counts: `docum
 how many it prepared; `converted`, the conversions pandoc ran, and `reused`, those the
 cache gave, a document's file and a space's tree being one each; `changes`, the files
 `written`, `unchanged` and `removed`; `unsupported`, what the mirror does not show, by
-name. The work log's: `documents`; `changes`; `html`, the HTML transcripts left out;
+name. The work log's: `documents`, `converted`, `reused` and `changes`, as theirs;
 `held_back`, by each problem's place, what keeps its last copy; in a dry run,
-`documents`, `to_convert`, `to_remove`, `html` and `held_back`.
+`documents` and `to_remove`, the files that a run would remove, what pandoc would
+convert not counted.
 ```
 
 ## `reranker`

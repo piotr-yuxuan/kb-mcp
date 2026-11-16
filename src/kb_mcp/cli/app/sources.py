@@ -16,6 +16,7 @@ from opentelemetry import trace
 from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.sources import FETCH, PREPARE
 from kb_mcp.kernel.exit_status import folded
+from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 
 if TYPE_CHECKING:
@@ -32,6 +33,8 @@ EVENTS = {
     FETCH: ("fetch.start", "fetch.source", "fetch.interrupted", "fetch.end"),
     PREPARE: ("prepare.start", "prepare.source", "prepare.interrupted", "prepare.end"),
 }
+# What each stage's refusal is called: of the run, or of one source's row.
+REFUSED = {FETCH: "fetch.refused", PREPARE: "prepare.refused"}
 
 
 class SourcesRefusedError(ValueError):
@@ -76,26 +79,17 @@ def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
     """Run each source's part in this stage; return a row each, and the status that they fold.
 
     Each run's ``dry_run`` is what its fetcher or preparer reads, and the events follow the
-    runs. Raises ``SourcesRefusedError`` for one that does not load, and for what its
-    ``preflight`` refuses, after its source's name and the stage, both before the first
-    row. A row that failed stops no other: the next reads what is on disk. Only Ctrl-C
-    stops the run: it ends the row it stops as interrupted, and each later one as not run;
-    the run is interrupted even when Ctrl-C comes once every row has ended. The status is the
-    most severe of the rows' endings, as ``folded`` gives it. A stage's ``start`` and
-    ``end`` say at INFO the sources planned and how each ended, its ``source`` each as it
-    ends; its ``interrupted``, a warning, which source Ctrl-C stopped.
+    runs. Raises ``SourcesRefusedError`` for one that does not load, before the first row.
+    What a ``preflight`` refuses, as its row begins, fails that row alone, a problem by its
+    source and an error, ``fetch.refused`` or ``prepare.refused``, naming the source. A row
+    that failed stops no other: the next reads what is on disk. Only Ctrl-C stops the run:
+    it ends the row it stops as interrupted, and each later one as not run; the run is
+    interrupted even when Ctrl-C comes once every row has ended. The status is the most
+    severe of the rows' endings, as ``folded`` gives it. A stage's ``start`` and ``end``
+    say at INFO the sources planned and how each ended, its ``source`` each as it ends; its
+    ``interrupted``, a warning, which source Ctrl-C stopped.
     """
     plans = planned(stage, runs)
-    refusal = next(
-        (
-            f"source {run.source.name!r}: {stage}: {said}"
-            for run, each in plans
-            if (said := each.preflight(run))
-        ),
-        None,
-    )
-    if refusal is not None:
-        raise SourcesRefusedError(refusal)
     log = structlog.get_logger()
     started, row_event, interrupted, finished = EVENTS[stage]
     names = [run.source.name for run, _ in plans]
@@ -106,7 +100,11 @@ def run_each(stage: str, runs: Sequence[SourceRun]) -> Ran:
         for (run, each), source in zip(plans, names, strict=True):
             attributes = {"kb_mcp.source": source}
             with TRACER.start_as_current_span(row_event, attributes=attributes) as span:
-                outcome = each.fetch(run) if stage == FETCH else each.prepare(run)
+                if said := each.preflight(run):
+                    log.error(REFUSED[stage], source=source, reason=said)
+                    outcome = Outcome.of(problems=(Problem(where=source, reason=said),))
+                else:
+                    outcome = each.fetch(run) if stage == FETCH else each.prepare(run)
                 span.set_attribute("kb_mcp.ending", outcome.ending)
                 log.info(row_event, source=source, ending=outcome.ending)
                 rows.append(Row(source=source, **dict(outcome)))

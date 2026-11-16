@@ -419,7 +419,7 @@ def test_a_fetch_s_root_says_whether_it_is_a_dry_run(
 ) -> None:
     """The flag's value, not whether the command takes it.
 
-    With --until before --since, the run refuses before any request.
+    With --until before --since, the row fails before any request.
     """
     collector = Collector()
     with collecting(collector) as endpoint:
@@ -437,12 +437,12 @@ def test_a_fetch_s_root_says_whether_it_is_a_dry_run(
         ]
         site = {"KB_MCP_SOURCES__CONFLUENCE__SITE": SITE}
         ran = guarded(tmp_path, port_of(endpoint), arguments, site, LIMIT_S)
-    assert ran.status == ExitStatus.REFUSED
-    (root,) = collector.spans()
+    assert ran.status == ExitStatus.FAILED
+    (root,) = (span for span in collector.spans() if span.parent_span_id == b"")
     assert attributes(root.attributes) == {
         "kb_mcp.command": "fetch",
         "kb_mcp.dry_run": dry,
-        "kb_mcp.exit_status": ExitStatus.REFUSED,
+        "kb_mcp.exit_status": ExitStatus.FAILED,
     }
 
 

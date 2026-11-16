@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from kb_mcp.kernel.outcome import Problem
-from kb_mcp.sources.worklog.prepare.adapters import files
+from kb_mcp.sources.worklog.fetch.adapters import files
 
 CONTENT = "words of the file that must never show"
 # The plan's bound on transcripts.

@@ -56,7 +56,7 @@ MFS = Scope(source="confluence", type=names.SPACE, key="MFS")
 PRB = Scope(source="jira", type=names.PROJECT, key="PRB")
 MANY = 30
 OTHER_SPACE = "300000"
-REFUSED = 2
+FAILED = 1
 
 
 @dataclass
@@ -677,7 +677,7 @@ def test_a_gone_page_leaves_the_mirror_even_when_another_has_a_problem(
 def test_a_corrupt_coverage_record_is_refused_by_the_command(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """A record that cannot be read refuses the run, naming it, rather than starting over."""
+    """A record that cannot be read fails the fetch, naming it, rather than starting over."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -693,7 +693,7 @@ def test_a_corrupt_coverage_record_is_refused_by_the_command(
         "--space",
         "MFS",
     ]
-    assert main(options) == REFUSED
+    assert main(options) == FAILED
     assert "coverage.json[0]" in capsys.readouterr().err
 
 

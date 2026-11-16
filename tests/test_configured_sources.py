@@ -261,7 +261,7 @@ def test_two_sites_of_one_connector_fetch_sign_in_and_prepare_apart(
 def test_a_site_of_two_sources_of_pages_refuses_their_prepare(
     tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Their pages are placed by one listing of the site's spaces: exit 2, naming both."""
+    """Their pages are placed by one listing of the site's spaces: the row fails, naming both."""
     config = tmp_path / "config.toml"
     config.write_text(
         f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
@@ -269,7 +269,7 @@ def test_a_site_of_two_sources_of_pages_refuses_their_prepare(
         "utf-8",
     )
     given = ["prepare", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]
-    assert main([*given, "confluence"]) == ExitStatus.REFUSED
+    assert main([*given, "confluence"]) == ExitStatus.FAILED
     assert "sources confluence, wiki: two sources of the pages of one site" in (
         capsys.readouterr().err
     )

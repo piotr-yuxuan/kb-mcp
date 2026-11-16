@@ -31,7 +31,7 @@ from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
+from kb_mcp.mirror.adapters.pandoc import Pandoc
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.sources.atlassian.fetch.adapters import http
@@ -54,6 +54,7 @@ from tests.test_prepare_command import fake_pandoc
 from tests.test_prepare_worklog import FIXTURE as WORKLOG_FIXTURE
 from tests.test_serve import talk
 from tests.test_settings import user_log_folder
+from tests.test_sources import missing, unconverted
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -135,7 +136,8 @@ def test_fetch_records_as_documented(
     from their last fetch, without --since. Then a space whose pages the site cannot
     serve, retried until they fail; a space not found; a period refused, a store busy,
     Ctrl-C, and a session no longer saved; then the session kept before it was a site's,
-    of this site, which moves, then of another, which stays.
+    of this site, which moves, then of another, which stays. Then the work log: whole,
+    its store begun; then a problem and two transcripts of one id.
     """
     emitted = Emitted()
     since = ("--since", "2026-10-02")
@@ -159,7 +161,7 @@ def test_fetch_records_as_documented(
         assert main(fetch_arguments(data, "--space", "NOPE", *since)) == ExitStatus.FAILED
     with emitted.gathering(telemetry, "fetch"):
         backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
-        assert main(fetch_arguments(data, "--space", "MFS", *backwards)) == ExitStatus.REFUSED
+        assert main(fetch_arguments(data, "--space", "MFS", *backwards)) == ExitStatus.FAILED
     with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw, "confluence").writing():
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.FAILED
 
@@ -177,6 +179,16 @@ def test_fetch_records_as_documented(
         write_cookies(chosen.session / COOKIES, [{"name": "s", "value": "v", "domain": domain}])
         with emitted.gathering(telemetry, "fetch"):
             main(fetch_arguments(data, "--space", "MFS", *since))
+    worklog = tmp_path / "todo"
+    shutil.copytree(WORKLOG_FIXTURE, worklog)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
+    worklog_alone = [*fetch_arguments(data), "worklog"]
+    with emitted.gathering(telemetry, "fetch"):
+        assert main(worklog_alone) == ExitStatus.OK
+    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
+    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
+    with emitted.gathering(telemetry, "fetch"):
+        assert main(worklog_alone) == ExitStatus.FAILED
     assert undocumented("fetch", emitted) == []
 
 
@@ -228,8 +240,10 @@ def test_prepare_records_as_documented(
     """Built, failed, unplaced, with a damaged cache, then a former one; then pandoc gone.
 
     Gone once the run began. The pandoc on PATH passes its input through, unless it holds
-    BREAK. Then the work log, by the real pandoc: whole; a dry run; a problem and two
-    transcripts of one id; a pandoc that gives no version; Ctrl-C; a folder that is none.
+    BREAK. The work log, configured, fails its row at first, not fetched yet; fetched, it
+    is prepared whole, then in a dry run, then with a conversion that fails; then a pandoc
+    that gives no version, and Ctrl-C. Then two sources of the pages of one site, each
+    row refused.
     """
     data = tmp_path / "data"
     a_store_with_a_page_of_each_ending(data)
@@ -243,6 +257,10 @@ def test_prepare_records_as_documented(
         "--data-dir",
         str(data),
     ]
+    worklog = tmp_path / "todo"
+    shutil.copytree(WORKLOG_FIXTURE, worklog)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
+    worklog_alone, fetch = [*arguments, "worklog"], ["fetch", *arguments[1:], "worklog"]
     emitted = Emitted()
     with monkeypatch.context() as patch:
         patch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
@@ -255,45 +273,40 @@ def test_prepare_records_as_documented(
             )
         with emitted.gathering(telemetry, "prepare"):
             assert main(arguments) == ExitStatus.FAILED
-
-        def gone() -> Pandoc:
-            message = "pandoc: not found on PATH"
-            raise PandocMissingError(message)
-
-        patch.setattr(Pandoc, "find", gone)
+        assert main(fetch) == ExitStatus.OK
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(worklog_alone) == ExitStatus.OK
+        with emitted.gathering(telemetry, "prepare"):
+            assert main([*worklog_alone, "--dry-run"]) == ExitStatus.OK
+        todo = worklog / "todo.org"
+        todo.write_text(todo.read_text("utf-8").replace("Drafted on", "Drafted BREAK on"), "utf-8")
+        assert main(fetch) == ExitStatus.OK
+        with emitted.gathering(telemetry, "prepare"):
+            assert main(worklog_alone) == ExitStatus.FAILED
+        patch.setattr(Pandoc, "find", missing)
         with emitted.gathering(telemetry, "prepare"):
             assert main(arguments) == ExitStatus.FAILED
-    worklog = tmp_path / "todo"
-    shutil.copytree(WORKLOG_FIXTURE, worklog)
-    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
-    worklog_alone = [*arguments, "worklog"]
-    with emitted.gathering(telemetry, "prepare"):
-        assert main(worklog_alone) == ExitStatus.OK
-    with emitted.gathering(telemetry, "prepare"):
-        assert main([*worklog_alone, "--dry-run"]) == ExitStatus.OK
-    shutil.copytree(worklog / "transcripts/current", worklog / "transcripts/archive/2026/x")
-    (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
-    with emitted.gathering(telemetry, "prepare"):
-        assert main(worklog_alone) == ExitStatus.FAILED
-
-    def no_version(_: Pandoc) -> str:
-        message = "pandoc: exit status 9"
-        raise PandocFailedError(message)
 
     def stopped(*_: object, **__: object) -> None:
         raise KeyboardInterrupt
 
     with monkeypatch.context() as patch:
-        patch.setattr(Pandoc, "org_converter", no_version)
+        patch.setattr(Pandoc, "org_converter", lambda _: unconverted())
         with emitted.gathering(telemetry, "prepare"):
             assert main(worklog_alone) == ExitStatus.FAILED
     with monkeypatch.context() as patch:
         patch.setattr(worklog_preparer, "prepare_worklog", stopped)
         with emitted.gathering(telemetry, "prepare"):
             assert main(worklog_alone) == ExitStatus.INTERRUPTED
-    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path / "absent"))
+    config = tmp_path / "two.toml"
+    config.write_text(
+        f'[sources.confluence]\nsite = "{SITE}"\n'
+        f'[sources.wiki]\nconnector = "confluence"\nsite = "{SITE}"\n',
+        "utf-8",
+    )
     with emitted.gathering(telemetry, "prepare"):
-        assert main(worklog_alone) == ExitStatus.REFUSED
+        two = ["prepare", "--yes", "--config", str(config), "--data-dir", str(data)]
+        assert main(two) == ExitStatus.FAILED
     assert undocumented("prepare", emitted) == []
 
 

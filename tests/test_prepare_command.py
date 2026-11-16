@@ -443,10 +443,15 @@ def worklog_folder(home: Path, monkeypatch: MonkeyPatch) -> Path:
 def test_without_a_name_each_store_and_each_source_read_in_place_that_is_configured_run(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 031: no site, nor a source's setting, needed of a store; the work log by its own."""
+    """Plan 031: no site, nor a source's setting, needed of a store; the work log by its own.
+
+    Its own setting, which its fetch reads into its copy store, from which it is prepared.
+    """
     assert main(arguments(home)) == 0
     assert "worklog:" not in capsys.readouterr().out
     worklog_folder(home, monkeypatch)
+    assert main(["fetch", *arguments(home)[1:], "worklog"]) == 0
+    capsys.readouterr()
     assert main(arguments(home)) == 0
     captured = capsys.readouterr()
     rows = [line for line in captured.out.splitlines() if not line.startswith(" ")]
@@ -476,10 +481,15 @@ def test_names_are_taken_once_each_in_the_registry_s_order(
 def test_a_dry_run_counts_the_work_log_and_says_of_the_others_that_it_cannot(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 031, criterion 4: exit 0, nothing written, by the data directory's files."""
+    """Plan 031, criterion 4: exit 0, nothing written, by the data directory's files.
+
+    The work log counted from what its fetch kept.
+    """
     worklog_folder(home, monkeypatch)
     command = ["prepare", "--dry-run", "--config", str(home / "none.toml")]
     command += ["--data-dir", str(home / "data")]
+    assert main(["fetch", "--yes", *command[2:], "worklog"]) == 0
+    capsys.readouterr()
     assert main(command) == 0
     out = capsys.readouterr().out
     assert "confluence: not run\n  warning: confluence: not counted: " in out

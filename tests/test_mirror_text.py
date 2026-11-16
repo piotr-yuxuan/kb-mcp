@@ -17,7 +17,7 @@ from kb_mcp.sources.atlassian.prepare.domain.layout import (
     issue_path,
     tree_path,
 )
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import retired, worklog_path
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 DIGEST = "e" * 64
@@ -117,6 +117,45 @@ def test_work_log_documents_are_placed_by_type_id_and_title(
     """
     path = worklog_path("worklog", document_type, identifier, title)
     assert path == PurePosixPath("worklog", expected)
+
+
+ENTRY, SECOND = "e-0123456789abcdef", "e-0123456789abcdef-2"
+NOTES, NOTES_ON_X = "t-20261021-notes", "t-20261021-notes-on-x"
+KNOWN = {ENTRY, SECOND, NOTES, NOTES_ON_X, "d-20261027"}
+KNOWN |= {"m-20261026-one-to-one", "m-20261026-one-to-one--2"}
+
+
+@pytest.mark.parametrize(
+    ("document_type", "identifier", "title", "written", "gone"),
+    [
+        ("entry", ENTRY, "Retrospective notes", {ENTRY}, True),
+        ("entry", SECOND, "Retrospective notes", {SECOND}, False),
+        ("entry", SECOND, "Retrospective notes", {ENTRY, SECOND}, True),
+        ("entry", ENTRY, "2026 plan", {ENTRY}, True),
+        ("entry", ENTRY, "", {ENTRY}, True),
+        ("entry", ENTRY, "2 plan", {SECOND}, False),
+        ("entry", ENTRY, "2 plan", {ENTRY, SECOND}, True),
+        ("transcript", NOTES, "On x, the ledger", {NOTES_ON_X}, False),
+        ("transcript", NOTES_ON_X, "Notes on the ledger", {NOTES_ON_X}, False),
+        ("transcript", NOTES_ON_X, "Notes on the ledger", {NOTES, NOTES_ON_X}, True),
+        ("meeting", "m-20261026-one-to-one", "One-to-one", {"m-20261026-one-to-one"}, True),
+        ("day", "d-20261027", "<2026-10-27 Tue>", {"d-20261027"}, True),
+        ("entry", "e-fedcba9876543210", "Gone", KNOWN, False),
+    ],
+)
+def test_a_file_is_retired_when_each_known_id_that_begins_its_name_is_written(
+    document_type: str, identifier: str, title: str, written: set[str], *, gone: bool
+) -> None:
+    """A known id begins a name alone or before a dash; one at least, and each one written.
+
+    So that a name that two ids could give, the first entry of a digest titled ``2 plan``
+    or its second titled ``Plan``, any name of the second, a transcript ``notes`` titled
+    ``On x, the ledger`` or ``notes on x`` titled ``The ledger``, is no one's while one of
+    them is not written: its file stays. A name that no known id begins stays too; one
+    that a known id and a dash begin is that id's, though its slug begins with a number.
+    """
+    path = worklog_path("worklog", document_type, identifier, title)
+    assert retired([path], KNOWN, written) == ({path} if gone else set())
 
 
 def test_an_empty_slug_leaves_the_id_alone() -> None:

@@ -3,7 +3,9 @@
 Your work log, a folder of org files, is written as Markdown beside Confluence and Jira,
 under `<data>/docs/worklog/`, indexed with them, and served to agents. It is read in
 place, never written, and never through git: its folder may be a git repository or
-under a synchronised folder, as the data directory may not be.
+under a synchronised folder, as the data directory may not be. `fetch` reads it whole
+into its copy store, `<data>/copies/worklog/`, and `prepare` writes the mirror from that
+store alone.
 
 ## 1. Point to the folder
 
@@ -32,13 +34,14 @@ kb-mcp check
   Emacs's lock, autosave and backup files. A link is followed only inside the folder.
 - A file over 32 MiB, a link out of the folder, or a file that is not UTF-8 is named by
   its path, never by its content, in a warning, `worklog.problem`, that says what it
-  held back, at each run until it is fixed, and `prepare` exits 1. The run removes
-  nothing, nor writes what the file builds: for `todo.org` or its archive, every
-  document; for a transcript, its own, whose last copy stays, while its meeting is
-  written and links it as before. Past 20,000 transcripts in the two folders, the first
-  in path order are read and the rest are a problem, which holds back those files
-  alone: a meeting that links one is written without the link. Count them before a
-  first run, with `find transcripts meetings -name '*.org' | wc -l` in the folder.
+  held back, at each run until it is fixed, and `fetch` exits 1. The fetch finds no
+  document gone, nor takes what the file builds: for `todo.org` or its archive, every
+  document; for a transcript, its own, whose last copy stays, in the store and so in the
+  mirror, while its meeting is taken and links it as before. Past 20,000 transcripts in
+  the two folders, the first in path order are read and the rest are a problem, which
+  holds back those files alone: a meeting that links one is written without the link.
+  Count them before a first run, with `find transcripts meetings -name '*.org' | wc -l`
+  in the folder.
 
 Keywords are those `todo.org` declares, as org reads them: put the line that your Emacs
 configuration holds in the file, such as `#+TODO: TODO WAITING | DONE`, else only `TODO`
@@ -140,12 +143,17 @@ have one name, as a copy's may.
 ## 4. Add it
 
 ```bash
+kb-mcp fetch worklog
 kb-mcp prepare worklog
 kb-mcp index
 ```
 
-The files go to `<data>/docs/worklog/`: `entries/` and `transcripts/` as
-`<id>-<title>.md`, `days/` and `meetings/` as `<id>.md`. Each holds the usual front
+`fetch` reads the folder whole and keeps each document's text and what its front matter
+says in the copy store; `prepare` converts from there, and needs no folder. A folder not
+there, such as one not mounted yet, fails the work log's row of `fetch`, by its setting,
+exit 1, and the other sources are fetched all the same. The files go
+to `<data>/docs/worklog/`: `entries/` and `transcripts/` as `<id>-<title>.md`, `days/`
+and `meetings/` as `<id>.md`. Each holds the usual front
 matter: the heading's keyword as its `status` (else `current`), its tags and those of
 the headings above it, the file's `#+FILETAGS` and `ARCHIVE` as `labels`, its file and
 the titles above it, or a transcript's folders, as `breadcrumb`. A meeting's
@@ -176,11 +184,38 @@ Dates, as `created` and `updated`:
   day, and that transcript names both meetings.
 - A transcript without a day, such as `transcripts/misc/a.org`: as an entry.
 
-A document whose text did not change is not converted again, and an entry's file keeps
-its dates, so an edit to one entry moves no other. A day's, a meeting's and a dated
-transcript's dates and links are found afresh at each run: a transcript saved later
-links its meeting without converting it again. pandoc converts each document;
-a transcript's lines stay apart.
+A document whose text did not change keeps its dates in the store, so an edit to one
+entry moves no other. A day's, a meeting's and a dated transcript's dates and links are
+found afresh at each fetch: a transcript saved later links its meeting without
+converting it again. pandoc converts each document, and `<data>/conversions.sqlite`
+keeps each conversion by its input, so that a prepare converts only the texts that
+changed; a transcript's lines stay apart.
+
+Deleting `<data>/docs/worklog/` costs nothing once a fetch has read the work log without
+a problem since the upgrade: the next `prepare` writes the same files from the store,
+converting nothing. Before, the file of a document that no read has taken yet, below, is
+in no store: deleting the mirror loses it, and the others' links to it, until its org
+file reads. Deleting `<data>/copies/worklog/` costs one read: the next `fetch` reads the
+folder whole and takes the dates from the mirror again, as below. A `prepare` that finds
+no copy store fails the work log's row, exit 1, naming `kb-mcp fetch worklog`, and
+prepares the other sources.
+
+### After an upgrade from a version without the copy store
+
+Run `fetch` before `prepare`. The first `fetch` of the work log on a data directory
+without its copy store first takes, from each of its files of the mirror, its
+document's dates, `created` and `updated`, and keeps them in the store before it reads
+the folder, with the as-of time that `<data>/docs/worklog/_source.json` holds, so that a
+fetch that meets a problem leaves the time served as it was. A document without a day
+keeps both dates, as the text that this fetch reads, so that an entry without a
+timestamp, whose dates the file of the mirror alone held, keeps them, and no document is
+dated afresh by its org file's time. One edited since the former version last prepared
+keeps them too, until its text changes again. A file of the mirror that does not read is
+a problem by its path, and the fetch ends failed, exit 1: what it holds is lost, a
+document's dates taken afresh from its org file, and the next fetch, its store begun,
+does not meet it again. Until a fetch reads the work log without a problem, `prepare`
+removes no file but the old one of a document retitled, so that the file of a document
+that the first fetch could not read stays where that fetch found it.
 
 `index` then brings the index of the mirror's words up to the mirror, without a model,
 reading only the files that changed. For search by meaning, `kb-mcp embed`, after it,
@@ -189,13 +224,13 @@ Ollama on this machine or any other OpenAI-compatible API
 ([embeddings](embeddings.md)): without it, `embed` exits 1 and the index in place stays.
 Its first run embeds the whole mirror.
 
-## 5. What a change does at the next prepare
+## 5. What a change does at the next fetch and prepare
 
 - An entry edited, closed, retagged, ticked or archived keeps its id and its file. The
-  file is written again only when the entry's revision changed (its text, or pandoc's
-  version); an edit to one entry leaves every other entry's file, dates included, as it
-  was. An entry renamed without an `:ID:` takes a new id: its old file goes and a new one
-  is written.
+  file is written again only when what the entry says changed, its text above all, whose
+  digest is its revision; an edit to one entry leaves every other entry's file, dates
+  included, as it was. An entry renamed without an `:ID:` takes a new id: its old file
+  goes and a new one is written.
 - A day or a meeting archived keeps its id and its file, but for the swaps of two
   meetings of one slug above. A meeting renamed takes a new id, as an entry without
   `:ID:` does.
@@ -208,26 +243,32 @@ Its first run embeds the whole mirror.
   warns once, `worklog.unlinked`, with how many and the first: the file that its link
   names when it is in brackets or begins `file:` or `./`, else the meeting's id, a path
   alone included, since any text, a meeting room's URL among them, reads as one; never
-  the link itself ([prepare's telemetry](../reference/telemetry/prepare.md)). It goes on: the
+  the link itself ([fetch's telemetry](../reference/telemetry/fetch.md)). It goes on: the
   warning holds no removal back.
-- A document removed loses its file, unless the run reported a problem (a file not read,
-  a conversion that failed): then every file stays, but the old one of an entry or a
-  transcript written again under a new title, until a run reads the work log whole, and
-  the warning says why at each run. So, meanwhile, a meeting renamed, or an entry
-  renamed without `:ID:`, is found under its old id and its new, and one deleted stays,
-  its file still naming the transcript or the meetings that no longer name it back. A
-  document not read, or whose conversion fails, before it has a file is named in no
-  other's `links` until a run reads and converts it.
+- A document removed leaves the store at the next fetch that reads the work log without
+  a problem, and its file goes at the next prepare. A fetch that met a problem, a file
+  not read, finds no document gone, and the warning says why at each run: so, meanwhile,
+  a meeting renamed, or an entry renamed without `:ID:`, is found under its old id and
+  its new, and one deleted stays, its file still naming the transcript or the meetings
+  that no longer name it back. A prepare whose conversion failed removes no file but the
+  old one of a document retitled, until a prepare converts it, and only when that file's
+  name could be no other document's: the second of two entries of one title keeps its
+  old file beside its new one while the first fails. The document whose conversion
+  failed keeps its file and its links, and the others' links to it; one retitled in that
+  run keeps its old file, which the others link again once its new file is written. A
+  document not read before it has a copy, or whose conversion fails before it has a
+  file, is named in no other's `links` until a run reads and converts it, unless another
+  document's old file lies at its place, as when two names are alike.
 - A file not read also holds back the files that it builds, which stay as they were: for
   `todo.org` or its archive, every file; for a transcript, its own; for a folder that
   cannot be listed, the transcripts under it, but one whose id a file elsewhere takes,
   whose copy then replaces it. The others are written as usual. A meeting that links a
   transcript not read names it, whose last copy names the meeting back; a link added or
   removed meanwhile is written on the meeting alone until a run reads the transcript.
-- `archives = false` removes, at the next run, the files of what the archive file holds,
-  of `transcripts/archive/` and `meetings/archive/`, and of the headings tagged
-  `ARCHIVE`; a meeting that links an archived transcript then links nothing, and is
-  counted in the warning.
+- `archives = false` removes, at the next fetch and prepare, the files of what the
+  archive file holds, of `transcripts/archive/` and `meetings/archive/`, and of the
+  headings tagged `ARCHIVE`; a meeting that links an archived transcript then links
+  nothing, and is counted in the warning.
 - Search: `index` reads each file whose bytes changed and leaves out each file gone, so
   a document's old text, its chunks with it, leaves search, and a document removed
   leaves search; until `embed`, an edited document is found by its words alone. Each

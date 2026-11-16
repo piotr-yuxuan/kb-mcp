@@ -17,7 +17,7 @@ side, never use each other:
 | `evaluation` | How well search and ask answer golden questions (`eval`), and how agents fare with them (`eval-agents`) |
 | `mcp` | The tools agents call (`Library`), and answers within their budgets |
 | `search` | The index of the mirror, by words and by meaning, and ranking |
-| `sources` | Where documents come from: the registry and the stages' interfaces, beside a package per source, nested by stage: `atlassian/`, Confluence and Jira, whose `fetch/` holds the sign-in (the saved session or an API token) and the raw store, and whose `prepare/` writes their documents from that store; `worklog/`, the user's work log, read in place, with `prepare/` alone |
+| `sources` | Where documents come from: the registry and the stages' interfaces, beside a package per source, nested by stage: `atlassian/`, Confluence and Jira, whose `fetch/` holds the sign-in (the saved session or an API token) and the raw store, and whose `prepare/` writes their documents from that store; `worklog/`, the user's work log, whose `fetch/` reads its folder in place into a copy store, and whose `prepare/` writes its documents |
 | `mirror` | What every source writes through and search reads: the front matter, which files are documents, the writer of the files that changed, pandoc and its cache of conversions, the instruments of documents built, the rules of text |
 | `config` | The settings, their file, and the guard on where data lives |
 | `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
@@ -126,12 +126,13 @@ holds the layers above. Plan 029 nested them so:
   the sign-in, HTTP, the two APIs' adapters, the browser and the session file, the raw
   store, a fetch's period, coverage, deletions and files kept; the records that the
   fetch stores and the prepare reads, `content.py`, and their names, `names.py`; and the
-  use cases, `fetching.py`, `login.py` and `doctor.py`.
-- **`prepare/`** writes documents through the mirror, from its source's store or from a
-  folder read in place. For Confluence and Jira: the site's HTML, the catalogue, the
-  layout of their files, the files they own, and the use case, `prepare.py`. The work log
-  has `prepare/` alone, being read in place: org's syntax, its folder's reader, its
-  documents and their layout, the files it owns, and its use case, `prepare.py`.
+  use cases, `fetching.py`, `login.py` and `doctor.py`. For the work log: org's syntax,
+  its folder's reader, its documents, the records of its copy store, `copies.py`, the
+  store, and the use case, `fetching.py`.
+- **`prepare/`** writes documents through the mirror, from its source's store. For
+  Confluence and Jira: the site's HTML, the catalogue, the layout of their files, the
+  files they own, and the use case, `prepare.py`. For the work log: the layout of its
+  files, the files it owns, and its use case, `prepare.py`.
 
 Each stage's module in its `app/` is what the declaration names: `fetch/app/fetcher.py` a
 `Fetcher`, `prepare/app/preparer.py` a `Preparer`. Preparing may use what fetching keeps,

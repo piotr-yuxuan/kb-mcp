@@ -18,12 +18,13 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
+from kb_mcp.sources.atlassian.declared import CONNECTORS
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, time_revision
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES as ATLASSIAN_ROLES
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.worklog.prepare.domain.worklog import TYPE_ROLES as WORKLOG_ROLES
+from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES as WORKLOG_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -38,7 +39,7 @@ ATLASSIAN = {
         known for known in DOCUMENT_CLASSES if known.document_type in each.connector.document_types
     )
     for each in SOURCES
-    if each.connector.fetcher is not None
+    if each.connector in CONNECTORS
 }
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 LOREM = (

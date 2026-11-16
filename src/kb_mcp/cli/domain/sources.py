@@ -3,12 +3,13 @@
 The sources are those that the settings configure, which the arguments hold
 (``sources``), and those named among them (``source``). A source is configured when its
 first setting, which names what it covers, is set. ``fetch`` takes every source that has
-a fetcher and is configured, or those named. ``prepare`` takes every source that keeps a
-store, which its fetcher says, whatever the store holds, and each read in place when it
-is configured, or those named. Each is taken once, in the sources' order, whatever the
-order typed. A source's options and light checks are its connector's fetch's: each
-source taken says what the echo says of it, by its connector; an option that no setting
-holds, given, is said ignored by each source taken whose connector does not declare it.
+a fetcher and is configured, or those named. ``prepare`` takes every source whose store
+keeps scopes by key, whatever the store holds, and each other when it is configured, as
+``Source.prepared_by_default`` says, or those named. Each is taken once, in the sources'
+order, whatever the order typed. A source's options and light checks are its connector's
+fetch's: each source taken says what the echo says of it, by its connector; an option
+that no setting holds, given, is said ignored by each source taken whose connector does
+not declare it.
 """
 
 from __future__ import annotations

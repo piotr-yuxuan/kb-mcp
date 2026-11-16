@@ -74,7 +74,7 @@ WITHOUT_EMAIL = {
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
     (["fetch", "--space", "MFS"], NO_SITE, "sources.confluence.site: not set"),
-    (["fetch"], {}, "nothing to fetch"),
+    (["fetch"], {WORKLOG_PATH: None}, "nothing to fetch"),
     (["fetch", *WRITING["fetch"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
     (["fetch", *WRITING["fetch"][0], "--since", "yesterday"], {}, "--since"),
     (["fetch", *WRITING["fetch"][0], "--until", "soon"], {}, "--until"),

@@ -23,10 +23,11 @@ def register(
     """Add ``prepare`` to the command, for every source.
 
     The settings read are the data directory, each source's location, such as its site,
-    which links resolve by, and the settings of each source read in place: a source that
-    keeps a store is prepared from what it holds, whatever its settings cover. A source
-    named comes with the others, after the options or before them: its ``dest`` is
-    ``source``, as ``sources`` holds the sources.
+    which links resolve by, and the first setting of each source that keeps no scopes by
+    key, which says whether it is taken, every setting of one without a fetcher, which its
+    preparer reads: a source that keeps a store is prepared from what it holds, whatever
+    its settings cover. A source named comes with the others, after the options or before
+    them: its ``dest`` is ``source``, as ``sources`` holds the sources.
     """
     parser = subparsers.add_parser(
         "prepare",
@@ -42,10 +43,10 @@ def register(
             " `converted`, the conversions pandoc ran, and `reused`, those the cache gave, a"
             " document's file and a space's tree being one each; `changes`, the files"
             " `written`, `unchanged` and `removed`; `unsupported`, what the mirror does not"
-            " show, by name. The work log's: `documents`; `changes`; `html`, the HTML"
-            " transcripts left out; `held_back`, by each problem's place, what keeps its"
-            " last copy; in a dry run, `documents`, `to_convert`, `to_remove`, `html` and"
-            " `held_back`."
+            " show, by name. The work log's: `documents`, `converted`, `reused` and"
+            " `changes`, as theirs; `held_back`, by each problem's place, what keeps its"
+            " last copy; in a dry run, `documents` and `to_remove`, the files that a run"
+            " would remove, what pandoc would convert not counted."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -61,7 +62,7 @@ def register(
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="count what a run would convert and remove, where a source can tell; write nothing",
+        help="count what a run would write and remove, where a source can tell; write nothing",
     )
     source_groups(parser, sources)
     parser.set_defaults(
@@ -78,8 +79,8 @@ def register(
                 *(
                     path
                     for each in sources
-                    if each.connector.fetcher is None
-                    for path in each.paths
+                    if not each.keeps_scopes
+                    for path in (each.paths if each.connector.fetcher is None else each.paths[:1])
                 ),
             ),
             flags=flags,

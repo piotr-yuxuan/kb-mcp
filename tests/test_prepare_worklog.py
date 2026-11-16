@@ -1,4 +1,4 @@
-"""The work log prepared end to end: plan 017's criteria 7 to 12, through its preparer.
+"""The work log fetched then prepared end to end: plan 017's criteria 7 to 12, and 060's.
 
 The fixture, ``fixtures/worklog/``, is invented, as the plan's acceptance criteria
 describe it; Emacs's lock, autosave and backup files are added to each copy, since git
@@ -9,6 +9,9 @@ the rule", "Ids" and criterion 4 describe them; its transcripts, the meeting fil
 ``meetings/`` among them, as its "Ids", "Dates" and "Participants" and criteria 5, 6
 and 8 do. Plan 044's dates, by the day alone, and what a file not read holds back, its
 own document alone but for the journal's, as the user's words that its tests quote ask.
+Plan 060's fetch into the copy store, then the prepare from it alone, as its revised
+decisions say: ``fixtures/worklog_mirror/`` is what the branch's base wrote from the
+fixture, with a pandoc that writes its input back.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,25 +32,30 @@ import yaml
 from pydantic import Field
 from structlog.testing import capture_logs
 
+from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
+from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
+from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_files
-from kb_mcp.mirror.domain.mirror import Link
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped, source_files
+from kb_mcp.mirror.domain.mirror import Link, SourceFile
+from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
-from kb_mcp.sources.worklog.prepare.adapters import files
-from kb_mcp.sources.worklog.prepare.app import prepare
+from kb_mcp.sources.worklog.fetch.adapters import files
+from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStore
+from kb_mcp.sources.worklog.fetch.app import fetching
+from kb_mcp.sources.worklog.fetch.app.fetching import UNLINKED, WorklogFetched, fetch_worklog
+from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES
 from kb_mcp.sources.worklog.prepare.app.prepare import (
-    AS_IT_IS,
-    UNLINKED,
     WorklogCounts,
     WorklogPlanned,
     plan_worklog,
     prepare_worklog,
 )
+from kb_mcp.sources.worklog.settings import WorklogTable
 from tests.test_markdown import LAYOUT_KEYS
 
 if TYPE_CHECKING:
@@ -56,6 +64,9 @@ if TYPE_CHECKING:
     from kb_mcp.mirror.domain.mirror import FrontMatter
 
 FIXTURE = Path(__file__).parent / "fixtures" / "worklog"
+# The mirror that the branch's base wrote from the fixture, as of MODIFIED, with a pandoc
+# that writes its input back: plan 060's criterion 1 compares with it.
+MIRROR = Path(__file__).parent / "fixtures" / "worklog_mirror"
 # The fixture's time: in every zone from UTC-12 to UTC+14, its wall clock falls between
 # the fixture's last past event (the 19th) and its first plan (the 23rd).
 MODIFIED = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
@@ -120,6 +131,51 @@ class Counting(Pandoc):
         return super().run(arguments, text)
 
 
+class Echo(Pandoc):
+    """Pandoc that gives a fixed version and writes its input back, as the base's mirror had it."""
+
+    def run(self, arguments: Sequence[str], text: str) -> str:
+        """Give the version, or the text given."""
+        return "pandoc 0.0 (echo)\n" if tuple(arguments) == VERSION else text
+
+
+@dataclass(frozen=True)
+class Ran:
+    """A fetch then a prepare, or the prepare's dry run: each outcome, and what both met."""
+
+    fetched: Outcome[WorklogFetched]
+    prepared: Outcome[WorklogCounts] | Outcome[WorklogPlanned]
+
+    @property
+    def problems(self) -> tuple[Problem, ...]:
+        """Both stages' problems, the fetch's first."""
+        return (*self.fetched.problems, *self.prepared.problems)
+
+    @property
+    def warnings(self) -> tuple[OutcomeWarning, ...]:
+        """Both stages' warnings, the fetch's first."""
+        return (*self.fetched.warnings, *self.prepared.warnings)
+
+    @property
+    def held_back(self) -> dict[str, str]:
+        """By each problem's place, what keeps its last copy for it, of both stages."""
+        assert self.fetched.counts is not None
+        assert isinstance(self.prepared.counts, WorklogCounts)
+        return {**self.fetched.counts.held_back, **self.prepared.counts.held_back}
+
+    @property
+    def counts(self) -> WorklogCounts:
+        """The prepare's counts."""
+        assert isinstance(self.prepared.counts, WorklogCounts)
+        return self.prepared.counts
+
+    @property
+    def planned(self) -> WorklogPlanned:
+        """The dry run's counts."""
+        assert isinstance(self.prepared.counts, WorklogPlanned)
+        return self.prepared.counts
+
+
 @dataclass(frozen=True)
 class MirrorFile:
     """A document's file: where, its front matter, its body."""
@@ -131,30 +187,63 @@ class MirrorFile:
 
 @dataclass
 class Run:
-    """The work log's preparer over a copy of the fixture, into a data folder of its own.
+    """The work log's fetch then prepare over a copy of the fixture, in a data folder of its own.
 
     ``runs`` holds pandoc's runs of each prepare, in order.
     """
 
     root: Path
-    docs: Path
+    data: Path
     runs: list[list[tuple[str, ...]]] = field(default_factory=list)
 
-    def __call__(
-        self, *, archives: bool = True, failing: str | None = None
-    ) -> Outcome[WorklogCounts]:
-        """Mirror the work log; return what the run did."""
-        pandoc = Counting(path=Pandoc.find().path, failing=failing)
-        outcome = prepare_worklog(self.root, self.docs, pandoc, source="worklog", archives=archives)
-        self.runs.append(pandoc.runs)
+    @property
+    def docs(self) -> Path:
+        """The data folder's mirror."""
+        return self.data / "docs"
+
+    @property
+    def store(self) -> CopyStore:
+        """The work log's copy store."""
+        return CopyStore(Settings(data_dir=self.data).copies, "worklog")
+
+    def __call__(self, *, archives: bool = True, failing: str | None = None) -> Ran:
+        """Fetch, then prepare the work log; return what each did."""
+        return Ran(self.fetch(archives=archives), self.prepare(failing=failing))
+
+    def fetch(self, *, archives: bool = True) -> Outcome[WorklogFetched]:
+        """Read the work log into its copy store, as of now."""
+        table = WorklogTable(path=self.root, archives=archives)
+        settings = Settings(data_dir=self.data)
+        return fetch_worklog(settings, table, "worklog", lambda: datetime.now(UTC), dry_run=False)
+
+    def prepare(self, *, failing: str | None = None, echo: bool = False) -> Outcome[WorklogCounts]:
+        """Prepare from the copy store alone, as the preparer does; return what it did.
+
+        With ``echo``, pandoc writes its input back, as the base's mirror had it.
+        """
+        pandoc = (Echo if echo else Counting)(path=Pandoc.find().path)
+        if failing is not None:
+            pandoc = Counting(path=pandoc.path, failing=failing)
+        copies = self.store.read()
+        assert copies is not None
+        converter = pandoc.org_converter()
+        with conversions.opened(
+            self.data / "conversions.sqlite",
+            lambda: converter,
+            pandoc.org_markdown,
+            source="worklog",
+            adopted=(),
+        ) as cache:
+            outcome = prepare_worklog(copies, self.docs, cache, source="worklog")
+        self.runs.append(getattr(pandoc, "runs", []))
         return outcome
 
-    def plan(self, *, archives: bool = True) -> Outcome[WorklogPlanned]:
-        """Say what preparing would do; pandoc's runs are recorded as for a run."""
-        pandoc = Counting(path=Pandoc.find().path)
-        planned = plan_worklog(self.root, self.docs, pandoc, source="worklog", archives=archives)
-        self.runs.append(pandoc.runs)
-        return planned
+    def plan(self) -> Ran:
+        """Fetch, then say what preparing would do, converting and writing nothing."""
+        fetched = self.fetch()
+        copies = self.store.read()
+        assert copies is not None
+        return Ran(fetched, plan_worklog(copies, self.docs, source="worklog"))
 
     def files(self) -> list[MirrorFile]:
         """Read back every file of the work log's preparer, as search will."""
@@ -202,7 +291,7 @@ def run(tmp_path: Path) -> Run:
     for name in (".#1.org", "#1.org#", "1.org~"):
         (root / DAY / name).write_bytes(NOT_UTF8)
     settle(root)
-    return Run(root, tmp_path / "data" / "docs")
+    return Run(root, tmp_path / "data")
 
 
 def identities(files: list[MirrorFile]) -> list[tuple[str, str, tuple[str, ...]]]:
@@ -238,7 +327,12 @@ def test_the_documents_are_the_entries_days_meetings_and_org_transcripts(run: Ru
         each.matter.id: each.matter.title for each in files if each.matter.type == "meeting"
     }
     assert meetings == MEETINGS
-    assert (outcome.counts.documents, outcome.counts.html, outcome.problems, outcome.warnings) == (
+    assert (
+        outcome.counts.documents,
+        outcome.fetched.counts.html,
+        outcome.problems,
+        outcome.warnings,
+    ) == (
         DOCUMENTS,
         1,
         (),
@@ -724,17 +818,19 @@ def test_a_link_into_the_archive_leaves_a_live_transcript_as_it_is(run: Run) -> 
 def test_a_day_bearing_a_meeting_s_id_is_refused_and_nothing_written(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The preparer checks the work log's own rules: each type's ids, which no other source has.
+    """The fetch checks the work log's own rules: each type's ids, which no other source has.
 
-    The day is read from the fixture, then given a meeting's id, which no org file gives.
+    The day is read from the fixture, then given a meeting's id, which no org file gives:
+    nothing is kept of it, and nothing written into the mirror.
     """
-    read = prepare.read_worklog(run.root, archives=True)
+    read = fetching.read_worklog(run.root, archives=True)
     (day, *_) = [each for each in read.documents if each.type == "day"]
     wrong = copy.replace(read, documents=(copy.replace(day, id="m-20261027-payments-stand-up"),))
-    monkeypatch.setattr(prepare, "read_worklog", lambda *_, **__: wrong)
+    monkeypatch.setattr(fetching, "read_worklog", lambda *_, **__: wrong)
     with pytest.raises(RefusedError, match=r"^id: does not match"):
         run()
-    assert not run.docs.exists()
+    stored = run.store.read()
+    assert (stored is not None and stored.documents, run.docs.exists()) == ({}, False)
 
 
 def test_the_mirror_and_the_work_log_leave_each_other_s_files(run: Run) -> None:
@@ -799,15 +895,17 @@ def former(text: str) -> str:
 
 
 def test_a_mirror_of_the_former_front_matter_keeps_every_created_date(run: Run) -> None:
-    """Plan 057, criterion 2: read in the former format, every file written in the new.
+    """Plans 057 and 060: a mirror of plan 058's front matter, with no copy store yet.
 
-    The org files' times move on, so that a date taken afresh would differ from the one
-    that the mirror held.
+    Its created dates are carried into the store, and every file written in today's
+    format. The org files' times move on, so that a date taken afresh would differ from
+    the one that the mirror held.
     """
     run()
     created = {each.matter.id: each.matter.created for each in run.files()}
     for path in (run.docs / "worklog").rglob("*.md"):
         path.write_text(former(path.read_text("utf-8")), "utf-8")
+    shutil.rmtree(run.store.folder)
     settle(run.root, LATER)
     assert run().problems == ()
     files = run.files()
@@ -817,10 +915,134 @@ def test_a_mirror_of_the_former_front_matter_keeps_every_created_date(run: Run) 
         assert list(yaml.safe_load(front)) == LAYOUT_KEYS
 
 
-def test_a_file_of_the_mirror_that_does_not_read_is_a_problem_kept_as_it_is(run: Run) -> None:
-    """Plan 057: it removes nothing and is written over by nothing, until it is moved away.
+REVISION = re.compile(r"(?m)^revision: [0-9a-f]{16}$")
 
-    So the created date that it may hold is never lost in silence.
+
+def base_mirror(docs: Path) -> dict[str, str]:
+    """Copy the base's mirror into ``docs``; give each file's text, by its path from ``docs``."""
+    written: dict[str, str] = {}
+    for path in sorted(MIRROR.rglob("*.md")):
+        relative = path.relative_to(MIRROR).as_posix()
+        written[relative] = path.read_text("utf-8")
+        (docs / relative).parent.mkdir(parents=True, exist_ok=True)
+        (docs / relative).write_text(written[relative], "utf-8")
+    return written
+
+
+def test_a_fetch_then_a_prepare_write_the_base_s_files_but_for_the_revision(run: Run) -> None:
+    """Plan 060, criterion 1: byte for byte what the base wrote, its pandoc writing back.
+
+    Each revision is now the digest of the document's text alone, the store's.
+    """
+    assert run.fetch().problems == ()
+    assert run.prepare(echo=True).problems == ()
+    base = base_mirror(run.data / "base")
+    found = {
+        path.relative_to(run.docs).as_posix(): path.read_text("utf-8")
+        for path in sorted((run.docs / "worklog").rglob("*.md"))
+    }
+    assert sorted(found) == sorted(base)
+    for path, text in found.items():
+        assert REVISION.sub("revision: -", text) == REVISION.sub("revision: -", base[path]), path
+    stored = run.store.read()
+    assert stored is not None
+    assert {each.matter.id: each.matter.revision for each in run.files()} == {
+        key: each.revision for key, each in stored.documents.items()
+    }
+
+
+def test_the_mirror_deleted_comes_back_whole_from_the_store_converting_nothing(run: Run) -> None:
+    """Plan 060, criterion 2: the same bytes, created dates included, pandoc asked its version.
+
+    The org files' times move on meanwhile, which the prepare never reads.
+    """
+    run()
+    before = {name: data for name, (data, _) in snapshot(run.docs).items()}
+    shutil.rmtree(run.docs / "worklog")
+    settle(run.root, LATER)
+    outcome = run.prepare()
+    assert (outcome.problems, outcome.counts.converted, run.runs[-1]) == ((), 0, [VERSION])
+    assert {name: data for name, (data, _) in snapshot(run.docs).items()} == before
+
+
+def dated(files: list[MirrorFile]) -> dict[str, tuple[datetime, datetime]]:
+    """Give each file's created and updated dates, by its document's id."""
+    return {each.matter.id: (each.matter.created, each.matter.updated) for each in files}
+
+
+def test_a_mirror_of_the_base_keeps_every_date_through_a_fetch_and_a_prepare(run: Run) -> None:
+    """Plan 060, criterion 3: a data folder that the base prepared, with no copy store.
+
+    The org files' times have moved on, so that a date taken afresh would differ, those of
+    the undated entries and transcript among them: each document keeps both dates of its
+    file, as the base kept them while its text held, and every file is written again, in
+    today's front matter. So again after the copy store is deleted, the org files later.
+    """
+    base = base_mirror(run.docs)
+    dates = dated([MirrorFile(path, *load(text, path)) for path, text in base.items()])
+    settle(run.root, LATER)
+    assert run().problems == ()
+    assert dated(run.files()) == dates
+    shutil.rmtree(run.store.folder)
+    settle(run.root, LATER + timedelta(hours=1))
+    assert run().problems == ()
+    assert dated(run.files()) == dates
+
+
+def test_a_first_fetch_that_meets_a_problem_leaves_the_base_s_as_of_time(run: Run) -> None:
+    """Plans 057 and 060: the source's file of the base says the time of its last clean read.
+
+    The store's first fetch carries it over, so that a fetch with a problem leaves the
+    time that the prepare serves as the base left it; a fetch without one moves it.
+    """
+    base_mirror(run.docs)
+    scope, read_at = "folder:worklog", datetime(2026, 10, 22, 6, 30, tzinfo=UTC)
+    (run.docs / "worklog" / SOURCE_FILE).write_bytes(
+        dumped(SourceFile(roles=TYPE_ROLES, as_of={scope: read_at}))
+    )
+    text = (run.root / "transcripts/misc/a.org").read_bytes()
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+    assert [each.where for each in run().problems] == ["transcripts/misc/a.org"]
+    assert source_files(run.docs)["worklog"].as_of == {scope: read_at}
+    (run.root / "transcripts/misc/a.org").write_bytes(text)
+    assert run().problems == ()
+    assert source_files(run.docs)["worklog"].as_of[scope] > read_at
+
+
+def test_a_file_not_read_at_the_first_fetch_keeps_its_documents_files_and_dates(
+    run: Run,
+) -> None:
+    """Plan 060: the dates carried before the read; the file's document has no copy yet.
+
+    So its file of the mirror stays as the base wrote it, nothing being removed meanwhile,
+    and once the file reads, its created date is the mirror's.
+    """
+    base = base_mirror(run.docs)
+    waiting = next(path for path in base if "-waiting-notes" in path)
+    created = load(base[waiting], waiting)[0].created
+    text = (run.root / "transcripts/misc/a.org").read_bytes()
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+    outcome = run()
+    assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
+    assert (run.docs / waiting).read_text("utf-8") == base[waiting]
+    assert outcome.counts.changes.removed == 0
+    (run.root / "transcripts/misc/a.org").write_bytes(text)
+    settle(run.root / "transcripts/misc/a.org", LATER)
+    assert run().problems == ()
+    assert (run.by_title("WAITING Notes").path, run.by_title("WAITING Notes").matter.created) == (
+        waiting,
+        created,
+    )
+
+
+def test_a_file_of_the_mirror_that_does_not_read_is_written_again_from_the_store(
+    run: Run,
+) -> None:
+    """Plan 060: the mirror is the prepare's own, and holds no memory to keep.
+
+    Its created date is the store's, so the file comes back whole, and the rest goes on.
     """
     run()
     damaged = run.by_title("Tidy the runbooks folder").path
@@ -828,28 +1050,24 @@ def test_a_file_of_the_mirror_that_does_not_read_is_a_problem_kept_as_it_is(run:
     (run.docs / damaged).write_text("not a file of the mirror\n", "utf-8")
     (run.root / "transcripts/misc/a.org").unlink()
     planned = run.plan()
-    assert ([each.where for each in planned.problems], planned.counts.to_remove) == ([damaged], 0)
-    outcome = run()
-    (problem,) = outcome.problems
-    assert (problem.where, problem.reason) == (damaged, f"{damaged}: no front matter")
-    assert outcome.counts.held_back == {damaged: AS_IT_IS}
-    assert (run.docs / damaged).read_text("utf-8") == "not a file of the mirror\n"
-    assert (run.docs / gone).exists()
-    (run.docs / damaged).unlink()
+    assert (planned.problems, planned.planned.to_remove) == ((), 1)
     assert run().problems == ()
     assert run.by_title("Tidy the runbooks folder").matter.created == MODIFIED
     assert not (run.docs / gone).exists()
 
 
 def test_the_source_s_file_says_the_moment_of_the_last_read_without_a_problem(run: Run) -> None:
-    """Plan 057: a read in place is as of its moment; a run that met a problem writes no file.
+    """Plans 057 and 060: a read in place is as of its moment, which the fetch keeps.
 
-    So the file of the last read without one stays, with its time; before any, none is.
+    A fetch that met a problem leaves the time as it was, none before any; the prepare
+    writes the store's, whatever it meets itself, so that the file changes only when a
+    read met no problem.
     """
-    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
-    assert run(failing="failing").problems
-    assert "worklog" not in source_files(run.docs)
-    run.edit("todo.org", "Drafted, failing, on", "Drafted on")
+    text = (run.root / "transcripts/misc/a.org").read_bytes()
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    assert run().problems
+    assert source_files(run.docs)["worklog"].as_of == {}
+    (run.root / "transcripts/misc/a.org").write_bytes(text)
     before = datetime.now(UTC)
     assert run().problems == ()
     after = datetime.now(UTC)
@@ -857,8 +1075,10 @@ def test_the_source_s_file_says_the_moment_of_the_last_read_without_a_problem(ru
     ((scope, moment),) = source_files(run.docs)["worklog"].as_of.items()
     assert scope == "folder:worklog"
     assert before <= moment <= after
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
     run.edit("todo.org", "Drafted on", "Drafted, failing, on")
-    assert run(failing="failing").problems
+    ran = run(failing="failing")
+    assert ([each.reason for each in ran.problems]) == ["not UTF-8", "pandoc: exit status 9"]
     assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
 
 
@@ -876,31 +1096,28 @@ def test_a_work_log_left_without_documents_keeps_its_source_s_file(run: Run) -> 
     assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
 
 
-def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing(
+def test_a_dry_run_counts_what_a_run_would_write_and_remove_and_writes_nothing(
     run: Run,
 ) -> None:
-    """Every document at first; after a run, none; one edit, one; one deletion, one file."""
+    """Every document, and none to remove; after a fetch that found one deletion, one file.
+
+    Neither converts, nor writes into the mirror.
+    """
     first = run.plan()
-    assert (
-        first.counts.documents,
-        first.counts.to_convert,
-        first.counts.to_remove,
-        first.counts.html,
-    ) == (
-        DOCUMENTS,
+    assert (first.planned.documents, first.planned.to_remove, first.prepared.ending) == (
         DOCUMENTS,
         0,
-        1,
+        "not run",
     )
-    assert (run.runs[-1], run.docs.exists()) == ([VERSION], False)
+    assert (run.runs, run.docs.exists()) == ([], False)
     run()
     before = snapshot(run.docs)
-    assert (run.plan().counts.to_convert, run.plan().counts.to_remove) == (0, 0)
+    assert run.plan().planned.to_remove == 0
     run.edit("todo.org", "Drafted on", "First drafted on")
     (run.root / "transcripts/misc/a.org").unlink()
     planned = run.plan()
-    assert (planned.counts.to_convert, planned.counts.to_remove, run.runs[-1]) == (1, 1, [VERSION])
-    assert snapshot(run.docs) == before
+    assert (planned.planned.documents, planned.planned.to_remove) == (DOCUMENTS - 1, 1)
+    assert (len(run.runs), snapshot(run.docs)) == (1, before)
 
 
 def test_a_dry_run_that_meets_a_problem_would_remove_nothing(run: Run) -> None:
@@ -909,7 +1126,7 @@ def test_a_dry_run_that_meets_a_problem_would_remove_nothing(run: Run) -> None:
     (run.root / "transcripts/misc/a.org").unlink()
     (run.root / "transcripts/current/2026-10-21 Wed/notes on x.org").write_bytes(b"\xff\n")
     planned = run.plan()
-    assert (planned.counts.to_remove, [problem.reason for problem in planned.problems]) == (
+    assert (planned.planned.to_remove, [problem.reason for problem in planned.problems]) == (
         0,
         ["not UTF-8"],
     )
@@ -1002,6 +1219,48 @@ def test_a_document_that_fails_with_no_file_is_no_link_s_other_end(
     assert one_way(run.files()) == []
 
 
+def links_of(file: MirrorFile) -> list[tuple[str, str]]:
+    """Give a file's links, each its relation and the id of its other end."""
+    return [(each.relation, each.document.removeprefix("worklog:")) for each in file.matter.links]
+
+
+def test_a_document_whose_conversion_fails_keeps_its_file_and_its_links(run: Run) -> None:
+    """Its last file stays, so it is a link's other end still: the stand-up names it.
+
+    As before the copy store; neither file is written again for the link.
+    """
+    run()
+    kept = run.docs / run.by_id("t-20261027-1").path
+    before = kept.read_bytes()
+    run.edit("transcripts/current/2026-10-27 Tue/1.org", "XQ: asked", "XQ: failing, asked")
+    outcome = run(failing="failing")
+    assert [each.where for each in outcome.problems] == [
+        "transcripts/current/2026-10-27 Tue/1.org, t-20261027-1"
+    ]
+    assert kept.read_bytes() == before
+    assert links_of(run.by_id(STANDUP)) == [("transcript", "t-20261027-1")]
+    assert one_way(run.files()) == []
+
+
+def test_the_mirror_deleted_while_a_carried_date_waits_loses_that_file_and_its_links(
+    run: Run,
+) -> None:
+    """A carried document that no read has taken has a file of the mirror alone.
+
+    While it is there, the stand-up links it; once the mirror is deleted, the prepare
+    cannot give it back, and no link names it.
+    """
+    base_mirror(run.docs)
+    (run.root / "transcripts/current/2026-10-27 Tue/1.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+    assert run().problems
+    assert links_of(run.by_id(STANDUP)) == [("transcript", "t-20261027-1")]
+    shutil.rmtree(run.docs / "worklog")
+    assert run.prepare().problems == ()
+    assert "t-20261027-1" not in {each.matter.id for each in run.files()}
+    assert (links_of(run.by_id(STANDUP)), one_way(run.files())) == ([], [])
+
+
 def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     """Its file stays as it was; every other document is written, the stand-up linking it.
 
@@ -1021,7 +1280,7 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     with capture_logs() as logged:
         outcome = run()
     assert [
-        (each.where, each.reason, outcome.counts.held_back[each.where]) for each in outcome.problems
+        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
     ] == [(record, "not UTF-8", "t-20261027-1")]
     assert kept.read_bytes() == before
     assert "An edited note of the Tuesday" in run.by_id("d-20261027").body
@@ -1056,7 +1315,7 @@ def test_a_transcript_retitled_while_a_file_is_not_read_keeps_one_file(run: Run)
         "#+TITLE: Payments stand-up, 27 October",
         "#+TITLE: Stand-up, Tuesday",
     )
-    assert run.plan().counts.to_remove == 1
+    assert run.plan().planned.to_remove == 1
     outcome = run()
     assert [each.where for each in outcome.problems] == ["transcripts/misc/a.org"]
     assert [each.path for each in run.files() if each.matter.id == "t-20261027-1"] == [
@@ -1081,7 +1340,7 @@ def test_an_entry_retitled_while_a_file_is_not_read_keeps_one_file(run: Run, tit
     (entry,) = [each for each in run.files() if ROLLED_BACK in each.body]
     (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
     run.edit("todo.org", f"* {title}", f"* {title} v2")
-    assert run.plan().counts.to_remove == 1
+    assert run.plan().planned.to_remove == 1
     outcome = run()
     (now,) = [each for each in run.files() if each.matter.id == entry.matter.id]
     assert (now.path != entry.path, ROLLED_BACK in now.body) == (True, True)
@@ -1103,7 +1362,7 @@ def test_two_files_of_one_id_from_an_earlier_run_leave_one_while_a_file_is_not_r
     older = run.docs / "worklog/entries" / f"{entry.matter.id}-an-older-title.md"
     older.write_bytes((run.docs / entry.path).read_bytes())
     (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
-    assert run.plan().counts.to_remove == 1
+    assert run.plan().planned.to_remove == 1
     outcome = run()
     assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
     assert (older.exists(), outcome.counts.changes.removed) == (False, 1)
@@ -1118,6 +1377,122 @@ def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -
     assert [each.where for each in outcome.problems] == [f"todo.org, {entry.matter.id}"]
     assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
     assert outcome.counts.changes.removed == 0
+
+
+def held_back_by_a_carried_date(run: Run) -> None:
+    """Give the data folder the base's mirror and no copy store, a transcript not read.
+
+    So that the store's first fetch meets a problem, and a carried date waits.
+    """
+    base_mirror(run.docs)
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+
+
+def held_back_by_a_conversion(run: Run) -> None:
+    """Prepare once, then edit another entry so that its conversion fails."""
+    run()
+    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
+
+
+@pytest.mark.parametrize(
+    "hold_back",
+    [held_back_by_a_carried_date, held_back_by_a_conversion],
+    ids=["a carried date", "a conversion"],
+)
+def test_an_entry_retitled_while_removals_are_held_back_keeps_one_file(
+    run: Run, hold_back: Callable[[Run], None]
+) -> None:
+    """Its old file is retired by the id that its name carries; nothing else is removed.
+
+    While a carried date waits, as after a first fetch that met a problem, or while a
+    conversion fails, two files of one id would leave index to skip one of them.
+    """
+    hold_back(run)
+    run.edit("todo.org", f"* {RUNBOOK}", f"* {RUNBOOK} v2")
+    entry = "e-bcedf74d5410c1d2"
+    assert run.plan().planned.to_remove == 1
+    outcome = run(failing="failing")
+    assert outcome.problems
+    assert [each.path for each in run.files() if each.matter.id == entry] == [
+        f"worklog/entries/{entry}-payout-gateway-rollback-runbook-v2.md"
+    ]
+    assert outcome.counts.changes.removed == 1
+    assert build_index(run.docs, run.data / "index.sqlite", datetime.now(UTC)).problems == ()
+
+
+def test_an_entry_that_fails_keeps_its_file_though_another_s_id_begins_its_name(
+    run: Run,
+) -> None:
+    """Its file is at its place: the second entry of its digest, written, takes nothing.
+
+    Both retrospectives retitled ``2 retro notes``, the first's file name begins with the
+    second's id and a dash, as the second's own does; the dry run agrees with the run.
+    """
+    run.edit("todo.org", "* Retrospective notes\n  First", "* 2 retro notes\n  First")
+    run.edit("todo.org", "* Retrospective notes\n  Second", "* 2 retro notes\n  Second")
+    assert run().problems == ()
+    (first,) = [each for each in run.files() if "First retrospective" in each.body]
+    second = f"{first.matter.id}-2"
+    assert (first.path, run.by_id(second).path) == (
+        f"worklog/entries/{second}-retro-notes.md",
+        f"worklog/entries/{second}-2-retro-notes.md",
+    )
+    before = (run.docs / first.path).read_bytes()
+    run.edit("todo.org", "First retrospective", "First failing retrospective")
+    assert run.plan().planned.to_remove == 0
+    outcome = run(failing="failing")
+    assert [each.where for each in outcome.problems] == [f"todo.org, {first.matter.id}"]
+    assert ((run.docs / first.path).read_bytes(), outcome.counts.changes.removed) == (before, 0)
+
+
+def test_a_carried_transcript_keeps_its_file_though_another_s_id_begins_its_name(
+    run: Run,
+) -> None:
+    """Its file is where the migration found it: ``notes on x.org``, read, takes nothing.
+
+    ``notes.org`` titled ``On x, the ledger``: its file name begins with the id of
+    ``notes on x.org`` and a dash. The copy store deleted, as before an upgrade, and
+    ``notes.org`` not read, its date waits and its file stays; the dry run agrees.
+    """
+    notes = run.root / "transcripts/current/2026-10-21 Wed/notes.org"
+    notes.write_text("* On x, the ledger\nKim: the schema owner answered.\n", "utf-8")
+    settle(notes)
+    assert run().problems == ()
+    kept = run.docs / run.by_id("t-20261021-notes").path
+    assert kept.name == "t-20261021-notes-on-x-the-ledger.md"
+    before = kept.read_bytes()
+    shutil.rmtree(run.store.folder)
+    notes.write_bytes(NOT_UTF8)
+    assert run.plan().planned.to_remove == 0
+    outcome = run()
+    assert [each.where for each in outcome.problems] == [
+        "transcripts/current/2026-10-21 Wed/notes.org"
+    ]
+    assert (kept.read_bytes(), outcome.counts.changes.removed) == (before, 0)
+
+
+def test_a_renamed_transcript_that_fails_is_no_link_s_other_end(run: Run) -> None:
+    """Its place holds no file, though the file of the one that it was begins with its id.
+
+    ``notes on x.org``, which the ledger review names as ``notes.org``, renamed so, its
+    text failing: the old file, of a document gone, stays as removals are held back, and
+    the meeting links no document without a file.
+    """
+    day = "transcripts/current/2026-10-21 Wed"
+    run.edit(
+        "todo.org",
+        ":PARTICIPANTS: Robin Example, Kim",
+        f":MEETING: [[./{day}/notes.org]]\n:PARTICIPANTS: Robin Example, Kim",
+    )
+    assert run().problems == ()
+    gone = run.docs / run.by_id("t-20261021-notes-on-x").path
+    (run.root / day / "notes on x.org").rename(run.root / day / "notes.org")
+    run.edit(f"{day}/notes.org", "Kim: the ledger", "Kim: failing, the ledger")
+    outcome = run(failing="failing")
+    assert [each.where for each in outcome.problems] == [f"{day}/notes.org, t-20261021-notes"]
+    assert gone.exists()
+    assert (links_of(run.by_id("m-20261027-ledger-review")), one_way(run.files())) == ([], [])
 
 
 def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
@@ -1137,7 +1512,7 @@ def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path
     with capture_logs() as logged:
         outcome = run()
     assert [
-        (each.where, each.reason, outcome.counts.held_back[each.where]) for each in outcome.problems
+        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
     ] == [
         ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
     ]
@@ -1165,7 +1540,7 @@ def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run
     (run.root / new).write_bytes(NOT_UTF8)
     settle(run.root / new)
     outcome = run()
-    assert [(each.where, outcome.counts.held_back[each.where]) for each in outcome.problems] == [
+    assert [(each.where, outcome.held_back[each.where]) for each in outcome.problems] == [
         (new, "t-20261027-3")
     ]
     assert run.by_id("m-20261027-retro").matter.links == ()
@@ -1204,7 +1579,7 @@ def test_past_the_bound_a_meeting_s_link_waits_and_the_rest_is_written(
     with capture_logs() as logged:
         outcome = run()
     assert [
-        (each.where, each.reason, outcome.counts.held_back[each.where]) for each in outcome.problems
+        (each.where, each.reason, outcome.held_back[each.where]) for each in outcome.problems
     ] == [("transcripts, meetings", "over 3 transcripts", "the transcripts not read under it")]
     assert kept.read_bytes() == before
     assert run.by_id(STANDUP).matter.links == ()
@@ -1239,9 +1614,7 @@ def test_a_folder_or_an_html_file_not_read_holds_back_what_is_under_it(
     finally:
         locked.chmod(0o700)
     under = "the transcripts not read under it"
-    assert sorted(
-        (each.where, outcome.counts.held_back[each.where]) for each in outcome.problems
-    ) == [
+    assert sorted((each.where, outcome.held_back[each.where]) for each in outcome.problems) == [
         ("meetings/locked.org", under),
         ("transcripts/misc/out", under),
         ("transcripts/misc/out.html", under),
@@ -1403,17 +1776,12 @@ def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) ->
     assert (alone.matter.created, alone.matter.updated, alone.matter.links) == (day, day, ())
     record.write_bytes(text)
     settle(record)
-    with capture_logs() as logged:
-        run()
+    run()
     linked = run.by_id(STANDUP)
     assert (linked.matter.created, linked.matter.updated) == (day, day)
     assert [
         (each.relation, each.document.removeprefix("worklog:")) for each in linked.matter.links
     ] == [("transcript", "t-20261027-1")]
-    outcomes = {
-        each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
-    }
-    assert (outcomes[STANDUP], outcomes["t-20261027-1"]) == ("kept", "mirrored")
     assert (run.runs[-1], linked.body) == ([VERSION, ORG], alone.body)
     record.unlink()
     run()
@@ -1424,9 +1792,8 @@ def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) ->
 def test_a_file_dated_by_a_time_takes_its_day_without_a_conversion(run: Run) -> None:
     """The stand-up and its transcript, as plan 042 dated them, at their first turn's time.
 
-    Their revisions unchanged, both are kept and written again at their day, as at the
-    one move from those dates: "I think it's usually enough to have the day" (the user,
-    2026-10-29, plan 044).
+    The prepare writes them again from the store, at their day, converting nothing: "I
+    think it's usually enough to have the day" (the user, 2026-10-29, plan 044).
     """
     run()
     began, day = datetime(2026, 10, 27, 9, 31, tzinfo=UTC), datetime(2026, 10, 27, tzinfo=UTC)
@@ -1435,19 +1802,12 @@ def test_a_file_dated_by_a_time_takes_its_day_without_a_conversion(run: Run) -> 
         old = run.by_id(identifier)
         dated = copy.replace(old.matter, created=began, updated=began)
         (run.docs / old.path).write_text(dump(dated, old.body), "utf-8")
-    with capture_logs() as logged:
-        run()
-    outcomes = {
-        each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
-    }
+    run()
     dates = {
         identifier: (run.by_id(identifier).matter.created, run.by_id(identifier).matter.updated)
         for identifier in identifiers
     }
-    assert ([outcomes[each] for each in identifiers], dates) == (
-        ["kept", "kept"],
-        dict.fromkeys(identifiers, (day, day)),
-    )
+    assert dates == dict.fromkeys(identifiers, (day, day))
     assert run.runs[-1] == [VERSION]
 
 

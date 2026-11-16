@@ -108,9 +108,10 @@ def arguments(stage: str, *given: str) -> argparse.Namespace:
 @pytest.mark.parametrize(
     ("stage", "given", "taken"),
     [
-        ("fetch", (), ["confluence", "jira"]),
+        ("fetch", (), ["confluence", "jira", "worklog"]),
         ("fetch", ("jira",), ["jira"]),
         ("fetch", ("jira", "confluence", "jira"), ["confluence", "jira"]),
+        ("fetch", ("worklog", "jira"), ["jira", "worklog"]),
         ("prepare", (), ["confluence", "jira", "worklog"]),
         ("prepare", ("jira",), ["jira"]),
         ("prepare", ("worklog", "jira"), ["jira", "worklog"]),
@@ -125,11 +126,21 @@ def test_names_choose_among_the_sources_each_once_in_the_registry_s_order(
 
 
 def test_what_each_command_leaves_out_says_why() -> None:
-    """A fetch needs a source's setting; a prepare, of a source read in place alone."""
+    """A fetch needs a source's setting; a prepare, of a source of one scope alone.
+
+    The work log has a fetcher since plan 060; a source read in place without one has
+    nothing to fetch.
+    """
     settings = CONFIGURED | {"sources.jira.projects": (), "sources.worklog.path": None}
     found, left = chosen(arguments("fetch"), settings)
     assert [source.name for source in found] == ["confluence"]
-    assert left == {"jira": "not configured", "worklog": "read in place, it has nothing to fetch"}
+    assert left == {"jira": "not configured", "worklog": "not configured"}
+    memo = sourced(CONFLUENCE, replace(WORKLOG, name="memo", fetcher=None))
+    found, left = chosen(parser(sources=memo).parse_args(["fetch"]), settings)
+    assert ([source.name for source in found], left) == (
+        ["confluence"],
+        {"memo": "read in place, it has nothing to fetch"},
+    )
     found, left = chosen(arguments("prepare"), settings)
     assert [source.name for source in found] == ["confluence", "jira"]
     assert left == {"worklog": "not configured"}
@@ -216,20 +227,23 @@ def test_a_source_that_does_not_exist_is_refused_by_the_options(
 
 
 def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declares_none() -> None:
-    """Of the sources taken: --since by Jira, under a registry whose Jira has no option."""
+    """Of the sources taken: --since by Jira, under a registry whose Jira has no option.
+
+    And by the work log, whose fetch reads its folder whole, whatever the period.
+    """
     plain = replace(
         JIRA, scope_types=(replace(names.PROJECT, option=None),), options=(), described=None
     )
     registry = sourced(CONFLUENCE, plain, WORKLOG)
     given = parser(sources=registry).parse_args(["fetch", "--since", "7d"])
-    assert "--since: ignored by jira" in fetch_described(given, CONFIGURED)
+    assert "--since: ignored by jira, worklog" in fetch_described(given, CONFIGURED)
     alone = parser(sources=registry).parse_args(["fetch", "--since", "7d", "confluence"])
     assert not [line for line in fetch_described(alone, CONFIGURED) if "ignored" in line]
 
 
 def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
     """A source's options are its fetch's: the parser offers none, and the summary reads none."""
-    noted = replace(WORKLOG, options=(Option(flag="--tag", help="a tag"),))
+    noted = replace(WORKLOG, options=(Option(flag="--tag", help="a tag"),), fetcher=None)
     registry = sourced(CONFLUENCE, JIRA, noted)
     given = parser(sources=registry).parse_args(["fetch"])
     assert not hasattr(given, "tag")
@@ -242,7 +256,7 @@ def test_a_dry_run_of_the_work_log_alone_writes_nothing_and_ignores_nothing(
     """Nothing written, of the folder nor the data; none of its settings said ignored."""
     config = settings_file(home, worklog)
     before = snapshot(worklog)
-    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
+    assert main(command(home, config, "fetch", "worklog", "--dry-run")) == 0
     assert "ignored" not in capsys.readouterr().err
     assert snapshot(worklog) == before
     assert not (home / "data").exists()
@@ -251,8 +265,15 @@ def test_a_dry_run_of_the_work_log_alone_writes_nothing_and_ignores_nothing(
 def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_ignore(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Its table alone in the file: nothing said to be ignored; its counts under its row."""
+    """Its table alone in the file: nothing said to be ignored; its counts under its row.
+
+    By its fetch, which reads every setting of its table, then by its prepare.
+    """
     config = settings_file(home, worklog)
+    assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
+    captured = capsys.readouterr()
+    assert "ignored" not in captured.err
+    assert captured.out.startswith(f"worklog: done\n  documents read: {WORKLOG_DOCUMENTS}\n")
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     captured = capsys.readouterr()
     assert "ignored" not in captured.err
@@ -267,7 +288,7 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
             (
                 f"source confluence: spaces MFS, site {SITE}\n",
                 "source jira: left out, not named\n",
-                "source worklog: left out, read in place, it has nothing to fetch\n",
+                "source worklog: left out, not named\n",
             ),
         ),
         (
@@ -307,13 +328,18 @@ def test_an_index_with_nothing_prepared_says_so_and_names_the_command(
     assert "nothing is prepared yet; `kb-mcp prepare` writes it" in capsys.readouterr().err
 
 
-def test_a_machine_with_the_work_log_alone_has_nothing_to_fetch_and_something_to_prepare(
+def test_a_machine_with_the_work_log_alone_fetches_it_then_prepares_it(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The first exits 2, saying of its own sources, as the how-to tells; the second runs."""
+    """Plan 060, criterion 5: a fetch without a name takes the work log, a row of its own.
+
+    The prepare that follows runs from what it fetched.
+    """
     config = settings_file(home, worklog)
-    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.REFUSED
-    assert "nothing to fetch: none of its sources is configured" in capsys.readouterr().err
+    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.OK
+    assert capsys.readouterr().out.startswith(
+        f"worklog: done\n  documents read: {WORKLOG_DOCUMENTS}\n"
+    )
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
 
 
@@ -336,6 +362,8 @@ def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
         f"sources.{name}.site: not set; any documents of {name} get no address there\n"
         for name in ("confluence", "jira")
     ]
+    assert main(command(home, config, "fetch", "--yes", "worklog")) == ExitStatus.OK
+    capsys.readouterr()
     assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
     err = capsys.readouterr().err
     assert [err.count(line) for line in lines] == [1, 1]
@@ -348,13 +376,18 @@ def test_a_prepare_without_a_site_runs_and_says_what_it_costs(
     assert [err.count(line) for line in lines] == [0, 1]
 
 
+@pytest.mark.usefixtures("signed_in")
 def test_a_false_value_of_a_source_left_out_is_said_not_applied_as_a_true_one_is(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """What holds a value is not the same as what is true: ``archives = false`` is one."""
-    config = settings_file(home, worklog)
+    """What holds a value is not the same as what is true: ``archives = false`` is one.
+
+    A setting of the work log's fetch, said by a fetch that leaves the work log out.
+    """
+    config = settings_file(home, worklog, atlassian=True)
     config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
-    assert main(command(home, config, "prepare", "--dry-run", "confluence")) == ExitStatus.OK
+    given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02", "jira")
+    assert main(given) == ExitStatus.OK
     err = capsys.readouterr().err
     assert "sources.worklog.archives: False (not applied: worklog not named)\n" in err
     assert "not in the command: sources.worklog.archives" not in err
@@ -375,10 +408,12 @@ def test_a_list_emptied_of_a_source_not_named_is_not_said_to_be_lost_by_the_comm
 def test_a_source_read_in_place_is_said_by_its_settings(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """What it covers, in a prepare, as a store's is in a fetch."""
+    """What it covers, in a fetch; in a prepare, all that its store holds, as a store's."""
     config = settings_file(home, worklog)
-    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
+    assert main(command(home, config, "fetch", "worklog", "--dry-run")) == 0
     assert f"source worklog: path {worklog}, archives True\n" in capsys.readouterr().err
+    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == ExitStatus.FAILED
+    assert "source worklog: all that its store holds\n" in capsys.readouterr().err
 
 
 @pytest.fixture
@@ -415,9 +450,11 @@ def test_json_is_one_document_with_a_row_per_source(
     assert [(row["source"], row["ending"]) for row in document["sources"]] == [
         ("confluence", "failed"),
         ("jira", "done"),
+        ("worklog", "done"),
     ]
     assert all(list(row) == ROW_KEYS for row in document["sources"])
     assert "confluence pages: fetched" in document["sources"][0]["counts"]
+    assert document["sources"][2]["counts"]["documents"] == WORKLOG_DOCUMENTS
     assert signed_in.asked
     assert main(command(home, config, "prepare", "--yes", "--format", "json")) == ExitStatus.OK
     document = json.loads(capsys.readouterr().out)
@@ -466,16 +503,21 @@ def test_each_key_that_the_help_names_is_one_of_the_json(
         assert sorted(named - written) == [], stage
 
 
-def test_an_until_before_since_exits_2_by_name_before_any_get(
+def test_an_until_before_since_fails_each_row_by_name_before_any_get(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Refused before the first row, naming them."""
+    """Each fetcher's preflight refuses it, naming them: its row fails, exit 1, nothing asked."""
     config = settings_file(home, None, atlassian=True)
     backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
-    assert main(command(home, config, "fetch", "--yes", *backwards)) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
+    given = command(home, config, "fetch", "--yes", "--format", "json", *backwards)
+    assert main(given) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    rows = json.loads(out)["sources"]
+    reason = "--until: must come after --since"
+    assert [(row["source"], row["ending"], row["problems"]) for row in rows] == [
+        (each, "failed", [{"where": each, "reason": reason}]) for each in ("confluence", "jira")
+    ]
     assert "fetch.refused" in err
-    assert "source 'confluence': fetch: --until: must come after --since" in err
     assert signed_in.asked == []
 
 
@@ -532,6 +574,12 @@ def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, obj
     return [each for each in logged if each["event"] == event]
 
 
+def fetched(settings: Settings) -> Settings:
+    """Fetch the settings' work log into its copy store, which a prepare reads; give them."""
+    assert run_each("fetch", runs(settings, FIRST, WORKLOG)).exit_status == ExitStatus.OK
+    return settings
+
+
 def chosen_settings(tmp_path: Path, worklog: Path) -> Settings:
     """Give settings with a site, a data folder with a saved session, MFS, PRB and the work log."""
     settings = MODEL(
@@ -571,7 +619,10 @@ def test_a_later_fetch_catches_up_on_an_old_page_edited_today_and_nothing_stored
 def test_a_fetch_that_must_sign_in_leaves_each_prepare_to_run_on_what_is_stored(
     tmp_path: Path, worklog: Path
 ) -> None:
-    """No session saved: the fetch says to sign in, exit 3; each prepare then runs, exit 0."""
+    """No session saved: Confluence's fetch says to sign in, exit 3; each prepare then runs.
+
+    The work log's fetch, which signs in nowhere, runs all the same.
+    """
     settings = MODEL(
         data_dir=tmp_path / "data",
         sources={
@@ -580,13 +631,14 @@ def test_a_fetch_that_must_sign_in_leaves_each_prepare_to_run_on_what_is_stored(
             "worklog": {"path": worklog},
         },
     )
-    first = runs(settings, FIRST, CONFLUENCE, options=SINCE)
+    first = runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE)
     with capture_logs() as logged:
-        fetched = run_each("fetch", first)
-    assert [(row.source, row.ending) for row in fetched.sources] == [
-        ("confluence", "sign in again")
+        ran = run_each("fetch", first)
+    assert [(row.source, row.ending) for row in ran.sources] == [
+        ("confluence", "sign in again"),
+        ("worklog", "done"),
     ]
-    assert fetched.exit_status == ExitStatus.SIGN_IN_AGAIN
+    assert ran.exit_status == ExitStatus.SIGN_IN_AGAIN
     assert logged_as(logged, "fetch.sign_in_needed")
     prepared = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
     assert [(row.source, row.ending) for row in prepared.sources] == [
@@ -636,7 +688,7 @@ def test_a_prepare_problem_exits_1_with_the_work_log_mirrored(
 ) -> None:
     """Confluence's prepare fails, said by place; the work log's still runs."""
     monkeypatch.setattr(preparer, "prepare_atlassian", lambda *_: problem_prepared())
-    settings = chosen_settings(tmp_path, worklog)
+    settings = fetched(chosen_settings(tmp_path, worklog))
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
     assert [(row.source, row.ending) for row in ran.sources] == [
@@ -652,33 +704,43 @@ def test_a_prepare_problem_exits_1_with_the_work_log_mirrored(
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
 
 
-def test_a_work_log_that_is_not_a_folder_is_refused_before_any_row(
+def test_a_work_log_that_is_not_a_folder_fails_its_row_writing_nothing(
     home: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Named by its setting; nothing is written."""
+    """Named by its setting, by its fetch, which reads it: a problem of its row, exit 1."""
     config = settings_file(home, tmp_path / "absent")
-    assert main(command(home, config, "prepare", "--yes")) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
-    assert "prepare.refused" in err
-    assert "source 'worklog': prepare: sources.worklog.path: not a folder" in err
-    assert not (home / "data" / "docs").exists()
+    assert main(command(home, config, "fetch", "--yes", "--format", "json")) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    (row,) = json.loads(out)["sources"]
+    assert (row["source"], row["ending"], row["problems"]) == (
+        "worklog",
+        "failed",
+        [{"where": "worklog", "reason": "sources.worklog.path: not a folder"}],
+    )
+    assert "fetch.refused" in err
+    assert not (home / "data" / "copies").exists()
 
 
 def test_a_prepare_and_its_dry_run_leave_the_work_log_as_it_was(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Every byte and time of the folder, a .git folder in it, stay as they were."""
+    """Every byte and time of the folder, a .git folder in it, stay as they were.
+
+    A fetch, its dry run, and a prepare, twice: the second prepare writes the source's
+    file alone, its as-of time the second fetch's.
+    """
     (worklog / ".git" / "objects").mkdir(parents=True)
     (worklog / ".git" / "HEAD").write_text("ref: refs/heads/main\n", "utf-8")
     settle(worklog)
     before = snapshot(worklog)
     config = settings_file(home, worklog)
-    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
-    assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
-    assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
+    assert main(command(home, config, "fetch", "worklog", "--dry-run")) == 0
+    for _ in range(2):
+        assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
+        capsys.readouterr()
+        assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     assert snapshot(worklog) == before
-    second = capsys.readouterr().out.split("worklog: done\n")[-1]
-    assert "files written: 1\n" in second  # the source's file alone, its as-of time
+    assert "files written: 1\n" in capsys.readouterr().out
 
 
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
@@ -690,13 +752,14 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     problem says that its entry alone was held back, "reported loudly in logs" (the
     user, 2026-10-29, plan 044).
     """
-    settings = chosen_settings(tmp_path, worklog)
+    settings = fetched(chosen_settings(tmp_path, worklog))
     taken = runs(settings, FIRST, WORKLOG)
     run_each("prepare", taken)
     gone = next((settings.docs / "worklog/transcripts").glob("*waiting-notes.md"))
     (worklog / "transcripts/misc/a.org").unlink()
     todo = worklog / "todo.org"
     todo.write_text(todo.read_text("utf-8").replace("Drafted on", "Drafted, failing, on"), "utf-8")
+    fetched(settings)
     failing = Counting(path=Pandoc.find().path, failing="failing")
     telemetry.spans.clear()
     telemetry.measured()
@@ -717,6 +780,7 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
     assert by_type_and_outcome(telemetry.measured()).get(("entry", "failed")) == 1
     assert gone.exists()
     todo.write_text(todo.read_text("utf-8").replace("Drafted, failing, on", "Drafted on"), "utf-8")
+    fetched(settings)
     assert run_each("prepare", taken).exit_status == ExitStatus.OK
     assert not gone.exists()
 
@@ -728,7 +792,7 @@ def test_a_dry_run_of_a_work_log_with_a_file_not_read_fails_and_exits_1(
     where = "transcripts/current/2026-10-27 Tue/1.org"
     (worklog / where).write_bytes(b"* Caf\xe9\n")
     config = settings_file(home, worklog)
-    given = command(home, config, "prepare", "worklog", "--dry-run", "--format", "json")
+    given = command(home, config, "fetch", "worklog", "--dry-run", "--format", "json")
     assert main(given) == ExitStatus.FAILED
     (row,) = json.loads(capsys.readouterr().out)["sources"]
     assert (row["source"], row["ending"]) == ("worklog", "failed")
@@ -746,7 +810,7 @@ def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
     where = "transcripts/current/2026-10-27 Tue/1.org"
     (worklog / where).write_bytes(b"* Caf\xe9\n")
     config = settings_file(home, worklog)
-    given = command(home, config, "prepare", "--yes", "--format", "json")
+    given = command(home, config, "fetch", "--yes", "--format", "json")
     assert main(given) == ExitStatus.FAILED
     captured = capsys.readouterr()
     (said,) = [line for line in captured.err.splitlines() if "worklog.problem" in line]
@@ -759,28 +823,37 @@ def test_a_transcript_not_read_is_said_loudly_with_what_it_held_back(
 def test_the_text_gives_a_row_per_source_then_its_counts(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The work log's: documents, files, HTML left out, problems; a dry run's to convert."""
+    """The work log's fetch: documents read, new, changed, gone, HTML left out, warnings.
+
+    Its prepare: documents, conversions, files; a dry run's, documents and files to remove.
+    """
     config = settings_file(home, worklog)
-    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
-    assert capsys.readouterr().out == (
-        "worklog: not run\n"
-        f"  documents: {WORKLOG_DOCUMENTS}\n"
-        f"  to convert: {WORKLOG_DOCUMENTS}\n"
-        "  files to remove: 0\n"
+    fetched_text = (
+        f"  documents read: {WORKLOG_DOCUMENTS}\n"
+        f"  new: {WORKLOG_DOCUMENTS}\n"
+        "  changed: 0\n"
+        "  gone: 0\n"
         "  HTML left out: 1\n"
         "  warning: meetings/2026-10-27 Tue/2.org: its :MEETING: link reaches no transcript found\n"
         "  warnings: 1\n"
+    )
+    assert main(command(home, config, "fetch", "worklog", "--dry-run")) == 0
+    assert capsys.readouterr().out == f"worklog: not run\n{fetched_text}"
+    assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
+    assert capsys.readouterr().out == f"worklog: done\n{fetched_text}"
+    assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
+    assert capsys.readouterr().out == (
+        f"worklog: not run\n  documents: {WORKLOG_DOCUMENTS}\n  files to remove: 0\n"
     )
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     assert capsys.readouterr().out == (
         "worklog: done\n"
         f"  documents: {WORKLOG_DOCUMENTS}\n"
+        f"  converted by pandoc: {WORKLOG_DOCUMENTS}\n"
+        "  reused from the cache: 0\n"
         f"  files written: {WORKLOG_FILES}\n"
         "  files unchanged: 0\n"
         "  files removed: 0\n"
-        "  HTML left out: 1\n"
-        "  warning: meetings/2026-10-27 Tue/2.org: its :MEETING: link reaches no transcript found\n"
-        "  warnings: 1\n"
     )
 
 
@@ -891,9 +964,14 @@ def test_a_source_not_named_is_not_mirrored_though_its_documents_are_stored(
 def test_archives_off_leaves_the_archived_documents_out_of_a_prepare(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The archive file's entry and meetings, the ARCHIVE entry, the archived transcript."""
+    """The archive file's entry and meetings, the ARCHIVE entry, the archived transcript.
+
+    Its fetch leaves them out of the copy store, from which the prepare writes.
+    """
     config = settings_file(home, worklog)
     config.write_text(config.read_text("utf-8") + "archives = false\n", "utf-8")
+    assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
+    capsys.readouterr()
     given = command(home, config, "prepare", "worklog", "--yes", "--format", "json")
     assert main(given) == 0
     result = json.loads(capsys.readouterr().out)["sources"][0]["counts"]
@@ -913,6 +991,8 @@ def test_the_settings_of_sources_left_out_are_said_not_applied(
     Those that the command reads: a prepare does not read a store's, said in detail alone.
     """
     config = settings_file(home, worklog, atlassian=True)
+    assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
+    capsys.readouterr()
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     said = capsys.readouterr().err
     assert "ignored: sources.confluence.site (config.toml): confluence not named\n" in said
@@ -927,21 +1007,21 @@ def test_the_settings_of_sources_left_out_are_said_not_applied(
 def test_a_work_log_that_is_a_file_is_refused_as_not_a_folder(
     home: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A regular file named as the folder: exit 2."""
+    """A regular file named as the folder: its fetch fails, exit 1."""
     (tmp_path / "todo.org").write_text("* x\n", "utf-8")
     config = settings_file(home, tmp_path / "todo.org")
-    assert main(command(home, config, "prepare", "--yes")) == ExitStatus.REFUSED
+    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.FAILED
     assert "sources.worklog.path: not a folder" in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("signed_in")
-def test_a_second_prepare_reuses_every_conversion_and_the_work_log_adds_none(
+def test_a_second_prepare_reuses_every_conversion_each_source_its_own(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 039, criterion 7: the data folder's cache holds the mirror's conversions alone.
 
     A first prepare converts, a second reuses each conversion, by its row in JSON, then in
-    text.
+    text. The work log's, since plan 060, are rows of its own.
     """
     config = settings_file(home, worklog, atlassian=True)
     main(command(home, config, "fetch", "--yes", "--since", "2026-10-02"))
@@ -962,9 +1042,14 @@ def test_a_second_prepare_reuses_every_conversion_and_the_work_log_adds_none(
         f"confluence: done\n  documents: {documents}\n"
         f"  converted by pandoc: 0\n  reused from the cache: {converted}\n"
     ) in rows[2]
-    jira = json.loads(rows[0])["sources"][1]
+    jira, worklog_row = json.loads(rows[0])["sources"][1:]
     assert (jira["source"], jira["ending"]) == ("jira", "done")
-    total = converted + jira["counts"]["converted"]
+    assert (worklog_row["source"], worklog_row["counts"]["converted"]) == (
+        "worklog",
+        WORKLOG_DOCUMENTS,
+    )
+    assert json.loads(rows[1])["sources"][2]["counts"]["reused"] == WORKLOG_DOCUMENTS
+    total = converted + jira["counts"]["converted"] + WORKLOG_DOCUMENTS
     with closing(sqlite3.connect(home / "data" / "conversions.sqlite")) as cache:
         assert cache.execute("SELECT count(*) FROM conversions").fetchone() == (total,)
 
@@ -975,7 +1060,7 @@ def test_a_damaged_cache_is_replaced_and_every_row_runs_exit_0(
     """Plan 039, criterion 8: the mirror converts all again, reusing nothing, said once."""
     settings = chosen_settings(tmp_path, worklog)
     monkeypatch.setattr(http, "client", lambda *_: RefreshSite().client())
-    run_each("fetch", runs(settings, FIRST, CONFLUENCE, options=SINCE))
+    run_each("fetch", runs(settings, FIRST, CONFLUENCE, WORKLOG, options=SINCE))
     taken = runs(settings, FIRST, CONFLUENCE, WORKLOG)
     first = run_each("prepare", taken).sources[0].counts
     assert isinstance(first, atlassian_prepare.AtlassianCounts)
@@ -1097,8 +1182,8 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
 ) -> None:
     """Every row kept as it ended, and the run interrupted; the event names no source."""
     tracer = SimpleNamespace(start_as_current_span=lambda *_, **__: EndingInCtrlC())
+    settings = fetched(chosen_settings(tmp_path, worklog))
     monkeypatch.setattr(sources_app, "TRACER", tracer)
-    settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, WORKLOG))
     assert [(row.source, row.ending) for row in ran.sources] == [("worklog", "done")]
@@ -1173,6 +1258,8 @@ def test_without_a_site_source_the_sign_in_s_settings_are_not_applied(
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__EMAIL", "someone@example.invalid")
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
+    assert main(command(home, config, "fetch", "worklog", "--yes")) == ExitStatus.OK
+    capsys.readouterr()
     given = command(home, config, "prepare", "worklog", "--dry-run", "--detail", "detailed")
     assert main(given) == ExitStatus.OK
     said = capsys.readouterr().err
@@ -1206,19 +1293,21 @@ def test_a_busy_raw_store_fails_the_fetch_and_a_prepare_still_runs(
         (Problem(where="raw store", reason=fetcher.BUSY),)
     ] * 2
     assert len(logged_as(logged, "fetch.store_busy")) == len(ran.sources)
-    prepared = run_each("prepare", runs(settings, FIRST, WORKLOG))
+    prepared = run_each("prepare", runs(fetched(settings), FIRST, WORKLOG))
     assert prepared.exit_status == ExitStatus.OK
 
 
 def test_the_log_files_hold_no_document_s_text(
     home: Path, worklog: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """They hold DEBUG, titles too; never a document's body."""
+    """They hold DEBUG, titles too; never a document's body, the fetch's nor the prepare's."""
     config = settings_file(home, worklog)
+    assert main(command(home, config, "fetch", "--yes", "-vv", "worklog")) == ExitStatus.OK
     assert main(command(home, config, "prepare", "--yes", "-vv", "worklog")) == ExitStatus.OK
     capsys.readouterr()
-    logs = "".join(path.read_text("utf-8") for path in home.rglob("prepare-*.jsonl"))
+    logs = "".join(path.read_text("utf-8") for path in home.rglob("*-*.jsonl"))
     assert '"event": "worklog.document"' in logs
+    assert '"event": "worklog.fetched"' in logs
     assert "Nothing dated here yet" in (worklog / "todo.org").read_text("utf-8")
     assert all(text not in logs for text in ("zanzibarite", "PWNED", "Nothing dated here yet"))
 
@@ -1249,26 +1338,28 @@ def test_the_work_log_is_counted_by_type_and_its_spans_are_in_its_row(
 ) -> None:
     """Each document counted by type and outcome, each work-log span in the source's row.
 
-    Fresh, every entry, day, meeting and transcript is prepared, each conversion timed by
-    type; unchanged, all are kept and none timed. Each work-log span is in the row's
+    Every entry, day, meeting and transcript is prepared, each conversion timed by type,
+    fresh as when the cache gives it. Each work-log span is in the row's
     ``prepare.source``, which names the source and its outcome, in the run's root; each
     document's event is logged in ``worklog.convert``.
     """
     config = settings_file(home, worklog)
+    assert main(command(home, config, "fetch", "--yes", "worklog")) == ExitStatus.OK
+    telemetry.spans.clear()
+    telemetry.measured()
     given = command(home, config, "prepare", "--yes", "worklog")
     assert main(given) == ExitStatus.OK
     first, spans = telemetry.measured(), telemetry.spans.get_finished_spans()
     assert main(given) == ExitStatus.OK
     second = telemetry.measured()
-    assert by_type_and_outcome(first) == {
-        (document_type, "mirrored"): count for document_type, count in WORKLOG_BY_TYPE.items()
-    }
-    assert by_type_and_outcome(second) == {
-        (document_type, "kept"): count for document_type, count in WORKLOG_BY_TYPE.items()
-    }
-    timed = first["kb_mcp.prepare.conversion.duration"].data.data_points
-    assert {point.attributes["kb_mcp.type"]: point.count for point in timed} == WORKLOG_BY_TYPE
-    assert "kb_mcp.prepare.conversion.duration" not in second
+    for measured in (first, second):
+        assert by_type_and_outcome(measured) == {
+            (document_type, "mirrored"): count for document_type, count in WORKLOG_BY_TYPE.items()
+        }
+        timed = measured["kb_mcp.prepare.conversion.duration"].data.data_points
+        assert {point.attributes["kb_mcp.type"]: point.count for point in timed} == (
+            WORKLOG_BY_TYPE
+        )
     (row,) = [span for span in spans if span.name == "prepare.source"]
     assert (row.attributes["kb_mcp.source"], row.attributes["kb_mcp.ending"]) == (
         "worklog",
@@ -1278,7 +1369,7 @@ def test_the_work_log_is_counted_by_type_and_its_spans_are_in_its_row(
     assert row.parent is not None
     assert row.parent.span_id == root.context.span_id
     worklog_spans = {span.name: span for span in spans if span.name.startswith("worklog.")}
-    assert set(worklog_spans) == {"worklog.read", "worklog.convert", "worklog.write"}
+    assert set(worklog_spans) == {"worklog.convert", "worklog.write"}
     assert all(
         span.parent is not None and span.parent.span_id == row.context.span_id
         for span in worklog_spans.values()
@@ -1301,32 +1392,39 @@ def ended_with(logged: list[dict[str, object]], *fields: str) -> tuple[object, .
 def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     tmp_path: Path, worklog: Path
 ) -> None:
-    """``worklog.read``, ``worklog.document`` and ``worklog.end``, by their values.
+    """``worklog.read`` and ``worklog.fetched``; ``worklog.document`` and ``worklog.end``.
 
     Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
-    transcript read, none unread; each document prepared, by its type and path; a file
-    each written. Unchanged, each kept and none written but the source's file, its as-of
-    time the new read's. A dry run says each to convert
-    on an empty mirror, none after a run, and one file to remove once a transcript is
-    deleted.
+    transcript read, none unread, every document new; each document prepared, by its type
+    and path; a file each written. Unchanged, none new nor changed, and none written but
+    the source's file, its as-of time the new read's. A dry run of the prepare says no
+    file to remove after a run, and one once a fetch finds a transcript gone.
     """
     settings = chosen_settings(tmp_path, worklog)
-    dry = runs(settings, FIRST, WORKLOG, dry_run=True)
+    taken, dry = runs(settings, FIRST, WORKLOG), runs(settings, FIRST, WORKLOG, dry_run=True)
+    with capture_logs() as fresh:
+        run_each("fetch", taken)
+        run_each("prepare", taken)
+    with capture_logs() as unchanged:
+        run_each("fetch", runs(settings, SECOND, WORKLOG))
+        run_each("prepare", taken)
     with capture_logs() as planned:
         run_each("prepare", dry)
-    with capture_logs() as fresh:
-        run_each("prepare", runs(settings, FIRST, WORKLOG))
-    with capture_logs() as unchanged:
-        run_each("prepare", runs(settings, FIRST, WORKLOG))
     (worklog / "transcripts/misc/a.org").unlink()
+    run_each("fetch", taken)
     with capture_logs() as planned_again:
         run_each("prepare", dry)
     (read,) = logged_as(fresh, "worklog.read")
     counts = ("entries", "days", "meetings", "transcripts", "html", "problems")
     assert tuple(read[each] for each in counts) == (13, 2, 8, 6, 1, 0)
+    found = ("documents", "new", "changed", "gone", "problems")
+    every = WORKLOG_DOCUMENTS
+    (fetched_fresh,) = logged_as(fresh, "worklog.fetched")
+    assert tuple(fetched_fresh[each] for each in found) == (every, every, 0, 0, 0)
+    (fetched_again,) = logged_as(unchanged, "worklog.fetched")
+    assert tuple(fetched_again[each] for each in found) == (every, 0, 0, 0, 0)
     documents = logged_as(fresh, "worklog.document")
     assert Counter(each["type"] for each in documents) == WORKLOG_BY_TYPE
-    assert {each["outcome"] for each in documents} == {"mirrored"}
     folders = {
         "entry": "worklog/entries/",
         "day": "worklog/days/",
@@ -1334,29 +1432,37 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
         "transcript": "worklog/transcripts/",
     }
     assert all(str(each["path"]).startswith(folders[str(each["type"])]) for each in documents)
-    fields = ("documents", "written", "unchanged", "removed", "problems")
-    every = WORKLOG_DOCUMENTS
-    assert ended_with(fresh, *fields) == (every, WORKLOG_FILES, 0, 0, 0)
-    assert ended_with(unchanged, *fields) == (every, 1, WORKLOG_FILES - 1, 0, 0)
-    kept = {each["outcome"] for each in logged_as(unchanged, "worklog.document")}
-    assert kept == {"kept"}
-    assert ended_with(planned, "to_convert", "to_remove", "problems") == (every, 0, 0)
-    assert ended_with(planned_again, "to_convert", "to_remove", "problems") == (0, 1, 0)
+    fields = ("documents", "written", "unchanged", "removed", "converted", "reused", "problems")
+    assert ended_with(fresh, *fields) == (every, WORKLOG_FILES, 0, 0, every, 0, 0)
+    assert ended_with(unchanged, *fields) == (every, 1, WORKLOG_FILES - 1, 0, 0, every, 0)
+    assert ended_with(planned, "documents", "to_remove") == (every, 0)
+    assert ended_with(planned_again, "documents", "to_remove") == (every - 1, 1)
 
 
-def test_every_role_s_preflight_runs_before_the_first_row(
+def test_a_source_that_its_preflight_refuses_fails_its_row_alone(
     home: Path, tmp_path: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 030: a work log that is not a folder refuses the run before any other's row.
+    """Plan 060, by the user: "We should be tolerant", so the others' rows run.
 
-    Its preparer's preflight refuses it, so that Confluence's, whose row comes first, writes
-    nothing.
+    A work log that is not a folder: its fetcher's preflight refuses it, which fails its
+    row, by its setting, and Confluence's and Jira's fetch as if it were not there; the
+    run exits 1, as some rows failed.
     """
     config = settings_file(home, tmp_path / "absent", atlassian=True)
-    assert main(command(home, config, "prepare", "--yes")) == ExitStatus.REFUSED
-    assert "sources.worklog.path: not a folder" in capsys.readouterr().err
-    assert not (home / "data" / "docs").exists()
-    assert signed_in.asked == []
+    assert main(command(home, config, "fetch", "--yes", "--format", "json")) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    rows = {row["source"]: row for row in json.loads(out)["sources"]}
+    assert {source: row["ending"] for source, row in rows.items()} == {
+        "confluence": "done",
+        "jira": "done",
+        "worklog": "failed",
+    }
+    assert rows["worklog"]["problems"] == [
+        {"where": "worklog", "reason": "sources.worklog.path: not a folder"}
+    ]
+    assert "fetch.refused" in err
+    assert (home / "data" / "raw").is_dir()
+    assert signed_in.asked
 
 
 @pytest.mark.parametrize(
@@ -1391,6 +1497,8 @@ def test_the_site_s_light_checks_refuse_a_fetch_and_never_a_prepare(
     config.write_text(config.read_text("utf-8") + '[sources.jira]\nprojects = ["PRB"]\n', "utf-8")
     assert main(command(home, config, "fetch", "--yes", *given)) == ExitStatus.REFUSED
     assert named in capsys.readouterr().err
+    assert main(command(home, config, "fetch", "--yes", "worklog")) == 0
+    capsys.readouterr()
     assert main(command(home, config, "prepare", "--dry-run")) == 0
     assert named not in capsys.readouterr().err
 
@@ -1434,7 +1542,7 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
 
 def test_a_command_is_a_dry_run_by_its_runs_alone(tmp_path: Path, worklog: Path) -> None:
     """Plan 030: one flag for a run, which each fetcher and preparer reads: the events follow it."""
-    settings = chosen_settings(tmp_path, worklog)
+    settings = fetched(chosen_settings(tmp_path, worklog))
     with capture_logs() as dry:
         ran = run_each("prepare", runs(settings, FIRST, WORKLOG, dry_run=True))
     assert [(row.source, row.ending) for row in ran.sources] == [("worklog", "not run")]
@@ -1451,10 +1559,10 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
 ) -> None:
     """Plan 030: a declaration's preparers are a tuple: each runs, in its order, a row each.
 
-    The same preparer twice here, the second finding its files written by the first, but
-    the source's, its as-of time the second read's.
+    The same preparer twice here, the second finding every file written by the first, the
+    source's too, whose as-of time is the store's.
     """
-    settings = chosen_settings(tmp_path, worklog)
+    settings = fetched(chosen_settings(tmp_path, worklog))
     twice = replace(WORKLOG, preparers=WORKLOG.preparers * 2)
     ran = run_each("prepare", runs(settings, FIRST, twice))
     assert [(row.source, row.ending) for row in ran.sources] == [
@@ -1462,15 +1570,15 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
         ("worklog", "done"),
     ]
     written = [row.counts.changes.written for row in ran.sources]
-    assert written == [WORKLOG_FILES, 1]
+    assert written == [WORKLOG_FILES, 0]
 
 
 def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_1(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Gone from PATH after the entry's check: each row fails alone, each saying so."""
+    settings = fetched(chosen_settings(tmp_path, worklog))
     monkeypatch.setattr(Pandoc, "find", missing)
-    settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, CONFLUENCE, WORKLOG))
     assert [(row.source, row.ending) for row in ran.sources] == [
@@ -1486,9 +1594,9 @@ def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_1(
 def test_pandoc_giving_no_version_fails_the_work_log_s_row_writing_nothing(
     tmp_path: Path, worklog: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """No revision can be named: the row fails, an error says why."""
+    """No conversion can be keyed: the row fails, an error says why."""
     monkeypatch.setattr(Pandoc, "org_converter", lambda _: unconverted())
-    settings = chosen_settings(tmp_path, worklog)
+    settings = fetched(chosen_settings(tmp_path, worklog))
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, WORKLOG))
     assert [(row.source, row.ending) for row in ran.sources] == [("worklog", "failed")]
@@ -1501,13 +1609,13 @@ def test_pandoc_giving_no_version_fails_the_work_log_s_row_writing_nothing(
 def test_only_a_run_that_writes_says_that_its_problems_held_removals_back(
     tmp_path: Path, worklog: Path
 ) -> None:
-    """A file not read is a problem of both; a dry run, which removes nothing, says no more."""
+    """A file not read is a problem of both fetches; a dry run, which keeps all, says no more."""
     (worklog / "transcripts/misc/a.org").write_bytes(b"* Caf\xe9\n")
     settings = chosen_settings(tmp_path, worklog)
     with capture_logs() as dry:
-        run_each("prepare", runs(settings, FIRST, WORKLOG, dry_run=True))
+        run_each("fetch", runs(settings, FIRST, WORKLOG, dry_run=True))
     with capture_logs() as real:
-        run_each("prepare", runs(settings, FIRST, WORKLOG))
+        run_each("fetch", runs(settings, FIRST, WORKLOG))
     assert logged_as(dry, "worklog.problem")
     assert not logged_as(dry, "worklog.nothing_removed")
     assert logged_as(real, "worklog.problem")
@@ -1536,6 +1644,8 @@ def test_a_prepare_refused_by_a_token_without_its_email_is_none_of_its_concern(
     """Prepare signs in nowhere: an API token without its email refuses no prepare."""
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "token-sentinel-7f2b")
     config = settings_file(home, worklog)
+    assert main(command(home, config, "fetch", "--yes", "worklog")) == ExitStatus.OK
+    capsys.readouterr()
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
     assert "sources.confluence.email: not set" not in capsys.readouterr().err
 
@@ -1560,7 +1670,7 @@ def test_the_span_of_a_row_names_its_source_and_how_it_ended(
     tmp_path: Path, worklog: Path, telemetry: InMemory
 ) -> None:
     """Within the current trace: a fetch's as a prepare's, as their pages list them."""
-    settings = chosen_settings(tmp_path, worklog)
+    settings = fetched(chosen_settings(tmp_path, worklog))
     with trace.get_tracer(__name__).start_as_current_span("root"):
         run_each("prepare", runs(settings, FIRST, WORKLOG))
     (row,) = [
