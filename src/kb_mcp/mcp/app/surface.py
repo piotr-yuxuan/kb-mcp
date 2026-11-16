@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, cast
 
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.tools import Tool
+from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import LONGEST, UnanswerableError, bounded, instant
 
 if TYPE_CHECKING:
@@ -62,8 +63,9 @@ UNTRUSTED = (
 class ServedPrompt(Record):
     """A prompt: its name, what it asks, its arguments, the tools it needs, its text.
 
-    ``arguments`` gives each argument's name and description; every one is required.
-    ``render`` takes them by name, and raises UnanswerableError for one it refuses.
+    ``arguments`` gives each argument's name and description; one is required unless
+    ``render`` gives it a default. ``render`` takes them by name, and raises
+    UnanswerableError for one it refuses.
     """
 
     name: str
@@ -109,11 +111,12 @@ def prompts(library: Library) -> tuple[ServedPrompt, ...]:
             f" and its date of update. {UNTRUSTED}"
         )
 
-    def overview(scope: str) -> str:
-        bounded(scope=(scope, LONGEST["value"]))
-        held = library.sole_scope(scope)
+    def overview(scope: str, source: str | None = None) -> str:
+        bounded(scope=(scope, LONGEST["value"]), source=(source, LONGEST["value"]))
+        held, narrowed = library.sole_scope(scope, source)
         return (
-            f"Give an overview of the scope {held}: browse(scope={json.dumps(held)}), then"
+            f"Give an overview of the scope {held}:"
+            f" {responses.call(library.browse, scope=held, source=narrowed)}, then"
             " each call that an answer ends with; read the first section of its top"
             " documents, read(ref=..., section=1). Say how it is organised and what to read"
             f" first, citing each document by its ref. {UNTRUSTED}"
@@ -143,7 +146,10 @@ def prompts(library: Library) -> tuple[ServedPrompt, ...]:
         ServedPrompt(
             name="overview",
             description="Say how a scope is organised, and what to read first.",
-            arguments=(("scope", scope),),
+            arguments=(
+                ("scope", scope),
+                ("source", "The source that holds it, where several do, such as jira."),
+            ),
             needs=("browse", "read"),
             render=overview,
         ),

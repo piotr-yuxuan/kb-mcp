@@ -219,11 +219,17 @@ def test_a_prompt_is_listed_only_when_its_tools_are_served(home: Path) -> None:
     """Three prompts with every tool; without read, brief and overview go."""
     _, _, prompts = seen(home)
     assert [prompt.name for prompt in prompts.prompts] == ["brief", "changes", "overview"]
-    assert all(
-        argument.required and " " not in argument.name
+    assert {
+        (prompt.name, argument.name): argument.required
         for prompt in prompts.prompts
         for argument in prompt.arguments or []
-    )
+    } == {
+        ("brief", "ref"): True,
+        ("changes", "scope"): True,
+        ("changes", "since"): True,
+        ("overview", "scope"): True,
+        ("overview", "source"): False,
+    }
     _, _, fewer = seen(home, "--tools", "search,browse,status")
     assert [prompt.name for prompt in fewer.prompts] == ["changes"]
 
@@ -240,6 +246,12 @@ def test_a_prompt_is_listed_only_when_its_tools_are_served(home: Path) -> None:
         ),
         ("overview", {"scope": "project:proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
         ("overview", {"scope": "proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
+        (
+            "overview",
+            {"scope": "proj", "source": "JIRA"},
+            ['browse(scope="project:PROJ", source="jira")'],
+            ["proj", "JIRA"],
+        ),
     ],
 )
 def test_a_prompt_is_one_user_message_of_canonical_values(
@@ -282,6 +294,30 @@ def test_an_overview_of_several_scopes_is_refused_as_browse_refuses_it(
     with pytest.raises(UnanswerableError) as refused:
         overview.render(scope)
     assert parts(str(refused.value))[1] == named
+
+
+def test_an_overview_of_a_scope_that_two_sources_hold_takes_its_source(tmp_path: Path) -> None:
+    """As browse takes it: the refusal names the argument at fault, which the source settles.
+
+    A source that holds no such scope is refused, naming it.
+    """
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Payments home", scope="space:PAY"), None),
+            (issue("PAY-1", "Payments epic"), None),
+            (replace(issue("PAY-2", "Payments rollout"), source="tracker"), None),
+        ],
+    )
+    (overview,) = [each for each in prompts(library) if each.name == "overview"]
+    with pytest.raises(UnanswerableError) as refused:
+        overview.render("project:PAY")
+    assert parts(str(refused.value))[0].startswith("scope: several scopes match;")
+    text = overview.render("project:pay", source="TRACKER")
+    assert 'browse(scope="project:PAY", source="tracker")' in text
+    with pytest.raises(UnanswerableError) as refused:
+        overview.render("space:PAY", source="jira")
+    assert str(refused.value) == "source: jira holds no space:PAY"
 
 
 @pytest.mark.parametrize(

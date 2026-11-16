@@ -562,7 +562,7 @@ def sole_scope(listed: Sequence[IndexedDocument]) -> str | None:
     held = sorted({(entry.front.scope, entry.front.source) for entry in listed})
     if len(held) > 1:
         named = [f"{each} ({source})" for each, source in held]
-        message = "browse: several scopes match; give one whole, and its source if need be:"
+        message = "scope: several scopes match; give one whole, and its source if need be:"
         raise UnanswerableError(responses.refusal(message, named[:VALUES_SHOWN], len(named)))
     return held[0][0] if held else None
 
@@ -852,11 +852,21 @@ class Library:
         with self._reading() as reader:
             return scope_of(reader, scope) or ""
 
-    def sole_scope(self, scope: str) -> str:
-        """Give the one scope, whole, that browse lists for ``scope``; refuse as browse does."""
+    def sole_scope(self, scope: str, source: str | None = None) -> tuple[str, str | None]:
+        """Give the one scope, whole, that browse lists for ``scope`` in ``source``, and the source.
+
+        Each as the index holds it. Refuses as browse does, and a source that holds no
+        such scope.
+        """
         with self._reading() as reader:
-            listed = reader.listing(Filters(scope=scope_of(reader, scope)))
-        return sole_scope(listed) or ""
+            kept = Filters(
+                source=canonical(reader, "source", source), scope=scope_of(reader, scope)
+            )
+            held = sole_scope(reader.listing(kept))
+        if held is None:
+            message = f"source: {kept.source} holds no {kept.scope}"
+            raise UnanswerableError(message)
+        return held, kept.source
 
     def resolve(self, ref: str) -> str | None:
         """Find a document's path by its id, key, address or path, as read does."""
@@ -985,7 +995,9 @@ class Library:
                 for other in reader.indexed_documents(refs=outside)
             }
             top = None if parent is None else self._find(reader, parent)
-        sole_scope(listed)  # refuses several scopes, or one of several sources
+        # Refuses several scopes, or one of several sources; the scope itself is not
+        # needed, as ``listed`` holds that one scope's documents alone.
+        sole_scope(listed)
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
         # Ties go by path: pages of results need one order from call to call.

@@ -211,5 +211,7 @@ Browse a scope, read its top documents' first sections, and say how it is organi
 what to read first. Needs `browse` and `read`.
 
 - `scope`: as `status` names it, such as `space:ENG`, or its key alone, written whole
-  in the text; refused, naming them, when several scopes match or several sources hold
-  it, as `browse` refuses it.
+  in the text; refused, naming them, when several scopes match, or several sources hold
+  it and `source` does not narrow it, as `browse` refuses it.
+- `source`: optional, the source that holds the scope, where several do, such as
+  `jira`, written in the text's `browse` call; refused when it holds no such scope.
