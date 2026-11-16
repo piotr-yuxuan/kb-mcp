@@ -390,14 +390,13 @@ class Fetching:
                 BlogPost: confluence_v2.entry_ids(posts),
             }
             entries = listed[Page] | listed[BlogPost]
+            held = {each: self.store.listed_ids(space.id, each) for each in CONFLUENCE_CLASSES}
             joined: set[str] = set()
             if self.store.was_listed(space.id):
-                named = {
-                    i for each in CONFLUENCE_CLASSES for i in self.store.listed_ids(space.id, each)
-                }
+                named = set().union(*held.values())
                 joined = (entries - named | self.store.pending(space.id)) & entries
             if not self.plan:
-                self.track(scope, space.id, listed)
+                self.track(scope, space.id, held, listed)
                 folders = self.folders(pages)
             whole = self.fetch_listed(scope, documents, window, joined)
             if len(documents) < len(pages) + len(posts):
@@ -410,17 +409,24 @@ class Fetching:
             return True
 
     def track(
-        self, scope: Scope, holder: str, listed: Mapping[type[FetchedDocument], set[str]]
+        self,
+        scope: Scope,
+        holder: str,
+        held: Mapping[type[FetchedDocument], set[str]],
+        listed: Mapping[type[FetchedDocument], set[str]] | None,
     ) -> None:
-        """Record, as pending, what the scope's last whole read named and the new one does not.
+        """Record, as pending, what the scope held and this run's whole read of it does not name.
 
         ``holder`` is the scope as its listings are kept, a space by its id, a project by
-        its key; ``listed`` the ids that the new whole read names, by document class. The
-        absent are the documents the last whole read named, read by id alone, and the
-        store holds, and those already tombstoned in the scope; a document that the new
-        one names is present, and loses any tombstone, of whichever scope. The record is
-        written before the listing is replaced, so that no absent document is lost to a
-        run that stops; they are probed once every scope of the run is read.
+        its key; ``held`` the ids, by document class, that its last whole read names, read
+        by id alone; ``listed`` those that this run's whole read names, None when the run
+        made none. The absent are the documents held that the store holds, and those
+        already tombstoned in the scope; a document that this run's whole read names is
+        present, and loses any tombstone, of whichever scope. A whole read of before
+        neither starts nor ends an absence: without one, the scope's tombstones stay as
+        they are, to be probed again. The record is written before the whole read is
+        replaced, so that no absent document is lost to a run that stops; they are
+        probed once every scope of the run is read.
         """
         # A former entry of an unresolved space keeps its id as its key: found now.
         known = {
@@ -430,16 +436,17 @@ class Fetching:
         }
         absent: dict[DocumentKey, Scope] = {}
         stored = 0
-        for document_class, ids in listed.items():
-            before = self.store.listed_ids(holder, document_class) & self.store.stored_ids(
-                document_class
-            )
+        for document_class, ids in held.items():
+            before = ids & self.store.stored_ids(document_class)
             stored += len(before)
             named = document_class.document_type.name
             again = {key[2] for key in known if key[1] == named}
-            absent |= {(scope.source, named, each): scope for each in (before | again) - ids}
+            missing = again if listed is None else (before | again) - listed[document_class]
+            absent |= {(scope.source, named, each): scope for each in missing}
         present = {
-            (scope.source, each.document_type.name, i) for each, ids in listed.items() for i in ids
+            (scope.source, each.document_type.name, i)
+            for each, ids in (listed or {}).items()
+            for i in ids
         }
         self.absent[scope] = (absent, stored, known)
         others = {
@@ -585,14 +592,14 @@ class Fetching:
             return True
 
     def track_project(self, scope: Scope) -> None:
-        """Track what a project no longer holds, by its last whole read, made anew when due.
+        """Track what a project no longer holds, by a whole read made when due.
 
         A project ``due`` is read whole, every issue by id whatever its update time, and
         that read replaces its last; one that fails is counted, ``fetch.scope_failed``,
         and the last stays, the search going on. What the last whole read named and this
-        one does not is tracked as absent; a project not due keeps its last, so that
-        what is absent already is still probed at each run. The task ``listing`` reports
-        the pages of the whole read.
+        one does not is tracked as absent; a project that this run does not read whole
+        keeps its tombstones as they are, so that what is absent already is still probed
+        at each run. The task ``listing`` reports the pages of the whole read.
         """
         key, issues = scope.key, None
         if scope in self.due:
@@ -602,9 +609,10 @@ class Fetching:
                     issues = self.collect(request, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
                 self.scope_failed(f"{self.label('projects')} read whole", f"project {key}", error)
-        listed = self.store.listed_ids(key, Issue) if issues is None else jira_v3.entry_ids(issues)
-        # Tombstones first: a run that stops between keeps the former listing.
-        self.track(scope, key, {Issue: listed})
+        held = {Issue: self.store.listed_ids(key, Issue)}
+        listed = None if issues is None else {Issue: jira_v3.entry_ids(issues)}
+        # Tombstones first: a run that stops between keeps the former whole read.
+        self.track(scope, key, held, listed)
         if issues is not None:
             self.store.put_project(key, issues)
             self.read_whole.add(scope)

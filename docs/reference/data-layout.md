@@ -311,16 +311,18 @@ Two more of the store's own records, each replaced whole:
   space's id and its status; an issue by `GET /rest/api/3/issue/{id}?fields=project`,
   which gives its project's key, each on its source's own site and sign-in. A document
   found in a kept scope whose last whole read names it has moved, and loses its
-  tombstone, as does one that any whole read of its source names; one found in a kept
-  scope whose whole read does not name it goes back to pending. The scopes kept are
+  tombstone, as does one that a whole read made by the run names, in any scope of its
+  source; one found in a kept scope whose whole read does not name it goes back to
+  pending. The scopes kept are
   those whose whole reads the sources of the run's site keep (`holders`): another
   site's, whose keys may be the same, never counts. The absent are found from the last
   whole read by id alone (`listed_ids(holder, document_class)`), so that an entry the
   adapter would refuse is still followed, and the ids that have a snapshot
   (`stored_ids(document_class)`); the record is written before the whole read is
   replaced, so that no absent document is lost to a run that stops, and they are probed
-  once every scope of the run is read. A project not due a whole read keeps its last,
-  so that what is absent is still probed at each run. Every fetch reads the record and
+  once every scope of the run is read. A whole read of before neither starts nor ends
+  an absence: a project that the run does not read whole keeps its tombstones as they
+  are, so that what is absent is still probed at each run. Every fetch reads the record and
   writes it again, each entry of another source or scope as it found it; one that
   cannot be read fails that source's fetch alone, before any request, Confluence's by
   its preflight.
