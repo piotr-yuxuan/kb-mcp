@@ -388,6 +388,10 @@ def test_an_unknown_value_is_refused_with_the_valid_ones(
     ("arguments", "message"),
     [
         ({"filters": {"spaec": "ENG"}}, "filters: no spaec"),
+        # Plan 057, criterion 5: the former filters, which scope and subtype replace.
+        ({"filters": {"space": "ENG"}}, "filters: no space;"),
+        ({"filters": {"project": "PROJ"}}, "filters: no project;"),
+        ({"filters": {"issue_type": "Task"}}, "filters: no issue_type;"),
         ({"filters": {"updated_after": "yesterday"}}, "updated_after: an ISO 8601 date"),
         ({"filters": {"updated_after": "0001-01-01T00:00:00+05:00"}}, "updated_after: an ISO"),
         ({"filters": {"updated_before": "9999-12-31T23:59:59-05:00"}}, "updated_before: an ISO"),
