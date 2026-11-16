@@ -152,8 +152,8 @@ document linked, come by their ref when they are mirrored, else by their documen
 
 Lists the documents of a scope in tree order, or those under a parent, each with its
 ref, its update day and the day that it is as of, as a hit says it. A document sits
-under the titles of its breadcrumb, its parents' titles; those not listed come as a
-context line in brackets.
+under its parent; where the parent is not listed, as a folder is not, under the titles
+of its breadcrumb. Ancestors not listed come as a context line in brackets.
 
 - `scope`: as `status` names it, such as `space:ENG`, or its key alone; refused, with
   the scopes that match, when several do.

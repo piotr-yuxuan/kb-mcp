@@ -21,7 +21,7 @@ from pydantic import ConfigDict
 from kb_mcp.kernel.chunking import Chunking
 from kb_mcp.kernel.names import ISSUE_KEY
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.mirror.domain.mirror import FrontMatter, document_id
 from kb_mcp.search.domain.people import Person
 
 if TYPE_CHECKING:
@@ -193,6 +193,9 @@ WORDS = "1"
 FUSION = 60
 # How a search orders what it finds: by relevance, or by a date, newest first.
 Sort = Literal["relevance", "updated", "created"]
+# A document's place in its scope's tree: each node from the top down to the document,
+# its title and, for a listed document, its path; empty for an ancestor not listed.
+Place = tuple[tuple[str, str], ...]
 
 
 class Identifiers(Record):
@@ -491,6 +494,60 @@ def tree_key(path: tuple[str, ...]) -> tuple[tuple[str | int, ...], ...]:
     return tuple(
         tuple(int(part) if index % 2 else part for index, part in enumerate(NUMBER.split(name)))
         for name in (name.casefold() for name in path)
+    )
+
+
+def tree_order(entries: Sequence[IndexedDocument]) -> list[tuple[Place, IndexedDocument]]:
+    """Place each document of one scope in its tree; give them in tree order, with places.
+
+    A document sits under its parent where ``entries`` list it. Else under the titles of
+    its breadcrumb, as ancestors not listed, below the listed document whose breadcrumb
+    and title are the longest run of them from the top, where one alone has them; the
+    title of a parent not listed, the breadcrumb's last, is never that document's. A
+    loop of parents is cut where it closes, climbing from its first document in the
+    order given, so that one listing gives one tree. Depth first by ``tree_key``, ties
+    at each level by path.
+    """
+    by_id = {document_id(each.front.source, each.front.id): each for each in entries}
+    titled: dict[tuple[str, ...], list[IndexedDocument]] = {}
+    for each in entries:
+        titled.setdefault((*each.front.breadcrumb, each.front.title), []).append(each)
+    places: dict[str, Place] = {}
+
+    def place(entry: IndexedDocument, placing: frozenset[str]) -> Place:
+        if entry.path not in places:
+            front, placing = entry.front, placing | {entry.path}
+            parent, unlisted = by_id.get(front.parent or ""), ()
+            if parent is None or parent.path in placing:
+                crumbs = front.breadcrumb
+                sizes = range(len(crumbs) - (front.parent is not None), 0, -1)
+                runs = ((size, titled.get(crumbs[:size], [])) for size in sizes)
+                size, parent = next(
+                    (
+                        (size, run[0])
+                        for size, run in runs
+                        if len(run) == 1 and run[0].path not in placing
+                    ),
+                    (0, None),
+                )
+                unlisted = crumbs[size:]
+            places[entry.path] = (
+                *(place(parent, placing) if parent else ()),
+                *((title, "") for title in unlisted),
+                (front.title, entry.path),
+            )
+        return places[entry.path]
+
+    placed = [(place(each, frozenset()), each) for each in entries]
+    return sorted(
+        placed,
+        key=lambda pair: tuple(
+            zip(
+                tree_key(tuple(title for title, _ in pair[0])),
+                (path for _, path in pair[0]),
+                strict=True,
+            )
+        ),
     )
 
 

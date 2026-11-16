@@ -1393,6 +1393,71 @@ def test_a_project_is_browsed_by_the_titles_along_parents(tmp_path: Path) -> Non
     assert tree_lines(library.browse(scope="PROJ", parent="PROJ-2")) == ["- Sub-task (PROJ-1)"]
 
 
+def test_two_parents_of_one_title_keep_their_own_children(tmp_path: Path) -> None:
+    """A scope's documents form a tree by their parents: an issue's title names no place.
+
+    Jira's summaries are not unique: each child sits under the parent that it names.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PRB-1", "Payments"), None),
+            (issue("PRB-7", "Payments"), None),
+            (issue("PRB-2", "Child of one", parent="jira:10001", breadcrumb=("Payments",)), None),
+            (issue("PRB-8", "Child of seven", parent="jira:10007", breadcrumb=("Payments",)), None),
+        ],
+    )
+    assert tree_lines(library.browse(scope="project:PRB")) == [
+        "- Payments (PRB-1)",
+        "  - Child of one (PRB-2)",
+        "- Payments (PRB-7)",
+        "  - Child of seven (PRB-8)",
+    ]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-1")) == ["- Child of one (PRB-2)"]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-7")) == ["- Child of seven (PRB-8)"]
+
+
+def test_a_page_under_a_folder_sits_under_the_folder_s_page(tmp_path: Path) -> None:
+    """A folder is no document: its title, from the breadcrumb, is a bracketed line.
+
+    The page above it is placed by the titles above the folder, its own and its
+    breadcrumb's, which are unique within a space.
+    """
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Home", scope="space:DOC"), None),
+            (
+                page(
+                    "101",
+                    "Design",
+                    scope="space:DOC",
+                    parent="confluence:100",
+                    breadcrumb=("Home",),
+                ),
+                None,
+            ),
+            (
+                page(
+                    "102",
+                    "API",
+                    scope="space:DOC",
+                    parent="confluence:500",
+                    breadcrumb=("Home", "Design", "Specs"),
+                ),
+                None,
+            ),
+        ],
+    )
+    assert tree_lines(library.browse(scope="space:DOC")) == [
+        "- Home (100)",
+        "  - Design (101)",
+        "    - [Specs]",
+        "      - API (102)",
+    ]
+    assert tree_lines(library.browse(scope="DOC", parent="101")) == ["- [Specs]", "  - API (102)"]
+
+
 def test_a_key_of_two_scopes_is_refused_unless_narrowed(tmp_path: Path) -> None:
     """The space PAY and the project PAY: the key alone names both, as the filter does."""
     library = built(

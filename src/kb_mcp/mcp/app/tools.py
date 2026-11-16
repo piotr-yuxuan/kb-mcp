@@ -52,7 +52,7 @@ from kb_mcp.search.domain.search import (
     identifiers,
     plan_query,
     rank,
-    tree_key,
+    tree_order,
 )
 
 if TYPE_CHECKING:
@@ -942,12 +942,8 @@ class Library:
             raise UnanswerableError(responses.refusal(message, named[:VALUES_SHOWN], len(named)))
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
-        # Where each document sits: the titles along its parents, then its own.
-        paths = [(*entry.front.breadcrumb, entry.front.title) for entry in listed]
         # Ties go by path: pages of results need one order from call to call.
-        pairs = sorted(
-            zip(paths, listed, strict=True), key=lambda pair: (tree_key(pair[0]), pair[1].path)
-        )
+        pairs = tree_order(listed)
         base = next((path for path, entry in pairs if entry == top), ())
         pairs = [pair for pair in pairs if pair[0][: len(base)] == base and pair[0] != base]
         size = clamp(limit, BROWSE_LIMITS)

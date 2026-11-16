@@ -339,15 +339,21 @@ parent's from its snapshot in the raw store
 - **Why.** The concepts know a document by its source and id: a key changes when an
   issue moves, and two sources of one connector, which plan 059 allows, may both hold
   `PRB-12`, so a bare key is not a name. Titles, unlike keys, say something to an agent
-  and to an embedding model, and every source now builds its breadcrumb alike, so
-  `browse` places a document under its breadcrumb whatever its source.
+  and to an embedding model, and every source now builds its breadcrumb alike. `browse`
+  places a document under its parent by document id, since titles need not be unique,
+  as Jira's summaries are not; under its breadcrumb's titles only where its parent is
+  not listed, a folder or a parent outside the scope, below the listed document whose
+  own titles are those above that parent, where one alone has them
+  ([`tree_order`](../../src/kb_mcp/search/domain/search.py)).
 - **Cost.** Every hit, passage and link is a few characters longer, measured by
   [the budgets' tests](../../tests/test_budgets.py). A bare key that two documents hold
   is refused, so an agent citing it makes `eval agents` refuse its grading. An issue's
   breadcrumb stops at the first parent that the raw store lacks, with that parent's
   title. Under the chunkings `section-paths` and `small-to-big`, whose texts carry the
   breadcrumb, each issue's chunks were embedded again once, its breadcrumb changing
-  from keys to titles. `status` counts a scope that two sources hold as one.
+  from keys to titles. `status` counts a scope that two sources hold as one. Two
+  folders of one title under one page show as one bracketed line, a folder being no
+  document until plan 061.
 - **Rejected.** Refs by key alone, as before: ambiguous across sources. Parents by key:
   broken by a move. A breadcrumb of parent keys, as Jira's was: meaningless to a model.
   Asking the site for each missing ancestor: the prepare reads the raw store alone.

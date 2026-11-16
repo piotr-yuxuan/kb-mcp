@@ -22,7 +22,13 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.search.domain.search import Activity, IndexedDocument, IndexStatus, Passage
+    from kb_mcp.search.domain.search import (
+        Activity,
+        IndexedDocument,
+        IndexStatus,
+        Passage,
+        Place,
+    )
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
 CEILING = 10_000  # estimated tokens of any answer
@@ -330,17 +336,17 @@ def metadata(entry: IndexedDocument, refs: Mapping[str, str], *, whole: bool) ->
     )
 
 
-def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) -> list[str]:
+def tree(pairs: Sequence[tuple[Place, IndexedDocument]], base: int) -> list[str]:
     """Write each document of a tree as one item, indented by its depth below ``base``.
 
     Ancestors not listed before it, in this list, come first as one context line in
-    brackets: folders, documents not mirrored, or, for the first item, documents
-    listed on an earlier page.
+    brackets, by their titles: folders, documents not mirrored, or, for the first item,
+    documents listed on an earlier page.
     """
     items: list[str] = []
-    previous: tuple[str, ...] = ()
-    for path, entry in pairs:
-        ancestors = path[base:-1]
+    previous: Place = ()
+    for place, entry in pairs:
+        ancestors = place[base:-1]
         shared = zip(previous, ancestors, strict=False)
         common = sum(1 for _ in takewhile(lambda pair: pair[0] == pair[1], shared))
         front = entry.front
@@ -348,10 +354,10 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) ->
             f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
             f" ({front.ref}, updated {front.updated:%Y-%m-%d}, {as_of(entry)})"
         )
-        if missing := ancestors[common:]:
+        if missing := [title for title, _ in ancestors[common:]]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"
         items.append(line)
-        previous = path[base:]
+        previous = place[base:]
     return items
 
 

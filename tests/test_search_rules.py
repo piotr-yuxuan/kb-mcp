@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 
 from kb_mcp.search.domain.chunking import chunks, section_chunks
 from kb_mcp.search.domain.search import (
     MAX_WORDS,
+    IndexedDocument,
     Score,
     Sort,
     fuse,
@@ -18,8 +20,12 @@ from kb_mcp.search.domain.search import (
     rank,
     sections,
     tree_key,
+    tree_order,
 )
-from tests.mirrors import MOMENT
+from tests.mirrors import MOMENT, issue, location, page
+
+if TYPE_CHECKING:
+    from kb_mcp.mirror.domain.mirror import FrontMatter
 
 LIMIT = 26
 # The plan's length of a chunk, in characters.
@@ -148,6 +154,63 @@ def test_trees_list_depth_first_with_numbers_in_order() -> None:
         ("PROJ-2",),
         ("PROJ-2", "PROJ-11"),
         ("PROJ-10",),
+    ]
+
+
+def tree_refs(*fronts: FrontMatter) -> list[tuple[str, ...]]:
+    """Give each document's place in tree order: a listed node by its ref, others bracketed.
+
+    The documents are listed at the paths of the data layout.
+    """
+    entries = [
+        IndexedDocument(path=location(front), front=front, length=0, sections=1) for front in fronts
+    ]
+    refs = {entry.path: entry.front.ref for entry in entries}
+    return [
+        tuple(refs.get(path, f"[{title}]") for title, path in place)
+        for place, _ in tree_order(entries)
+    ]
+
+
+def test_a_tree_follows_parents_by_their_document_ids() -> None:
+    """Two parents of one title keep their children; a loop of parents is cut where it closes.
+
+    A parent not listed names no listed document by its title, the breadcrumb's last,
+    and two listed documents of one title and breadcrumb are no place for another: their
+    children sit under the title, bracketed. Ties at each level go by path, an ancestor
+    not listed first.
+    """
+    assert tree_refs(
+        issue("PRB-1", "Payments"),
+        issue("PRB-7", "Payments"),
+        issue("PRB-2", "Child", parent="jira:10001", breadcrumb=("Payments",)),
+        issue("PRB-8", "Child", parent="jira:10007", breadcrumb=("Payments",)),
+        issue("PRB-3", "Elsewhere", parent="jira:99999", breadcrumb=("Payments",)),
+        issue("PRB-6", "Orphan", breadcrumb=("Payments",)),
+        issue("PRB-4", "Loop A", parent="jira:10005"),
+        issue("PRB-5", "Loop B", parent="jira:10004"),
+    ) == [
+        ("jira:PRB-5",),
+        ("jira:PRB-5", "jira:PRB-4"),
+        ("[Payments]", "jira:PRB-3"),
+        ("[Payments]", "jira:PRB-6"),
+        ("jira:PRB-1",),
+        ("jira:PRB-1", "jira:PRB-2"),
+        ("jira:PRB-7",),
+        ("jira:PRB-7", "jira:PRB-8"),
+    ]
+
+
+def test_a_tree_places_a_page_under_a_folder_by_the_titles_above_it() -> None:
+    """A page whose parent is a folder sits under the folder's title, under its page."""
+    assert tree_refs(
+        page("100", "Home"),
+        page("101", "Design", parent="confluence:100", breadcrumb=("Home",)),
+        page("102", "API", parent="confluence:500", breadcrumb=("Home", "Design", "Specs")),
+    ) == [
+        ("confluence:100",),
+        ("confluence:100", "confluence:101"),
+        ("confluence:100", "confluence:101", "[Specs]", "confluence:102"),
     ]
 
 

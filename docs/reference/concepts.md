@@ -154,7 +154,9 @@ as-of times reach the index through the mirror, in each source's file,
 [`IndexedDocument.as_of`](../../src/kb_mcp/search/domain/search.py), by
 [`as_of`](../../src/kb_mcp/mcp/app/responses.py). On the serving side: the front matter's field `scope`, as `space:ENG`, the filter of the
 same name, read by [`scope_of`](../../src/kb_mcp/mcp/app/tools.py), and
-`browse(scope=, parent=, source=)`.
+`browse(scope=, parent=, source=)`, whose
+[`tree_order`](../../src/kb_mcp/search/domain/search.py) places its documents by their
+parents.
 
 ### document
 
