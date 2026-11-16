@@ -585,6 +585,49 @@ def test_since_7d_is_recorded_as_a_time_which_the_first_attempt_and_the_resume_u
     assert seen == [recorded]
 
 
+def test_the_settings_recorded_are_those_that_the_first_attempt_and_the_resume_use(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The user: the units run from the record, its settings as its options, never as given.
+
+    The record written is made to name another Jira project than the settings file does,
+    before it is read back: Jira's fetch, at its first attempt, reads that project; it is
+    interrupted. The record then names a third project, and the settings file a fourth:
+    the resume reads the record's.
+    """
+    seen: list[list[str]] = []
+
+    def fetched(_settings: object, purview: Purview, *_: object) -> Outcome[FetchCounts]:
+        seen.append([scope.key for scope in purview.scopes])
+        if len(seen) == 1:
+            raise KeyboardInterrupt
+        return Outcome(ending="failed", problems=(Problem(where="jira", reason="told"),))
+
+    monkeypatch.setattr(fetcher, "run_fetch", fetched)
+    written = RunRecord.write_configuration
+
+    def rewritten(self: RunRecord, configuration: Configuration) -> None:
+        settings = json.loads(json.dumps(configuration.settings))
+        settings["sources"]["jira"]["projects"] = ["REC"]
+        written(self, replace(configuration, settings=settings))
+
+    options = given(home, endpoint)
+    with monkeypatch.context() as patch:
+        patch.setattr(RunRecord, "write_configuration", rewritten)
+        status, first = refreshed(capsys, *options, "jira", *SINCE)
+    assert (status, seen) == (ExitStatus.INTERRUPTED, [["REC"]])
+    run = first["run"]
+    configured = home / "data" / "runs" / run / "configuration.json"
+    held = json.loads(configured.read_text("utf-8"))
+    assert held["settings"]["sources"]["jira"]["projects"] == ["REC"]
+    held["settings"]["sources"]["jira"]["projects"] = ["RES"]
+    configured.write_text(json.dumps(held), "utf-8")
+    config = home / "config.toml"
+    config.write_text(config.read_text("utf-8").replace('["PRB"]', '["CFG"]'), "utf-8")
+    status, _ = refreshed(capsys, "--resume", run, *options)
+    assert (status, seen) == (ExitStatus.FAILED, [["REC"], ["RES"]])
+
+
 def test_since_7d_is_recorded_as_the_time_7_days_before_the_run_s_start(
     home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
