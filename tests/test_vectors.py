@@ -51,6 +51,7 @@ from tests.endpoint import (
     tiny,
 )
 from tests.mirrors import MOMENT, fillers, location, page, write
+from tests.recorded import unrun
 from tests.test_cli import logged_as
 from tests.test_observed import said
 from tests.test_sources import keys_of
@@ -370,7 +371,7 @@ def test_the_command_in_short_counts_the_chunks_and_those_embedded_now(
     """Every chunk added and embedded the first time; nothing written the next."""
     with serving(Scripted()) as url:
         assert chained(data, capsys, url) == 0
-        chunks, added, removed, embedded = capsys.readouterr().out.splitlines()[:4]
+        chunks, added, removed, embedded = unrun(capsys.readouterr().out).splitlines()[:4]
         count = chunks.removeprefix("chunks: ")
         assert int(count) > 0
         assert (added, removed, embedded) == (
@@ -379,7 +380,7 @@ def test_the_command_in_short_counts_the_chunks_and_those_embedded_now(
             f"embedded now: {count}",
         )
         assert main(["embed", "--yes", *config(data, "tiny", url)]) == 0
-    assert capsys.readouterr().out.splitlines()[:3] == [
+    assert unrun(capsys.readouterr().out).splitlines()[:3] == [
         chunks,
         "nothing written",
         "embedded now: 0",
@@ -396,7 +397,7 @@ def test_the_command_reports_its_files_then_its_texts_to_embed(
     """
     with serving(Scripted()) as url:
         assert chained(data, capsys, url) == 0
-        chunks = int(capsys.readouterr().out.splitlines()[0].removeprefix("chunks: "))
+        chunks = int(unrun(capsys.readouterr().out).splitlines()[0].removeprefix("chunks: "))
         assert chained(data, capsys, url) == 0
         write(data / "docs", page("196845", "Rollback"), BODY.replace("payout", "refund"))
         assert chained(data, capsys, url) == 0
@@ -1214,7 +1215,7 @@ def test_embed_s_json_fails_by_a_chunk_refused_and_warns_of_a_mirror_changed(
     with serving(Scripted(refused={refused})) as url:
         assert chained(data, capsys, url, "--format", "json") == FAILED
         failed = json.loads(capsys.readouterr().out)
-    assert list(failed) == ["ending", "counts", "problems", "warnings"]
+    assert list(failed) == ["run", "ending", "counts", "problems", "warnings"]
     assert (failed["ending"], failed["warnings"]) == ("failed", [])
     assert [each["where"] for each in failed["problems"]] == ["confluence/ENG/196845-rollback.md"]
     write(data / "docs", page("196847", "Later"))

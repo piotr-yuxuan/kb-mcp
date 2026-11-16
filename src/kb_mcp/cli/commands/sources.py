@@ -1,64 +1,63 @@
-"""``fetch`` and ``prepare``: each source taken, its part in the stage in turn, a row each."""
+"""``fetch`` and ``prepare``: a recorded run of one stage per source, a row per source taken."""
 
 from __future__ import annotations
 
-import time
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING
 
-import structlog
-
-from kb_mcp.cli.app.sources import REFUSED, SourcesRefusedError, run_each
+from kb_mcp.cli.commands._runs import recorded
+from kb_mcp.cli.commands._stages import planned
+from kb_mcp.cli.domain.command import FETCH
 from kb_mcp.cli.domain.echo import values_of
-from kb_mcp.cli.domain.sources import FETCH, chosen, given
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.sources.stages import SourceRun
+from kb_mcp.cli.domain.rows import Ran, Row
+from kb_mcp.cli.domain.runs import Configuration
+from kb_mcp.cli.domain.sources import chosen, fetch_options
+from kb_mcp.config.domain.settings import without_secrets
 
 if TYPE_CHECKING:
     import argparse
 
-    from kb_mcp.cli.domain.rows import Ran
     from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.kernel.exit_status import ExitStatus
     from kb_mcp.kernel.output import Detail
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran | None]:
-    """Run each source taken in this stage; exit as the rows' endings fold, 2 when refused.
+def run(arguments: argparse.Namespace, loaded: Loaded, run: str) -> tuple[ExitStatus, Ran | None]:
+    """Run each source taken in this stage, as a run recorded; exit as its units' endings fold.
 
-    The entry refused what it could before asking. Each source taken is run with its
-    table and, in a fetch, its options' values by flag. A fetcher or a preparer that does
-    not load is refused here, before any row runs, an error, ``fetch.refused`` or
-    ``prepare.refused``; what its ``preflight`` refuses, such as an --until before
-    --since, or a work log that is not a folder, fails its row alone. Each row's problems
-    are said as it runs, by place and reason, never content.
+    The entry refused what it could before asking. The configuration resolved now, the
+    sources taken in their order and, in a fetch, its options as of now, is recorded, then
+    run from its record (``recorded``), exit 2 when refused. What a ``preflight``
+    refuses, such as an --until before --since, or a work log that is not a folder, fails
+    its unit alone. Each unit's problems are said as it runs, by place and reason, never
+    content.
     """
-    settings = loaded.settings
     stage = arguments.command.name
+    started = datetime.now(UTC)
     taken, _ = chosen(arguments, values_of(loaded))
-    runs = [
-        SourceRun(
-            source=declared,
-            sources=arguments.sources,
-            settings=settings,
-            source_table=getattr(settings.sources, declared.name),
-            options=given(arguments, declared.connector.flags) if stage == FETCH else {},
-            now=lambda: datetime.now(UTC),
-            sleep=time.sleep,
-            dry_run=arguments.dry_run,
-        )
-        for declared in taken
-    ]
-    try:
-        ran = run_each(stage, runs)
-    except SourcesRefusedError as error:
-        structlog.get_logger().error(REFUSED[stage], reason=str(error))
-        return ExitStatus.REFUSED, None
-    return ran.exit_status, ran
+    configuration = Configuration(
+        run=run,
+        command=stage,
+        started=started,
+        stages=(stage,),
+        dry_run=arguments.dry_run,
+        sources={stage: tuple(each.name for each in taken)},
+        options={FETCH: fetch_options(arguments, started)} if stage == FETCH else {},
+        settings=without_secrets(loaded.settings),
+    )
+    status, done = recorded(loaded, run, started, configuration, partial(planned, arguments))
+    if done is None:
+        return status, None
+    rows = tuple(
+        Row(source=str(unit.source), **dict(outcome)) for unit, outcome in done.outcomes.items()
+    )
+    return status, Ran(run=run, exit_status=status, sources=rows)
 
 
 def text(ran: Ran, detail: Detail) -> str:
-    """Write a row per source, how it ended, then its outcome's own text, indented."""
-    written: list[str] = []
+    """Write the run's id, then a row per source, how it ended, its outcome's own text, indented."""
+    written = [f"run {ran.run}\n"]
     for row in ran.sources:
         written.append(f"{row.source}: {row.ending}\n")
         written.extend(f"  {line}\n" for line in row.text(detail).splitlines())

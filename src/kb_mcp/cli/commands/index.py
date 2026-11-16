@@ -2,32 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.commands._embedding import indexing_of
-from kb_mcp.kernel.exit_status import ENDED, ExitStatus
-from kb_mcp.kernel.outcome import Outcome
-from kb_mcp.search.app.indexing import update_index
+from kb_mcp.cli.commands._runs import ended_text, whole_run
+from kb_mcp.cli.domain.command import INDEX
 
 if TYPE_CHECKING:
     import argparse
 
+    from kb_mcp.cli.domain.rows import Ended
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.search.app.indexing import IndexCounts
+    from kb_mcp.kernel.exit_status import ExitStatus
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Outcome[IndexCounts]]:
-    """Update the index by words alone; exit as its outcome ends, 1 for a file left out.
+def run(arguments: argparse.Namespace, loaded: Loaded, run: str) -> tuple[ExitStatus, Ended | None]:
+    """Update the index by words alone, as a run recorded; exit as its outcome ends.
 
-    Nothing built is an error, and the index in place stays; each file skipped is a
-    problem at each run, even when nothing changed.
-    ``vectors.sqlite`` stays as it is.
+    Its configuration records whether --rebuild was given. Nothing built is an error, and
+    the index in place stays; each file skipped is a problem at each run, even when
+    nothing changed, which exits 1. ``vectors.sqlite`` stays as it is.
     """
-    indexing = indexing_of(loaded.settings, None)
-    outcome = update_index(indexing, datetime.now(UTC), rebuild=arguments.rebuild)
-    return ENDED[outcome.ending], outcome
+    return whole_run(arguments, loaded, run, INDEX, {"--rebuild": arguments.rebuild})
 
 
-# The outcome writes itself: its counts, then its problems and warnings.
-text = Outcome.text
+# The run's id, then the outcome: its counts, then its problems and warnings.
+text = ended_text

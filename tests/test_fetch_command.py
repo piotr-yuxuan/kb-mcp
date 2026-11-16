@@ -25,6 +25,7 @@ from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview, ru
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, sourced
+from tests.recorded import unrun
 from tests.samples import v2_page
 from tests.test_cli import logged_as
 from tests.test_fetching import CAP, SITE, FakeSite, scopes, stamp
@@ -37,7 +38,6 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
 
 REFUSED = 2
 SOME_FAILED = 1
@@ -92,7 +92,7 @@ def test_a_fetch_shows_what_it_fetched_by_kind_its_files_and_failures(
     that fails is a page's, which fails Confluence's row alone, and the run.
     """
     assert main(signed_in) == SOME_FAILED
-    assert capsys.readouterr().out == (
+    assert unrun(capsys.readouterr().out) == (
         "confluence: failed\n"
         "  confluence blogposts: fetched: 1\n"
         "  confluence pages: fetched: 2\n"
@@ -114,7 +114,7 @@ def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
     --since, and the coverage of each target grew.
     """
     assert main([*signed_in, "--detail", "detailed"]) == SOME_FAILED
-    confluence, jira = capsys.readouterr().out.split("jira: done\n")
+    confluence, jira = unrun(capsys.readouterr().out).split("jira: done\n")
     row, space, *counts, problem, total = confluence.splitlines()
     project, *issues = jira.splitlines()
     since = "from 2026-10-02T00:00:00+00:00 to "
@@ -136,14 +136,14 @@ def test_a_fetch_in_detail_shows_each_window_every_count_then_the_failures(
     assert (problem, total) == ("  problem: file att3: status 404", "  problems: 1")
 
 
-def test_each_source_is_fetched_alone_into_a_report_of_its_own(
+def test_each_source_is_fetched_alone_into_an_entry_of_its_own(
     home: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Plan 030: Confluence's fetch, then Jira's, each with its report, of its own counts.
+    """Plan 030: Confluence's fetch, then Jira's, each with its own counts.
 
-    Every request of Jira's comes after the last of Confluence's; the reports are
-    ``<time>-confluence.json`` and ``<time>-jira.json``, and neither counts anything of
-    the other source's.
+    Every request of Jira's comes after the last of Confluence's; plan 062: the run's
+    record, ``runs/<run id>/outcomes.json``, holds an entry of each, neither counting
+    anything of the other source's.
     """
     chosen = MODEL(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
@@ -162,21 +162,14 @@ def test_each_source_is_fetched_alone_into_a_report_of_its_own(
     assert confluence
     assert jira
     assert max(confluence) < min(jira)
-    reports = {
-        path.name.rpartition("-")[2]: json.loads(path.read_text("utf-8"))
-        for path in chosen.runs.iterdir()
-    }
-    assert sorted(reports) == ["confluence.json", "jira.json"]
-    assert all(
-        re.fullmatch(r"\d{8}T\d{6}Z-(confluence|jira)\.json", path.name)
-        for path in chosen.runs.iterdir()
-    )
-    assert [what for what in reports["confluence.json"]["counts"] if "jira" in what] == []
-    assert [what for what in reports["jira.json"]["counts"] if "confluence" in what] == []
-    assert (reports["confluence.json"]["ending"], reports["jira.json"]["ending"]) == (
-        "failed",
-        "done",
-    )
+    [record] = chosen.runs.iterdir()
+    units = json.loads((record / "outcomes.json").read_text("utf-8"))["units"]
+    entries = {(each["stage"], each["source"]): each for each in units}
+    assert list(entries) == [("fetch", "confluence"), ("fetch", "jira")]
+    counted = {source: entry["counts"] for (_, source), entry in entries.items()}
+    assert [what for what in counted["confluence"] if "jira" in what] == []
+    assert [what for what in counted["jira"] if "confluence" in what] == []
+    assert [entry["ending"] for entry in entries.values()] == ["failed", "done"]
 
 
 def test_without_a_session_each_source_is_to_sign_in_before_any_request(
@@ -190,7 +183,8 @@ def test_without_a_session_each_source_is_to_sign_in_before_any_request(
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     options = ("--space", "MFS", "--project", "PRB", "--since", "7d")
     assert main(command(home, *options)) == SIGN_IN_NEEDED
-    rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    out = unrun(capsys.readouterr().out)
+    rows = [line for line in out.splitlines() if not line.startswith(" ")]
     assert rows == ["confluence: sign in again", "jira: sign in again"]
     needed = logged_as(home, "fetch.sign_in_needed")
     assert [(each["source"], each["hint"]) for each in needed] == [
@@ -213,7 +207,7 @@ def test_a_stopped_fetch_says_why_in_short(
     stopped = Outcome(ending="failed", counts=FetchCounts(counts=Counter(counts)), problems=failed)
     monkeypatch.setattr(fetcher, "run_fetch", lambda *_: stopped)
     assert main(command(home, "--space", "MFS")) == SOME_FAILED
-    assert capsys.readouterr().out == (
+    assert unrun(capsys.readouterr().out) == (
         "confluence: failed\n"
         "  confluence pages: fetched: 3\n"
         "  runs: stopped, too many failures in a row: 1\n"
@@ -232,7 +226,7 @@ def test_a_dry_run_shows_what_it_would_fetch(
     windows say nothing of the coverage, which a dry run does not write.
     """
     assert main([*signed_in, "--dry-run"]) == 0
-    confluence, jira = capsys.readouterr().out.split("jira: not run\n")
+    confluence, jira = unrun(capsys.readouterr().out).split("jira: not run\n")
     row, space, *pages = confluence.splitlines(keepends=True)
     project, *issues = jira.splitlines(keepends=True)
     assert row == "confluence: not run\n"
@@ -349,9 +343,10 @@ def test_without_a_session_the_user_is_told_to_sign_in(
 def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """The user's own key is shown to them, and never written to the run report.
+    """The user's own key is shown to them, as the warning fetch.scope_failed.
 
-    It is the warning fetch.scope_failed, which the run's log file holds too.
+    The run's log file holds it too, and, since plan 062, the run's record, whose
+    configuration names the scopes that it fetches and whose entry holds its problems.
     """
     chosen = MODEL(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
@@ -370,10 +365,10 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     (failed,) = logged_as(home, "fetch.scope_failed")
     assert (failed["level"], failed["scope"]) == ("warning", "space NOPE: not found")
     assert "  confluence spaces failed: not found: 1\n" in captured.out
-    [report] = chosen.runs.iterdir()
-    assert report.name.endswith("-confluence.json")
-    assert "NOPE" not in report.read_text("utf-8")
-    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
+    [record] = chosen.runs.iterdir()
+    [entry] = json.loads((record / "outcomes.json").read_text("utf-8"))["units"]
+    assert (entry["source"], entry["ending"]) == ("confluence", "failed")
+    assert entry["problems"] == [{"where": "space NOPE", "reason": "not found"}]
 
 
 def test_a_dry_run_whose_space_finds_nothing_fails_and_exits_1(
@@ -412,7 +407,7 @@ def test_ctrl_c_exits_130_and_says_which_source_it_stopped(
     assert main(command(home, *options)) == INTERRUPTED
     captured = capsys.readouterr()
     assert ("warning", "fetch.interrupted") in said(captured.err)
-    assert captured.out == "confluence: interrupted\njira: not run\n"
+    assert unrun(captured.out) == "confluence: interrupted\njira: not run\n"
     (interrupted,) = logged_as(home, "fetch.interrupted")
     assert (interrupted["level"], interrupted["source"]) == ("warning", "confluence")
 
@@ -447,13 +442,13 @@ SINCE = datetime(2026, 10, 20, tzinfo=UTC)
 
 def counted(
     tmp_path: Path, monkeypatch: MonkeyPatch, since: datetime | None, *, first_fetch: bool
-) -> tuple[Outcome[FetchCounts], list[dict[str, object]], Settings]:
+) -> tuple[Outcome[FetchCounts], list[dict[str, object]]]:
     """Run over a space of 50 pages: 7 changed in the window, of which 4 were stored first.
 
     The 4 changed on the 21st, stored by a run --since the 20th on the 22nd, which lists
     all 50; 3 more on the 23rd, edited since that run; 43 on the 1st. ``first_fetch``
-    forgets the coverage before the run counted, on the 27th. Give its outcome, the
-    events it logged, and its settings.
+    forgets the coverage before the run counted, on the 27th. Give its outcome, and the
+    events it logged.
     """
     edited = 23
     days = [21] * 4 + [edited] * 3 + [1] * 43
@@ -482,7 +477,7 @@ def counted(
     targets = Purview(scopes=scopes(["MFS"], []), max_file_bytes=CAP, since=since)
     with capture_logs() as events:
         outcome = run_fetch(chosen, targets, lambda: COUNTED_AT, lambda _: None)
-    return outcome, events, chosen
+    return outcome, events
 
 
 @pytest.mark.parametrize(
@@ -500,9 +495,9 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
     """50 listed, 7 in the window of which 4 stored: the task, short and its JSON say 3.
 
     fetch.listed says each number, and the window's reason; the window goes to the
-    JSON, and the run report names no scope.
+    JSON.
     """
-    outcome, events, chosen = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
+    outcome, events = counted(tmp_path, monkeypatch, since, first_fetch=first_fetch)
     listed = [event for event in events if event["event"] == "fetch.listed"]
     assert [
         (each["listed"], each["in_window"], each["stored"], each["to_fetch"], each["reason"])
@@ -518,7 +513,6 @@ def test_a_run_counts_what_it_fetches_apart_from_what_it_lists(
         reason,
         "extended",
     )
-    assert "MFS" not in max(chosen.runs.iterdir()).read_text("utf-8")
 
 
 @pytest.mark.parametrize("first_fetch", [False, True])
@@ -526,7 +520,7 @@ def test_without_since_the_detail_counts_what_is_new_or_changed_since_the_last_f
     tmp_path: Path, monkeypatch: MonkeyPatch, *, first_fetch: bool
 ) -> None:
     """A catch-up, or a first fetch: not what is in the period, which can be a whole space."""
-    outcome, _, _ = counted(tmp_path, monkeypatch, None, first_fetch=first_fetch)
+    outcome, _ = counted(tmp_path, monkeypatch, None, first_fetch=first_fetch)
     detailed = outcome.counts.text("detailed")
     assert "confluence pages: new or changed since the last fetch: 3\n" in detailed
     assert "confluence pages: fetched: 3\n" in detailed
@@ -538,7 +532,7 @@ def test_with_since_the_detail_counts_what_is_in_the_period_and_stored(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Given --since, the period is the user's: what is in it, and what was stored already."""
-    outcome, _, _ = counted(tmp_path, monkeypatch, SINCE, first_fetch=False)
+    outcome, _ = counted(tmp_path, monkeypatch, SINCE, first_fetch=False)
     detailed = outcome.counts.text("detailed")
     assert "confluence pages: in the period: 7\n" in detailed
     assert "confluence pages: already stored: 4\n" in detailed
@@ -556,7 +550,7 @@ def test_options_before_the_names_keep_their_values_with_no_question(
     given = ("fetch", "--yes", "--config", str(config), "--since", "2026-10-02")
     assert main([*given, "confluence"]) == SOME_FAILED
     captured = capsys.readouterr()
-    assert captured.out.startswith("confluence: failed\n")
+    assert unrun(captured.out).startswith("confluence: failed\n")
     assert "jira:" not in captured.out
     assert f"--config {config}" in captured.err
     assert "--since 2026-10-02" in captured.err
@@ -567,7 +561,8 @@ def test_names_are_taken_once_each_in_the_registry_s_order(
 ) -> None:
     """Whatever the order typed: Confluence first, as Jira's links read it."""
     assert main([*signed_in, "jira", "confluence", "jira"]) == SOME_FAILED
-    rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    out = unrun(capsys.readouterr().out)
+    rows = [line for line in out.splitlines() if not line.startswith(" ")]
     assert rows == ["confluence: failed", "jira: done"]
 
 
@@ -613,7 +608,7 @@ def test_without_a_name_each_source_configured_runs_and_the_others_are_said_left
     )
     assert main(command(home, "--space", "MFS")) == 0
     captured = capsys.readouterr()
-    assert captured.out.splitlines()[0] == "confluence: done"
+    assert unrun(captured.out).splitlines()[0] == "confluence: done"
     assert "jira:" not in captured.out
     assert "\n  source jira: left out, not configured\n" in captured.err
     assert "\n  source worklog: left out, not configured\n" in captured.err

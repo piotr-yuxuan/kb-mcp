@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.sources import PREPARE, prepare_described
+from kb_mcp.cli.domain.command import PREPARE, Command
+from kb_mcp.cli.domain.sources import prepare_described
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_groups
 
@@ -33,7 +33,8 @@ def register(
         "prepare",
         help="turn what each source holds into the Markdown mirror",
         epilog=(
-            "With --format json: `exit_status`, the run's; `sources`, a row per source"
+            "With --format json: `run`, the run's id, which refresh --resume takes;"
+            " `exit_status`, the run's; `sources`, a row per source"
             " taken, in the registry's order, each with its `source`, its `ending` (done,"
             " failed, interrupted, not run), its `counts`, null when it gave none, as a dry"
             " run of Confluence or Jira, which counts nothing, and its `problems` and"
@@ -91,5 +92,6 @@ def register(
             described=prepare_described,
             refused=choice_refused,
             programs=("pandoc",),
+            stages=(PREPARE,),
         )
     )

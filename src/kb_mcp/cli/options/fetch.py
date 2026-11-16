@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.domain.sources import FETCH, chosen_to_fetch, fetch_described, given
+from kb_mcp.cli.domain.command import FETCH, Command
+from kb_mcp.cli.domain.sources import chosen_to_fetch, fetch_described, given
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 from kb_mcp.cli.options._sources import add_source_options, choice_refused, left_unapplied
 
@@ -75,7 +75,8 @@ def register(
         "fetch",
         help="bring what changed in each source into its store",
         epilog=(
-            "With --format json: `exit_status`, the run's; `sources`, a row per source"
+            "With --format json: `run`, the run's id, which refresh --resume takes;"
+            " `exit_status`, the run's; `sources`, a row per source"
             " taken, in the registry's order, each with its `source`, its `ending` (done,"
             " failed, sign in again, interrupted, not run), its `counts`, null when it gave"
             " none, and its `problems` and `warnings`, each with its `where` and `reason`,"
@@ -116,5 +117,6 @@ def register(
             unapplied=unapplied,
             described=fetch_described,
             refused=refused,
+            stages=(FETCH,),
         )
     )

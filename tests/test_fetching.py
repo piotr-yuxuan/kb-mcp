@@ -517,14 +517,12 @@ def no_sleep(_: float) -> None:
 def test_without_a_saved_session_the_run_asks_to_sign_in(tmp_path: Path) -> None:
     """No cookies saved: nothing is asked of the site, and the status says sign in.
 
-    The report is named by the run's source, after its time.
+    Plan 062: the run's record is its runner's, under its run id, never the fetch's.
     """
     outcome = run_fetch(settings(tmp_path), purview(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "sign in again"
     assert outcome.counts.counts["runs: stopped, sign-in needed"] == 1
-    [report] = (tmp_path / "data" / "runs").iterdir()
-    assert report.name == "20261022T090000Z-confluence.json"
-    assert json.loads(report.read_text("utf-8"))["ending"] == "sign in again"
+    assert not (tmp_path / "data" / "runs").exists()
 
 
 @pytest.mark.parametrize(("spaces", "projects"), [([], []), (["MFS"], ["PRB"])])
@@ -575,22 +573,21 @@ def test_an_expired_session_stops_the_run_before_anything_is_stored(
 def test_a_run_with_a_failure_says_so_in_its_status(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """A document that failed makes the run's status 1, and its report says why."""
+    """A document that failed makes the run's status 1, and its problem says why."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(changed_labels=True))
     outcome = run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
     assert outcome.ending == "failed"
     assert [each.where for each in outcome.problems] == ["confluence pages"]  # read refused
-    [report] = chosen.runs.iterdir()
-    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
-@pytest.mark.parametrize(
-    ("stop", "ending"), [(KeyboardInterrupt, "interrupted"), (OSError, "failed")]
-)
-def test_a_run_that_something_stops_records_how(
-    stop: type[BaseException], ending: str, tmp_path: Path, monkeypatch: MonkeyPatch
+@pytest.mark.parametrize("stop", [KeyboardInterrupt, OSError])
+def test_what_stops_a_fetch_passes_to_its_run_which_records_it(
+    stop: type[BaseException], tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Ctrl-C leaves its record interrupted; any other error that stops it, failed."""
+    """Ctrl-C, or any other error that stops it, passes, the coverage of what ran kept.
+
+    Plan 062: the run's runner records how its unit ended, as ``tests/test_runs.py`` shows.
+    """
     chosen = saved_session(tmp_path, monkeypatch, FakeSite())
 
     def stopped(*_: object) -> None:
@@ -599,14 +596,13 @@ def test_a_run_that_something_stops_records_how(
     monkeypatch.setattr(Fetching, "run", stopped)
     with pytest.raises(stop):
         run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
-    [report] = chosen.runs.iterdir()
-    assert json.loads(report.read_text("utf-8"))["ending"] == ending
+    assert not chosen.runs.exists()
 
 
-def test_a_run_whose_coverage_cannot_be_written_records_it_failed(
+def test_a_run_whose_coverage_cannot_be_written_passes_the_error(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Every document fetched, then the coverage refused by the disk: the record says failed."""
+    """Every document fetched, then the coverage refused by the disk: the error passes."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite())
 
     def refused(*_: object) -> None:
@@ -615,8 +611,6 @@ def test_a_run_whose_coverage_cannot_be_written_records_it_failed(
     monkeypatch.setattr(RawStore, "put_coverage", refused)
     with pytest.raises(OSError, match="No space left"):
         run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
-    [report] = chosen.runs.iterdir()
-    assert json.loads(report.read_text("utf-8"))["ending"] == "failed"
 
 
 def test_a_count_is_named_with_a_colon_so_that_none_meets_the_windows() -> None:
@@ -791,16 +785,14 @@ def test_a_second_run_downloads_no_file_again(tmp_path: Path) -> None:
     ]
 
 
-def test_an_expired_session_still_leaves_a_run_report(
+def test_an_expired_session_says_why_the_run_stopped(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """The report says why the run stopped."""
+    """Its outcome, which the run records, says why the run stopped."""
     chosen = saved_session(tmp_path, monkeypatch, FakeSite(anonymous=True))
-    run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
-    [report] = chosen.runs.iterdir()
-    saved = json.loads(report.read_text("utf-8"))
-    assert saved["ending"] == "sign in again"
-    assert saved["counts"]["runs: stopped, sign-in needed"] == 1
+    outcome = run_fetch(chosen, purview(["MFS"], []), lambda: NOW, no_sleep)
+    assert outcome.ending == "sign in again"
+    assert outcome.counts.counts["runs: stopped, sign-in needed"] == 1
 
 
 def test_files_failing_one_after_another_never_stop_the_run(tmp_path: Path) -> None:

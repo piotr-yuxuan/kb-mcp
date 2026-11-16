@@ -24,6 +24,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.app.preparer import NOT_COUNTED
+from tests.recorded import unrun
 from tests.reference import STANDARD
 from tests.samples import v2_page, v2_space, v2_view
 from tests.test_cli import logged_as
@@ -141,7 +142,7 @@ def test_an_empty_store_prepares_nothing_and_exits_zero(
     A row each, Confluence's then Jira's, names its source.
     """
     assert main(arguments(home)) == 0
-    assert capsys.readouterr().out == (f"confluence: done\n{NOTHING}jira: done\n{NOTHING}")
+    assert unrun(capsys.readouterr().out) == (f"confluence: done\n{NOTHING}jira: done\n{NOTHING}")
 
 
 def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
@@ -158,7 +159,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
         store.put_space(v2_space(id=SPACE_ID), [listing_page("100", "Home", None, None)], [], [])
         store.put(Page, page_responses("100", "Home", 1, html, []), FETCHED, {})
     assert main(arguments(home)) == 0
-    first = capsys.readouterr().out.splitlines()
+    first = unrun(capsys.readouterr().out).splitlines()
     names = [
         "confluence",
         "  documents",
@@ -174,7 +175,7 @@ def test_what_the_mirror_does_not_show_is_counted_in_detail_alone(
     converted = first[2].removeprefix("  converted by pandoc: ")
     written = first[4].removeprefix("  files written: ")
     assert main(arguments(home, "--detail", "detailed")) == 0
-    assert capsys.readouterr().out == (
+    assert unrun(capsys.readouterr().out) == (
         "confluence: done\n"
         "  documents: 1\n"
         "  converted by pandoc: 0\n"
@@ -198,7 +199,7 @@ def test_the_command_reports_the_documents_it_builds(
         store.put(Page, page_responses("100", "Home", 1, "<p>Home.</p>", []), FETCHED, {})
         store.put(Page, page_responses("101", "Away", 1, "<p>Away.</p>", []), FETCHED, {})
     assert main(arguments(home)) == 0
-    assert capsys.readouterr().out.startswith("confluence: done\n  documents: 2\n")
+    assert unrun(capsys.readouterr().out).startswith("confluence: done\n  documents: 2\n")
     assert [
         (line["task"], line["done"], line["total"]) for line in logged_as(home, "progress")
     ] == [("confluence documents", 2, 2), ("jira documents", 0, 0)]
@@ -254,7 +255,7 @@ def test_a_second_prepare_with_nothing_changed_runs_pandoc_on_nothing(
     )
     assert len(runs.read_text("utf-8").splitlines()) == CONVERSIONS
     assert main(arguments(home)) == 0
-    assert capsys.readouterr().out.startswith(
+    assert unrun(capsys.readouterr().out).startswith(
         "confluence: done\n"
         "  documents: 2\n  converted by pandoc: 0\n  reused from the cache: 3\n"
         "  files written: 0\n"
@@ -454,7 +455,7 @@ def test_without_a_name_each_store_and_each_source_read_in_place_that_is_configu
     capsys.readouterr()
     assert main(arguments(home)) == 0
     captured = capsys.readouterr()
-    rows = [line for line in captured.out.splitlines() if not line.startswith(" ")]
+    rows = [line for line in unrun(captured.out).splitlines() if not line.startswith(" ")]
     assert rows == ["confluence: done", "jira: done", "worklog: done"]
     assert "\n  source confluence: all that its store holds\n" in captured.err
 
@@ -474,7 +475,8 @@ def test_names_are_taken_once_each_in_the_registry_s_order(
 ) -> None:
     """Whatever the order typed: Confluence before Jira, as links require of a whole store."""
     assert main(arguments(home, "jira", "confluence", "jira")) == 0
-    rows = [line for line in capsys.readouterr().out.splitlines() if not line.startswith(" ")]
+    out = unrun(capsys.readouterr().out)
+    rows = [line for line in out.splitlines() if not line.startswith(" ")]
     assert rows == ["confluence: done", "jira: done"]
 
 

@@ -45,7 +45,7 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
     """Make ``fetch`` and ``prepare`` record what their run was given, and do nothing."""
     recorded: list[tuple[argparse.Namespace, Loaded]] = []
 
-    def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[int, None]:
+    def run(arguments: argparse.Namespace, loaded: Loaded, *_: str) -> tuple[int, None]:
         recorded.append((arguments, loaded))
         return 0, None
 

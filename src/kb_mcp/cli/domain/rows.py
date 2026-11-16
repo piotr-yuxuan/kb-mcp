@@ -1,17 +1,20 @@
-"""The rows of a run of sources: a row per source, and the run's exit status.
+"""What a recorded run writes as its result: its run id first, then its units' outcomes.
 
-``fetch`` and ``prepare`` give them, and the exit status folds how the rows ended. They
-are records, and a row's outcome is its stage's, so not in ``cli.domain.sources``, which
-``--help`` imports, nor in the use case, which loads what fetchers and preparers need, so
-that a command writes rows without importing what it does not run.
+``fetch`` and ``prepare`` give a row per source; ``index`` and ``embed``, the outcome of
+their one unit; ``refresh``, each unit's last entry. They are records, and an outcome is
+its stage's, so not in ``cli.domain.sources``, which ``--help`` imports, nor in the use
+case, which loads what fetchers and preparers need, so that a command writes its result
+without importing what it does not run.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
-from pydantic import model_serializer
+from pydantic import Field, InstanceOf, model_serializer
 
+from kb_mcp.cli.domain.runs import Recorded, Unit
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.kernel.record import Record
@@ -33,7 +36,34 @@ class Row(Outcome):
 
 
 class Ran(Record):
-    """What a run of sources did: its exit status, then a row per source, in their order."""
+    """What a run of sources did: its run id, its exit status, then a row per source, in order."""
 
+    run: str
     exit_status: ExitStatus
     sources: tuple[Row, ...]
+
+
+class Ended(Outcome):
+    """What a run of one unit over the whole did: its run id, then its unit's outcome."""
+
+    run: str
+
+    @model_serializer(mode="wrap")
+    def run_first(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        """Write the run id before the outcome's fields."""
+        written = handler(self)
+        return {"run": written.pop("run"), **written}
+
+
+class Refreshed(Record):
+    """What an invocation of a refresh, or of a resume, did: its run id, status and units.
+
+    ``units`` are each unit's last entry, in their order, those of earlier invocations
+    included; ``outcomes``, this invocation's, by unit, which its text writes and JSON
+    leaves out, as its entries hold them.
+    """
+
+    run: str
+    exit_status: ExitStatus
+    units: tuple[Recorded, ...]
+    outcomes: Mapping[Unit, InstanceOf[Outcome]] = Field(default_factory=dict, exclude=True)

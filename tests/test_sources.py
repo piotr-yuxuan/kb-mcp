@@ -26,8 +26,11 @@ import pytest
 from opentelemetry import trace
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.app import sources as sources_app
-from kb_mcp.cli.app.sources import run_each
+from kb_mcp.cli.app import units as units_app
+from kb_mcp.cli.app.sources import source_planned
+from kb_mcp.cli.app.units import run_units
+from kb_mcp.cli.domain.rows import Ran, Row
+from kb_mcp.cli.domain.runs import Unit
 from kb_mcp.cli.domain.sources import chosen, fetch_described, given
 from kb_mcp.cli.main import main, parser
 from kb_mcp.kernel.exit_status import Ending, ExitStatus
@@ -54,6 +57,7 @@ from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, sourced
+from tests.recorded import unrun
 from tests.reference import Emitted
 from tests.test_confirmation import QUESTION, Terminal
 from tests.test_fetching import FOLDERS, PAGES, SITE, FakeSite
@@ -62,7 +66,7 @@ from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
     from _pytest.capture import CaptureFixture
@@ -273,11 +277,11 @@ def test_a_prepare_of_the_work_log_alone_ignores_nothing_when_given_nothing_to_i
     assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
     captured = capsys.readouterr()
     assert "ignored" not in captured.err
-    assert captured.out.startswith(f"worklog: done\n  documents read: {WORKLOG_DOCUMENTS}\n")
+    assert unrun(captured.out).startswith(f"worklog: done\n  documents read: {WORKLOG_DOCUMENTS}\n")
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     captured = capsys.readouterr()
     assert "ignored" not in captured.err
-    assert captured.out.startswith(f"worklog: done\n  documents: {WORKLOG_DOCUMENTS}\n")
+    assert unrun(captured.out).startswith(f"worklog: done\n  documents: {WORKLOG_DOCUMENTS}\n")
 
 
 @pytest.mark.parametrize(
@@ -337,7 +341,7 @@ def test_a_machine_with_the_work_log_alone_fetches_it_then_prepares_it(
     """
     config = settings_file(home, worklog)
     assert main(command(home, config, "fetch", "--yes")) == ExitStatus.OK
-    assert capsys.readouterr().out.startswith(
+    assert unrun(capsys.readouterr().out).startswith(
         f"worklog: done\n  documents read: {WORKLOG_DOCUMENTS}\n"
     )
     assert main(command(home, config, "prepare", "--yes", "worklog")) == ExitStatus.OK
@@ -435,7 +439,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> FakeSite:
 def test_json_is_one_document_with_a_row_per_source(
     home: Path, worklog: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """exit_status, then each source's row; one shape for a fetch as for a prepare.
+    """run, exit_status, then each source's row; one shape for a fetch as for a prepare.
 
     The file that fails, a page's, fails Confluence's fetch alone. A row is its fetcher's
     or preparer's outcome, under its source's name: its ending, its counts, problems and
@@ -446,7 +450,7 @@ def test_json_is_one_document_with_a_row_per_source(
     status = main(command(home, config, "fetch", *given))
     document = json.loads(capsys.readouterr().out)
     assert document["exit_status"] == status == ExitStatus.FAILED  # one file fails
-    assert sorted(document) == ["exit_status", "sources"]
+    assert list(document) == ["run", "exit_status", "sources"]
     assert [(row["source"], row["ending"]) for row in document["sources"]] == [
         ("confluence", "failed"),
         ("jira", "done"),
@@ -567,6 +571,22 @@ def runs(
         )
         for each in sourced(*declared)
     ]
+
+
+def run_each(stage: str, taken: Sequence[SourceRun]) -> Ran:
+    """Run each source's part in this stage as a run of it alone would, recording nothing.
+
+    A unit per source, each of its preparers in a prepare, in their order; a row each.
+    """
+    planned = [
+        source_planned(Unit(stage=stage, source=run.source.name, part=part), run)
+        for run in taken
+        for part in range(len(run.source.connector.preparers) if stage == "prepare" else 1)
+    ]
+    dry_run = any(run.dry_run for run in taken)
+    done = run_units(planned, (), FIRST, lambda _: None, dry_run=dry_run)
+    rows = [Row(source=str(unit.source), **dict(each)) for unit, each in done.outcomes.items()]
+    return Ran(run="0" * 16, exit_status=done.exit_status, sources=tuple(rows))
 
 
 def logged_as(logged: list[dict[str, object]], event: str) -> list[dict[str, object]]:
@@ -838,15 +858,15 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
         "  warnings: 1\n"
     )
     assert main(command(home, config, "fetch", "worklog", "--dry-run")) == 0
-    assert capsys.readouterr().out == f"worklog: not run\n{fetched_text}"
+    assert unrun(capsys.readouterr().out) == f"worklog: not run\n{fetched_text}"
     assert main(command(home, config, "fetch", "worklog", "--yes")) == 0
-    assert capsys.readouterr().out == f"worklog: done\n{fetched_text}"
+    assert unrun(capsys.readouterr().out) == f"worklog: done\n{fetched_text}"
     assert main(command(home, config, "prepare", "worklog", "--dry-run")) == 0
-    assert capsys.readouterr().out == (
+    assert unrun(capsys.readouterr().out) == (
         f"worklog: not run\n  documents: {WORKLOG_DOCUMENTS}\n  files to remove: 0\n"
     )
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
-    assert capsys.readouterr().out == (
+    assert unrun(capsys.readouterr().out) == (
         "worklog: done\n"
         f"  documents: {WORKLOG_DOCUMENTS}\n"
         f"  converted by pandoc: {WORKLOG_DOCUMENTS}\n"
@@ -917,7 +937,7 @@ def test_a_dry_run_of_the_site_says_each_target_s_window_under_its_row(
     config = settings_file(home, None, atlassian=True)
     given = command(home, config, "fetch", "--dry-run", "--since", "2026-10-02")
     assert main(given) == ExitStatus.OK
-    confluence, jira = capsys.readouterr().out.split("jira: not run\n")
+    confluence, jira = unrun(capsys.readouterr().out).split("jira: not run\n")
     row, space, *_ = confluence.splitlines()
     project, *_ = jira.splitlines()
     assert row == "confluence: not run"
@@ -1108,14 +1128,14 @@ def test_each_command_s_text_gives_each_source_s_counts_under_its_row(
     config = settings_file(home, worklog, atlassian=True)
     given = command(home, config, "fetch", "--yes", "--since", "2026-10-02")
     assert main(given) == ExitStatus.FAILED
-    out = capsys.readouterr().out
+    out = unrun(capsys.readouterr().out)
     assert out.startswith("confluence: failed\n  confluence blogposts: fetched: 1\n")
     assert (
         "  problem: file att3: status 404\n  problems: 1\njira: done\n  files: downloaded: 1\n"
         in out
     )
     assert main(command(home, config, "prepare", "--yes")) == ExitStatus.OK
-    out = capsys.readouterr().out
+    out = unrun(capsys.readouterr().out)
     assert out.startswith("confluence: done\n  documents: ")
     assert "\njira: done\n  documents: " in out
     assert signed_in.asked
@@ -1184,7 +1204,7 @@ def test_ctrl_c_once_every_row_ended_still_exits_130(
     """Every row kept as it ended, and the run interrupted; the event names no source."""
     tracer = SimpleNamespace(start_as_current_span=lambda *_, **__: EndingInCtrlC())
     settings = fetched(chosen_settings(tmp_path, worklog))
-    monkeypatch.setattr(sources_app, "TRACER", tracer)
+    monkeypatch.setattr(units_app, "TRACER", tracer)
     with capture_logs() as logged:
         ran = run_each("prepare", runs(settings, FIRST, WORKLOG))
     assert [(row.source, row.ending) for row in ran.sources] == [("worklog", "done")]

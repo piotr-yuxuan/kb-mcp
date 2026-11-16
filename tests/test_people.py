@@ -1247,7 +1247,7 @@ def test_index_s_json_warns_of_an_unused_alias_and_fails_by_a_file_without_front
     given = ["index", "--yes", "--format", "json", "--config", str(config), "--data-dir", str(data)]
     assert main(given) == 1
     document = json.loads(capsys.readouterr().out)
-    assert list(document) == ["ending", "counts", "problems", "warnings"]
+    assert list(document) == ["run", "ending", "counts", "problems", "warnings"]
     assert document["ending"] == "failed"
     (unused,) = [each for each in document["warnings"] if each["where"] == "Jo Placeholder"]
     assert unused["reason"].startswith("alias that changed nothing: ")

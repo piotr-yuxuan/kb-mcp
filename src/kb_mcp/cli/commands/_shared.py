@@ -45,10 +45,11 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
 
     The run is then ``observed``, its start naming the arguments ``given``, each of the
     command's ``unlogged`` ones as ``[not logged]``, the settings, secrets masked, and the
-    layer of telemetry's endpoint. The module's ``run`` gives its status and its result,
-    None when it has none to write, such as ``serve``'s: the result goes to stdout as one
-    JSON document, secrets masked, or as the module's ``text`` writes it, unless -q. An
-    exception or Ctrl-C ends the run as ``observed`` says.
+    layer of telemetry's endpoint. The module's ``run``,
+    given the run's id too when its command enables a stage, gives its status and its
+    result, None when it has none to write, such as ``serve``'s: the result goes to
+    stdout as one JSON document, secrets masked, or as the module's ``text`` writes it,
+    unless -q. An exception or Ctrl-C ends the run as ``observed`` says.
     """
     command: Command = arguments.command
     output = Output(
@@ -116,7 +117,11 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         ),
     ) as run:
         module = importlib.import_module(command.run)
-        status, result = module.run(arguments, loaded)
+        status, result = (
+            module.run(arguments, loaded, run.id)
+            if command.stages
+            else module.run(arguments, loaded)
+        )
         if result is not None and output.format == "json":
             sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
         elif result is not None and not output.quiet:
