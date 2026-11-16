@@ -200,15 +200,17 @@ naming `kb-mcp fetch worklog`, and prepares the other sources.
 Run `fetch` before `prepare`. The first `fetch` of the work log on a data directory
 without its copy store first takes, from each of its files of the mirror, its
 document's dates, `created` and `updated`, and keeps them in the store before it reads
-the folder: a document without a day keeps both, as the text that this fetch reads, so
-that an entry without a timestamp, whose dates the file of the mirror alone held, keeps
-them, and no document is dated afresh by its org file's time. One edited since the
-former version last prepared keeps them too, until its text changes again. A file of the
-mirror that does not read is a problem by its path, and the fetch ends failed, exit 1:
-its document's dates are lost, taken afresh from its org file, and the next fetch, its
-store begun, does not meet it again. Until a fetch reads the work log without a problem,
-`prepare` removes no file, so that the file of a document that the first fetch could not
-read stays.
+the folder, with the as-of time that `<data>/docs/worklog/_source.json` holds, so that a
+fetch that meets a problem leaves the time served as it was. A document without a day
+keeps both dates, as the text that this fetch reads, so that an entry without a
+timestamp, whose dates the file of the mirror alone held, keeps them, and no document is
+dated afresh by its org file's time. One edited since the former version last prepared
+keeps them too, until its text changes again. A file of the mirror that does not read is
+a problem by its path, and the fetch ends failed, exit 1: what it holds is lost, a
+document's dates taken afresh from its org file, and the next fetch, its store begun,
+does not meet it again. Until a fetch reads the work log without a problem, `prepare`
+removes no file, so that the file of a document that the first fetch could not read
+stays.
 
 `index` then brings the index of the mirror's words up to the mirror, without a model,
 reading only the files that changed. For search by meaning, `kb-mcp embed`, after it,

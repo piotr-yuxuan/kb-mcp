@@ -25,6 +25,7 @@ from structlog.testing import capture_logs
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.markdown import dump, load
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES
 from kb_mcp.sources.stages import SourceRun
@@ -424,6 +425,33 @@ def test_a_file_of_the_mirror_that_does_not_read_fails_the_fetch_its_dates_lost(
     assert (len(held.documents), held.as_of) == (len(dates), None)
     assert (held.documents[TIDY].created, held.documents[TIDY].updated) == (LATER, LATER)
     assert (fetch(SECOND).ending, fetch.held().as_of) == ("done", SECOND)
+
+
+def test_a_source_s_file_of_the_mirror_that_does_not_read_fails_the_first_fetch(
+    fetch: Fetch,
+) -> None:
+    """By its path, never its content: its as-of time is lost, every date carried over."""
+    dates = mirrored(fetch.settings.docs)
+    path = f"worklog/{SOURCE_FILE}"
+    (fetch.settings.docs / path).write_text('{"secret', "utf-8")
+    outcome = fetch()
+    (problem,) = outcome.problems
+    assert (outcome.ending, problem.where, problem.reason.startswith(f"{path}: not JSON")) == (
+        "failed",
+        path,
+        True,
+    )
+    assert "secret" not in problem.reason
+    assert outcome.counts is not None
+    assert outcome.counts.held_back == {path: fetching.NOTHING}
+    held = fetch.held()
+    assert (
+        held.as_of,
+        {key: (each.created, each.updated) for key, each in held.documents.items()},
+    ) == (
+        None,
+        dates,
+    )
 
 
 def test_two_work_logs_keep_a_store_each(fetch: Fetch, tmp_path: Path) -> None:

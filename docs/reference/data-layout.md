@@ -320,7 +320,7 @@ place, so that it is the last write or the one before it, never part of one.
 
 | Key | Value |
 |---|---|
-| `as_of` | the moment at which the last read of the work log that met no problem began, the as-of time of its one scope; `null` before any |
+| `as_of` | the moment at which the last read of the work log that met no problem began, the as-of time of its one scope; before any, the one that the source's file of the mirror held as the store began ([a source's file](#a-sources-file)), else `null` |
 | `migrated` | by document id, the `created` and `updated` that the mirror held of each document that no read has taken since the store began ([the work log](#the-work-log)) |
 | `documents` | each document as the last read that took it found it, in the order read: its `type`, `id` and `title`, its `status`, `labels`, `breadcrumb` and `people`, each name as written, its `links`, each a relation and the id of the other document, of the same source, its `created` and `updated`, `file`, the org file that holds it, from the work log's folder, and `text`, what pandoc converts |
 
@@ -652,12 +652,14 @@ each run until it is fixed. A store's first fetch, on a data directory without t
 source's copy store, first reads the `created` and `updated` of each file of the
 source's folders of the mirror that prepare writes, one of each document type
 (`worklog_globs`), in today's front matter or plan 058's, and writes them into the
-store, as `migrated`, before it reads the folder: a document read takes its dates from
-there as its stored copy's, its text read then taken as theirs, and one that no read
-takes yet keeps its file of the mirror, which prepare removes nothing of meanwhile. A
-file of the mirror that does not read then is a problem of the fetch by its path, never
-its content: its dates are lost, its document dated afresh when read, and, as by any
-problem, the read finds no document gone and leaves `as_of`.
+store, as `migrated`, with the as-of time that the source's file of the mirror holds
+([below](#a-sources-file)), as `as_of`, before it reads the folder: a document read
+takes its dates from there as its stored copy's, its text read then taken as theirs, one
+that no read takes yet keeps its file of the mirror, which prepare removes nothing of
+meanwhile, and a fetch with a problem leaves the as-of time as the former version served
+it. A file of the mirror that does not read then is a problem of the fetch by its path,
+never its content: what it holds is lost, a document dated afresh when read, and, as by
+any problem, the read finds no document gone and leaves `as_of`.
 
 Prepare converts each document's text through the source's rows of the cache of
 conversions ([below](#pandocs-conversions)), and writes every file again, those whose
@@ -798,8 +800,9 @@ Confluence's and Jira's prepares copy the as-of times of the record of coverage
 scopes; a record that cannot be read is a problem of the source that lists spaces, as
 the tombstones are, and leaves every scope without one. The work log's prepare copies
 the `as_of` of its copy store, the moment at which the last read without a problem
-began, the last moment that the work log was known complete, and leaves its one scope
-out before any; its file changes only when a fetch read without a problem. A prepare
+began, the last moment that the work log was known complete, which the store took from
+this file as it began, and leaves its one scope out before any; its file changes only
+when a fetch read without a problem. A prepare
 whose as-of times moved writes the file again, even when no document changed, so that
 the next `index` holds them.
 

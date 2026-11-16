@@ -39,14 +39,15 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_files
-from kb_mcp.mirror.domain.mirror import Link
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped, source_files
+from kb_mcp.mirror.domain.mirror import Link, SourceFile
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.fetch.adapters import files
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStore
 from kb_mcp.sources.worklog.fetch.app import fetching
 from kb_mcp.sources.worklog.fetch.app.fetching import UNLINKED, WorklogFetched, fetch_worklog
+from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES
 from kb_mcp.sources.worklog.prepare.app.prepare import (
     WorklogCounts,
     WorklogPlanned,
@@ -985,6 +986,27 @@ def test_a_mirror_of_the_base_keeps_every_date_through_a_fetch_and_a_prepare(run
     settle(run.root, LATER + timedelta(hours=1))
     assert run().problems == ()
     assert dated(run.files()) == dates
+
+
+def test_a_first_fetch_that_meets_a_problem_leaves_the_base_s_as_of_time(run: Run) -> None:
+    """Plans 057 and 060: the source's file of the base says the time of its last clean read.
+
+    The store's first fetch carries it over, so that a fetch with a problem leaves the
+    time that the prepare serves as the base left it; a fetch without one moves it.
+    """
+    base_mirror(run.docs)
+    scope, read_at = "folder:worklog", datetime(2026, 10, 22, 6, 30, tzinfo=UTC)
+    (run.docs / "worklog" / SOURCE_FILE).write_bytes(
+        dumped(SourceFile(roles=TYPE_ROLES, as_of={scope: read_at}))
+    )
+    text = (run.root / "transcripts/misc/a.org").read_bytes()
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+    assert [each.where for each in run().problems] == ["transcripts/misc/a.org"]
+    assert source_files(run.docs)["worklog"].as_of == {scope: read_at}
+    (run.root / "transcripts/misc/a.org").write_bytes(text)
+    assert run().problems == ()
+    assert source_files(run.docs)["worklog"].as_of[scope] > read_at
 
 
 def test_a_file_not_read_at_the_first_fetch_keeps_its_documents_files_and_dates(

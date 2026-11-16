@@ -2,8 +2,8 @@
 
 ``read_worklog`` reads the folder and splits it into documents, as ``worklog`` says;
 ``fetch_worklog`` keeps what it read in the copy store, as ``copies.fetched`` decides, a
-store's first fetch first carrying over the created dates that the mirror holds
-(``carried_over``). Reading is a span, and the events are those of
+store's first fetch first carrying over the dates and the as-of time that the mirror
+holds (``carried_over``). Reading is a span, and the events are those of
 ``docs/reference/telemetry/fetch.md``.
 """
 
@@ -18,10 +18,18 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE, RefusedError
+from kb_mcp.kernel.names import (
+    DAY_TYPE,
+    ENTRY_TYPE,
+    MEETING_TYPE,
+    WORKLOG_SCOPE_TYPE,
+    RefusedError,
+)
 from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.adapters.markdown import documents, load
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_file
+from kb_mcp.mirror.domain.mirror import scope_name
 from kb_mcp.sources.worklog.fetch.adapters import files
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStore
 from kb_mcp.sources.worklog.fetch.domain.copies import Copies, fetched
@@ -52,9 +60,10 @@ if TYPE_CHECKING:
 TRACER = trace.get_tracer(__name__)
 # Why a meeting is a warning: its link reaches no transcript found.
 UNLINKED = "its :MEETING: link reaches no transcript found"
-# Why a file of the mirror that does not read is a problem when a store begins, and what
-# it holds back: no document's copy.
+# Why a file of the mirror that does not read is a problem when a store begins, a
+# document's or its source's, and what it holds back: no document's copy.
 NOT_CARRIED = "its dates are not carried over"
+NO_AS_OF = "its as-of time is not carried over"
 NOTHING = "nothing"
 
 
@@ -170,16 +179,16 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     )
 
 
-def carried_over(
-    docs: Path, source: str
-) -> tuple[dict[str, tuple[datetime, datetime]], list[Problem]]:
-    """Read the created and updated dates of each document of a work log's files of the mirror.
+def carried_over(docs: Path, source: str) -> tuple[Copies, list[Problem]]:
+    """Give what a work log's copy store begins with: what its files of the mirror hold.
 
-    By its id. The files of ``source``'s folders of ``docs`` that ``worklog_globs`` finds,
-    those that its prepare writes, in today's front matter or plan 058's, so that each
-    document keeps its dates when its copy store begins. A file that does not read, or
-    holds no document of the work log's rules, is a problem by its path, never its
-    content: its dates are not carried over, and so lost.
+    By its id, the created and updated dates of each document of the files of
+    ``source``'s folders of ``docs`` that ``worklog_globs`` finds, those that its prepare
+    writes, in today's front matter or plan 058's, so that each document keeps its dates;
+    and the as-of time of its one scope that its source's file holds, the moment of the
+    former version's last read without a problem, so that a fetch with a problem leaves
+    it. A file that does not read, or holds no document of the work log's rules, is a
+    problem by its path, never its content: what it holds is not carried over, and so lost.
     """
     carried: dict[str, tuple[datetime, datetime]] = {}
     problems: list[Problem] = []
@@ -195,7 +204,16 @@ def carried_over(
             problems.append(Problem(where=path, reason=f"{reason}; {NOT_CARRIED}"))
             continue
         carried[matter.id] = (matter.created, matter.updated)
-    return carried, problems
+    try:
+        held = source_file(docs, source)
+    except (OSError, RepresentationError) as error:
+        held, path = None, f"{source}/{SOURCE_FILE}"
+        # A refusal names the file and the key; any other message could quote content.
+        named = isinstance(error, RepresentationError)
+        reason = str(error) if named else f"{path}: {type(error).__name__}"
+        problems.append(Problem(where=path, reason=f"{reason}; {NO_AS_OF}"))
+    as_of = None if held is None else held.as_of.get(scope_name(WORKLOG_SCOPE_TYPE, source))
+    return Copies(documents={}, migrated=carried, as_of=as_of), problems
 
 
 def fetch_worklog(
@@ -208,14 +226,14 @@ def fetch_worklog(
 ) -> Outcome[WorklogFetched]:
     """Read ``source``'s work log, as its table says, into its copy store; or say what changes.
 
-    A store never written first takes the dates of the source's files of the mirror, as
-    ``carried_over`` reads them, and is written so before the read, whatever the read
-    then meets; each file of the mirror that does not read is a problem of the fetch,
-    which holds back ``NOTHING``. The read, begun at ``now()``, is then kept as ``fetched``
-    says, complete when the fetch met no problem.
-    Without the table's ``archives``, the archive file, ``transcripts/archive/``,
-    ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A dry run takes
-    no lock and writes nothing, and ends not run, or failed for a problem found.
+    A store never written first takes the dates and the as-of time of the source's files
+    of the mirror, as ``carried_over`` reads them, and is written so before the read,
+    whatever the read then meets; each file of the mirror that does not read is a problem
+    of the fetch, which holds back ``NOTHING``. The read, begun at ``now()``, is then kept
+    as ``fetched`` says, complete when the fetch met no problem. Without the table's
+    ``archives``, the archive file, ``transcripts/archive/``, ``meetings/archive/`` and the
+    subtrees tagged ARCHIVE are left out. A dry run takes no lock and writes nothing, and
+    ends not run, or failed for a problem found.
 
     Raises ``CopyStoreBusyError`` while another run writes the store, and
     ``RepresentationError`` for a store that does not read. ``worklog.carried`` says at
@@ -228,9 +246,8 @@ def fetch_worklog(
         stored = store.read()
         carried: list[Problem] = []
         if stored is None:
-            dates, carried = carried_over(settings.docs, source)
-            stored = Copies(documents={}, migrated=dates, as_of=None)
-            log.info("worklog.carried", documents=len(dates), not_read=len(carried))
+            stored, carried = carried_over(settings.docs, source)
+            log.info("worklog.carried", documents=len(stored.migrated), not_read=len(carried))
             if not dry_run:
                 store.put(stored)
         at = now()
