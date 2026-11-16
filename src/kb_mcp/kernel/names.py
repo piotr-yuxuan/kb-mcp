@@ -27,6 +27,8 @@ SOURCE_NAME = re.compile(r"[a-z][a-z0-9]*")
 RESERVED = (ASSETS, BLOBS, "http", "https")
 # The setting of each source's table that names its connector.
 CONNECTOR = "connector"
+# A run's id, as a run makes it and names its record's folder: 16 lower-case hex digits.
+RUN_ID = re.compile(r"[0-9a-f]{16}")
 TYPE_NAME = re.compile(r"[a-z]+")
 # An id names a folder of the raw store, so it must be one safe path part.
 IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
