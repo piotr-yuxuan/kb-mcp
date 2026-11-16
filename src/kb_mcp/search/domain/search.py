@@ -519,16 +519,20 @@ def tree_key(path: tuple[str, ...]) -> tuple[tuple[str | int, ...], ...]:
     )
 
 
-def tree_order(entries: Sequence[IndexedDocument]) -> list[tuple[Place, IndexedDocument]]:
+def tree_order(
+    entries: Sequence[IndexedDocument], elsewhere: Collection[str] = ()
+) -> list[tuple[Place, IndexedDocument]]:
     """Place each document of one scope in its tree; give them in tree order, with places.
 
     A document sits under its parent where ``entries`` list it. Else under the titles of
-    its breadcrumb, as ancestors not listed, below the listed document whose breadcrumb
-    and title are the longest run of them from the top, where one alone has them; the
-    title of a parent not listed, the breadcrumb's last, is never that document's. A
-    loop of parents is cut where it closes, climbing from its first document in the
-    order given, so that one listing gives one tree. Depth first by ``tree_key``, ties
-    at each level by path.
+    its breadcrumb, as ancestors not listed: at the top where its parent is one of
+    ``elsewhere``, the document ids of documents mirrored outside ``entries``, whose
+    titles another's would only repeat; otherwise, as under a folder, below the listed
+    document whose breadcrumb and title are the longest run of them from the top, where
+    one alone has them; the title of a parent not listed, the breadcrumb's last, is
+    never that document's. A loop of parents is cut where it closes, climbing from its
+    first document in the order given, so that one listing gives one tree. Depth first
+    by ``tree_key``, ties at each level by path.
     """
     by_id = {document_id(each.front.source, each.front.id): each for each in entries}
     titled: dict[tuple[str, ...], list[IndexedDocument]] = {}
@@ -542,7 +546,8 @@ def tree_order(entries: Sequence[IndexedDocument]) -> list[tuple[Place, IndexedD
             parent, unlisted = by_id.get(front.parent or ""), ()
             if parent is None or parent.path in placing:
                 crumbs = front.breadcrumb
-                sizes = range(len(crumbs) - (front.parent is not None), 0, -1)
+                top = len(crumbs) - (front.parent is not None)
+                sizes = range(0 if front.parent in elsewhere else top, 0, -1)
                 runs = ((size, titled.get(crumbs[:size], [])) for size in sizes)
                 size, parent = next(
                     (

@@ -973,12 +973,23 @@ class Library:
                 source=canonical(reader, "source", source), scope=scope_of(reader, scope)
             )
             listed = reader.listing(kept)
+            ids = {document_id(entry.front.source, entry.front.id) for entry in listed}
+            # The parents not listed that the index holds, documents of other scopes.
+            outside = [
+                each.front.parent
+                for each in listed
+                if each.front.parent is not None and each.front.parent not in ids
+            ]
+            elsewhere = {
+                document_id(other.front.source, other.front.id)
+                for other in reader.indexed_documents(refs=outside)
+            }
             top = None if parent is None else self._find(reader, parent)
         sole_scope(listed)  # refuses several scopes, or one of several sources
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
         # Ties go by path: pages of results need one order from call to call.
-        pairs = tree_order(listed)
+        pairs = tree_order(listed, elsewhere)
         base = next((path for path, entry in pairs if entry == top), ())
         pairs = [pair for pair in pairs if pair[0][: len(base)] == base and pair[0] != base]
         size = clamp(limit, BROWSE_LIMITS)
