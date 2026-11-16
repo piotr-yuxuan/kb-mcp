@@ -43,7 +43,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded, run: str) -> tuple[ExitSt
         stages=(stage,),
         dry_run=arguments.dry_run,
         sources={stage: tuple(each.name for each in taken)},
-        options={FETCH: fetch_options(arguments, started)} if stage == FETCH else {},
+        options={FETCH: fetch_options(arguments, taken, started)} if stage == FETCH else {},
         settings=without_secrets(loaded.settings),
     )
     status, done = recorded(loaded, run, started, configuration, partial(planned, arguments))

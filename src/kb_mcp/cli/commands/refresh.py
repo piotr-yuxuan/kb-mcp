@@ -38,16 +38,20 @@ def run(
     configuration = None
     if arguments.resume is None:
         values = values_of(loaded)
+        fetched, _ = chosen_to_fetch(arguments, values)
         configuration = Configuration(
             run=run,
             command="refresh",
             started=started,
             stages=STAGES,
             sources={
-                FETCH: tuple(each.name for each in chosen_to_fetch(arguments, values)[0]),
+                FETCH: tuple(each.name for each in fetched),
                 PREPARE: tuple(each.name for each in chosen_to_prepare(arguments, values)[0]),
             },
-            options={FETCH: fetch_options(arguments, started), INDEX: {"--rebuild": False}},
+            options={
+                FETCH: fetch_options(arguments, fetched, started),
+                INDEX: {"--rebuild": False},
+            },
             settings=without_secrets(loaded.settings),
         )
     status, done = recorded(loaded, run, started, configuration, partial(planned, arguments))

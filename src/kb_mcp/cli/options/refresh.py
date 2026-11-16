@@ -6,7 +6,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import STAGES, Command
-from kb_mcp.cli.domain.sources import fetch_described, given, prepare_described
+from kb_mcp.cli.domain.sources import fetch_described, fetch_flags, given, prepare_described
 from kb_mcp.cli.options import fetch
 from kb_mcp.cli.options._common import (
     add_embedding_options,
@@ -42,12 +42,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     """
     if arguments.resume is None:
         return fetch.refused(arguments, settings) or endpoint_elsewhere(arguments, settings)
-    flags = {
-        flag
-        for each in arguments.sources
-        if each.connector.fetcher is not None
-        for flag in each.connector.flags
-    }
+    flags = fetch_flags(arguments.sources)
     named = [
         *arguments.source,
         *(flag for flag, value in sorted(given(arguments, flags).items()) if value is not None),

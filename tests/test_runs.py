@@ -658,6 +658,33 @@ def test_a_resume_is_refused_for_no_record_another_data_directory_or_no_consent(
     assert f"run {run}: source clientjira: no longer configured" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "command",
+    [["fetch", "--since", "banana"], ["refresh", "--until", "banana"]],
+    ids=["fetch", "refresh"],
+)
+def test_a_period_that_no_source_taken_reads_is_ignored_as_before(
+    home: Path, endpoint: str, capsys: CaptureFixture[str], command: list[str]
+) -> None:
+    """As before 062, an option that no source taken declares is said ignored, never read.
+
+    Confluence configured, the work log named: the work log is fetched, the run records no
+    option of a fetch, and exits 0, whether or not the value would read.
+    """
+    stage, flag, value = command
+    options = given(home, endpoint, confluence=True)
+    status = main([stage, "--yes", "--format", "json", *options, "worklog", flag, value])
+    out, err = capsys.readouterr()
+    assert status == ExitStatus.OK
+    assert f"{flag}: ignored by worklog\n" in err
+    configured, entries = record_of(home, json.loads(out)["run"])
+    assert configured["options"]["fetch"] == {}
+    assert ("fetch", "worklog", "done") in [
+        (each["stage"], each["source"], each["ending"]) for each in entries
+    ]
+    assert (home / "data" / "copies" / "worklog" / "copies.json").is_file()
+
+
 def test_a_dry_run_records_nothing(
     home: Path, site: FakeSite, endpoint: str, capsys: CaptureFixture[str]
 ) -> None:

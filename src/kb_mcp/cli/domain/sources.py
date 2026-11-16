@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from datetime import datetime
 
-    from kb_mcp.sources.declaration import Source
+    from kb_mcp.sources.declaration import Option, Source
 
 
 def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
@@ -34,25 +34,32 @@ def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, obje
     return {flag: getattr(arguments, flag) for flag in flags}
 
 
-def fetch_options(arguments: argparse.Namespace, start: datetime) -> dict[str, object]:
-    """Give each option of a fetch that no setting holds, by flag, as its run records it.
+def fetch_flags(sources: Iterable[Source]) -> dict[str, Option]:
+    """Give each option of those of ``sources`` that have a fetcher, by its flag."""
+    return {
+        flag: option
+        for each in sources
+        if each.connector.fetcher is not None
+        for flag, option in each.connector.flags.items()
+    }
+
+
+def fetch_options(
+    arguments: argparse.Namespace, taken: Iterable[Source], start: datetime
+) -> dict[str, object]:
+    """Give each option of the sources ``taken`` that no setting holds, by flag, as recorded.
 
     As of the run's ``start`` where its declaration says how, such as --since 7d, a time,
     and --until not given, that start; else as given, None when not given. An option
     that replaces a setting, such as --space, is in the settings that the run records.
+    No source's options are read unless it is taken, as ``fetch``'s refusals read them.
     """
-    options = {
-        flag: option
-        for each in arguments.sources
-        if each.connector.fetcher is not None
-        for flag, option in each.connector.flags.items()
-        if option.setting is None
-    }
     return {
         flag: getattr(arguments, flag)
         if option.absolute is None
         else option.absolute(getattr(arguments, flag), start)
-        for flag, option in sorted(options.items())
+        for flag, option in sorted(fetch_flags(taken).items())
+        if option.setting is None
     }
 
 
@@ -137,9 +144,8 @@ def fetch_described(
     unbound = {flag for flag, left in arguments.command.narrowed(arguments).items() if not left}
     flags = {
         flag
-        for connector in (declared.connector for declared in arguments.sources)
-        for flag, option in connector.flags.items()
-        if connector.fetcher is not None and (option.setting is None or flag in unbound)
+        for flag, option in fetch_flags(arguments.sources).items()
+        if option.setting is None or flag in unbound
     }
     for flag, value in sorted(given(arguments, flags).items()):
         ignoring = [each.name for each in taken if flag not in each.connector.flags]
