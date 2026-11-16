@@ -449,7 +449,10 @@ Its prepare reads that store alone and converts through the cache of conversions
   the second of two entries of one title, retitled while the first fails, keeps its old
   file beside its new one, which index skips as a duplicate id; a document retitled in
   the prepare whose conversion fails keeps its old file, but the others link it again
-  only once its new file is written; and the file of a document gone whose name begins
+  only once its new file is written; a document whose conversion fails at a path where
+  another's old file lies, their names alike, keeps that file as its own until a run
+  converts it, so that the others link it while the file names the other's id, which
+  index then finds twice; and the file of a document gone whose name begins
   with a written document's id and a dash goes with it, sooner than it would. The first
   fetch after the upgrade takes the text that it reads as the one that the mirror's dates
   are of: a document without a day edited since the former version last prepared keeps
