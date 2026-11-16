@@ -519,8 +519,7 @@ filters by [`checked`](../../src/kb_mcp/mcp/app/tools.py)), and
 [`plan_query`](../../src/kb_mcp/search/domain/search.py) plans the query: its
 words in lower case, without stop words unless nothing else is left, at most ten, each
 made one FTS5 string ([`quote`](../../src/kb_mcp/search/domain/search.py))
-so that nothing in it reads as an operator; the phrase; and the refs, issue keys and
-page ids that it names ([`identifiers`](../../src/kb_mcp/search/domain/search.py)).
+so that nothing in it reads as an operator; and the phrase.
 
 [`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py) then opens
 the index read-only, for this call alone, so that a build renamed in since the last call
@@ -536,7 +535,10 @@ spans:
   [`Reader.scores`](../../src/kb_mcp/search/adapters/sqlite_index.py)
   scores each document that matches by its best section's bm25, with weights per column
   ([`WEIGHTS`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
-  documents that the query names by key or id come first
+  refs, issue keys and page ids that the query names
+  ([`identifiers`](../../src/kb_mcp/search/domain/search.py)), refs by the sources that
+  the index holds, read only for a query with a colon, put the documents that they name
+  by ref, key or id first, in the order of their first mention
   ([`Reader.indexed_documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   and [`rank`](../../src/kb_mcp/search/domain/search.py) orders the rest by
   the sum of their scores.

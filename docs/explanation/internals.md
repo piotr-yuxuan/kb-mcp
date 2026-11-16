@@ -308,7 +308,7 @@ it never opens the endpoint. A search ranks in the mode that `search_mode` sets
 named in a query put their documents first, in every mode, in the order of their first
 mention, each the documents that it cites: a ref after its source, in any case, its
 source's alone, where the index holds that source;
-after another word and a colon, a key or id stays bare.
+after another word and a colon, a key stays bare and an id names nothing.
 
 ### By words
 

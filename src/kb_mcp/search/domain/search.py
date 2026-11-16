@@ -428,10 +428,11 @@ def identifiers(text: str, sources: Collection[str] = ()) -> Identifiers:
     """Find the refs, the issue keys, in any case, and the page ids that a text names.
 
     A ref is one of ``sources``, in any case, then a key or id, as answers cite a
-    document, given with its source in lower case; its key or id is not named apart, as
-    another word before a colon leaves it. A page id is a number standing alone between
-    spaces, punctuation aside, or the id in a page's address; those of addresses come
-    first. ``named`` gives refs, keys and ids alike in the order of their first mention.
+    document, given with its source in lower case; its key or id is not named apart.
+    After another word and a colon, a key stays bare and an id names nothing. A page id
+    is a number standing alone between spaces, punctuation aside, or the id in a page's
+    address; those of addresses come first. ``named`` gives refs, keys and ids alike in
+    the order of their first mention.
     """
     refs = [
         (found.start(), f"{found[1].lower()}:{found[2]}")

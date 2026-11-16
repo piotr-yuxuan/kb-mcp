@@ -97,8 +97,9 @@ def test_keys_and_ids_are_found_in_text_and_addresses() -> None:
 def test_refs_as_answers_cite_them_are_found_and_name_nothing_alone() -> None:
     """A source then a key or id, standing alone, is a ref; what it holds is no key or id.
 
-    Another word before a colon names no source: what follows it is a key or id, as
-    before. Nor is a ref within an address, whose scheme or host and port read alike.
+    Another word before a colon names no source: a key after it stays bare, and an id
+    names nothing, as before refs. Nor is a ref within an address, whose scheme or host
+    and port read alike.
     """
     found = identifiers(
         "see jira:PRB-12: fixed, (confluence:196845) and worklog:t-20261027-1; issue:PAY-9 "
