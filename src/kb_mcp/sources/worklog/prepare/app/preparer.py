@@ -17,8 +17,7 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError, PandocMissingError
-from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStore
-from kb_mcp.sources.worklog.fetch.app.fetcher import STORE
+from kb_mcp.sources.worklog.fetch.adapters.copy_store import STORE, CopyStore
 from kb_mcp.sources.worklog.prepare.app.prepare import plan_worklog, prepare_worklog
 
 if TYPE_CHECKING:

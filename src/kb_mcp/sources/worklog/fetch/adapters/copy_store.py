@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 # The store's file, and its writers' lock, in the source's folder.
 COPIES = "copies.json"
 LOCK = ".lock"
+# Where a problem of the store as a whole lies, as its fetch and its prepare say it.
+STORE = "copy store"
 
 
 class CopyStoreBusyError(RuntimeError):

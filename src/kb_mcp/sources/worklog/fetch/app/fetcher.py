@@ -14,7 +14,7 @@ import structlog
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.outcome import Outcome, Problem
-from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStoreBusyError
+from kb_mcp.sources.worklog.fetch.adapters.copy_store import STORE, CopyStoreBusyError
 from kb_mcp.sources.worklog.fetch.app.fetching import fetch_worklog
 
 if TYPE_CHECKING:
@@ -23,8 +23,6 @@ if TYPE_CHECKING:
 
 # What to do while another run writes the copy store.
 BUSY = "another run is writing it; try again once that run ends"
-# Where a problem of the copy store as a whole lies.
-STORE = "copy store"
 
 
 def preflight(run: SourceRun) -> str | None:

@@ -741,7 +741,10 @@ problem naming `kb-mcp fetch worklog`, its row failed and the others going on.
 - `revision` is the first 16 hex digits of the SHA-256 of the org text that pandoc
   converts, and of nothing else: a document whose revision has not changed keeps its
   stored dates, but a day's, a meeting's and a dated transcript's, their day, found at
-  each read.
+  each read. So a revision says no more than the text: what the text does not hold, such
+  as a transcript's links back to the meetings that name it, its labels inherited from
+  above, or its breadcrumb, may change while its revision holds, and is written all the
+  same.
 - `created` and `updated` are a day's date at midnight UTC; so are a meeting's, its
   day's, and a dated transcript's, the day that begins its folder's name or its own,
   whatever their lines, turns and timestamps hold, since the work log gives the day of a
