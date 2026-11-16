@@ -188,11 +188,11 @@ every other file of its source. A raw store that is missing, a regular file, a d
 link or unreadable yields no snapshot and no problem, so `prepare` removes every file of
 the Confluence and Jira sources from the mirror, with their attached files and their
 conversions, and exits 0; the next `index` then drops their documents. The work log
-alike: a folder that lists no file removes every work-log file, and a journal
-(`todo.org`) that is missing, not a regular file or empty removes the documents drawn
-from it. Check that `raw/` and the work log's folder are in place before a `prepare`;
-`kb-mcp fetch`, with a `--since` that reaches back far enough, fills the raw store
-again.
+alike: a fetch of a folder that lists no file finds every document gone, and a journal
+(`todo.org`) that is missing, not a regular file or empty, the documents drawn from it,
+whose files the next `prepare` removes. Check that `raw/` is in place before a
+`prepare`, and the work log's folder before a `fetch`; `kb-mcp fetch`, with a `--since`
+that reaches back far enough, fills the raw store again, and reads the work log again.
 
 **Some broken files end in a traceback, not a refusal.** A damaged vector cache ends
 `embed` and `eval`; an attached file missing from the raw store ends `prepare`; one
@@ -563,29 +563,31 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A link
-always names a file: in a run where a document is not read, or its conversion fails,
-and it has no file yet, the links to it are left out of the other documents' files,
-until a run reads and converts it. A link added or removed while a work-log transcript
-is not read is written on its meeting alone until a run reads the transcript, whose
-last copy stays as it was; and while a problem holds removals back, the file of a
-meeting or a transcript gone from the work log stays, naming documents that no longer
-name it back.
+always names a file: a document of the work log not read before it has a copy, or
+whose conversion fails in that prepare, is left out of the other documents' links,
+until a run reads and converts it, while one carried over from the mirror that no read
+has taken yet keeps the links to its file. A link added or removed while a work-log
+transcript is not read is written on its meeting alone until a run reads the
+transcript, whose last copy stays as it was; and while a fetch's problem keeps a meeting
+or a transcript gone from the work log in the copy store, its file stays, naming
+documents that no longer name it back.
 `load` refuses any other relation, a field other than these or out of their order, a
 `null` and a document off its rule, naming the entry, such as `links[0]`; and a link to
 the document itself, by its document id, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
-Owned by `mirror.adapters.conversions`, which each prepare of Confluence and Jira opens
-around the mirror, which converts through it (039):
+Owned by `mirror.adapters.conversions`, which each prepare of Confluence, Jira and the
+work log opens around the mirror, which converts through it (039, 060):
 `<data>/conversions.sqlite`, one table, `conversions`, a row per conversion, its `source`
 the source whose prepare asked for it, `source` and `key` the primary key, and its
 `markdown` what pandoc wrote; each prepare reads and prunes its own source's rows alone, so
 that a text that both convert is a row of each, which neither prune takes from the other
 (030). The key is the SHA-256, in hex, of
-the UTF-8 bytes of the converter's name, a NUL, then the HTML given to pandoc; the name
-is pandoc's version line, then its arguments, one a line
-(`mirror.adapters.pandoc.Pandoc.html_converter`). A document's file and a space's tree
+the UTF-8 bytes of the converter's name, a NUL, then the HTML or the org text given to
+pandoc; the name is pandoc's version line, then its arguments, one a line
+(`mirror.adapters.pandoc.Pandoc.html_converter`, `Pandoc.org_converter` for the work
+log's org). A document's file and a space's tree
 are one conversion each; the front matter, written after pandoc, is outside the key. A
 conversion is committed as soon as it is made, in WAL mode with `synchronous = NORMAL`,
 and a write waits up to 60 seconds for another run's. Once its files are written, a
@@ -595,8 +597,8 @@ that reports a problem deletes none, as it removes none of its source's files.
 The file changes no byte of the mirror while its rows are sound. Deleting it costs one
 conversion of everything at the next run, and downloads nothing: the one way to start
 afresh after installing a pandoc rebuilt under the same version line, which the key
-cannot tell apart. The work log does not use the file: its `revision`
-([below](#the-work-log)) already skips what has not changed.
+cannot tell apart. A file of rows that name no source, adopted by the work log's prepare
+when it opens the file first, gives its rows to every source configured.
 
 As the file is opened, the run takes its write lock, then `PRAGMA integrity_check`
 judges it, each index against its table. A file whose one table holds `key` and

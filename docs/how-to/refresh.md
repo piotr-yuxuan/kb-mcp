@@ -34,26 +34,28 @@ out of `prepare`. The work log has its own guide: [add the work log](work-log.md
 kb-mcp fetch --yes && kb-mcp prepare --yes && kb-mcp index --yes && kb-mcp embed --yes
 ```
 
-With the work log alone, nothing needs fetching: `fetch` is refused, exit 2, so start the
-chain at `prepare`.
+With the work log alone, the chain is the same: its `fetch` reads its folder, and its
+`prepare` writes from what the fetch kept.
 
 Without `--yes`, each command writes on stderr each setting it reads, each source it takes,
 each it leaves out and why, and the command written in full, then asks `Proceed? [y/N]`, as
 every command that writes does.
 
 1. **`fetch`** brings what changed of each configured source that has a fetcher,
-   Confluence's spaces then Jira's projects, a row each. Without `--since`, each space and
-   project fetches what changed since its last fetch, and asks again for what failed; one
-   never fetched takes its last 7 days, as the echo before the question says. `--since`
-   (`12h`, `7d`, `6mo`, an ISO date or time, or `all`) and `--until` set the period, and
-   `--max-file-mb` the largest file kept. `--space` and `--project` replace a setting for
-   one run. Each source's report goes to `<data>/runs/<time>-<source>.json`.
+   Confluence's spaces, Jira's projects, then the work log, a row each. Without `--since`,
+   each space and project fetches what changed since its last fetch, and asks again for
+   what failed; one never fetched takes its last 7 days, as the echo before the question
+   says. `--since` (`12h`, `7d`, `6mo`, an ISO date or time, or `all`) and `--until` set
+   the period, and `--max-file-mb` the largest file kept, which the work log, read whole
+   each time, ignores. `--space` and `--project` replace a setting for one run. Each
+   Atlassian source's report goes to `<data>/runs/<time>-<source>.json`; the work log's
+   fetch keeps each document's text in its copy store, `<data>/copies/worklog/`.
 2. **`prepare`** writes the mirror, a row each: each source that keeps a store, from all
-   that its store holds, even a space no longer configured, and the work log, read whole in
-   place, each document converted again only when it changed, the files of documents gone
-   removed. It reaches no site and signs in nowhere, but it reads the site's address, which
-   gives each document its `url` and resolves the links between pages: without a site set, it
-   still runs, and says that those documents get no address.
+   that its store holds, even a space no longer configured, and the work log, when
+   configured, from its copy store alone, the files of documents gone removed. It reaches
+   no site and signs in nowhere, but it reads the site's address, which gives each document
+   its `url` and resolves the links between pages: without a site set, it still runs, and
+   says that those documents get no address.
 
    The mirror keeps pandoc's conversions in `<data>/conversions.sqlite`: the first run
    converts every document, taking as long as a mirror always has, and each run after it
@@ -95,17 +97,18 @@ kb-mcp prepare confluence
 ```
 
 A command takes the sources named, once each, in the registry's order, however you type
-them; together, before or after the options, never split by one. `fetch` takes `confluence`
-or `jira`, `prepare` those and `worklog`. Without a name, `fetch` takes every one configured
-and `prepare` every one that keeps a store, and the work log when configured. A source named
+them; together, before or after the options, never split by one. `fetch` and `prepare`
+take `confluence`, `jira` and `worklog`. Without a name, `fetch` takes every one configured
+and `prepare` every one that keeps a store of spaces or projects, and the work log when
+configured. A source named
 but not configured is refused, naming its setting, as is a run left with none. A flag of a
 source not taken, such as `--project` with `fetch confluence`, is said not applied.
 
 `prepare confluence` prepares Confluence alone, so Jira's files whose links depend on
 Confluence's pages are rewritten only when Jira is prepared, and what they attach stays
 until then. `index` digests the whole mirror, and reads each file that changed, whichever
-source wrote it: `prepare worklog`, then `index`, refreshes the work log alone, and search
-still finds every page and issue of the mirror.
+source wrote it: `fetch worklog`, `prepare worklog`, then `index`, refreshes the work log
+alone, and search still finds every page and issue of the mirror.
 
 ## 4. Search by words alone
 
@@ -167,9 +170,11 @@ kb-mcp prepare --dry-run
 ```
 
 `fetch --dry-run` reads the site and fetches nothing: each scope's fetch window first,
-where it starts and why, then what it would fetch. `prepare --dry-run` counts the work log: its
-documents, those it would convert, and the files it would remove. Confluence and Jira cannot
-count without converting, so their rows say `not run` and that they are not counted. Neither
+where it starts and why, then what it would fetch; of the work log, what its read would
+change in its copy store, the documents new, changed and gone. `prepare --dry-run` counts
+the work log's documents and the files that it would remove, from what its last fetch kept,
+but not what it would convert. Confluence and Jira cannot count without converting, so
+their rows say `not run` and that they are not counted. Neither
 writes anything, nor asks. `index` and `embed` take none.
 
 ## 7. Read the result

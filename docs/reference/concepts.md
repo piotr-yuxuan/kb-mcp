@@ -62,7 +62,8 @@ connector.
 **In the code.** The package [`sources/atlassian/`](../../src/kb_mcp/sources/atlassian/)
 holds two connectors, Confluence and Jira, which share one way to sign in, one raw store
 and one coverage file; [`sources/worklog/`](../../src/kb_mcp/sources/worklog/) holds the
-work log's. A connector is a [`Connector`](../../src/kb_mcp/sources/declaration.py), with
+work log's, whose fetch reads its folder in place into a copy store of each source's. A
+connector is a [`Connector`](../../src/kb_mcp/sources/declaration.py), with
 [`Connector.scope_types`](../../src/kb_mcp/sources/declaration.py),
 [`Connector.fetcher`](../../src/kb_mcp/sources/declaration.py) and
 [`Connector.preparers`](../../src/kb_mcp/sources/declaration.py); its scope types are each a
@@ -494,7 +495,7 @@ only what its change test finds changed, and idempotent as a [run](#run) is. A c
 compares what a scope lists or returns with what is stored, and the work log's fetch
 each document's revision with its copy's; a prepare from a raw store places every
 document of its scopes again from the listings, its conversions memoised, and the work
-log's prepare compares revisions and the converter's fingerprint; index compares the
+log's prepare from its copy store builds every file again likewise; index compares the
 files' digests, the scopes' as-of times, its fingerprint `WORDS` and the aliases'
 digest; embed compares cache keys. Index and embed work on the whole, never on a run's
 selection: index takes every file of the mirror that changed since the index was last
@@ -695,6 +696,11 @@ as it was, and the conversion cache.
 **In the code.**
 [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and
 [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py);
+the work log's copy store,
+[`CopyStore`](../../src/kb_mcp/sources/worklog/fetch/adapters/copy_store.py), with
+[`Copies`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py) and
+[`WorklogCopy`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py), under
+[`Settings.copies`](../../src/kb_mcp/config/domain/settings.py);
 [`Settings.data_dir`](../../src/kb_mcp/config/domain/settings.py),
 [`Settings.docs`](../../src/kb_mcp/config/domain/settings.py) and
 [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py);
@@ -702,8 +708,9 @@ as it was, and the conversion cache.
 [`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py);
 [`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py) and
 [`VectorCache`](../../src/kb_mcp/search/adapters/vector_cache.py); the locks
-`raw/.lock`, `index.sqlite.lock` and `vectors.sqlite.lock`. The fingerprints are
-[`WORDS`](../../src/kb_mcp/search/domain/search.py), for sections, words and persons;
+`raw/.lock`, `copies/<source>/.lock`, `index.sqlite.lock` and `vectors.sqlite.lock`. The
+fingerprints are [`WORDS`](../../src/kb_mcp/search/domain/search.py), for sections, words
+and persons;
 [`Embedded.chunking`](../../src/kb_mcp/search/domain/search.py);
 [`Embedded.fingerprint`](../../src/kb_mcp/search/domain/search.py), from
 [`ApiEmbedder.fingerprint`](../../src/kb_mcp/search/adapters/embedding.py); and pandoc's
@@ -830,8 +837,13 @@ in place and never written, with one scope, whose documents are days, meetings, 
 and transcripts.
 
 - **In the code.** [`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py),
-  [`OrgFile`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py) and
-  [`WorklogDocument`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py).
+  [`OrgFile`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py),
+  [`WorklogDocument`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py), and its
+  fetch, [`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py), which
+  keeps each document in its copy store
+  ([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)), the mirror's
+  created dates carried over when the store begins
+  ([`carried_over`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)).
 
 ### conversion cache
 

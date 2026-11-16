@@ -244,14 +244,13 @@ Every run still reads the store and builds every document's HTML.
   skip the reading and the building too, at the risk of a stale file for any input it
   forgot; a cache wrapped around pandoc outside the mirror, which would count its
   conversions only after the mirror's own event, and copy its rule on problems;
-  `prepare --rebuild`, which deleting the file replaces; the work log in the cache, whose
-  revisions already skip what has not changed; a file per source, where a column keeps
-  one file, which the data guard already judges.
+  `prepare --rebuild`, which deleting the file replaces; a file per source, where a column
+  keeps one file, which the data guard already judges.
 - **Settled** by the user's answer to plan
   034's fourth
   question, "Cache pandoc's output", built by plan
   039, and its rows parted by source
-  by plan 030.
+  by plan 030; the work log's conversions in it since plan 060.
 
 ## People, a generic key
 
@@ -379,17 +378,55 @@ documents ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)).
   mirror alone, as an import contract holds it, so the times reach it through a file of
   the mirror.
 - **Cost.** A scope whose coverage was never exact, or a mirror not prepared since
-  plan 057, serves `as of: unknown`. Each prepare of the work log writes its source's
-  file again, its time moving on, so that the next `index` writes a build even when no
-  document changed; a fetch that moves a scope's as-of time does the same through
-  Confluence's and Jira's prepares. The instructions say it in a few words, within the
-  standing budget.
+  plan 057, serves `as of: unknown`. A fetch that moves a scope's as-of time makes the
+  next prepare write its source's file again, so that the next `index` writes a build
+  even when no document changed: each fetch of the work log that met no problem does.
+  The instructions say it in a few words, within the standing budget.
 - **Rejected.** Each document's time of fetch in its front matter, as before: per
   document, and wrong for a scope that a failure left inexact. `index` reading the
   coverage from the raw store: against the contract that keeps it to the mirror. The
   work log dated by its files' modification times, which would write nothing on an
   unchanged run, but says when the user last wrote, not when the copy was taken.
-- **Settled** by plan 057.
+- **Settled** by plan 057; the work log's time kept by its fetch, in its copy store, by
+  plan 060.
+
+## The work log fetched into a copy store
+
+The work log's fetch reads its folder in place, splits it into documents and keeps each
+whole in a copy store of its source's, `<data>/copies/<source>/copies.json`
+([`CopyStore`](../../src/kb_mcp/sources/worklog/fetch/adapters/copy_store.py)): what
+its front matter says, its text, and the time that it was first seen; its revision is
+the digest of that text alone
+([`WorklogCopy.revision`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py)).
+Its prepare reads that store alone and converts through the cache of conversions
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
+
+- **Why.** Only fetch observes and only prepare derives, as [the
+  concepts](../reference/concepts.md#stage) say, so that the mirror is wholly derived:
+  deleting `<data>/docs/worklog/` and preparing again gives the same files back,
+  created dates included, converting nothing. Before, the mirror was the work log's
+  memory: an undated entry's created date, and the last good copy of a file not read,
+  lived in its file of the mirror alone, which a file edited by hand put at risk, and a
+  pandoc upgrade gave every document a new revision.
+- **Cost.** A copy of the work log's text on disk, about its size, and the whole file
+  written again at each fetch, as its as-of time moves. One more command to refresh the
+  work log alone, `fetch worklog` before `prepare worklog`, and a `prepare` without the
+  copy store fails the work log's row, naming the fetch. One migration, at the first
+  fetch of a store: the created dates of the mirror are carried over before the read,
+  and until a read without a problem takes them all, `prepare` removes no file. A
+  prepare whose conversion fails removes no file, so that a document retitled meanwhile
+  keeps its old file beside its new one until a prepare converts everything, and the
+  others' links to the document that failed are left out meanwhile, its file no
+  longer known to prepare. The first fetch after the upgrade dates afresh an entry whose
+  only timestamps were plans when its file was written, and whose text has not changed
+  since.
+- **Rejected.** A store in SQLite, row by row: a file written whole is atomic by its
+  rename, and a fetch reads the whole folder anyway. The store under `<data>/raw/`,
+  whose module the Atlassian sources own, or named after the work log, which no context
+  above the sources may name. The prepare comparing each copy's revision with its file
+  of the mirror, which keeps the mirror as a memory; the cache of conversions keyed by
+  the text does it without one.
+- **Settled** by plan 060, on 053's record of the concepts.
 
 ## The journal split by shape
 
@@ -508,18 +545,17 @@ A file of the work log that cannot be read, over 32 MiB, linking out, not UTF-8,
 folder that cannot be listed, is reported at each run by its path and reason, with
 what it holds back
 ([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
-and the run writes every document but those that it builds
+and the fetch takes every document but those that it builds
 ([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)):
 every document for `todo.org` or its archive, whence every day, meeting and entry; for
-a transcript, its own, whose last copy stays. A meeting needs nothing of its transcript
-but the id, which the path gives, so that it links a transcript read or not
-([`transcript_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
-and a link is written when its other end is written in that run or kept from an
-earlier one ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
-A run that meets a problem still removes no file but the old one of a document written
-again under another title's path, and `prepare` exits 1. A file of the mirror that does
-not read is such a problem, by its path in the mirror (057), and the run writes nothing
-over it: an undated entry's created date is held in its file alone.
+a transcript, its own, whose last copy stays in the copy store. A meeting needs nothing
+of its transcript but the id, which the path gives, so that it links a transcript read
+or not ([`transcript_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
+and a link is written when its other end has a file in that prepare
+([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). A fetch
+that meets a problem finds no document gone, and `fetch` exits 1; the prepare then
+writes each document's last copy, and removes the old file of a document written again
+under another title's path.
 
 - **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
   that it holds draws on a transcript's text: one transcript not read, or past the
@@ -538,8 +574,6 @@ over it: an undated entry's created date is held in its file alone.
   but a file elsewhere of the same id takes that id for the run, its copy replacing the
   hidden file's last one, and the meeting links it. Past the bound, each meeting that
   links a file past it loses its link, but for the same, and the row fails at each run.
-  A document whose file of the mirror does not read is not written again until that
-  file is moved away.
 - **Rejected.** Leaving out every link to a transcript not read: both ways always, but
   `read` of the meeting loses its record for as long as the file stays unread, which
   past the bound is for good. Keeping a meeting's links from its last copy: a file
