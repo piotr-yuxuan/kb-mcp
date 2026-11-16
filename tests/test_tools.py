@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import (
     PERSON_FILTERS,
     Library,
@@ -1472,7 +1473,7 @@ def tree_lines(answer: str) -> list[str]:
 
 
 def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
-    """Parents come before children, numbers in order, folders as context lines."""
+    """Parents come before children, numbers in order, titles of no document as context lines."""
     library = built(
         tmp_path,
         [
@@ -1669,11 +1670,14 @@ def test_a_parent_of_another_scope_under_a_listed_one_places_it_there(tmp_path: 
     ]
 
 
-def test_a_page_under_a_folder_sits_under_the_folder_s_page(tmp_path: Path) -> None:
-    """A folder is no document: its title, from the breadcrumb, is a bracketed line.
+def test_a_page_under_a_page_not_mirrored_sits_under_the_titles_above_it(
+    tmp_path: Path,
+) -> None:
+    """A parent that the space lists, never fetched, is no document: a bracketed line.
 
-    The page above it is placed by the titles above the folder, its own and its
-    breadcrumb's, which are unique within a space.
+    The page above it is placed by the titles above that parent, its own and its
+    breadcrumb's, which are unique within a space. A folder was such a parent until plan
+    061 made it a document.
     """
     library = built(
         tmp_path,
@@ -1708,6 +1712,62 @@ def test_a_page_under_a_folder_sits_under_the_folder_s_page(tmp_path: Path) -> N
         "      - API (102)",
     ]
     assert tree_lines(library.browse(scope="DOC", parent="101")) == ["- [Specs]", "  - API (102)"]
+
+
+def test_a_folder_is_browsed_with_its_children_and_its_read_lists_them(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 5: a folder is a listed document: its pages sit under it, by its id.
+
+    Its read gives its front matter, then its children by title, as browse names them,
+    as many as a read lists, then the call that browses them all; it has no section.
+    """
+    under = {"scope": "space:DOC", "parent": "confluence:200", "breadcrumb": ("Home", "Specs")}
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Home", scope="space:DOC"), None),
+            (
+                page(
+                    "200",
+                    "Specs",
+                    type="folder",
+                    scope="space:DOC",
+                    parent="confluence:100",
+                    breadcrumb=("Home",),
+                ),
+                "",
+            ),
+            (page("202", "Errors", **under), None),
+            (page("201", "API", **under), None),
+        ],
+    )
+    assert tree_lines(library.browse(scope="space:DOC")) == [
+        "- Home (100)",
+        "  - Specs (200)",
+        "    - API (201)",
+        "    - Errors (202)",
+    ]
+    assert tree_lines(library.browse(scope="DOC", parent="200")) == [
+        "- API (201)",
+        "- Errors (202)",
+    ]
+    read = parts(library.read("confluence:200"))[1]
+    assert "type: folder" in read
+    listed = read.strip().split("\n\n")[-1].splitlines()
+    assert [line.split(", updated ")[0] for line in listed] == [
+        "Children: 2",
+        "- API (confluence:201",
+        "- Errors (confluence:202",
+    ]
+    monkeypatch.setattr(responses, "CHILDREN", 1)
+    listed = parts(library.read("confluence:200"))[1].strip().split("\n\n")[-1].splitlines()
+    assert (listed[0], len(listed)) == ("Children: 2", 3)
+    assert listed[-1] == (
+        'More: browse(scope="space:DOC", parent="confluence:200", source="confluence")'
+    )
+    with pytest.raises(UnanswerableError, match=r"^section: none, for a document without a body$"):
+        library.read("confluence:200", section=1)
 
 
 def test_a_key_of_two_scopes_is_refused_unless_narrowed(tmp_path: Path) -> None:

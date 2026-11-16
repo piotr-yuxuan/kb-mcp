@@ -532,10 +532,11 @@ def tree_order(
     its breadcrumb, as ancestors not listed: where its parent is one of ``elsewhere``,
     documents mirrored outside ``entries`` by their document ids, each with its own
     parent's, below the first listed document that their parents reach, else at the top,
-    as titles another's would only repeat; otherwise, as under a folder, below the listed
-    document whose breadcrumb and title are the longest run of them from the top, where
-    one alone has them; the title of a parent not listed, the breadcrumb's last, is
-    never that document's. A loop of parents is cut where it closes, climbing from its
+    as titles another's would only repeat; otherwise, as under a page that its space lists
+    and that is not mirrored, or under a work log's headings, below the listed document
+    whose breadcrumb and title are the longest run of them from the top, where one alone
+    has them; the title of a parent not listed, the breadcrumb's last, is never that
+    document's. A loop of parents is cut where it closes, climbing from its
     first document in the order given, so that one listing gives one tree. Depth first
     by ``tree_key``, ties at each level by path.
     """

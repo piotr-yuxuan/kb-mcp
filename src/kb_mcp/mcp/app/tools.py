@@ -919,7 +919,11 @@ class Library:
                 return responses.answer(NOT_MIRRORED)
             built_at, bounds = reader.built_at(), reader.bounds(entry.path)
             if section is not None and not 1 <= section <= len(bounds):
-                message = f"section: 1 to {len(bounds)} for this document"
+                message = (
+                    f"section: 1 to {len(bounds)} for this document"
+                    if bounds
+                    else "section: none, for a document without a body"
+                )
                 raise UnanswerableError(message)
             start, end = bounds[section - 1] if section else (0, entry.length)
             begin = start if offset is None else offset
@@ -936,7 +940,17 @@ class Library:
                 document_id(other.front.source, other.front.id): other.front.ref
                 for other in reader.indexed_documents(refs=others)
             }
+            scope = (
+                [] if bounds else reader.listing(Filters(source=front.source, scope=front.scope))
+            )
         frame = responses.metadata(entry, refs, whole=begin == 0)
+        if not bounds:  # a container: its children stand for its body
+            itself = document_id(front.source, front.id)
+            browsed = responses.call(
+                self.browse, scope=front.scope, parent=front.ref, source=front.source
+            )
+            listed = [each for each in scope if each.front.parent == itself]
+            frame += "\n\n" + responses.children(listed, browsed)
         ref = front.ref
         later = responses.call(self.read, ref=ref, section=section, offset=end, max_chars=max_chars)
         allowed = responses.budget(max_chars, READ_CHARS) - responses.RESERVE

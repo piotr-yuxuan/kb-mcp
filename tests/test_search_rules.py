@@ -281,8 +281,13 @@ def test_a_tree_follows_parents_by_their_document_ids() -> None:
     ]
 
 
-def test_a_tree_places_a_page_under_a_folder_by_the_titles_above_it() -> None:
-    """A page whose parent is a folder sits under the folder's title, under its page."""
+def test_a_tree_places_a_page_under_a_page_not_mirrored_by_the_titles_above_it() -> None:
+    """Under its parent's title, bracketed, below the listed page of the titles above that.
+
+    Plan 061 made folders documents, but the fallback by titles stays: a page that its
+    space lists and whose body was never fetched, outside every period fetched or failed,
+    is still no document of the index.
+    """
     assert tree_refs(
         page("100", "Home"),
         page("101", "Design", parent="confluence:100", breadcrumb=("Home",)),
