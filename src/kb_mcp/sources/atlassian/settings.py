@@ -7,6 +7,7 @@ sources of one connector.
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 from urllib.parse import urlsplit
 
@@ -16,6 +17,10 @@ from pydantic_core import PydanticCustomError
 from kb_mcp.config.domain.settings import RULE, TABLE, matching
 from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
 
+# A host name: labels of letters, digits and inner hyphens, joined by dots; it names the
+# folder of the site's session, so it is never empty, ``.`` nor ``..``.
+HOST = re.compile(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*")
+
 
 def site_address(value: str) -> str:
     """Give a site's address as ``https://<host>``; refuse one that is not a host alone."""
@@ -23,7 +28,7 @@ def site_address(value: str) -> str:
         parts = urlsplit(value)
         usable = (
             parts.scheme == "https"
-            and bool(parts.hostname)
+            and HOST.fullmatch(parts.hostname or "") is not None
             and parts.netloc.lower() == parts.hostname
             and parts.path in {"", "/"}
         )

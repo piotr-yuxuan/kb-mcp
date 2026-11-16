@@ -305,6 +305,10 @@ def test_a_table_inside_a_source_s_table_is_refused_naming_it() -> None:
             jira(site="https://["),
             "sources.jira.site (config.toml): an https address with a host name alone",
         ),
+        *(
+            (jira(site=site), "sources.jira.site (config.toml): an https address with a host")
+            for site in ("https://..", "https://.", "https://x..atlassian.net", "https://-x.net")
+        ),
         ({"data_dir": 3}, "data_dir (config.toml):"),
         ({"data_dir": "relative/path"}, "data_dir (config.toml): an absolute path"),
         ({"data_dir": "~/mirror\0"}, "data_dir (config.toml):"),
