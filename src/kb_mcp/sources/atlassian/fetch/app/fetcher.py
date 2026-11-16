@@ -73,9 +73,10 @@ def preflight(run: SourceRun) -> str | None:
     It reads what is covered and, for a source of spaces, what answered as gone and the
     joined documents still to fetch of each space that the fetch lists, so that a damaged
     record of another space stops nothing. A source of projects reads what answered as
-    gone, and what each project's searches found since its last whole read, once its
-    fetch has begun (``run_fetch``), before its first request: one damaged then fails
-    that source's row alone, its search by update time too.
+    gone once its fetch has begun (``run_fetch``), before its first request, and what
+    each project's searches found since its last whole read when the fetch reaches that
+    project, after the projects before it: either damaged then fails that source's row
+    alone, its searches by update time too, or those still to come.
     """
     store = RawStore(run.settings.raw, run.source.name)
     try:

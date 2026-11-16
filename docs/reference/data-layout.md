@@ -259,8 +259,9 @@ last whole read of a type is kept: the spaces by id, the projects by key. A whol
 that fails is counted, `fetch.scope_failed`, and the project's search goes on; its last
 whole read stays. Each search by update time adds the ids of its entries to
 `searched.json` before it fetches them (`put_searched(key, ids)`, `searched(key)`, which
-refuses by name a file that does not read, as `pending` does), and a whole read removes
-the file, so that the next whole read is compared with every issue that the project
+refuses by name a file that does not read, as `pending` does, when the fetch reaches its
+project: one damaged fails the source's row once the projects before it are fetched),
+and a whole read removes the file, so that the next whole read is compared with every issue that the project
 held, a new issue deleted within the week among them.
 
 ### Files
