@@ -420,9 +420,10 @@ def prepare_atlassian(
     # A source of pages writes the folders of their spaces too, each a container.
     folders = folder_files(source, catalogue, times, problems) if Page in document_classes else {}
     wanted: dict[PurePosixPath, bytes | Path] = {**files, **dict(folders.values())}
-    if own:
-        # The source's file beside its documents: the roles that each of its types takes,
-        # its containers, a source of pages' folders, and its scopes' as-of times.
+    if own or folders:
+        # The source's file beside its documents, its folders among them: the roles that
+        # each of its types takes, its containers, a source of pages' folders, and its
+        # scopes' as-of times.
         wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
             SourceFile(
                 roles={

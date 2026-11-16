@@ -383,8 +383,10 @@ def change_of(
     None when nothing changed: no file new, changed or gone, the same alias file, so the
     same files skipped, and the same ``sources``, the sources' files. Else the documents
     of files changed or gone are removed, and every file new or changed is read, with
-    every file skipped, as what kept one out may be gone. With nothing held, the change
-    is whole, every file read. The span
+    every file skipped, as what kept one out may be gone, and every document held with or
+    without a section where its source's file now says the other of its type, so that a
+    type named a container, or no longer, is cut anew. With nothing held, the change is
+    whole, every file read. The span
     ``index.files`` and the task ``files`` hold the reading, ``index.document`` saying
     each document read, at DEBUG.
     """
@@ -399,8 +401,14 @@ def change_of(
             or held.sources != sources_digest(sources)
         ):
             return None
-        paths = found.changed | found.added | (held.skipped.keys() & files.keys())
-        removed = (found.changed | found.removed) & held.documents.keys()
+        declared = {(name, each) for name, said in sources.items() for each in said.containers}
+        again = {
+            path
+            for path, kind in held.typed.items()
+            if (kind in declared) != (path in held.containers)
+        }
+        paths = found.changed | found.added | again | (held.skipped.keys() & files.keys())
+        removed = (found.changed | found.removed | again) & held.documents.keys()
     put: list[Put] = []
     skipped: list[Skipped] = []
     log = structlog.get_logger()

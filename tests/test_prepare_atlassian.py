@@ -523,6 +523,22 @@ def test_a_folder_without_its_status_dates_or_version_is_still_a_document(
     assert (folder.revision, files[1]) == (time_revision(EPOCH), files[0])
 
 
+def test_a_source_of_folders_alone_writes_its_source_s_file(tmp_path: Path) -> None:
+    """Review of 061: the file that names a folder a container comes with the folder's file.
+
+    No page of the space is stored, every GET of a page having failed: the folder is the
+    source's one document, and its source's file says that its type is a container.
+    """
+    store = RawStore(tmp_path / "data" / "raw", "confluence")
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), LISTED, [], [FOLDER])
+    docs = tmp_path / "data" / "docs"
+    assert prepared_source(store, docs, SITE, lambda html: html, "confluence").problems == ()
+    assert (docs / "confluence" / "MFS" / "200-plans.md").is_file()
+    declared = json.loads((docs / "confluence" / "_source.json").read_text("utf-8"))
+    assert declared["containers"] == ["folder"]
+
+
 def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(
     sandbox: Sandbox,
 ) -> None:

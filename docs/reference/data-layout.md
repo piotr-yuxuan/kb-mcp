@@ -848,8 +848,9 @@ document by its id.
 Each source's prepare writes, beside its documents, `<source>/_source.json`
 (`mirror.adapters.source_files`, from a `mirror.domain.mirror.SourceFile`), so that what
 its connector declares reaches the index through the mirror alone, as nothing past the
-mirror decides by a source's name. It is written with the source's documents, and no
-prepare removes it: it stays as the last prepare that wrote it left it, so that a source
+mirror decides by a source's name. It is written with the source's documents, a source
+of pages' folders among them, so that a folder is a container from its first file, and
+no prepare removes it: it stays as the last prepare that wrote it left it, so that a source
 left with no documents keeps its former file. Its name begins with `_`, so that no
 reader takes it for a document.
 
@@ -1002,12 +1003,14 @@ index names, and only while the endpoint's fingerprint for it is the index's.
 `index` (`search.app.indexing.update_index`) reads the alias file first, then digests
 every file of the mirror, the SHA-256 of its bytes, reads the sources' files, and
 compares them with what the index holds (`search.adapters.sqlite_index.Reader.held`):
-each document's path and digest, each file skipped, and the meta rows `words`,
-`aliases`, `sources` and `build`. With no file added, changed or gone, the same alias
-file and the same sources' files, it writes nothing,
-`index.unchanged`, and the index keeps its bytes and its `build`. Else it reads the
-files added or changed, and each file skipped again, as what kept it out may be gone,
-before it takes any lock; then it writes a new file beside the index, named by
+each document's path and digest, its source and type and whether it has no section,
+each file skipped, and the meta rows `words`, `aliases`, `sources` and `build`. With no
+file added, changed or gone, the same alias file and the same sources' files, it writes
+nothing, `index.unchanged`, and the index keeps its bytes and its `build`. Else it reads
+the files added or changed, each file skipped again, as what kept it out may be gone,
+and each document held with no section whose type its source's file no longer names a
+container, or the other way round, so that its sections follow the declared type
+without a rebuild, before it takes any lock; then it writes a new file beside the index, named by
 `sqlite_index.BUILDING` (`.index-*.sqlite`), which readers and the prune skip
 (`search.adapters.sqlite_index.Writer.update`):
 

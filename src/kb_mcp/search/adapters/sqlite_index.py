@@ -1020,19 +1020,25 @@ class Reader:
                 sources=None,
                 documents={},
                 skipped={},
+                typed={},
+                containers=frozenset(),
             )
-        documents = self._connection.execute("SELECT path, digest FROM documents").fetchall()
+        documents = self._connection.execute(
+            "SELECT path, digest, source, type, last_section < first_section FROM documents"
+        ).fetchall()
         skipped = self._connection.execute("SELECT path, digest, reason FROM skipped")
         return Held(
             build=meta["build"],
             words=meta["words"],
             aliases=meta["aliases"],
             sources=meta["sources"],
-            documents=dict(documents),
+            documents={path: digest for path, digest, *_ in documents},
             skipped={
                 path: Skipped(path=path, digest=digest, reason=reason)
                 for path, digest, reason in skipped
             },
+            typed={path: (source, kind) for path, _, source, kind, _ in documents},
+            containers=frozenset(path for path, *_, bare in documents if bare),
         )
 
     def documents(self) -> list[IndexedBody]:

@@ -31,7 +31,16 @@ from kb_mcp.search.app.indexing import (
 )
 from kb_mcp.search.app.meaning import Meaning
 from tests.endpoint import Scripted, connect_scripted, scripted, tiny
-from tests.mirrors import MOMENT, fillers, issue, location, page, worklog_document, write
+from tests.mirrors import (
+    DECLARED,
+    MOMENT,
+    fillers,
+    issue,
+    location,
+    page,
+    worklog_document,
+    write,
+)
 from tests.test_evaluate import GOLDEN
 from tests.test_people import SAM_2
 
@@ -325,6 +334,29 @@ def test_a_source_s_file_changed_alone_writes_a_build_holding_what_it_says(data:
     (problem,) = failed.problems
     assert problem.reason == "jira/_source.json: not JSON; `kb-mcp prepare` writes it again"
     assert (data / "index.sqlite").read_bytes() == before
+
+
+def test_a_type_named_a_container_since_the_last_build_is_read_again(data: Path) -> None:
+    """Review of 061: a folder indexed with a section, its file unchanged, loses it.
+
+    Its source's file, written later, names its type a container: the update reads the
+    folder again, and holds what a whole build holds.
+    """
+    docs = data / "docs"
+    step = Step(data)
+    folder = page("1002", "Guides", type="folder")
+    path = write(docs, folder, "")
+    declared = SourceFile(roles={"page": (), "blogpost": (), "folder": ()}, as_of={})
+    (docs / "confluence" / SOURCE_FILE).write_bytes(dumped(declared))
+    step.equal()
+    with reading(data / "index.sqlite") as reader:
+        assert len(reader.bounds(path)) == 1
+    (docs / "confluence" / SOURCE_FILE).write_bytes(dumped(DECLARED["confluence"]))
+    updated = update_index(step.indexing(), MOMENT)
+    assert (updated.counts.rebuilt, updated.counts.replaced) == (None, 1)
+    assert rows(data / "index.sqlite") == rows(step.whole())
+    with reading(data / "index.sqlite") as reader:
+        assert reader.bounds(path) == []
 
 
 def test_a_scope_s_as_of_time_changed_alone_is_indexed_and_served(data: Path) -> None:

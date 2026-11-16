@@ -16,6 +16,8 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.app.indexing import build_index, updated
 from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
@@ -1882,3 +1884,33 @@ def test_this_run_s_whole_read_of_another_project_ends_an_absence(
     )
     run(chosen, monkeypatch, prb, catch_up([], ["PRB"]), FIRST + WEEK + timedelta(hours=1))
     assert RawStore(chosen.raw, "jira").tombstones() == {}
+
+
+def test_a_folder_stays_a_container_when_its_space_s_pages_first_failed(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: a first fetch whose pages all fail still mirrors containers.
+
+    Prepare writes the folders alone, then, once the pages come, the pages beside them;
+    the index, built then updated, holds each folder with no section, as a whole build.
+    """
+    chosen = settings(tmp_path)
+    index, path = chosen.data_dir / "index.sqlite", "confluence/MFS/2001-inner.md"
+
+    def prepared_and_indexed() -> list[tuple[int, int]]:
+        prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
+        if index.exists():
+            updated(index, chosen.docs, {}, FIRST, None)
+        else:
+            build_index(chosen.docs, index, FIRST)
+        with reading(index) as reader:
+            return reader.bounds(path)
+
+    failing = RefreshSite(pages_fail=True, posts={})
+    run(chosen, monkeypatch, failing, first_week(["MFS"], []), FIRST)
+    assert prepared_and_indexed() == []
+    run(chosen, monkeypatch, RefreshSite(posts={}), catch_up(["MFS"], []), SECOND)
+    assert prepared_and_indexed() == []
+    build_index(chosen.docs, tmp_path / "whole.sqlite", FIRST)
+    with reading(tmp_path / "whole.sqlite") as reader:
+        assert reader.bounds(path) == []
