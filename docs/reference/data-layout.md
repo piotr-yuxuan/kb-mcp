@@ -1051,7 +1051,10 @@ site moves it into the site's folder, once (`session.moved`), the profile first 
 cookies last, holding `<data>/session/.lock`, an empty file, which a run that finds it held
 leaves the move to; a dry run, `doctor` or `serve` moves nothing. Cookies of no site that
 the settings name, or of several, or of a site with cookies of its own, stay, with one
-warning a run (`session.not_moved`), by the first source of the site, until removed.
+warning a run (`session.not_moved`), by the first source of the site, until removed;
+none when that source signs in by an API token. A move that fails is a warning of each
+source that tries it, and a run signed in by the session not moved keeps its cookies there,
+for the next run to move.
 
 `sources.atlassian.fetch.adapters.sign_in` chooses how each source signs in (015, 059): by
 an API token when its setting `api_token`, such as `sources.jira.api_token`, is set, else
