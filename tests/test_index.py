@@ -1029,14 +1029,16 @@ def test_a_rebuild_embeds_nothing_with_or_without_new_aliases(data: Path) -> Non
     )
 
 
-@pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5"])
+@pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5", "6", "7", "8"])
 def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     data: Path, schema: str
 ) -> None:
     """An index of plan 006, or built before the build id, people, links or persons.
 
     The commands named write the mirror's files before the index, as 041 changed them:
-    ``prepare``, then ``index``, then ``embed``.
+    ``prepare``, then ``index``, then ``embed``. Since plan 057 those of 6, 7 and 8 too,
+    whose files name an issue's parent by its key in its breadcrumb, which no longer
+    places it.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -1053,23 +1055,6 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     )
     with refused, reading(data / "index.sqlite"):
         pass
-
-
-@pytest.mark.parametrize("schema", ["6", "7"])
-def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path, schema: str) -> None:
-    """Plans 054 and 058: the mirror's files of 6 and 7 are read as they are: no prepare.
-
-    Plan 058 reads their people's former ``account``.
-    """
-    write(data / "docs", page("196845", "Kafka"), BODY)
-    build_index(data / "docs", data / "index.sqlite", MOMENT)
-    with sqlite3.connect(data / "index.sqlite") as connection:
-        connection.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (schema,))
-    connection.close()
-    with pytest.raises(UnavailableIndexError) as refused, reading(data / "index.sqlite"):
-        pass
-    assert str(refused.value).endswith("rebuild it with `kb-mcp index`, then `kb-mcp embed`")
-    assert "prepare" not in str(refused.value)
 
 
 def child_environment(data: Path) -> dict[str, str]:

@@ -82,9 +82,6 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # section_words; 8 from plan 058, with identities; 9 from plan 057, with scopes, subtypes,
 # parents, links by document id, and the types' roles and the scopes' as-of times.
 SCHEMA = "9"
-# The former schemas whose mirror's files this version reads as they are: rebuilding the
-# index is enough, with no prepare first.
-SAME_MIRROR = frozenset({"6", "7", "8"})
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -1164,8 +1161,9 @@ def reading(
     ``searched`` gives ``Reader.nearest`` what it searches: by default, read at each search.
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
     Another schema names ``prepare``, then ``index``, not ``index`` alone: a new schema
-    can come with a new format of the mirror's files, which ``index`` would skip, and
-    ``prepare`` writes them first; one of SAME_MIRROR names ``index`` alone.
+    can come with a new format of the mirror's files, which ``index`` would skip, or
+    misread, as an issue's breadcrumb before schema 9, its parent's key; ``prepare``
+    writes them first.
     """
     unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
@@ -1180,12 +1178,10 @@ def reading(
         except sqlite3.DatabaseError:
             meta = {}
         if meta.get("schema") != SCHEMA:
-            prepare = (
-                ""
-                if meta.get("schema") in SAME_MIRROR
-                else " `kb-mcp prepare`, which writes the mirror again first, then"
+            message = (
+                f"{unread} `kb-mcp prepare`, which writes the mirror again first, then"
+                " `kb-mcp index`, then `kb-mcp embed`"
             )
-            message = f"{unread}{prepare} `kb-mcp index`, then `kb-mcp embed`"
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:

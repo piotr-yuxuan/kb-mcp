@@ -820,11 +820,12 @@ identity, and `embed` then finds every vector in the vector cache, no chunk's te
 holding a person. Schema 9 (057) holds a document's place as the concepts name it: the
 columns `space` and `project` of `documents` become `scope`, `issue_type` becomes
 `subtype`, `parent` joins, `fetched_at` leaves, and each link of `links` names a
-document id; an index of 8 is rebuilt whole by the next `index`, which reads a file of
-plan 058's front matter as `mirror.adapters.markdown.load` says, and `embed` then finds
-in the vector cache every vector whose chunk's text is unchanged, the breadcrumb of an
-issue, in the context prefix of the chunkings `section-paths` and `small-to-big`, being
-the titles along its parents once `prepare` has written its file again. Schema 9 also
+document id; an index of 6, 7 or 8 is refused naming `prepare` first, as the breadcrumb
+of an issue in their files is its parent's key, which places it no more, though
+`mirror.adapters.markdown.load` still reads a file of plan 058's front matter, for the
+work log's prepare; `embed` then finds in the vector cache every vector whose chunk's
+text is unchanged, the breadcrumb of an issue, in the context prefix of the chunkings
+`section-paths` and `small-to-big`, being the titles along its parents. Schema 9 also
 holds what the sources' files of the mirror say ([above](#a-sources-file)): the table
 `types`, each source's document type with the roles that it takes, as JSON, and the
 table `scopes`, each source's scope with its as-of time, both written whole at each
@@ -834,8 +835,7 @@ and the meta row `sources`, their digest (`search.domain.indexes.sources_digest`
 that a change of a source's file alone is an update. An index of another schema is
 refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
-index, as a new schema can come with a new format of the files; one of schema 6, 7 or 8,
-whose files this version reads as they are, naming `index`, then `embed`; one cut by a
+index, as a new schema can come with a new format of the files; one cut by a
 chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the
