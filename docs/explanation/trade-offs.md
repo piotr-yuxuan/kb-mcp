@@ -88,7 +88,10 @@ confirmed gone
   deleted before it, such as before the upgrade, is never found gone. An issue moved to
   another project is unsettled until that project's whole read names it; a project kept
   only by a source of another site is not kept, as its key there is another project.
-  A whole read that fails is counted, and the search by update time goes on.
+  A whole read that fails is counted, and the search by update time goes on. An issue
+  confirmed gone that comes back, restored or visible again, stays out of the mirror
+  until its project's next whole read names it, a week at most, where a page comes
+  back at its space's next listing: only a whole read made by the run ends an absence.
 - **Rejected.** A whole read at every run, as a space's listing is: as many requests as
   a project has thousands of issues, at each run. The first whole read's baseline taken
   from the issues that the raw store holds of the project: it reads every snapshot of

@@ -285,8 +285,8 @@ Two more of the store's own records, each replaced whole:
   time only once known. A scope read whole and not yet covered, as a project whose
   first search failed, has an entry without `start` and `end`, which keeps its
   `whole_read_at`, so that its next run is no whole read again within the week;
-  versions before plan 061 refuse such a record. An entry without `type`, as plan 056 found them, is of its
-  source's scope type, its source being its connector's name. A run that listed a
+  versions before plan 061 refuse such a record. An entry without `type`, as plan 056
+  found them, is of its source's scope type, its source being its connector's name. A run that listed a
   scope whole joins its fetch window to that period when the two overlap or touch, or
   replaces an inexact period that the window starts at or before. Without a failure, such a
   run leaves the period exact. A space's period ends at the fetch window's end whatever
@@ -334,8 +334,8 @@ Two more of the store's own records, each replaced whole:
   an absence: a project that the run does not read whole keeps its tombstones as they
   are, so that what is absent is still probed at each run. Every fetch reads the record and
   writes it again, each entry of another source or scope as it found it; one that
-  cannot be read fails that source's fetch alone, before any request, Confluence's by
-  its preflight.
+  cannot be read fails that source's fetch alone, before any request: Confluence's by
+  its preflight, Jira's once its fetch has begun, its search by update time too.
 
 ## The work log's copy store
 

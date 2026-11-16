@@ -70,10 +70,12 @@ def purview_of(run: SourceRun) -> Purview:
 def preflight(run: SourceRun) -> str | None:
     """Say why the fetch cannot start: an --until before --since, or a store's record not read.
 
-    Those are the records that a fetch reads before its first request: what is
-    covered, and for a fetch of spaces what answered as gone and the joined documents
-    still to fetch of each space that it lists. So that these stop no fetch of projects,
-    nor of other spaces.
+    It reads what is covered and, for a source of spaces, what answered as gone and the
+    joined documents still to fetch of each space that the fetch lists, so that a damaged
+    record of another space stops nothing. A source of projects reads what answered as
+    gone, and what each project's searches found since its last whole read, once its
+    fetch has begun (``run_fetch``), before its first request: one damaged then fails
+    that source's row alone, its search by update time too.
     """
     store = RawStore(run.settings.raw, run.source.name)
     try:
@@ -94,7 +96,8 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
     """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_purview``.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
-    later fetch's start, or a record damaged since. It fails this fetch alone, a problem
+    later fetch's start, a record damaged since, or one that ``preflight`` leaves to the
+    run. It fails this fetch alone, a problem
     by the source and an error, ``fetch.refused``, naming the source, and the run's next
     rows go on.
     """
