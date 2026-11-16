@@ -92,6 +92,8 @@ CONFIGURED = {
 # meetings and six transcripts, one of them under meetings/.
 WORKLOG_BY_TYPE = {"entry": 13, "day": 2, "meeting": 8, "transcript": 6}
 WORKLOG_DOCUMENTS = sum(WORKLOG_BY_TYPE.values())
+# The work log's files: its documents' and its source's file.
+WORKLOG_FILES = WORKLOG_DOCUMENTS + 1
 # The keys of each row of fetch's and prepare's JSON, in order: its source, then its outcome.
 ROW_KEYS = ["source", "ending", "counts", "problems", "warnings"]
 # The period of a fetch that covers what the scripted sites serve: the week before FIRST.
@@ -676,7 +678,7 @@ def test_a_prepare_and_its_dry_run_leave_the_work_log_as_it_was(
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     assert snapshot(worklog) == before
     second = capsys.readouterr().out.split("worklog: done\n")[-1]
-    assert "files written: 0\n" in second
+    assert "files written: 1\n" in second  # the source's file alone, its as-of time
 
 
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
@@ -773,7 +775,7 @@ def test_the_text_gives_a_row_per_source_then_its_counts(
     assert capsys.readouterr().out == (
         "worklog: done\n"
         f"  documents: {WORKLOG_DOCUMENTS}\n"
-        f"  files written: {WORKLOG_DOCUMENTS}\n"
+        f"  files written: {WORKLOG_FILES}\n"
         "  files unchanged: 0\n"
         "  files removed: 0\n"
         "  HTML left out: 1\n"
@@ -1303,7 +1305,8 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
 
     Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
     transcript read, none unread; each document prepared, by its type and path; a file
-    each written. Unchanged, each kept and none written. A dry run says each to convert
+    each written. Unchanged, each kept and none written but the source's file, its as-of
+    time the new read's. A dry run says each to convert
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.
     """
@@ -1333,8 +1336,8 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     assert all(str(each["path"]).startswith(folders[str(each["type"])]) for each in documents)
     fields = ("documents", "written", "unchanged", "removed", "problems")
     every = WORKLOG_DOCUMENTS
-    assert ended_with(fresh, *fields) == (every, every, 0, 0, 0)
-    assert ended_with(unchanged, *fields) == (every, 0, every, 0, 0)
+    assert ended_with(fresh, *fields) == (every, WORKLOG_FILES, 0, 0, 0)
+    assert ended_with(unchanged, *fields) == (every, 1, WORKLOG_FILES - 1, 0, 0)
     kept = {each["outcome"] for each in logged_as(unchanged, "worklog.document")}
     assert kept == {"kept"}
     assert ended_with(planned, "to_convert", "to_remove", "problems") == (every, 0, 0)
@@ -1448,7 +1451,8 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
 ) -> None:
     """Plan 030: a declaration's preparers are a tuple: each runs, in its order, a row each.
 
-    The same preparer twice here, the second finding its files written by the first.
+    The same preparer twice here, the second finding its files written by the first, but
+    the source's, its as-of time the second read's.
     """
     settings = chosen_settings(tmp_path, worklog)
     twice = replace(WORKLOG, preparers=WORKLOG.preparers * 2)
@@ -1458,7 +1462,7 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
         ("worklog", "done"),
     ]
     written = [row.counts.changes.written for row in ran.sources]
-    assert written == [WORKLOG_DOCUMENTS, 0]
+    assert written == [WORKLOG_FILES, 1]
 
 
 def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_1(

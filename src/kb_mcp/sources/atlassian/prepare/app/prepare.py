@@ -34,9 +34,11 @@ from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
-from kb_mcp.mirror.domain.mirror import ref_of
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
+from kb_mcp.mirror.domain.mirror import SourceFile, scope_name
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
+    COVERAGE,
     UNREADABLE,
     RawStore,
     StoredSnapshot,
@@ -56,7 +58,7 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     RenderContext,
     normalise,
 )
-from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue, front_matter
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES, Catalogue, front_matter
 from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,
     confluence_path,
@@ -134,9 +136,9 @@ class Placed(Record):
 
     @property
     def ref(self) -> str:
-        """Name the document as links and images do: its key for Jira, else its id."""
+        """Name the document as the site's links and images do: its key for Jira, else its id."""
         document = self.document
-        return ref_of(document.key if isinstance(document, Issue) else None, document.id)
+        return document.key if isinstance(document, Issue) else document.id
 
 
 def readable[T](items: Iterable[T | Problem], problems: list[Problem]) -> list[T]:
@@ -168,12 +170,18 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
 def read_catalogue(
     store: RawStore, problems: list[Problem]
 ) -> tuple[Catalogue, set[str], dict[str, datetime]]:
-    """Read the spaces, site users and listings.
+    """Read the spaces, site users, listings and the scopes' as-of times.
 
-    Also return the spaces whose listing failed, and when each space was listed.
+    Also return the spaces whose listing failed, and when each space was listed. A record
+    of coverage that cannot be read is a problem, and no as-of time is known.
     """
     spaces = {space.id: space for space in readable(store.spaces(), problems)}
     users = readable(store.users(), problems)
+    try:
+        as_of = store.coverage().as_of
+    except UNREADABLE as error:
+        problems.append(Problem(where=COVERAGE, reason=reason(error)))
+        as_of = {}
     times = {space_id: listed_at(store, space_id, problems) for space_id in spaces}
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
@@ -188,7 +196,8 @@ def read_catalogue(
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    return Catalogue(spaces=spaces, names=names, listed=listed, folders=folders), damaged, times
+    catalogue = Catalogue(spaces=spaces, names=names, listed=listed, folders=folders, as_of=as_of)
+    return catalogue, damaged, times
 
 
 def place(
@@ -283,9 +292,7 @@ def document_file(
 ) -> bytes:
     """Return the bytes of one document's file: its front matter, then its Markdown."""
     snapshot, document = placed.stored.snapshot, placed.document
-    matter = front_matter(
-        placed.source, snapshot, placed.stored.fetched_at, catalogue, context.link_targets.site
-    )
+    matter = front_matter(placed.source, snapshot, catalogue, context.link_targets.site)
     attachments = [
         (each.filename, None if asset is None else context.relative(asset))
         for each in snapshot.attachments
@@ -353,6 +360,15 @@ def prepare_atlassian(
     with TRACER.start_as_current_span("prepare.read"):
         catalogue, damaged, times = read_catalogue(RawStore(store.root, lister), found[lister])
         placed, retired = place(store, placing, catalogue, times, found)
+        # The source's issues, whose titles name their children's parents.
+        catalogue = replace(
+            catalogue,
+            issues={
+                issue.id: issue
+                for issue in (each.document for each in placed if each.source == source)
+                if isinstance(issue, Issue)
+            },
+        )
         linked, assets = link_targets(placed, store, site)
     own = [each for each in placed if each.source == source]
     _, files = link_targets(own, store, site)
@@ -364,6 +380,22 @@ def prepare_atlassian(
         problems=len(problems),
     )
     wanted: dict[PurePosixPath, bytes | Path] = {**files}
+    if own:
+        # The source's file beside its documents: the roles that each of its types takes,
+        # and its scopes' as-of times.
+        wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
+            SourceFile(
+                roles={
+                    each.document_type.name: TYPE_ROLES[each.document_type.name]
+                    for each in document_classes
+                },
+                as_of={
+                    scope_name(scope.type.name, scope.key): moment.astimezone(UTC)
+                    for scope, moment in catalogue.as_of.items()
+                    if scope.source == source
+                },
+            )
+        )
     unsupported: Counter[str] = Counter()
     with TRACER.start_as_current_span("prepare.build"):
         with task(f"{source} documents", len(own)) as built:
@@ -406,7 +438,6 @@ def prepare_atlassian(
             except PandocFailedError as error:
                 at = f"{source}/spaces/{space.id}"
                 problems.append(Problem(where=at, reason=str(error)))
-    written = sum(1 for each in own if each.path in wanted)
     # A moved document's old file goes once its new one is built, never before.
     gone = [old for old, new in retired.items() if new is None or new in wanted]
     with TRACER.start_as_current_span("prepare.write"):
@@ -439,7 +470,7 @@ def prepare_atlassian(
     )
     return Outcome.of(
         AtlassianCounts(
-            documents=written,
+            documents=sum(1 for each in own if each.path in wanted),
             converted=conversions.converted,
             reused=conversions.reused,
             changes=changes,

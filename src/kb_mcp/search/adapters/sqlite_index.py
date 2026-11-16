@@ -30,7 +30,7 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS
@@ -41,6 +41,7 @@ from kb_mcp.search.domain.indexes import (
     Skipped,
     UnavailableIndexError,
     Updated,
+    sources_digest,
 )
 from kb_mcp.search.domain.search import (
     WORDS,
@@ -78,11 +79,9 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # 1 from plan 006; 3 from plan 011, with vectors and a build id; 4 from plan 041, with
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
-# section_words; 8 from plan 058, with identities.
-SCHEMA = "8"
-# The former schemas whose mirror's files this version reads as they are: rebuilding the
-# index is enough, with no prepare first.
-SAME_MIRROR = frozenset({"6", "7"})
+# section_words; 8 from plan 058, with identities; 9 from plan 057, with scopes, subtypes,
+# parents, links by document id, and the types' roles and the scopes' as-of times.
+SCHEMA = "9"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -97,14 +96,25 @@ CREATE TABLE documents (
   rowid INTEGER PRIMARY KEY,
   path TEXT NOT NULL UNIQUE, digest TEXT NOT NULL,
   source TEXT NOT NULL, type TEXT NOT NULL, id TEXT NOT NULL, key TEXT,
-  title TEXT NOT NULL, space TEXT, project TEXT, status TEXT NOT NULL, issue_type TEXT,
-  labels TEXT NOT NULL, people TEXT NOT NULL, links TEXT NOT NULL, created TEXT NOT NULL,
-  updated TEXT NOT NULL, version INTEGER, revision TEXT NOT NULL, url TEXT,
-  breadcrumb TEXT NOT NULL, fetched_at TEXT NOT NULL,
+  title TEXT NOT NULL, scope TEXT NOT NULL, status TEXT NOT NULL, subtype TEXT,
+  labels TEXT NOT NULL, people TEXT NOT NULL, parent TEXT, links TEXT NOT NULL,
+  created TEXT NOT NULL, updated TEXT NOT NULL, version INTEGER, revision TEXT NOT NULL,
+  url TEXT, breadcrumb TEXT NOT NULL,
   length INTEGER NOT NULL, first_section INTEGER NOT NULL, last_section INTEGER NOT NULL,
   UNIQUE (source, id)
 );
 CREATE INDEX documents_key ON documents (key);
+CREATE INDEX documents_id ON documents (id);
+CREATE TABLE types (
+  source TEXT NOT NULL, type TEXT NOT NULL, roles TEXT NOT NULL, PRIMARY KEY (source, type)
+);
+CREATE TABLE scopes (
+  source TEXT NOT NULL, scope TEXT NOT NULL, as_of TEXT NOT NULL, PRIMARY KEY (source, scope)
+);
+CREATE VIEW typed AS
+SELECT d.*, t.roles AS type_roles, s.as_of AS as_of FROM documents d
+LEFT JOIN types t ON t.source = d.source AND t.type = d.type
+LEFT JOIN scopes s ON s.source = d.source AND s.scope = d.scope;
 CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
@@ -136,17 +146,17 @@ CREATE TABLE chunks (
   key TEXT NOT NULL, vector BLOB NOT NULL
 );
 """
-# The documents that pass a search's filters, as a JSON list of rowids. A person is
-# given by their id, in any role or in the role of the filter.
+# The documents that pass a search's filters, as a JSON list of rowids. A scope is given
+# whole, or by its key alone, which matches it in every scope type. A person is given by
+# their id, in any role or in the role of the filter.
 KEPT = """
 SELECT json_group_array(d.rowid) FROM documents d
 WHERE (:source IS NULL OR d.source = :source)
-  AND (:space IS NULL OR d.space = :space)
-  AND (:project IS NULL OR d.project = :project)
+  AND (:scope IS NULL OR :scope IN (d.scope, substr(d.scope, instr(d.scope, ':') + 1)))
   AND (:status IS NULL OR d.status = :status)
   AND (:label IS NULL
        OR EXISTS (SELECT 1 FROM labels l WHERE l.document = d.rowid AND l.label = :label))
-  AND (:issue_type IS NULL OR d.issue_type = :issue_type)
+  AND (:subtype IS NULL OR d.subtype = :subtype)
   AND (:person IS NULL OR d.rowid IN (SELECT p.document FROM people p WHERE p.person = :person))
   AND (:author IS NULL OR d.rowid IN
        (SELECT p.document FROM people p WHERE p.role = 'author' AND p.person = :author))
@@ -188,16 +198,28 @@ WHERE section_words MATCH :match
                        AND (SELECT last_section FROM documents WHERE path = :path)
 ORDER BY bm25(section_words, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
 """
+# The documents of some paths and refs: each ref a key or id, alone or after its source,
+# looked up by key and by id apart, so that each uses its index.
 ENTRIES = """
-SELECT d.* FROM documents d
-WHERE (d.path IN (SELECT value FROM json_each(:paths))
-       OR d.key IN (SELECT value FROM json_each(:keys))
-       OR (d.key IS NULL AND d.id IN (SELECT value FROM json_each(:ids))))
+WITH refs AS (
+  SELECT CASE WHEN instr(value, ':') THEN substr(value, 1, instr(value, ':') - 1) END AS source,
+         substr(value, instr(value, ':') + 1) AS local
+  FROM json_each(:refs)
+),
+named AS (
+  SELECT e.rowid FROM refs r JOIN documents e ON e.key = r.local
+  WHERE r.source IS NULL OR e.source = r.source
+  UNION
+  SELECT e.rowid FROM refs r JOIN documents e ON e.id = r.local
+  WHERE r.source IS NULL OR e.source = r.source
+)
+SELECT d.* FROM typed d
+WHERE (d.path IN (SELECT value FROM json_each(:paths)) OR d.rowid IN named)
   AND (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
 ORDER BY d.path
 """
 RECENT = """
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 ORDER BY CASE WHEN :by = 'created' THEN d.created ELSE d.updated END DESC, d.updated DESC, d.path
 LIMIT :limit OFFSET :offset
@@ -207,7 +229,7 @@ SELECT count(*) FROM documents d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 """
 LISTING = """
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
 ORDER BY d.path
 """
@@ -255,7 +277,7 @@ ORDER BY s.number
 META = "SELECT name, value FROM meta WHERE name IN ('schema', 'chunking')"
 # The documents that hold a section but no chunk: those that may await their vectors.
 UNFILLED = """
-SELECT d.* FROM documents d
+SELECT d.* FROM typed d
 WHERE d.last_section >= d.first_section
   AND d.rowid NOT IN (SELECT s.document FROM chunks p JOIN sections s ON s.rowid = p.section)
 """
@@ -311,7 +333,8 @@ SUMMARY_LINKS = """
 SELECT t.rowid, m.rowid
 FROM documents t CROSS JOIN json_each(t.links) l CROSS JOIN documents m
 WHERE json_extract(l.value, '$.relation') = 'summary'
-  AND m.source = t.source AND m.id = json_extract(l.value, '$.ref')
+  AND m.source = substr(l.value ->> '$.document', 1, instr(l.value ->> '$.document', ':') - 1)
+  AND m.id = substr(l.value ->> '$.document', instr(l.value ->> '$.document', ':') + 1)
 """
 # A person's documents per role, then per source with the newest update, the most first.
 PERSON_ROLES = """
@@ -355,16 +378,20 @@ WHERE EXISTS (
 GROUP BY n.key HAVING count(DISTINCT n.person) > 1
 ORDER BY 2 DESC, 1
 """
+# What status says of scopes: each one's as-of time, the earliest of the sources that
+# hold it, and none when one of its documents' sources knows none.
+SCOPE_AS_OF = """
+SELECT scope, min(as_of) FROM typed GROUP BY scope HAVING count(as_of) = count(*)
+"""
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
-    "space": "SELECT space, count(*) FROM documents WHERE space IS NOT NULL"
-    " GROUP BY 1 ORDER BY 2 DESC, 1",
-    "project": "SELECT project, count(*) FROM documents WHERE project IS NOT NULL"
+    "scope": "SELECT scope, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
+    "scope key": "SELECT substr(scope, instr(scope, ':') + 1), count(*) FROM documents"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     "status": "SELECT status, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
     "label": "SELECT label, count(*) FROM labels GROUP BY 1 ORDER BY 2 DESC, 1",
-    "issue_type": "SELECT issue_type, count(*) FROM documents WHERE issue_type IS NOT NULL"
+    "subtype": "SELECT subtype, count(*) FROM documents WHERE subtype IS NOT NULL"
     " GROUP BY 1 ORDER BY 2 DESC, 1",
     # By the documents other than transcripts first, as participant's below.
     "person": "SELECT p.name, count(DISTINCT p.document) FROM people p"
@@ -422,6 +449,7 @@ class Writer:
         self._next_section = 1
         self.embedded = embedded
         self.aliases = people.aliases_digest({})  # what the join read: no alias, yet
+        self.sources = sources_digest({})  # what the sources' files said: none, yet
         self.build = uuid.uuid4().hex  # unlike any other build
 
     def add(self, put: Put) -> int:
@@ -440,7 +468,6 @@ class Writer:
             "breadcrumb": json.dumps(front.breadcrumb, ensure_ascii=False),
             "created": moment(front.created),
             "updated": moment(front.updated),
-            "fetched_at": moment(front.fetched_at),
             "path": path,
             "digest": put.digest,
             "length": sum(len(section.text) for section in sections),
@@ -449,13 +476,12 @@ class Writer:
         }
         try:
             cursor = self._connection.execute(
-                "INSERT INTO documents (path, digest, source, type, id, key, title, space,"
-                " project, status, issue_type, labels, people, links, created, updated, version,"
-                " revision, url, breadcrumb, fetched_at, length, first_section, last_section)"
-                " VALUES (:path, :digest, :source, :type, :id, :key, :title, :space, :project,"
-                " :status, :issue_type, :labels, :people, :links, :created, :updated, :version,"
-                " :revision, :url, :breadcrumb, :fetched_at, :length, :first_section,"
-                " :last_section)",
+                "INSERT INTO documents (path, digest, source, type, id, key, title, scope,"
+                " status, subtype, labels, people, parent, links, created, updated, version,"
+                " revision, url, breadcrumb, length, first_section, last_section)"
+                " VALUES (:path, :digest, :source, :type, :id, :key, :title, :scope, :status,"
+                " :subtype, :labels, :people, :parent, :links, :created, :updated, :version,"
+                " :revision, :url, :breadcrumb, :length, :first_section, :last_section)",
                 values,
             )
         except sqlite3.IntegrityError:
@@ -510,6 +536,29 @@ class Writer:
         first = self._next_section
         self._next_section += len(sections)
         return first
+
+    def describe(self, sources: Mapping[str, SourceFile]) -> None:
+        """Hold what the sources' files of the mirror say: each type's roles, each scope's as-of.
+
+        Called once a build; the build records their digest.
+        """
+        self.sources = sources_digest(sources)
+        self._connection.executemany(
+            "INSERT INTO types (source, type, roles) VALUES (?, ?, ?)",
+            [
+                (source, name, json.dumps(roles))
+                for source, said in sources.items()
+                for name, roles in said.roles.items()
+            ],
+        )
+        self._connection.executemany(
+            "INSERT INTO scopes (source, scope, as_of) VALUES (?, ?, ?)",
+            [
+                (source, scope, moment(at))
+                for source, said in sources.items()
+                for scope, at in said.as_of.items()
+            ],
+        )
 
     def add_chunks(self, chunks: Iterable[tuple[int, int, int, str, bytes]]) -> None:
         """Add chunks: each its section's rowid, its range in the body, its vector.
@@ -632,6 +681,7 @@ class Writer:
                 taken.add(put.path)
         for each in skipped:
             self.skip(each)
+        self.describe(change.sources)
         persons = self.join(change.aliases)
         replaced = len(taken & held.keys())
         wanting = None if self.embedded is None else awaiting(connection, self.embedded.chunking)
@@ -719,6 +769,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
                     ("skipped", str(skipped)),
                     ("words", WORDS),
                     ("aliases", writer.aliases),
+                    ("sources", writer.sources),
                     ("build", writer.build),
                     ("model", embedded.model if embedded else ""),
                     ("fingerprint", embedded.fingerprint if embedded else ""),
@@ -732,17 +783,16 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
 
 
 def indexed_document(row: sqlite3.Row) -> IndexedDocument:
-    """Read a row of ``documents`` back into the front matter it was written from."""
+    """Read a row of ``typed`` back: its front matter, its type's roles, its scope's as-of."""
     front = FrontMatter(
         source=row["source"],
         type=row["type"],
         id=row["id"],
         key=row["key"],
         title=row["title"],
-        space=row["space"],
-        project=row["project"],
+        scope=row["scope"],
         status=row["status"],
-        issue_type=row["issue_type"],
+        subtype=row["subtype"],
         labels=tuple(json.loads(row["labels"])),
         people=tuple(
             Mention(
@@ -753,8 +803,10 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
             )
             for person in json.loads(row["people"])
         ),
+        parent=row["parent"],
         links=tuple(
-            Link(relation=link["relation"], ref=link["ref"]) for link in json.loads(row["links"])
+            Link(relation=link["relation"], document=link["document"])
+            for link in json.loads(row["links"])
         ),
         created=datetime.fromisoformat(row["created"]),
         updated=datetime.fromisoformat(row["updated"]),
@@ -762,16 +814,22 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         revision=row["revision"],
         url=row["url"],
         breadcrumb=tuple(json.loads(row["breadcrumb"])),
-        fetched_at=datetime.fromisoformat(row["fetched_at"]),
     )
     sections = row["last_section"] - row["first_section"] + 1
-    return IndexedDocument(path=row["path"], front=front, length=row["length"], sections=sections)
+    return IndexedDocument(
+        path=row["path"],
+        front=front,
+        length=row["length"],
+        sections=sections,
+        type_roles=tuple(json.loads(row["type_roles"] or "[]")),
+        as_of=None if row["as_of"] is None else datetime.fromisoformat(row["as_of"]),
+    )
 
 
 class Reader:
     """Queries of one open index.
 
-    A list is bounded by a limit, or else by what one space, project or filter holds.
+    A list is bounded by a limit, or else by what one scope or filter holds.
     """
 
     def __init__(
@@ -836,19 +894,13 @@ class Reader:
         self,
         *,
         paths: Iterable[str] = (),
-        keys: Iterable[str] = (),
-        ids: Iterable[str] = (),
+        refs: Iterable[str] = (),
         filters: Filters | None = None,
     ) -> list[IndexedDocument]:
-        """Find the documents of these paths, issue keys, and page or work-log ids, by path.
-
-        A document with a key, as an issue, is never looked up by its id, since a page may
-        have the same.
-        """
+        """Find the documents of these paths and refs, as ``SearchReader`` says, by path."""
         parameters = {
             "paths": json.dumps(list(paths)),
-            "keys": json.dumps(list(keys)),
-            "ids": json.dumps(list(ids)),
+            "refs": json.dumps(list(refs)),
             "kept": self.kept(filters or Filters()),
         }
         return [indexed_document(row) for row in self._connection.execute(ENTRIES, parameters)]
@@ -869,7 +921,7 @@ class Reader:
         ]
 
     def listing(self, filters: Filters) -> list[IndexedDocument]:
-        """List every document that passes the filters, such as those of one space."""
+        """List every document that passes the filters, such as those of one scope."""
         rows = self._connection.execute(LISTING, {"kept": self.kept(filters)})
         return [indexed_document(row) for row in rows]
 
@@ -958,13 +1010,21 @@ class Reader:
         """
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
         if "words" not in meta:
-            return Held(build=meta["build"], words=None, aliases=None, documents={}, skipped={})
+            return Held(
+                build=meta["build"],
+                words=None,
+                aliases=None,
+                sources=None,
+                documents={},
+                skipped={},
+            )
         documents = self._connection.execute("SELECT path, digest FROM documents").fetchall()
         skipped = self._connection.execute("SELECT path, digest, reason FROM skipped")
         return Held(
             build=meta["build"],
             words=meta["words"],
             aliases=meta["aliases"],
+            sources=meta["sources"],
             documents=dict(documents),
             skipped={
                 path: Skipped(path=path, digest=digest, reason=reason)
@@ -980,7 +1040,7 @@ class Reader:
         bodies: dict[str, list[str]] = {}
         for path, text in self._connection.execute(BODIES):
             bodies.setdefault(path, []).append(text)
-        rows = self._connection.execute("SELECT * FROM documents ORDER BY path")
+        rows = self._connection.execute("SELECT * FROM typed ORDER BY path")
         return [
             IndexedBody(
                 path=row["path"],
@@ -1074,7 +1134,6 @@ class Reader:
     def index_status(self) -> IndexStatus:
         """Say what the index holds and when it was built."""
         meta = dict(self._connection.execute("SELECT name, value FROM meta").fetchall())
-        newest = self._connection.execute("SELECT max(fetched_at) FROM documents").fetchone()[0]
         sections = self._connection.execute("SELECT count(*) FROM sections").fetchone()[0]
         chunks = self._connection.execute("SELECT count(*) FROM chunks").fetchone()[0]
         persons, alone = self._connection.execute(PERSON_COUNTS).fetchone()
@@ -1086,10 +1145,12 @@ class Reader:
             built_at=self.built_at(),
             skipped=int(meta["skipped"]),
             types=dict(self.values("type")),
-            spaces=dict(self.values("space")),
-            projects=dict(self.values("project")),
+            scopes=dict(self.values("scope")),
+            as_of={
+                scope: datetime.fromisoformat(at)
+                for scope, at in self._connection.execute(SCOPE_AS_OF)
+            },
             sections=sections,
-            newest_fetch=None if newest is None else datetime.fromisoformat(newest),
             persons=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,
             chunks=chunks,
@@ -1107,8 +1168,9 @@ def reading(
     ``searched`` gives ``Reader.nearest`` what it searches: by default, read at each search.
     Raise UnavailableIndexError when there is none, or when this version cannot read it.
     Another schema names ``prepare``, then ``index``, not ``index`` alone: a new schema
-    can come with a new format of the mirror's files, which ``index`` would skip, and
-    ``prepare`` writes them first; one of SAME_MIRROR names ``index`` alone.
+    can come with a new format of the mirror's files, which ``index`` would skip, or
+    misread, as an issue's breadcrumb before schema 9, its parent's key; ``prepare``
+    writes them first.
     """
     unread = f"{path} is not an index that this version reads: rebuild it with"
     try:
@@ -1123,12 +1185,10 @@ def reading(
         except sqlite3.DatabaseError:
             meta = {}
         if meta.get("schema") != SCHEMA:
-            prepare = (
-                ""
-                if meta.get("schema") in SAME_MIRROR
-                else " `kb-mcp prepare`, which writes the mirror again first, then"
+            message = (
+                f"{unread} `kb-mcp prepare`, which writes the mirror again first, then"
+                " `kb-mcp index`, then `kb-mcp embed`"
             )
-            message = f"{unread}{prepare} `kb-mcp index`, then `kb-mcp embed`"
             raise UnavailableIndexError(message)
         # A chunking that this version lacks would be cut as no table says.
         if meta.get("chunking", "") not in {"", *CHUNKINGS}:

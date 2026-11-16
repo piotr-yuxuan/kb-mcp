@@ -126,8 +126,15 @@ being read whole anyway; a scope never fetched, its last 7 days. A catch-up that
 [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) reads the newest
 snapshot of each document
 ([`RawStore.latest`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)),
-the listings, the users and the tombstones, and the source's setting `site`, such as
-`sources.confluence.site`: nothing else shapes its files. Confluence and Jira are prepared apart, Confluence first,
+the listings, the users, the tombstones and the record of coverage, and the source's
+setting `site`, such as `sources.confluence.site`: nothing else shapes its files. Each
+document's front matter names its scope, its parent and its links by document id, and
+its breadcrumb is the titles along its parents, an issue's climbing the parents that
+the raw store holds
+([`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py));
+beside the documents, the source's file says the roles that each of its types takes and
+its scopes' as-of times, copied from the coverage
+([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)). Confluence and Jira are prepared apart, Confluence first,
 each its own document types, and each places every document, since a page links an issue, and an
 issue a page. It places each document in the space whose freshest listing names it,
 leaving out those confirmed gone
@@ -194,7 +201,12 @@ pandoc reads, with pandoc's version and options
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)): a
 document whose file holds that revision keeps its body and its dates, but a day, a meeting
 or a dated transcript, dated afresh by its day; another is converted again
-([`Pandoc.org_markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)).
+([`Pandoc.org_markdown`](../../src/kb_mcp/mirror/adapters/pandoc.py)). So the work log's
+memory is its files of the mirror, an undated entry's created date among it: the
+prepare reads them first, those of plan 058's front matter too
+([`existing`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)), and writes each
+again in today's. Its source's file says the moment of the read as its one scope's as-of
+time, unless the run met a problem.
 
 - **Writes**, into `<data>/docs/worklog/` alone, through the mirror's
   [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py): each file
@@ -210,7 +222,9 @@ or a dated transcript, dated afresh by its day; another is converted again
   or its archive, else that file's own
   ([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
   and then removes no file but the old one of a document written again under another
-  title's path, so that the last good copy of each stays.
+  title's path, so that the last good copy of each stays. A file of the mirror that
+  does not read is a problem too, by its path in the mirror: the run writes nothing over
+  it, so that the created date that it may hold is not lost, and removes nothing.
 - **Offline**, everything: the work log is on this machine.
 
 ## Index and embed: from Markdown to words and vectors
@@ -218,7 +232,9 @@ or a dated transcript, dated afresh by its day; another is converted again
 [`update_index`](../../src/kb_mcp/search/app/indexing.py), `index`'s, reads the files
 of the mirror alone, never the raw store (an import contract holds it): every source's
 alike, by one rule of which files are documents
-([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)). It digests each file and
+([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)), and each source's file
+([`source_files`](../../src/kb_mcp/mirror/adapters/source_files.py)), whose roles and
+as-of times it holds beside the documents. It digests each file and
 compares it with what the index holds
 ([`change_of`](../../src/kb_mcp/search/app/indexing.py)), reads only those added or
 changed, cuts each body into sections before each heading
@@ -284,10 +300,15 @@ writes nothing. Each call opens the index read-only for itself
 ([`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py)), so a new
 build is read from the next call on, and each answer stays within its budget, with what
 it copies from the site inside a block marked as untrusted
-([`answer`](../../src/kb_mcp/mcp/app/responses.py)). In the lexical mode
+([`answer`](../../src/kb_mcp/mcp/app/responses.py)). Each document is cited by its ref,
+`<source>:<key or id>`, and served with the time that it is as of, its scope's, or
+`as of: unknown` ([`as_of`](../../src/kb_mcp/mcp/app/responses.py)). In the lexical mode
 it never opens the endpoint. A search ranks in the mode that `search_mode` sets
-([`ranking`](../../src/kb_mcp/mcp/app/tools.py)); issue keys and page ids
-named in a query put their documents first, in every mode.
+([`ranking`](../../src/kb_mcp/mcp/app/tools.py)); refs, issue keys and page ids
+named in a query put their documents first, in every mode, in the order of their first
+mention, each the documents that it cites: a ref after its source, in any case, its
+source's alone, where the index holds that source;
+after another word and a colon, a key stays bare and an id names nothing.
 
 ### By words
 
@@ -422,7 +443,7 @@ entry archived to `todo.org_archive` keeps its id too: its file is rewritten, la
 `index` patches nothing in place. It digests every file of the mirror and compares each
 with the digest that the index records
 ([`change_of`](../../src/kb_mcp/search/app/indexing.py)): with no file added, changed or
-gone, and the same alias file, it writes nothing. Else it reads the files added or
+gone, the same alias file and the same sources' files, it writes nothing. Else it reads the files added or
 changed, then builds a new index beside the old one
 ([`Writer.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)): every document
 whose file did not change is copied with its sections and chunks, and so with its

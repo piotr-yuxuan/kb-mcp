@@ -16,6 +16,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Attachment,
     Comment,
     Issue,
+    IssueParent,
     Listed,
     SiteUser,
     Snapshot,
@@ -97,7 +98,9 @@ def issue(fields: Fields) -> Issue:
             status=values.object("status").text("name"),
             creator=None if creator is None else person(creator),
             assignee=None if assignee is None else person(assignee),
-            parent=None if parent is None else parent.text("key"),
+            parent=None
+            if parent is None
+            else IssueParent(id=parent.text("id"), title=parent.object("fields").text("summary")),
         )
 
 

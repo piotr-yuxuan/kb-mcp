@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from copy import replace
 from typing import TYPE_CHECKING
 
 import anyio
@@ -19,9 +20,10 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import TextContent
 
 from kb_mcp.cli.main import main
-from kb_mcp.mcp.app.tools import Library
+from kb_mcp.mcp.app.surface import prompts
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.app.indexing import build_index
-from tests.answers import estimate
+from tests.answers import built, estimate, parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
 
 if TYPE_CHECKING:
@@ -49,7 +51,7 @@ def home(tmp_path: Path) -> Path:
     settings = home / ".config" / "kb-mcp" / "config.toml"
     settings.write_text(f"data_dir = {json.dumps(str(data))}\n", encoding="utf-8")
     fillers(data / "docs")
-    write(data / "docs", page("196845", "Kafka retention", space="ENG"))
+    write(data / "docs", page("196845", "Kafka retention", scope="space:ENG"))
     write(data / "docs", issue("PROJ-7", "Kafka upgrade"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     return home
@@ -128,7 +130,7 @@ def test_the_filters_of_search_and_ask_have_no_titles(home: Path) -> None:
     listed = {tool.name: tool.input_schema["$defs"]["SearchFilters"] for tool in tools.tools[:2]}
     assert list(listed) == ["ask", "search"]
     names = [
-        *("source", "space", "project", "status", "label", "issue_type"),
+        *("source", "scope", "status", "label", "subtype"),
         *("person", "author", "creator", "assignee", "commenter", "participant"),
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
@@ -217,11 +219,17 @@ def test_a_prompt_is_listed_only_when_its_tools_are_served(home: Path) -> None:
     """Three prompts with every tool; without read, brief and overview go."""
     _, _, prompts = seen(home)
     assert [prompt.name for prompt in prompts.prompts] == ["brief", "changes", "overview"]
-    assert all(
-        argument.required and " " not in argument.name
+    assert {
+        (prompt.name, argument.name): argument.required
         for prompt in prompts.prompts
         for argument in prompt.arguments or []
-    )
+    } == {
+        ("brief", "ref"): True,
+        ("changes", "scope"): True,
+        ("changes", "since"): True,
+        ("overview", "scope"): True,
+        ("overview", "source"): False,
+    }
     _, _, fewer = seen(home, "--tools", "search,browse,status")
     assert [prompt.name for prompt in fewer.prompts] == ["changes"]
 
@@ -233,10 +241,17 @@ def test_a_prompt_is_listed_only_when_its_tools_are_served(home: Path) -> None:
         (
             "changes",
             {"scope": "space:eng", "since": "2026-10-01"},
-            ["the space ENG", '"updated_after": "2026-10-01T00:00:00+00:00"'],
+            ["the scope space:ENG", '"updated_after": "2026-10-01T00:00:00+00:00"'],
             ["space:eng", "eng"],
         ),
-        ("overview", {"scope": "project:proj"}, ['browse(project="PROJ")'], ["proj"]),
+        ("overview", {"scope": "project:proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
+        ("overview", {"scope": "proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
+        (
+            "overview",
+            {"scope": "proj", "source": "JIRA"},
+            ['browse(scope="project:PROJ", source="jira")'],
+            ["proj", "JIRA"],
+        ),
     ],
 )
 def test_a_prompt_is_one_user_message_of_canonical_values(
@@ -254,11 +269,63 @@ def test_a_prompt_is_one_user_message_of_canonical_values(
 
 
 @pytest.mark.parametrize(
+    ("scope", "named"),
+    [
+        ("pay", "project:PAY (jira), project:PAY (tracker), space:PAY (confluence)"),
+        ("project:PAY", "project:PAY (jira), project:PAY (tracker)"),
+    ],
+)
+def test_an_overview_of_several_scopes_is_refused_as_browse_refuses_it(
+    tmp_path: Path, scope: str, named: str
+) -> None:
+    """The prompt never renders a call that browse refuses: it names each scope matched.
+
+    A key that two scopes hold, or a scope that two sources hold, as browse names them.
+    """
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Payments home", scope="space:PAY"), None),
+            (issue("PAY-1", "Payments epic"), None),
+            (replace(issue("PAY-2", "Payments rollout"), source="tracker"), None),
+        ],
+    )
+    (overview,) = [each for each in prompts(library) if each.name == "overview"]
+    with pytest.raises(UnanswerableError) as refused:
+        overview.render(scope)
+    assert parts(str(refused.value))[1] == named
+
+
+def test_an_overview_of_a_scope_that_two_sources_hold_takes_its_source(tmp_path: Path) -> None:
+    """As browse takes it: the refusal names the argument at fault, which the source settles.
+
+    A source that holds no such scope is refused, naming it.
+    """
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Payments home", scope="space:PAY"), None),
+            (issue("PAY-1", "Payments epic"), None),
+            (replace(issue("PAY-2", "Payments rollout"), source="tracker"), None),
+        ],
+    )
+    (overview,) = [each for each in prompts(library) if each.name == "overview"]
+    with pytest.raises(UnanswerableError) as refused:
+        overview.render("project:PAY")
+    assert parts(str(refused.value))[0].startswith("scope: several scopes match;")
+    text = overview.render("project:pay", source="TRACKER")
+    assert 'browse(scope="project:PAY", source="tracker")' in text
+    with pytest.raises(UnanswerableError) as refused:
+        overview.render("space:PAY", source="jira")
+    assert str(refused.value) == "source: jira holds no space:PAY"
+
+
+@pytest.mark.parametrize(
     ("name", "arguments", "named"),
     [
         ("brief", {"ref": "999999"}, "ref: not mirrored"),
-        ("overview", {"scope": "space:NOPE"}, "scope: space: no document has"),
-        ("overview", {"scope": "ENG"}, "scope: space:ENG or project:ENG"),
+        ("overview", {"scope": "space:NOPE"}, "scope: no document has"),
+        ("overview", {"scope": "NOPE"}, "scope key: no document has"),
         ("changes", {"scope": "space:ENG", "since": "last week"}, "since: an ISO 8601 date"),
     ],
 )

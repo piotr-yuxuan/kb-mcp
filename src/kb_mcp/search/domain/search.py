@@ -1,7 +1,7 @@
 """Search's pure rules, and what the index hands back.
 
 How a query becomes expressions for the index, how a body is cut into sections, and in
-which order a space or a project is browsed. Nothing here reads a file or the index:
+which order a scope is browsed. Nothing here reads a file or the index:
 ``search.adapters.sqlite_index`` runs the expressions and returns these types.
 """
 
@@ -19,9 +19,9 @@ from numpy.typing import NDArray
 from pydantic import ConfigDict
 
 from kb_mcp.kernel.chunking import Chunking
-from kb_mcp.kernel.names import ISSUE_KEY
+from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, SOURCE_NAME
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.mirror.domain.mirror import FrontMatter, document_id
 from kb_mcp.search.domain.people import Person
 
 if TYPE_CHECKING:
@@ -178,6 +178,12 @@ STOP_WORDS = frozenset(
 )
 # An issue key in any case, not inside a longer word; the domain's rule then checks it.
 KEY_IN_TEXT = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9_]*-[0-9]+(?![\w-])")
+# What reads as a ref, a source in any case then a key or id, standing alone: not after
+# an address's scheme or a dot of its host, which would read alike, and whole, never its
+# key or id cut short before a letter, a digit or a hyphen.
+REF_IN_TEXT = re.compile(
+    rf"(?<![\w/.:-])(?i:({SOURCE_NAME.pattern})):({IDENTIFIER.pattern})(?![\w-])"
+)
 # The id in the address of a page or a blog post, as the site's address bar shows it.
 ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9]{2}/)([0-9]+)")
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
@@ -193,13 +199,18 @@ WORDS = "1"
 FUSION = 60
 # How a search orders what it finds: by relevance, or by a date, newest first.
 Sort = Literal["relevance", "updated", "created"]
+# A document's place in its scope's tree: each node from the top down to the document,
+# its title and, for a listed document, its path; empty for an ancestor not listed.
+Place = tuple[tuple[str, str], ...]
 
 
 class Identifiers(Record):
-    """The issue keys and page ids that a text names, in its order."""
+    """The refs, issue keys and page ids that a text names, each kind in its order."""
 
+    refs: tuple[str, ...]
     keys: tuple[str, ...]
-    ids: tuple[str, ...]
+    ids: tuple[str, ...]  # those of addresses first
+    named: tuple[str, ...]  # every one of them, in the order of its first mention
 
 
 class Plan(Record):
@@ -214,7 +225,6 @@ class Plan(Record):
     words: tuple[str, ...]
     expressions: tuple[str, ...]
     match: str
-    identifiers: Identifiers
     dropped: int  # words beyond MAX_WORDS, not searched
 
 
@@ -267,16 +277,16 @@ class Score(Record):
 class Filters(Record):
     """What narrows a search, each value as the index holds it; None does not narrow.
 
-    A person, by their id: ``person`` in any role, each other in the role it names. The
-    comment dates narrow by one comment: the commenter's, when one is given.
+    A scope, as ``space:ENG``, or by its key alone, in any scope type. A person, by their
+    id: ``person`` in any role, each other in the role it names. The comment dates narrow
+    by one comment: the commenter's, when one is given.
     """
 
     source: str | None = None
-    space: str | None = None
-    project: str | None = None
+    scope: str | None = None
     status: str | None = None
     label: str | None = None
-    issue_type: str | None = None
+    subtype: str | None = None
     person: str | None = None
     author: str | None = None
     creator: str | None = None
@@ -292,12 +302,17 @@ class Filters(Record):
 
 
 class IndexedDocument(Record):
-    """A document as the index holds it."""
+    """A document as the index holds it, with the roles that its type takes, if declared.
+
+    And its scope's as-of time, None when unknown.
+    """
 
     path: str  # relative to <data>/docs, with /
     front: FrontMatter
     length: int  # characters of the body
     sections: int
+    type_roles: tuple[str, ...] = ()
+    as_of: datetime | None = None
 
 
 class Passage(Record):
@@ -325,10 +340,9 @@ class IndexStatus(Record):
     built_at: datetime
     skipped: int  # files of the mirror that could not be read
     types: dict[str, int]  # documents per type: page, blogpost, issue
-    spaces: dict[str, int]
-    projects: dict[str, int]
+    scopes: dict[str, int]  # documents per scope, as space:ENG
+    as_of: dict[str, datetime]  # each scope's as-of time, where known
     sections: int
-    newest_fetch: datetime | None
     persons: PersonCounts
     model: str | None = None  # the model of the vectors, if any
     chunks: int = 0
@@ -410,21 +424,38 @@ def quote(text: str) -> str:
     return '"' + text.replace('"', '""') + '"'
 
 
-def identifiers(text: str) -> Identifiers:
-    """Find the issue keys, in any case, and the page ids that a text names.
+def identifiers(text: str, sources: Collection[str] = ()) -> Identifiers:
+    """Find the refs, the issue keys, in any case, and the page ids that a text names.
 
-    A page id is a number standing alone between spaces, punctuation aside, or the id in
-    a page's address; those of addresses come first.
+    A ref is one of ``sources``, in any case, then a key or id, as answers cite a
+    document, given with its source in lower case; its key or id is not named apart.
+    After another word and a colon, a key stays bare and an id names nothing. A page id
+    is a number standing alone between spaces, punctuation aside, or the id in a page's
+    address; those of addresses come first. ``named`` gives refs, keys and ids alike in
+    the order of their first mention.
     """
-    keys = (key.upper() for key in KEY_IN_TEXT.findall(text))
-    alone = (word.strip(string.punctuation) for word in text.split())
-    ids = (
-        *ID_IN_ADDRESS.findall(text),
-        *(word for word in alone if word.isascii() and word.isdigit()),
+    refs = [
+        (found.start(), f"{found[1].lower()}:{found[2]}")
+        for found in REF_IN_TEXT.finditer(text)
+        if found[1].lower() in sources
+    ]
+    # Each ref blanked to its length, so that every other name keeps its place.
+    rest = REF_IN_TEXT.sub(
+        lambda found: " " * len(found[0]) if found[1].lower() in sources else found[0], text
     )
+    upper = ((found.start(), found[0].upper()) for found in KEY_IN_TEXT.finditer(rest))
+    keys = [(at, key) for at, key in upper if ISSUE_KEY.fullmatch(key)]
+    words = re.finditer(r"\S+", rest)
+    alone = ((found.start(), found[0].strip(string.punctuation)) for found in words)
+    ids = [
+        *((found.start(1), found[1]) for found in ID_IN_ADDRESS.finditer(rest)),
+        *((at, word) for at, word in alone if word.isascii() and word.isdigit()),
+    ]
     return Identifiers(
-        keys=tuple(dict.fromkeys(key for key in keys if ISSUE_KEY.fullmatch(key))),
-        ids=tuple(dict.fromkeys(ids)),
+        refs=tuple(dict.fromkeys(ref for _, ref in refs)),
+        keys=tuple(dict.fromkeys(key for _, key in keys)),
+        ids=tuple(dict.fromkeys(each for _, each in ids)),
+        named=tuple(dict.fromkeys(name for _, name in sorted([*refs, *keys, *ids]))),
     )
 
 
@@ -443,7 +474,6 @@ def plan_query(query: str) -> Plan:
         words=words,
         expressions=(*(quote(word) for word in words), *phrase),
         match=" OR ".join(quote(word) for word in words),
-        identifiers=identifiers(query),
         dropped=len(distinct) - len(words),
     )
 
@@ -482,31 +512,83 @@ def sections(body: str) -> list[Section]:
     ]
 
 
-def tree_paths(fronts: Sequence[FrontMatter]) -> list[tuple[str, ...]]:
-    """Name where each document sits in its space or project: its ancestors, then itself.
-
-    A Confluence breadcrumb names every ancestor by title, so a page is named by its
-    title. A Jira breadcrumb names only the parent, by key, so an issue is named by its
-    key and its chain of parents is followed among ``fronts``, a cycle stopping it.
-    """
-    parents = {front.key: front.breadcrumb[0] for front in fronts if front.key and front.breadcrumb}
-    paths: list[tuple[str, ...]] = []
-    for front in fronts:
-        if not front.key:
-            paths.append((*front.breadcrumb, front.title))
-            continue
-        chain = [front.key]
-        while chain[-1] in parents and parents[chain[-1]] not in chain:
-            chain.append(parents[chain[-1]])
-        paths.append(tuple(reversed(chain)))
-    return paths
-
-
 def tree_key(path: tuple[str, ...]) -> tuple[tuple[str | int, ...], ...]:
     """Order tree paths depth first, names without regard to case, numbers as numbers."""
     return tuple(
         tuple(int(part) if index % 2 else part for index, part in enumerate(NUMBER.split(name)))
         for name in (name.casefold() for name in path)
+    )
+
+
+def tree_order(
+    entries: Sequence[IndexedDocument], elsewhere: Mapping[str, str | None] | None = None
+) -> list[tuple[Place, IndexedDocument]]:
+    """Place each document of one scope in its tree; give them in tree order, with places.
+
+    A document sits under its parent where ``entries`` list it. Else under the titles of
+    its breadcrumb, as ancestors not listed: where its parent is one of ``elsewhere``,
+    documents mirrored outside ``entries`` by their document ids, each with its own
+    parent's, below the first listed document that their parents reach, else at the top,
+    as titles another's would only repeat; otherwise, as under a folder, below the listed
+    document whose breadcrumb and title are the longest run of them from the top, where
+    one alone has them; the title of a parent not listed, the breadcrumb's last, is
+    never that document's. A loop of parents is cut where it closes, climbing from its
+    first document in the order given, so that one listing gives one tree. Depth first
+    by ``tree_key``, ties at each level by path.
+    """
+    by_id = {document_id(each.front.source, each.front.id): each for each in entries}
+    titled: dict[tuple[str, ...], list[IndexedDocument]] = {}
+    for each in entries:
+        titled.setdefault((*each.front.breadcrumb, each.front.title), []).append(each)
+    places: dict[str, Place] = {}
+    outside = elsewhere or {}
+    # Each document mirrored elsewhere: the listed document that its parents reach, if
+    # any, and how many documents mirrored elsewhere lie on the way, itself included.
+    above: dict[str, tuple[IndexedDocument | None, int]] = {}
+    for start in outside:
+        hops, at = 1, outside[start]
+        while at in outside and hops <= len(outside):
+            hops, at = hops + 1, outside[at]
+        above[start] = (by_id.get(at or ""), hops)
+
+    def place(entry: IndexedDocument, placing: frozenset[str]) -> Place:
+        if entry.path not in places:
+            front, placing = entry.front, placing | {entry.path}
+            parent, unlisted = by_id.get(front.parent or ""), ()
+            reached, hops = above.get(front.parent or "", (None, 0))
+            crumbs = front.breadcrumb
+            if parent is None and reached is not None and reached.path not in placing:
+                parent, unlisted = reached, crumbs[max(len(crumbs) - hops, 0) :]
+            elif parent is None or parent.path in placing:
+                top = len(crumbs) - (front.parent is not None)
+                sizes = range(0 if front.parent in outside else top, 0, -1)
+                runs = ((size, titled.get(crumbs[:size], [])) for size in sizes)
+                size, parent = next(
+                    (
+                        (size, run[0])
+                        for size, run in runs
+                        if len(run) == 1 and run[0].path not in placing
+                    ),
+                    (0, None),
+                )
+                unlisted = crumbs[size:]
+            places[entry.path] = (
+                *(place(parent, placing) if parent else ()),
+                *((title, "") for title in unlisted),
+                (front.title, entry.path),
+            )
+        return places[entry.path]
+
+    placed = [(place(each, frozenset()), each) for each in entries]
+    return sorted(
+        placed,
+        key=lambda pair: tuple(
+            zip(
+                tree_key(tuple(title for title, _ in pair[0])),
+                (path for _, path in pair[0]),
+                strict=True,
+            )
+        ),
     )
 
 

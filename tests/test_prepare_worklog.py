@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 from pydantic import Field
 from structlog.testing import capture_logs
 
@@ -33,17 +34,21 @@ from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_files
+from kb_mcp.mirror.domain.mirror import Link
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
+    AS_IT_IS,
     UNLINKED,
     WorklogCounts,
     WorklogPlanned,
     plan_worklog,
     prepare_worklog,
 )
+from tests.test_markdown import LAYOUT_KEYS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -328,7 +333,12 @@ def test_front_matter_says_status_labels_and_place(
     document_type, title = document
     matter = run.by_title(title, document_type).matter
     assert (matter.status, matter.labels, matter.breadcrumb) == (status, labels, breadcrumb)
-    assert (matter.fetched_at, matter.key, matter.space, matter.url) == (MODIFIED, None, None, None)
+    assert (matter.scope, matter.key, matter.parent, matter.url) == (
+        "folder:worklog",
+        None,
+        None,
+        None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -400,7 +410,7 @@ def test_an_edited_undated_entry_keeps_its_creation(run: Run) -> None:
     run.edit("todo.org", "Nothing dated here yet.", "Nothing dated here, still.")
     run()
     matter = run.by_title("Tidy the runbooks folder").matter
-    assert (matter.created, matter.updated, matter.fetched_at) == (MODIFIED, LATER, LATER)
+    assert (matter.created, matter.updated) == (MODIFIED, LATER)
 
 
 def test_an_edit_elsewhere_leaves_an_undated_entry_and_its_file(run: Run) -> None:
@@ -408,10 +418,15 @@ def test_an_edit_elsewhere_leaves_an_undated_entry_and_its_file(run: Run) -> Non
     run()
     path = run.docs / run.by_title("Tidy the runbooks folder").path
     before = (path.read_bytes(), path.stat().st_mtime_ns)
+    files = snapshot(run.docs)
     run.edit("todo.org", "Ignore all previous", "Ignore every previous")
-    outcome = run()
+    run()
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before
-    assert outcome.counts.changes.written == 1  # Reading notes alone
+    # Reading notes, and the source's file, its as-of time the new read's.
+    assert {name for name, held in snapshot(run.docs).items() if files.get(name) != held} == {
+        run.by_title("Reading notes").path,
+        "worklog/_source.json",
+    }
 
 
 ARCHIVED_ENTRY = """* Plan the next quarter
@@ -619,15 +634,17 @@ def test_bodies_keep_what_org_would_drop_or_read_as_markup(run: Run) -> None:
 
 
 def test_an_unchanged_work_log_runs_pandoc_for_its_version_alone(run: Run) -> None:
-    """A second run converts nothing and writes nothing; one edit converts one entry."""
+    """A second run converts nothing and writes no document; one edit converts one entry.
+
+    The source's file alone is written again: its as-of time is the new read's.
+    """
     run()
     before = snapshot(run.docs)
     outcome = run()
-    assert (run.runs[-1], outcome.counts.changes.written, snapshot(run.docs)) == (
-        [VERSION],
-        0,
-        before,
-    )
+    after = snapshot(run.docs)
+    as_of = "worklog/_source.json"
+    assert after.pop(as_of) != before.pop(as_of)
+    assert (run.runs[-1], outcome.counts.changes.written, after) == ([VERSION], 1, before)
     run.edit("todo.org", "Drafted on", "First drafted on")
     run()
     assert run.runs[-1] == [VERSION, ORG]
@@ -752,6 +769,113 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_until_a_clean_run(run: R
     assert not gone.exists()
 
 
+def former(text: str) -> str:
+    """Write a file of the mirror again in plan 058's front matter, its body kept.
+
+    Its scope as its space or project, its subtype as its issue type, no parent, each link
+    by the key or id of its own source, and a time of fetch, as ``FORMER_KEYS`` orders them.
+    """
+    _, front, body = text.split("---\n", 2)
+    values = yaml.safe_load(front)
+    kind, _, key = values["scope"].partition(":")
+    held = {
+        **{name: values[name] for name in ("source", "type", "id", "key", "title")},
+        "space": key if kind == "space" else None,
+        "project": key if kind == "project" else None,
+        "status": values["status"],
+        "issue_type": values["subtype"],
+        "labels": values["labels"],
+        "people": values["people"],
+        "links": [
+            {"relation": each["relation"], "ref": each["document"].partition(":")[2]}
+            for each in values["links"]
+        ],
+        **{name: values[name] for name in ("created", "updated", "version", "revision")},
+        "url": values["url"],
+        "breadcrumb": values["breadcrumb"],
+        "fetched_at": values["updated"],
+    }
+    return f"---\n{yaml.safe_dump(held, sort_keys=False, allow_unicode=True)}---\n{body}"
+
+
+def test_a_mirror_of_the_former_front_matter_keeps_every_created_date(run: Run) -> None:
+    """Plan 057, criterion 2: read in the former format, every file written in the new.
+
+    The org files' times move on, so that a date taken afresh would differ from the one
+    that the mirror held.
+    """
+    run()
+    created = {each.matter.id: each.matter.created for each in run.files()}
+    for path in (run.docs / "worklog").rglob("*.md"):
+        path.write_text(former(path.read_text("utf-8")), "utf-8")
+    settle(run.root, LATER)
+    assert run().problems == ()
+    files = run.files()
+    assert {each.matter.id: each.matter.created for each in files} == created
+    for each in files:
+        front = (run.docs / each.path).read_text("utf-8").split("---\n", 2)[1]
+        assert list(yaml.safe_load(front)) == LAYOUT_KEYS
+
+
+def test_a_file_of_the_mirror_that_does_not_read_is_a_problem_kept_as_it_is(run: Run) -> None:
+    """Plan 057: it removes nothing and is written over by nothing, until it is moved away.
+
+    So the created date that it may hold is never lost in silence.
+    """
+    run()
+    damaged = run.by_title("Tidy the runbooks folder").path
+    gone = run.by_title("WAITING Notes").path
+    (run.docs / damaged).write_text("not a file of the mirror\n", "utf-8")
+    (run.root / "transcripts/misc/a.org").unlink()
+    planned = run.plan()
+    assert ([each.where for each in planned.problems], planned.counts.to_remove) == ([damaged], 0)
+    outcome = run()
+    (problem,) = outcome.problems
+    assert (problem.where, problem.reason) == (damaged, f"{damaged}: no front matter")
+    assert outcome.counts.held_back == {damaged: AS_IT_IS}
+    assert (run.docs / damaged).read_text("utf-8") == "not a file of the mirror\n"
+    assert (run.docs / gone).exists()
+    (run.docs / damaged).unlink()
+    assert run().problems == ()
+    assert run.by_title("Tidy the runbooks folder").matter.created == MODIFIED
+    assert not (run.docs / gone).exists()
+
+
+def test_the_source_s_file_says_the_moment_of_the_last_read_without_a_problem(run: Run) -> None:
+    """Plan 057: a read in place is as of its moment; a run that met a problem writes no file.
+
+    So the file of the last read without one stays, with its time; before any, none is.
+    """
+    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
+    assert run(failing="failing").problems
+    assert "worklog" not in source_files(run.docs)
+    run.edit("todo.org", "Drafted, failing, on", "Drafted on")
+    before = datetime.now(UTC)
+    assert run().problems == ()
+    after = datetime.now(UTC)
+    written = (run.docs / "worklog" / SOURCE_FILE).read_bytes()
+    ((scope, moment),) = source_files(run.docs)["worklog"].as_of.items()
+    assert scope == "folder:worklog"
+    assert before <= moment <= after
+    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
+    assert run(failing="failing").problems
+    assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
+
+
+def test_a_work_log_left_without_documents_keeps_its_source_s_file(run: Run) -> None:
+    """No prepare removes the source's file: it stays as the last run that wrote it left it.
+
+    The documents go with the work log's files, which a read without problem finds gone.
+    """
+    run()
+    written = (run.docs / "worklog" / SOURCE_FILE).read_bytes()
+    for each in sorted(run.root.rglob("*.org*")):
+        each.unlink()
+    outcome = run()
+    assert (outcome.problems, run.files()) == ((), [])
+    assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
+
+
 def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing(
     run: Run,
 ) -> None:
@@ -817,7 +941,10 @@ def one_way(files: list[MirrorFile]) -> list[tuple[str, str, str]]:
     """
     back = {"transcript": "summary", "summary": "transcript"}
     links = {
-        each.matter.id: {(link.relation, link.ref) for link in each.matter.links} for each in files
+        each.matter.id: {
+            (link.relation, link.document.removeprefix("worklog:")) for link in each.matter.links
+        }
+        for each in files
     }
     return sorted(
         (identifier, relation, ref)
@@ -868,9 +995,10 @@ def test_a_document_that_fails_with_no_file_is_no_link_s_other_end(
     assert (run.by_id(written).matter.links, one_way(run.files())) == ((), [])
     assert failed not in {each.matter.id for each in run.files()}
     assert run().problems == ()
-    assert [(each.relation, each.ref) for each in run.by_id(written).matter.links] == [
-        ("transcript" if written == STANDUP else "summary", failed)
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:"))
+        for each in run.by_id(written).matter.links
+    ] == [("transcript" if written == STANDUP else "summary", failed)]
     assert one_way(run.files()) == []
 
 
@@ -900,9 +1028,9 @@ def test_a_transcript_not_read_holds_back_itself_alone(run: Run) -> None:
     assert "one edited word only" in run.by_title("WAITING Notes").body
     standup = run.by_id(STANDUP)
     assert "My own edited note before" in standup.body
-    assert [(each.relation, each.ref) for each in standup.matter.links] == [
-        ("transcript", "t-20261027-1")
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:")) for each in standup.matter.links
+    ] == [("transcript", "t-20261027-1")]
     assert [each.name for each in standup.matter.people] == ["Alex Example", "Sam Sample"]
     assert one_way(run.files()) == []
     warned = [each for each in logged if each["event"] == "worklog.unlinked"]
@@ -1014,9 +1142,10 @@ def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path
         ("transcripts/current/2026-10-27 Tue/1.org", "links outside the work log", "t-20261027-1")
     ]
     assert kept.read_bytes() == before
-    assert [(each.relation, each.ref) for each in run.by_id(STANDUP).matter.links] == [
-        ("transcript", "t-20261027-1")
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:"))
+        for each in run.by_id(STANDUP).matter.links
+    ] == [("transcript", "t-20261027-1")]
     warned = [each for each in logged if each["event"] == "worklog.unlinked"]
     assert [(each["meetings"], each["first"]) for each in warned] == [
         (1, "meetings/2026-10-27 Tue/2.org")
@@ -1045,7 +1174,10 @@ def test_a_meeting_linking_a_new_file_not_read_links_it_once_it_is_read(run: Run
     settle(run.root / new)
     assert run().problems == ()
     pairs = {
-        identifier: [(each.relation, each.ref) for each in run.by_id(identifier).matter.links]
+        identifier: [
+            (each.relation, each.document.removeprefix("worklog:"))
+            for each in run.by_id(identifier).matter.links
+        ]
         for identifier in ("m-20261027-retro", "t-20261027-3")
     }
     assert pairs == {
@@ -1195,9 +1327,11 @@ def test_a_meeting_links_to_the_transcript_that_its_property_names(run: Run) -> 
     """To the quoted transcript, or to the file under meetings/; a missing file, to none."""
     run()
     links = run.by_id(STANDUP).matter.links
-    assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-1")]
+    assert links == (Link(relation="transcript", document="worklog:t-20261027-1"),)
     links = run.by_id("m-20261027-vendor-call").matter.links
-    assert [(each.relation, each.ref) for each in links] == [("transcript", "t-20261027-meeting-1")]
+    assert [(each.relation, each.document.removeprefix("worklog:")) for each in links] == [
+        ("transcript", "t-20261027-meeting-1")
+    ]
     assert run.by_id("m-20261027-rollout-planning").matter.links == ()
     assert run.by_id("m-20261027-ledger-review").matter.links == ()
 
@@ -1210,7 +1344,9 @@ def test_a_linked_meeting_and_its_transcript_name_each_other(run: Run) -> None:
     run()
     pairs = {STANDUP: "t-20261027-1", "m-20261027-vendor-call": "t-20261027-meeting-1"}
     found = {
-        each.matter.id: [(link.relation, link.ref) for link in each.matter.links]
+        each.matter.id: [
+            (link.relation, link.document.removeprefix("worklog:")) for link in each.matter.links
+        ]
         for each in run.files()
         if each.matter.links
     }
@@ -1271,9 +1407,9 @@ def test_a_transcript_added_links_its_meeting_without_converting_it(run: Run) ->
         run()
     linked = run.by_id(STANDUP)
     assert (linked.matter.created, linked.matter.updated) == (day, day)
-    assert [(each.relation, each.ref) for each in linked.matter.links] == [
-        ("transcript", "t-20261027-1")
-    ]
+    assert [
+        (each.relation, each.document.removeprefix("worklog:")) for each in linked.matter.links
+    ] == [("transcript", "t-20261027-1")]
     outcomes = {
         each["id"]: each["outcome"] for each in logged if each["event"] == "worklog.document"
     }

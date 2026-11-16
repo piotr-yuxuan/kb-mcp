@@ -16,11 +16,14 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, time_revision
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES as ATLASSIAN_ROLES
 from kb_mcp.sources.registry import SOURCES
+from kb_mcp.sources.worklog.prepare.domain.worklog import TYPE_ROLES as WORKLOG_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -44,6 +47,15 @@ LOREM = (
     "fermentum. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor."
 )
 FILLERS = 30
+# What each source's prepare writes beside its documents, as its connector declares it.
+DECLARED = {
+    "confluence": SourceFile(
+        roles={name: ATLASSIAN_ROLES[name] for name in ("page", "blogpost")},
+        as_of={"space:ENG": MOMENT},
+    ),
+    "jira": SourceFile(roles={"issue": ATLASSIAN_ROLES["issue"]}, as_of={}),
+    "worklog": SourceFile(roles=WORKLOG_ROLES, as_of={}),
+}
 WORKLOG_FOLDERS = {
     "entry": "entries",
     "day": "days",
@@ -74,12 +86,12 @@ def page(
         id=page_id,
         key=None,
         title=title,
-        space="ENG",
-        project=None,
+        scope="space:ENG",
         status="current",
-        issue_type=None,
+        subtype=None,
         labels=(),
         people=named(author),
+        parent=None,
         links=(),
         created=MOMENT,
         updated=MOMENT,
@@ -87,7 +99,6 @@ def page(
         revision="000001",
         url=None,
         breadcrumb=(),
-        fetched_at=MOMENT,
     )
     return replace(front, **changes)
 
@@ -112,12 +123,12 @@ def issue(
         id=str(10000 + int(number)),
         key=key,
         title=title,
-        space=None,
-        project=project,
+        scope=f"project:{project}",
         status="To Do",
-        issue_type="Task",
+        subtype="Task",
         labels=(),
         people=named(author, assignee),
+        parent=None,
         links=(),
         created=MOMENT,
         updated=updated,
@@ -125,15 +136,15 @@ def issue(
         revision=time_revision(updated),
         url=None,
         breadcrumb=(),
-        fetched_at=MOMENT,
     )
     return replace(front, **changes)
 
 
 def location(front: FrontMatter) -> str:
     """Name a document's file, relative to <data>/docs, as the data layout does."""
+    key = front.scope.partition(":")[2]
     if front.source == "jira":
-        return f"jira/{front.project}/{front.key}.md"
+        return f"jira/{key}/{front.key}.md"
     if front.type in {"day", "meeting"}:
         return f"worklog/{WORKLOG_FOLDERS[front.type]}/{front.id}.md"
     decomposed = unicodedata.normalize("NFKD", front.title).lower()
@@ -142,15 +153,21 @@ def location(front: FrontMatter) -> str:
     if front.source == "worklog":
         return f"worklog/{WORKLOG_FOLDERS[front.type]}/{name}"
     folder = "blog/" if front.type == "blogpost" else ""
-    return f"confluence/{front.space}/{folder}{name}"
+    return f"confluence/{key}/{folder}{name}"
 
 
 def write(docs: Path, front: FrontMatter, body: str | None = None) -> str:
-    """Write a document into the mirror at ``docs``; return its path relative to it."""
+    """Write a document into the mirror at ``docs``; return its path relative to it.
+
+    The file of its source, one of DECLARED, is written beside it too, as its prepare
+    writes it.
+    """
     path = location(front)
     text = f"# {front.title}\n\n{LOREM}\n" if body is None else body
     (docs / path).parent.mkdir(parents=True, exist_ok=True)
     (docs / path).write_text(dump(front, text), encoding="utf-8")
+    if front.source in DECLARED:
+        (docs / front.source / SOURCE_FILE).write_bytes(dumped(DECLARED[front.source]))
     return path
 
 
@@ -200,7 +217,7 @@ PEOPLE = (
         "PROJ-1",
         "Broker crash",
         updated=CREATED + timedelta(hours=1),
-        issue_type="Bug",
+        subtype="Bug",
         status="Done",
         author="Bo Sample",
         assignee="Ada Example",
@@ -219,7 +236,7 @@ PEOPLE = (
         "PROJ-3",
         "Broker retention",
         updated=CREATED + timedelta(hours=2),
-        issue_type="Story",
+        subtype="Story",
         assignee="Ada Example",
         created=CREATED,
         labels=("resume",),
@@ -252,11 +269,11 @@ def worklog_document(
         page(document_id, title),
         source="worklog",
         type=document_type,
-        space=None,
+        scope="folder:worklog",
         version=None,
         revision="0123456789abcdef",
         people=tuple(Mention(role="participant", name=name) for name in names),
-        links=() if linked is None else (Link(relation=relation, ref=linked),),
+        links=() if linked is None else (Link(relation=relation, document=f"worklog:{linked}"),),
     )
 
 

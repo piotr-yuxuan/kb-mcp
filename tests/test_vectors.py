@@ -820,7 +820,7 @@ def test_an_index_holds_the_tables_chunks_and_section_words_since_schema_7(data:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master")}
         schema = connection.execute("SELECT value FROM meta WHERE name = 'schema'").fetchone()
     assert ({"chunks", "section_words"} <= tables, "pieces" in tables) == (True, False)
-    assert schema == ("8",)
+    assert schema == ("9",)
 
 
 def as_schema_6(index: Path) -> None:

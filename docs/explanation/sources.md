@@ -518,14 +518,16 @@ So the filters by person read every source alike
 that a source adds is one more value of `role`, where a key of its own would change
 every file and the index's schema, as the work log's own keys would. No other source
 holds `participant`, and the work log holds no other role
-([`WORKLOG_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
 so that no front matter, which `read` never cuts, names people of both kinds: an issue
-with every role at its largest already fills most of a read's budget. The other keys
-that Atlassian shapes, `key`, `space`, `project`, `issue_type` and `version`, stay as
-they are, `null` for the other sources: nothing yet needs them generic. [The
+with every role at its largest already fills most of a read's budget. A document's
+`scope`, `subtype` and `parent` are every source's, as the concepts name them; the keys
+that Atlassian shapes, `key` and `version`, stay as they are, `null` for the other
+sources: nothing yet needs them generic. [The
 trade-offs](trade-offs.md#people-a-generic-key) give what this costs.
 
-Links between documents are one key too, `links`, each a relation and the other's ref
+Links between documents are one key too, `links`, each a relation and the other's
+document id
 ([`Link`](../../src/kb_mcp/mirror/domain/mirror.py)),
 the relations a closed set
 ([`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py)):

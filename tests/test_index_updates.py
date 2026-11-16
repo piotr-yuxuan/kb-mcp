@@ -12,14 +12,16 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from copy import replace
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
 
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.mirror.domain.mirror import Mention
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
+from kb_mcp.mirror.domain.mirror import Mention, SourceFile
 from kb_mcp.search.adapters.aliases import read_aliases
-from kb_mcp.search.adapters.sqlite_index import SqliteIndex
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import (
     Embedding,
     Indexing,
@@ -46,9 +48,9 @@ if TYPE_CHECKING:
 # rowids and their sections' bounds, the rest by path, and the meta rows but the build's.
 TABLES = {
     "documents": """
-        SELECT path, digest, source, type, id, key, title, space, project, status,
-               issue_type, labels, people, links, created, updated, version, revision, url,
-               breadcrumb, fetched_at, length, last_section - first_section
+        SELECT path, digest, source, type, id, key, title, scope, status, subtype, labels,
+               people, parent, links, created, updated, version, revision, url, breadcrumb,
+               length, last_section - first_section
         FROM documents ORDER BY path
     """,
     "labels": """
@@ -72,6 +74,7 @@ TABLES = {
         JOIN sections s ON s.rowid = p.section JOIN documents d ON d.rowid = s.document
         ORDER BY 1, 2, 3, 4, 5
     """,
+    "types": "SELECT source, type, roles FROM types ORDER BY 1, 2",
     "meta": "SELECT name, value FROM meta WHERE name NOT IN ('build', 'built_at') ORDER BY 1",
 }
 # Weights of the tiny model other than the fixtures': its fingerprint changes.
@@ -147,7 +150,11 @@ def data(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
 BODY = "# Rollback\n\nUndo the payout.\n\n## Release\n\nThe deploy of the seller service.\n"
 ROLLBACK = page("196845", "Rollback", labels=("ops",))
 ENTRY = replace(
-    page("e-20261020-1", "Old title"), source="worklog", type="entry", space=None, version=None
+    page("e-20261020-1", "Old title"),
+    source="worklog",
+    type="entry",
+    scope="folder:worklog",
+    version=None,
 )
 
 
@@ -164,7 +171,7 @@ def test_an_updated_index_equals_a_whole_build_at_each_step(data: Path) -> None:
     retitled = write(docs, replace(ROLLBACK, title="Rollback plan"), BODY)
     step.equal()  # retitled, so that its path changes
     (docs / retitled).unlink()
-    moved = write(docs, replace(ROLLBACK, title="Rollback plan", space="OPS"), BODY)
+    moved = write(docs, replace(ROLLBACK, title="Rollback plan", scope="space:OPS"), BODY)
     step.equal()  # moved to another space
     (docs / moved).unlink()
     step.equal()  # removed
@@ -291,6 +298,58 @@ def test_tied_spellings_serve_a_whole_build_s_name_whichever_file_was_edited(
     step.equal()
     write(docs, first[0], f"{first[1]}\nEdited, the time kept.\n")
     step.equal()
+
+
+def test_a_source_s_file_changed_alone_writes_a_build_holding_what_it_says(data: Path) -> None:
+    """Plan 057: a type that no longer takes an assignee says no unassigned once indexed.
+
+    The file damaged, ``index`` stops, the index in place.
+    """
+    docs = data / "docs"
+    step = Step(data)
+    write(docs, issue("PROJ-8", "Broker rollback"))
+    step.equal()
+    library = Library(SqliteIndex(data / "index.sqlite"), docs)
+    assert "| unassigned |" in library.search("rollback")
+    declared = SourceFile(roles={"issue": ("author", "creator", "commenter")}, as_of={})
+    (docs / "jira" / SOURCE_FILE).write_bytes(dumped(declared))
+    updated = update_index(step.indexing(), MOMENT)
+    assert updated is not None
+    assert not updated.counts.unchanged
+    assert "unassigned" not in library.search("rollback")
+    assert rows(data / "index.sqlite") == rows(step.whole())
+    before = (data / "index.sqlite").read_bytes()
+    (docs / "jira" / SOURCE_FILE).write_text("{", encoding="utf-8")
+    failed = update_index(step.indexing(), MOMENT)
+    assert failed.ending == "failed"
+    (problem,) = failed.problems
+    assert problem.reason == "jira/_source.json: not JSON; `kb-mcp prepare` writes it again"
+    assert (data / "index.sqlite").read_bytes() == before
+
+
+def test_a_scope_s_as_of_time_changed_alone_is_indexed_and_served(data: Path) -> None:
+    """Plan 057, criterion 3: ``index`` reads each scope's as-of time from its source's file.
+
+    Unknown until the file says it, then as the file says it, in status and read alike.
+    """
+    docs = data / "docs"
+    step = Step(data)
+    write(docs, issue("PROJ-8", "Broker rollback"))
+    step.equal()
+    library = Library(SqliteIndex(data / "index.sqlite"), docs)
+    assert "\nas of: unknown\n" in library.read("PROJ-8")
+    later = MOMENT + timedelta(days=3)
+    declared = SourceFile(roles={"issue": ()}, as_of={"project:PROJ": later})
+    (docs / "jira" / SOURCE_FILE).write_bytes(dumped(declared))
+    updated = update_index(step.indexing(), MOMENT)
+    assert updated is not None
+    assert updated.ending == "done"
+    assert rows(data / "index.sqlite") == rows(step.whole())
+    with reading(data / "index.sqlite") as reader:
+        (entry,) = reader.indexed_documents(refs=["PROJ-8"])
+        assert (entry.as_of, reader.index_status().as_of["project:PROJ"]) == (later, later)
+    assert "\nas of: 2026-10-23 21:52 UTC\n" in library.read("PROJ-8")
+    assert "project:PROJ 1 (as of 2026-10-23 21:52 UTC)" in library.status()
 
 
 def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data: Path) -> None:

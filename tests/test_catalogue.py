@@ -15,6 +15,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Comment,
     Folder,
     Issue,
+    IssueParent,
     Page,
     SiteUser,
     Snapshot,
@@ -29,7 +30,6 @@ if TYPE_CHECKING:
 
 PARIS = timezone(timedelta(hours=2))
 MOMENT = datetime(2026, 10, 20, 23, 52, 41, 371000, tzinfo=PARIS)
-FETCHED = datetime(2026, 10, 22, 10, 15, tzinfo=PARIS)
 SITE = "https://site.example.invalid"
 
 
@@ -78,7 +78,7 @@ ISSUE = Issue(
     issue_type="Idea",
     status="Parking lot",
     assignee=None,
-    parent="PRB-3",
+    parent=IssueParent(id="10002", title="Ideas"),
 )
 CATALOGUE = Catalogue(
     spaces={"1": Space(id="1", key="MFS", name="A space")},
@@ -98,7 +98,7 @@ def matter_of(
     """Give the front matter of a snapshot of ``document`` with ``comments``, of its source."""
     source = "jira" if isinstance(document, Issue) else "confluence"
     snapshot = Snapshot(document=document, html="", comments=tuple(comments))
-    return front_matter(source, snapshot, FETCHED, CATALOGUE, site)
+    return front_matter(source, snapshot, CATALOGUE, site)
 
 
 def test_a_name_is_the_display_name_else_the_users_else_the_account_id() -> None:
@@ -116,11 +116,27 @@ def test_a_listed_page_takes_its_status_from_the_listing() -> None:
 
 
 def test_breadcrumbs_climb_pages_and_folders_root_first() -> None:
-    """A page's ancestors, a blog post's none, an issue's parent key."""
+    """A page's ancestors, a blog post's none, an issue's parent's title."""
     assert CATALOGUE.breadcrumb(LEAF) == ("Root", "A folder")
     assert CATALOGUE.breadcrumb(ROOT) == ()
     assert CATALOGUE.breadcrumb(POST) == ()
-    assert CATALOGUE.breadcrumb(ISSUE) == ("PRB-3",)
+    assert CATALOGUE.breadcrumb(ISSUE) == ("Ideas",)
+
+
+def test_an_issue_breadcrumb_climbs_the_parents_of_the_store() -> None:
+    """The titles along the parents, root first, as far as one is in the store or loops.
+
+    The parent's title is the child's response's, a later rename of the parent included.
+    """
+    epic = replace(ISSUE, id="1", key="PRB-1", title="Epic", parent=None)
+    story = replace(ISSUE, id="2", key="PRB-2", parent=IssueParent(id="1", title="Epic, old"))
+    task = replace(ISSUE, id="3", key="PRB-3", parent=IssueParent(id="2", title="Story"))
+    climbed = replace(CATALOGUE, issues={each.id: each for each in (epic, story, task)})
+    assert climbed.breadcrumb(task) == ("Epic, old", "Story")
+    assert CATALOGUE.breadcrumb(task) == ("Story",)
+    back = replace(story, parent=IssueParent(id="3", title="Task"))
+    looping = replace(CATALOGUE, issues={"2": back})
+    assert looping.breadcrumb(task) == ("Story",)
 
 
 def test_a_breadcrumb_stops_at_an_unlisted_parent_or_a_loop() -> None:
@@ -144,14 +160,13 @@ def test_a_page_front_matter_follows_the_layout_table() -> None:
     """Confluence keys set, Jira keys null, times in UTC, url from the site."""
     matter = matter_of(LEAF)
     assert (matter.source, matter.type, matter.id, matter.key) == ("confluence", "page", "30", None)
-    assert (matter.space, matter.project, matter.issue_type) == ("MFS", None, None)
+    assert (matter.scope, matter.subtype, matter.parent) == ("space:MFS", None, "confluence:20")
     assert (matter.status, matter.author, matter.assignee) == ("archived", "A Person", None)
     assert matter.people == (
         Mention(role="author", name="A Person", identity="atlassian:account-1"),
     )
     assert (matter.version, matter.revision) == (3, "000003")
     assert matter.created == datetime(2026, 10, 20, 21, 52, 41, 371000, tzinfo=UTC)
-    assert matter.fetched_at == datetime(2026, 10, 22, 8, 15, tzinfo=UTC)
     assert matter.url == f"{SITE}/wiki/spaces/MFS/pages/30"
     assert matter.breadcrumb == ("Root", "A folder")
     assert matter_of(LEAF, site=None).url is None
@@ -160,23 +175,23 @@ def test_a_page_front_matter_follows_the_layout_table() -> None:
 def test_an_issue_front_matter_is_one_line_texts() -> None:
     """Jira keys set, Confluence keys null; line breaks in texts become spaces."""
     matter = matter_of(ISSUE)
-    assert (matter.source, matter.type, matter.key, matter.project) == (
+    assert (matter.source, matter.type, matter.key, matter.scope) == (
         "jira",
         "issue",
         "PRB-1",
-        "PRB",
+        "project:PRB",
     )
-    assert (matter.space, matter.version, matter.issue_type) == (None, None, "Idea")
+    assert (matter.version, matter.subtype, matter.parent) == (None, "Idea", "jira:10002")
     assert matter.title == "What are archived ideas?"
     assert matter.author == "Another Person"
-    assert matter.breadcrumb == ("PRB-3",)
+    assert matter.breadcrumb == ("Ideas",)
     assert matter.revision == "20261020T215241.371000Z"
 
 
 def test_a_page_of_a_space_not_listed_is_refused() -> None:
-    """Its folder cannot be named, so its front matter has no space key."""
+    """Its folder cannot be named, so its front matter has no scope."""
     other = page("50", "Elsewhere", None, space_id="2")
-    with pytest.raises(RefusedError, match=r"^space: only and always in a space$"):
+    with pytest.raises(RefusedError, match=r"^scope: the space is not listed$"):
         matter_of(other)
 
 
@@ -189,30 +204,33 @@ def test_a_front_matter_of_a_source_of_any_name_keeps_confluence_s_and_jira_s_ru
 @pytest.mark.parametrize(
     ("document", "changes", "refusal"),
     [
-        (ISSUE, {"space": "MFS"}, r"^space: only and always in a space$"),
+        (ISSUE, {"scope": "space:MFS"}, r"^scope: not of its type's scope type$"),
+        (ISSUE, {"scope": "project:prb"}, r"^scope: does not match"),
+        (LEAF, {"scope": "project:PRB"}, r"^scope: not of its type's scope type$"),
+        (LEAF, {"scope": "space:M_F"}, r"^scope: does not match"),
         (ISSUE, {"version": 3}, r"^version: only and always in a space$"),
         (ISSUE, {"key": None}, r"^key: only and always in a project$"),
-        (ISSUE, {"type": "page"}, r"^space: only and always in a space$"),
-        (LEAF, {"type": "issue"}, r"^space: only and always in a space$"),
+        (ISSUE, {"type": "page"}, r"^version: only and always in a space$"),
+        (LEAF, {"type": "issue"}, r"^version: only and always in a space$"),
         (
             LEAF,
             {"source": "worklog", "type": "entry"},
             r"^type: not one of Confluence's or Jira's$",
         ),
         (LEAF, {"key": "PRB-1"}, r"^key: only and always in a project$"),
-        (LEAF, {"project": "PRB"}, r"^project: only and always in a project$"),
-        (
-            LEAF,
-            {"issue_type": "Idea"},
-            r"^issue_type: only and always in a project$",
-        ),
+        (LEAF, {"subtype": "Idea"}, r"^subtype: only and always in a project$"),
         (LEAF, {"version": None}, r"^version: only and always in a space$"),
         (LEAF, {"revision": "3"}, r"^revision: does not match"),
         (ISSUE, {"revision": "20261020T215241Z"}, r"^revision: does not match"),
         (
             LEAF,
             {"people": (Mention(role="participant", name="A Person"),)},
-            r"^people: a role of another source$",
+            r"^people: a role that its type does not take$",
+        ),
+        (
+            LEAF,
+            {"people": (Mention(role="assignee", name="A Person"),)},
+            r"^people: a role that its type does not take$",
         ),
     ],
 )

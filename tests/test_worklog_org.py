@@ -988,12 +988,12 @@ ENTRY_MATTER = WorklogFrontMatter(
     id="e-0123456789abcdef-2",
     key=None,
     title="Retrospective notes",
-    space=None,
-    project=None,
+    scope="folder:worklog",
     status="WAITING",
-    issue_type=None,
+    subtype=None,
     labels=("review", "ARCHIVE"),
     people=(),
+    parent=None,
     links=(),
     created=MODIFIED,
     updated=MODIFIED,
@@ -1001,7 +1001,6 @@ ENTRY_MATTER = WorklogFrontMatter(
     revision="0123456789abcdef",
     url=None,
     breadcrumb=("todo.org_archive",),
-    fetched_at=MODIFIED,
 )
 
 
@@ -1014,7 +1013,11 @@ ENTRY_MATTER = WorklogFrontMatter(
         {"type": "day", "id": "d-20261028"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up"},
         {"type": "meeting", "id": "m-20261027-payments-stand-up--2"},
-        {"people": (Mention(role="participant", name="A Person"),)},
+        {
+            "type": "transcript",
+            "id": "t-20261020-1",
+            "people": (Mention(role="participant", name="A Person"),),
+        },
     ],
 )
 def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, object]) -> None:
@@ -1037,11 +1040,16 @@ def test_the_work_log_s_front_matter_takes_each_type_s_ids(changes: dict[str, ob
         ({"type": "meeting", "id": "m-20261027-"}, r"^id: does not match"),
         ({"type": "meeting", "id": "m-20261027-" + "a" * 65}, r"^id: does not match"),
         ({"type": "meeting", "id": "m-2026-10-27-stand-up"}, r"^id: does not match"),
-        ({"people": (Mention(role="author", name="A Person"),)}, r"^people: a role of another"),
+        ({"people": (Mention(role="author", name="A Person"),)}, r"^people: a role that its type"),
+        (
+            {"people": (Mention(role="participant", name="A Person"),)},
+            r"^people: a role that its type does not take$",
+        ),
         ({"revision": "000003"}, r"^revision: does not match"),
-        ({"space": "MFS"}, r"^space: never the work log's$"),
+        ({"scope": "space:MFS"}, r"^scope: not the source's one scope$"),
         ({"version": 3}, r"^version: never the work log's$"),
-        ({"key": "PRB-1", "project": "PRB"}, r"^key, project: never the work log's$"),
+        ({"key": "PRB-1", "subtype": "Bug"}, r"^key, subtype: never the work log's$"),
+        ({"parent": "worklog:d-20261028"}, r"^parent: never the work log's$"),
     ],
 )
 def test_the_work_log_s_front_matter_off_its_rules_is_refused(
@@ -1053,8 +1061,9 @@ def test_the_work_log_s_front_matter_off_its_rules_is_refused(
 
 
 def test_the_work_log_s_front_matter_takes_a_source_of_any_name() -> None:
-    """Plan 056: the rules are the work log's types'; its source is the user's to name."""
-    assert copy.replace(ENTRY_MATTER, source="notes").source == "notes"
+    """Plan 056: the rules are the work log's types'; its source, and so its scope, the user's."""
+    named = copy.replace(ENTRY_MATTER, source="notes", scope="folder:notes")
+    assert (named.source, named.scope) == ("notes", "folder:notes")
 
 
 @pytest.mark.parametrize(

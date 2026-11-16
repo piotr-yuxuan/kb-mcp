@@ -10,7 +10,13 @@ import pytest
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Folder, Page, SiteUser
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    BlogPost,
+    Folder,
+    IssueParent,
+    Page,
+    SiteUser,
+)
 from tests.samples import (
     ATTACHMENT_SIZE,
     PAGE_VERSION,
@@ -167,7 +173,8 @@ def test_a_page_snapshot_missing_a_response_is_refused(missing: str) -> None:
 def test_an_issue_is_read_with_its_offset_times_and_people() -> None:
     """Jira times keep their offset; people keep their id and name, not their email."""
     issue = jira_v3.issue(Fields(v3_issue(), "issue"))
-    assert (issue.id, issue.key, issue.project, issue.parent) == ("10000", "PRB-1", "PRB", "PRB-3")
+    assert (issue.id, issue.key, issue.project) == ("10000", "PRB-1", "PRB")
+    assert issue.parent == IssueParent(id="10002", title="Ideas")
     assert (issue.issue_type, issue.status, issue.labels) == ("Idea", "Parking lot", ("probe",))
     assert issue.updated == datetime(
         2026, 10, 20, 22, 37, 58, 27000, tzinfo=timezone(timedelta(hours=1))

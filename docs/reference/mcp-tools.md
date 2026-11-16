@@ -21,8 +21,8 @@ surface](../explanation/mcp-surface.md).
 Answers a question with passages to quote, the best first: one passage per document,
 as many documents as fit the budget, 20 at most, then the call that continues.
 
-- `question`: the question, in words, at most 500 characters. Issue keys and page ids
-  in it put their documents first.
+- `question`: the question, in words, at most 500 characters. Refs, such as
+  `confluence:196845`, issue keys and page ids in it put their documents first.
 - `filters`: as `search`'s, below.
 - `cursor`: the one that the previous answer ended with.
 
@@ -40,10 +40,13 @@ says why.
 
 ### search
 
-Finds documents by words, issue keys, page ids or page addresses, the best first, each
-with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref,
-path, update and fetch time, labelled `mirrored`, then what the document has of its issue type, its status
-unless `current`, `assignee <name>` (`unassigned` for an issue with none, which no
+Finds documents by words, refs, issue keys, page ids or page addresses, the best first, each
+with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref, such as `jira:PRB-12`,
+path and update time, the day that it is as of, its scope's
+[as-of time](concepts.md#scope), such as `as of 2026-11-10`, or `as of: unknown` where
+none is known, then what the document has of its subtype, such as an issue's type, its status
+unless `current`, `assignee <name>` (`unassigned` for a document of a type that takes an assignee, as
+its connector declares, such as an issue, with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
 otherwise than its author, and `created <day>`, such as
 `Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-01`.
@@ -65,8 +68,10 @@ Other filters of people add neither.
 - `query`: the words, at most 500 characters.
 - `filters`: an object of `source` (one of the sources that keep a store or are
   configured, by default `confluence`, `jira`, and `worklog` once its folder is set, then
-  those that the index holds, read as the server starts), `space`,
-  `project`, `status`, `label`, `issue_type`, `person` (someone in any role, by any
+  those that the index holds, read as the server starts), `scope` (as `status` names it,
+  its scope type then its key, such as `space:ENG` or `project:PRB`, or its key alone,
+  which matches it in every scope type and source), `status`, `label`, `subtype`,
+  `person` (someone in any role, by any
   name that a source writes for them or by their id, `p-` and 16 hex digits),
   `author` (an issue's reporter, the person it is for, who may not be who created it; a
   page's creator), `creator` (who created an issue), `assignee`, `commenter` (who wrote
@@ -119,10 +124,10 @@ Other filters of people add neither.
 ### read
 
 Reads a document, or one of its sections, from a character offset, in slices. Each
-slice opens with the document's title, path and fetch time, and one from the body's
+slice opens with the document's title and path, and one from the body's
 start with its front matter, a `key: value` line each, of what it has: its ref, type,
-space, project, issue type, status, labels, breadcrumb, people, links, created and updated
-days and address. People come there one line
+scope, subtype, status, labels, parent, breadcrumb, people, links, created and updated
+times, the time that it is as of, its scope's, or `as of: unknown`, and address. People come there one line
 per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
 without the identity that the mirror keeps beside it, an account id standing for the
 name only where the source gives none: ten names at most, then how many more, each commenter with
@@ -130,21 +135,31 @@ their count of comments and the day of the last, such as
 `commenter: Ada Example (2, last 2026-10-21); Bo Sample (1, last 2026-10-20)`. Links
 come after them, one line per relation, by the ref that `read` takes: a meeting's
 `transcript`, and a transcript's `summary`, each meeting that links it, ten refs at
-most, then how many more, such as `transcript: t-20261027-1`.
+most, then how many more, such as `transcript: worklog:t-20261027-1`. The parent, and a
+document linked, come by their ref when they are mirrored, else by their document id,
+`<source>:<id>`.
 
-- `ref`: a page id, an issue key, a work-log id (`e-...`, `d-...`, `m-...` or `t-...`),
-  a page's or an issue's address, or a path in the mirror, at most 300 characters.
+- `ref`: a ref as answers cite it, the document's source, a colon, then its key or else
+  its id, such as `jira:PRB-12`, `confluence:196845` or `worklog:t-20261027-1`, never
+  looked for in another source, whatever surrounds it, such as `(jira:PRB-12).`, and
+  its source in any case; its key or id alone, such as `PRB-12`, where no other document has it, else refused with the refs
+  of those that have it; a page's or an issue's address, which names that kind alone,
+  so that a page's id names no issue; or a path in the mirror; at most 300 characters.
 - `section`: a section's number, from 1.
 - `offset`: a character of the body to start from.
 - `max_chars`: 1 to 40,000 characters, 12,000 by default.
 
 ### browse
 
-Lists the documents of a space or a project in tree order, or those under a parent.
+Lists the documents of a scope in tree order, or those under a parent, each with its
+ref, its update day and the day that it is as of, as a hit says it. A document sits
+under its parent; where the parent is not listed, as a folder is not, under the titles
+of its breadcrumb. Ancestors not listed come as a context line in brackets.
 
-- `space`: a space's key.
-- `project`: a project's key; give `space` or `project`, not both.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone; refused, with
+  the scopes that match, when several do.
 - `parent`: a page id, an issue key or an address within it.
+- `source`: narrows `scope` when several sources hold it.
 - `limit`: 1 to 200 documents, 50 by default.
 - `cursor`: the one that the previous answer ended with.
 
@@ -152,6 +167,10 @@ Lists the documents of a space or a project in tree order, or those under a pare
 
 Says what the mirror holds, when its index was built, and whether it searches by
 meaning: the model, the chunks, and the chunking that cut them. A line counts the
+documents of each scope, the most first, each with its as-of time, else
+`as of: unknown`, such as
+`scopes: space:ENG 31 (as of 2026-11-10 08:30 UTC), project:PRB 2 (as of: unknown)`. A
+line counts the
 persons, those in more than one source and those by name alone, of no identity, then
 names the keys that names of several identities share, five at most, then how many
 more, each with the persons holding it, such as `persons: 42, 12 in more than one
@@ -174,20 +193,25 @@ the argument. A prompt is listed only when the tools it uses are served.
 Read the document whole; summarise its purpose, facts, decisions, status and dates,
 each cited by section. Needs `read`.
 
-- `ref`: a page, issue or work-log id, an address or a path in the mirror.
+- `ref`: a ref, or a key or id alone, an address or a path in the mirror, as `read`
+  takes it.
 
 ### changes
 
-List what changed in a space or a project since a date, through `search` by update;
-summarise by theme, with refs and dates. Needs `search`.
+List what changed in a scope since a date, through `search` by update; summarise by
+theme, with refs and dates. Needs `search`.
 
-- `scope`: `space:KEY` or `project:KEY`, since a site may use one key for both; a bare
-  key is refused, naming both forms.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone, as the filter
+  `scope` takes it.
 - `since`: an ISO 8601 date or time, such as `2026-10-01`.
 
 ### overview
 
-Browse a space or a project, read its top documents' first sections, and say how it is
-organised and what to read first. Needs `browse` and `read`.
+Browse a scope, read its top documents' first sections, and say how it is organised and
+what to read first. Needs `browse` and `read`.
 
-- `scope`: `space:KEY` or `project:KEY`.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone, written whole
+  in the text; refused, naming them, when several scopes match, or several sources hold
+  it and `source` does not narrow it, as `browse` refuses it.
+- `source`: optional, the source that holds the scope, where several do, such as
+  `jira`, written in the text's `browse` call; refused when it holds no such scope.

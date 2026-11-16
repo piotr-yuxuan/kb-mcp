@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 # A passage's two lines about it, then its text, which runs to the next passage.
 ABOUT = re.compile(
-    r"^(\d+)\. (.*) \| (\S+) \| section (\d+)(?:: (.*))? \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC)"
-    r" \| mirrored (\d{4}-\d\d-\d\d) \| (.*)\n(.*) \| (read\(.*\))\n",
+    r"^(\d+)\. (.*) \| [a-z][a-z0-9]*:(\S+) \| section (\d+)(?:: (.*))?"
+    r" \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC) \| (as of[^|]*) \| (.*)\n(.*) \| (read\(.*\))\n",
     re.MULTILINE,
 )
 RETENTION = (
@@ -87,12 +87,12 @@ ASK_DOCUMENTS = 20  # the documents that one answer quotes, at most
 
 
 def passages(answer: str) -> list[dict[str, str]]:
-    """Read each passage of an answer: what its lines say, and its text."""
+    """Read each passage of an answer: what its lines say, its ref's key or id, and its text."""
     block = parts(answer)[1]
     found = list(ABOUT.finditer(block))
     ends = [match.start() - 2 for match in found[1:]] + [len(block)]
     names = (
-        *("number", "title", "ref", "section", "heading", "updated", "mirrored", "facts"),
+        *("number", "title", "ref", "section", "heading", "updated", "as of", "facts"),
         "address",
     )
     return [
@@ -145,9 +145,9 @@ def test_a_passage_quotes_the_section_that_holds_the_words(words: Library) -> No
         "2",
         "Retention",
     )
-    assert (first["updated"], first["mirrored"]) == ("2026-10-20 21:52 UTC", "2026-10-20")
+    assert first["updated"] == "2026-10-20 21:52 UTC"
     assert first["address"] == "https://example.atlassian.net/wiki/x/1"
-    assert first["read"] == 'read(ref="196845", section=2)'
+    assert first["read"] == 'read(ref="confluence:196845", section=2)'
     assert section in words.read("196845", section=2)
 
 
@@ -239,7 +239,7 @@ def test_an_issue_key_in_the_question_puts_its_issue_first(words: Library) -> No
     ("filters", "message"),
     [
         ({"spaec": "ENG"}, "filters: no spaec"),
-        ({"space": "NOPE"}, "space: no document has"),
+        ({"scope": "space:NOPE"}, "scope: no document has"),
         ({"person": "nobody"}, "person: no document has"),
         ({"updated_after": "yesterday"}, "updated_after: an ISO 8601 date"),
     ],
@@ -257,7 +257,7 @@ def test_filters_are_refused_as_search_refuses_them(
 
 def test_filters_narrow_and_a_question_without_words_is_refused(words: Library) -> None:
     """The issue alone in its project; a question of marks alone has nothing to search."""
-    found = passages(words.ask("brokers", filters={"project": "proj"}))
+    found = passages(words.ask("brokers", filters={"scope": "project:proj"}))
     assert [each["ref"] for each in found] == ["PROJ-7"]
     assert words.ask("?!") == "The question has no words to search: ask it in words."
 
@@ -265,7 +265,7 @@ def test_filters_narrow_and_a_question_without_words_is_refused(words: Library) 
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        ({"issue_type": "BUG"}, ["PROJ-1"]),
+        ({"subtype": "BUG"}, ["PROJ-1"]),
         ({"author": "bo sample"}, ["196845", "PROJ-1"]),
         ({"assignee": "Helene Example"}, ["PROJ-2"]),
         ({"created_after": "2026-10-25"}, ["PROJ-1", "PROJ-3"]),
@@ -306,9 +306,19 @@ def test_a_person_s_passages_open_as_search_s_hits_do_and_name_their_roles(
 
 
 def test_a_passage_s_first_line_ends_with_who_and_when(tmp_path: Path) -> None:
-    """As a hit's: an issue's type, status, assignee, author and created day; a page's last two."""
+    """As a hit's: an issue's type, status, assignee, author and created day; a page's last two.
+
+    After its as-of day, its scope's, which the test mirror says of space:ENG alone.
+    """
     people = built(tmp_path, [(front, None) for front in PEOPLE])
-    found = {each["ref"]: each["facts"] for each in passages(people.ask("which broker?"))}
+    said = passages(people.ask("which broker?"))
+    assert {each["ref"]: each["as of"] for each in said} == {
+        "PROJ-1": "as of: unknown",
+        "PROJ-2": "as of: unknown",
+        "PROJ-3": "as of: unknown",
+        "196845": "as of 2026-10-20",
+    }
+    found = {each["ref"]: each["facts"] for each in said}
     assert found == {
         "PROJ-1": "Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-25",
         "PROJ-2": (

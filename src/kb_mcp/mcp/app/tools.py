@@ -26,11 +26,11 @@ from opentelemetry import metrics, trace
 from pydantic import Field
 
 from kb_mcp.config.domain.settings import SearchMode as Mode
-from kb_mcp.kernel.names import WORKLOG_ID
+from kb_mcp.kernel.names import DOCUMENT_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
-from kb_mcp.mirror.domain.mirror import ROLES, ref_of
+from kb_mcp.mirror.domain.mirror import ROLES, document_id
 from kb_mcp.search.app.meaning import Nearest
 from kb_mcp.search.domain import people
 from kb_mcp.search.domain.chunking import CHUNKERS, PASSAGE_CHARS, around
@@ -53,8 +53,7 @@ from kb_mcp.search.domain.search import (
     identifiers,
     plan_query,
     rank,
-    tree_key,
-    tree_paths,
+    tree_order,
 )
 
 if TYPE_CHECKING:
@@ -86,7 +85,7 @@ NO_QUESTION = "The question has no words to search: ask it in words."
 ASK_DOCUMENTS = 20
 NOT_MIRRORED = (
     "Not mirrored: the mirror holds no such document. It holds what was downloaded;"
-    " status() says which spaces and projects, and search() finds by words."
+    " status() says which scopes, and search() finds by words."
 )
 TRACER = trace.get_tracer(__name__)
 # The searches asked by meaning that ranked by words alone, by the mode asked.
@@ -99,6 +98,7 @@ class SearchFilters(TypedDict, total=False):
     """What narrows a search. Values match without regard to case; dates are ISO 8601.
 
     source worklog: the user's entries (notes, AI summaries) and transcripts (verbatim).
+    scope: as status() names it, such as space:ENG, or its key alone, in any source.
     person: in any role, by any of their names or their id.
     author: an issue's reporter, a page's creator; creator: an issue's.
     commented_*: by commenter if given; _after included, _before excluded.
@@ -106,11 +106,10 @@ class SearchFilters(TypedDict, total=False):
     """
 
     source: str  # one of the sources that the server's settings name: search_filters
-    space: str
-    project: str
+    scope: str
     status: str
     label: str
-    issue_type: str
+    subtype: str
     person: str
     author: str
     creator: str
@@ -194,11 +193,21 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     planned, filters, by_date = asked.planned, asked.filters, asked.sort != "relevance"
     with TRACER.start_as_current_span("search.lexical"):
         found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
-        named = [*planned.identifiers.keys, *planned.identifiers.ids]
-        keys, ids = planned.identifiers.keys, planned.identifiers.ids
-        pinned = reader.indexed_documents(keys=keys, ids=ids, filters=filters)
-        ordered = sorted(pinned, key=lambda e: named.index(ref_of(e.front.key, e.front.id)))
-        first = [entry.path for entry in ordered]
+        # A ref holds a colon: a query without one needs no list of the index's sources.
+        held = [source for source, _ in reader.values("source")] if ":" in asked.query else []
+        named = identifiers(asked.query, held).named
+        # Each document that the query names as it is cited: by its ref, else by its key,
+        # else its id, alone; pinned in the order of its first name in the query, refs,
+        # keys and ids alike.
+        cited = {
+            entry.path: [
+                named.index(each)
+                for each in (entry.front.ref, entry.front.key or entry.front.id)
+                if each in named
+            ]
+            for entry in reader.indexed_documents(refs=named, filters=filters)
+        }
+        first = sorted((path for path, at in cited.items() if at), key=lambda p: min(cited[p]))
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_date:
@@ -389,12 +398,13 @@ def checked(filters: SearchFilters | None) -> dict[str, str]:
 
 def narrowed(reader: SearchReader, given: Mapping[str, str]) -> Filters:
     """Give the filters as the index holds their values, refusing one that no document has."""
-    names = ("source", "space", "project", "status", "label", "issue_type")
+    names = ("source", "status", "label", "subtype")
     dates = (
         *("updated_after", "updated_before", "created_after", "created_before"),
         *("commented_after", "commented_before"),
     )
     return Filters(
+        scope=scope_of(reader, given.get("scope")),
         **{name: canonical(reader, name, given.get(name)) for name in names},
         **{name: who(reader, name, given.get(name)) for name in PERSON_FILTERS},
         **{name: instant(name, given.get(name)) for name in dates},
@@ -534,6 +544,29 @@ def canonical(reader: SearchReader, name: str, value: str | None) -> str | None:
     raise UnanswerableError(responses.refusal(message, listed[:VALUES_SHOWN], len(valid)))
 
 
+def scope_of(reader: SearchReader, value: str | None) -> str | None:
+    """Find a scope as the index holds it, as ``canonical`` finds a value: whole, or its key.
+
+    A scope is given whole, its scope type then its key, as ``space:ENG``, or by its key
+    alone, which matches it in every scope type and source.
+    """
+    return canonical(reader, "scope" if value is None or ":" in value else "scope key", value)
+
+
+def sole_scope(listed: Sequence[IndexedDocument]) -> str | None:
+    """Give the one scope, whole, that these documents hold; None for none.
+
+    Raises UnanswerableError naming each scope with its source, as browse asks for one,
+    when they hold several, or one that several sources hold.
+    """
+    held = sorted({(entry.front.scope, entry.front.source) for entry in listed})
+    if len(held) > 1:
+        named = [f"{each} ({source})" for each, source in held]
+        message = "scope: several scopes match; give one whole, and its source if need be:"
+        raise UnanswerableError(responses.refusal(message, named[:VALUES_SHOWN], len(named)))
+    return held[0][0] if held else None
+
+
 def instant(name: str, value: str | None) -> datetime | None:
     """Read an ISO 8601 date or time; a date is its midnight, a time without offset UTC."""
     if value is None:
@@ -627,11 +660,34 @@ class Library:
             raise UnanswerableError(str(error)) from None
 
     def _find(self, reader: SearchReader, ref: str) -> IndexedDocument | None:
-        """Find a document by path, issue key, page or work-log id, or address, in that order."""
-        named, path = identifiers(ref), ref.strip()
-        ids = [path] if WORKLOG_ID.fullmatch(path) else named.ids[:1]
-        found = reader.indexed_documents(paths=[path], keys=named.keys[:1], ids=ids)
-        return min(found, key=lambda entry: (entry.path != path, not entry.front.key), default=None)
+        """Find a document by path, else by ref, else by address; None for none.
+
+        A ref is its key or id, alone or after its source, as ``jira:PRB-12``, which is
+        never looked for in another source, whatever surrounds it and in whatever case a
+        source of the index is written; an address gives an issue's key or a page's id,
+        each naming a document that it cites, so that a page's id names no issue.
+        Raises UnanswerableError, listing their refs, for a ref or an address that names
+        several documents, as a key or id alone may.
+        """
+        path = ref.strip()
+        found = reader.indexed_documents(paths=[path], refs=[path])
+        exact = [entry for entry in found if entry.path == path]
+        if not found and not DOCUMENT_ID.fullmatch(path):
+            named = identifiers(path, [source for source, _ in reader.values("source")])
+            cited = [*named.keys[:1], *named.ids[:1]]
+            # A ref within the text finds what it finds alone, never its key elsewhere.
+            found = [
+                entry
+                for entry in reader.indexed_documents(refs=named.refs[:1] or cited)
+                if named.refs or (entry.front.key or entry.front.id) in cited
+            ]
+        if len(found) > 1 and not exact:
+            listed = sorted(entry.front.ref for entry in found)
+            message = (
+                f"ref: {json.dumps(path, ensure_ascii=False)} names several documents; give one:"
+            )
+            raise UnanswerableError(responses.refusal(message, listed, len(listed)))
+        return (exact or found or [None])[0]
 
     def search(
         self,
@@ -690,8 +746,7 @@ class Library:
             person, held = about(reader, kept, [entry.path for entry in shown])
             for number, entry in enumerate(shown, offset + 1):
                 passage = snippet_of(reader, entry, ranked, planned)
-                ref = ref_of(entry.front.key, entry.front.id)
-                opening = responses.call(self.read, ref=ref, section=passage.number)
+                opening = responses.call(self.read, ref=entry.front.ref, section=passage.number)
                 items.append(responses.hit(number, entry, passage, opening, held.get(entry.path)))
 
         def more(count: int) -> str:
@@ -767,9 +822,7 @@ class Library:
                 number,
                 entry,
                 passage,
-                responses.call(
-                    self.read, ref=ref_of(entry.front.key, entry.front.id), section=passage.number
-                ),
+                responses.call(self.read, ref=entry.front.ref, section=passage.number),
                 held.get(entry.path),
             )
             for number, (entry, passage) in enumerate(pairs, offset + 1)
@@ -794,10 +847,26 @@ class Library:
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
-    def key_of(self, kind: Literal["space", "project"], key: str) -> str:
-        """Give a space's or a project's key as the index holds it; refuse one it lacks."""
+    def scope_of(self, scope: str) -> str:
+        """Give a scope as the index holds it, as ``scope_of`` does; refuse one it lacks."""
         with self._reading() as reader:
-            return canonical(reader, kind, key) or ""
+            return scope_of(reader, scope) or ""
+
+    def sole_scope(self, scope: str, source: str | None = None) -> tuple[str, str | None]:
+        """Give the one scope, whole, that browse lists for ``scope`` in ``source``, and the source.
+
+        Each as the index holds it. Refuses as browse does, and a source that holds no
+        such scope.
+        """
+        with self._reading() as reader:
+            kept = Filters(
+                source=canonical(reader, "source", source), scope=scope_of(reader, scope)
+            )
+            held = sole_scope(reader.listing(kept))
+        if held is None:
+            message = f"source: {kept.source} holds no {kept.scope}"
+            raise UnanswerableError(message)
+        return held, kept.source
 
     def resolve(self, ref: str) -> str | None:
         """Find a document's path by its id, key, address or path, as read does."""
@@ -836,8 +905,9 @@ class Library:
     ) -> str:
         """Read a mirrored document, or one of its sections, from a character offset.
 
-        ref: a page id, an issue key, a work-log id, a page or issue address, or a path in
-        the mirror.
+        ref: as answers cite it, its source then its key or id, such as jira:PRB-12; its
+        key or id alone, where no other document has it; a page or issue address; or a
+        path in the mirror.
         A long document comes in slices, each ending with the call that reads on.
         """
         bounded(ref=(ref, LONGEST["ref"]))
@@ -856,8 +926,16 @@ class Library:
                 raise UnanswerableError(message)
             last = min(end, begin + clamp(max_chars, CHARS_LIMITS))
             text = reader.text(entry.path, begin, last)
-        frame = responses.metadata(entry, whole=begin == 0)
-        ref = ref_of(entry.front.key, entry.front.id)
+            front = entry.front
+            others = [
+                each for each in (front.parent, *(link.document for link in front.links)) if each
+            ]
+            refs = {
+                document_id(other.front.source, other.front.id): other.front.ref
+                for other in reader.indexed_documents(refs=others)
+            }
+        frame = responses.metadata(entry, refs, whole=begin == 0)
+        ref = front.ref
         later = responses.call(self.read, ref=ref, section=section, offset=end, max_chars=max_chars)
         allowed = responses.budget(max_chars, READ_CHARS) - responses.RESERVE
         stop = begin + responses.cut(text, allowed - responses.tokens(frame + later))
@@ -878,40 +956,53 @@ class Library:
 
     def browse(
         self,
-        space: str | None = None,
-        project: str | None = None,
+        scope: str | None = None,
         parent: str | None = None,
+        source: str | None = None,
         limit: int = BROWSE_LIMIT,
         cursor: str | None = None,
     ) -> str:
-        """List the documents of a space or a project in tree order, or those under a parent.
+        """List the documents of a scope in tree order, or those under a parent.
 
-        Give space or project; parent is a page id, an issue key or an address within it.
+        scope: as status() names it, such as space:ENG, or its key alone; source narrows
+        it when several sources hold it. parent is a ref or an address within it.
         Bracketed lines name ancestors that are not listed there.
         """
-        bounded(space=(space, LONGEST["value"]), project=(project, LONGEST["value"]))
+        bounded(scope=(scope, LONGEST["value"]), source=(source, LONGEST["value"]))
         bounded(parent=(parent, LONGEST["ref"]), cursor=(cursor, LONGEST["cursor"]))
         with self._reading() as reader:
-            if (space is None) == (project is None):
-                keys = [f"space {key}" for key, _ in reader.values("space")]
-                keys += [f"project {key}" for key, _ in reader.values("project")]
-                message = "browse: give either space or project, one of:"
-                raise UnanswerableError(responses.refusal(message, keys[:VALUES_SHOWN], len(keys)))
+            if scope is None:
+                scopes = [each for each, _ in reader.values("scope")]
+                message = "browse: give a scope, one of:"
+                raise UnanswerableError(
+                    responses.refusal(message, scopes[:VALUES_SHOWN], len(scopes))
+                )
             built_at, build = reader.built_at(), reader.build()
             offset = start_of(cursor, build)
-            narrowed = Filters(
-                space=canonical(reader, "space", space),
-                project=canonical(reader, "project", project),
+            kept = Filters(
+                source=canonical(reader, "source", source), scope=scope_of(reader, scope)
             )
-            listed = reader.listing(narrowed)
+            listed = reader.listing(kept)
+            ids = {document_id(entry.front.source, entry.front.id) for entry in listed}
+            # The parents not listed that the index holds, documents of other scopes, each
+            # with its own parent, climbing until a parent is listed, not mirrored or met.
+            elsewhere: dict[str, str | None] = {}
+            outside = {each.front.parent for each in listed} - ids - {None}
+            while outside:
+                found = reader.indexed_documents(refs=sorted(outside))
+                elsewhere |= {
+                    document_id(other.front.source, other.front.id): other.front.parent
+                    for other in found
+                }
+                outside = {other.front.parent for other in found} - ids - elsewhere.keys() - {None}
             top = None if parent is None else self._find(reader, parent)
+        # Refuses several scopes, or one of several sources; the scope itself is not
+        # needed, as ``listed`` holds that one scope's documents alone.
+        sole_scope(listed)
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
-        paths = tree_paths([entry.front for entry in listed])
         # Ties go by path: pages of results need one order from call to call.
-        pairs = sorted(
-            zip(paths, listed, strict=True), key=lambda pair: (tree_key(pair[0]), pair[1].path)
-        )
+        pairs = tree_order(listed, elsewhere)
         base = next((path for path, entry in pairs if entry == top), ())
         pairs = [pair for pair in pairs if pair[0][: len(base)] == base and pair[0] != base]
         size = clamp(limit, BROWSE_LIMITS)
@@ -920,7 +1011,7 @@ class Library:
         def more(count: int) -> str:
             after = cursor_at(offset + count, build)
             return responses.call(
-                self.browse, space=space, project=project, parent=parent, limit=limit, cursor=after
+                self.browse, scope=scope, parent=parent, source=source, limit=limit, cursor=after
             )
 
         allowed = responses.budget(limit, BROWSE_LIMIT)

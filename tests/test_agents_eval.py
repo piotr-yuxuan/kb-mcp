@@ -917,7 +917,9 @@ def test_calls_and_runs_are_measured_as_the_call_logs_and_the_results_say(
     assert prepared(world, out, "--sample", "1") == 0
     a, b = first(out, "A"), first(out, "B")
     assert main(bridged(out, b, "ask", {"question": QUESTIONS["q1"]})) == 0
-    assert main(bridged(out, a, "search", {"query": "kafka", "filters": {"space": "NOPE"}})) == 0
+    assert (
+        main(bridged(out, a, "search", {"query": "kafka", "filters": {"scope": "space:NOPE"}})) == 0
+    )
     # B quotes its question's expected document, its evidence, or a sentence of it.
     asked = next(each["question"] for each in runs_of(out) if each["id"] == b)
     ref, phrase = EXPECTED[asked]

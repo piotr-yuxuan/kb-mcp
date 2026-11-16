@@ -519,8 +519,7 @@ filters by [`checked`](../../src/kb_mcp/mcp/app/tools.py)), and
 [`plan_query`](../../src/kb_mcp/search/domain/search.py) plans the query: its
 words in lower case, without stop words unless nothing else is left, at most ten, each
 made one FTS5 string ([`quote`](../../src/kb_mcp/search/domain/search.py))
-so that nothing in it reads as an operator; the phrase; and the issue keys and page ids
-that it names ([`identifiers`](../../src/kb_mcp/search/domain/search.py)).
+so that nothing in it reads as an operator; and the phrase.
 
 [`reading`](../../src/kb_mcp/search/adapters/sqlite_index.py) then opens
 the index read-only, for this call alone, so that a build renamed in since the last call
@@ -536,7 +535,10 @@ spans:
   [`Reader.scores`](../../src/kb_mcp/search/adapters/sqlite_index.py)
   scores each document that matches by its best section's bm25, with weights per column
   ([`WEIGHTS`](../../src/kb_mcp/search/adapters/sqlite_index.py)). The
-  documents that the query names by key or id come first
+  refs, issue keys and page ids that the query names
+  ([`identifiers`](../../src/kb_mcp/search/domain/search.py)), refs by the sources that
+  the index holds, read only for a query with a colon, put the documents that they name
+  by ref, key or id first, in the order of their first mention
   ([`Reader.indexed_documents`](../../src/kb_mcp/search/adapters/sqlite_index.py)),
   and [`rank`](../../src/kb_mcp/search/domain/search.py) orders the rest by
   the sum of their scores.
@@ -574,7 +576,7 @@ show, by meaning or by words, as the document was ranked;
 [`call`](../../src/kb_mcp/mcp/app/responses.py) writes the `read(...)` call
 that opens it from `read`'s own signature, so that a call never names a parameter the
 tool lacks; and [`hit`](../../src/kb_mcp/mcp/app/responses.py) writes the
-hit, with its fetch time. [`page`](../../src/kb_mcp/mcp/app/responses.py)
+hit, with the day that it is as of, its scope's. [`page`](../../src/kb_mcp/mcp/app/responses.py)
 keeps as many hits as fit the budget,
 [`BUDGET`](../../src/kb_mcp/mcp/app/responses.py) estimated tokens
 ([`tokens`](../../src/kb_mcp/mcp/app/responses.py)), and ends a list that it

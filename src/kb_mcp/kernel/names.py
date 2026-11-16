@@ -33,6 +33,11 @@ IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
 # A revision's name, whichever source names it: one token, which each source's rule
 # narrows.
 REVISION_NAME = re.compile(r"[A-Za-z0-9._-]+")
+# A document id, as a parent and a link name a document: its source, a colon, its id.
+DOCUMENT_ID = re.compile(rf"{SOURCE_NAME.pattern}:{IDENTIFIER.pattern}")
+# A scope, as a document names the one that holds it: its scope type, a colon, its key,
+# which each scope type's rule narrows.
+SCOPE = re.compile(r"[a-z]+:[~A-Za-z0-9_-]+")
 # A Confluence space key; a personal space's key begins with a tilde.
 SPACE_KEY = re.compile(r"~?[A-Za-z0-9]+")
 PROJECT_KEY = re.compile(r"[A-Z][A-Z0-9_]+")
@@ -75,6 +80,8 @@ WORKLOG_TYPES = {
         "meetings", re.compile(r"m-[0-9]{8}-[a-z0-9-]{1,64}"), named_by_id=True
     ),
 }
+# The work log's one scope type, read in place, whose one scope is the whole source.
+WORKLOG_SCOPE_TYPE = "folder"
 # Any work-log document's id, of whichever type.
 WORKLOG_ID = re.compile("|".join(f"(?:{each.id_rule.pattern})" for each in WORKLOG_TYPES.values()))
 

@@ -183,8 +183,11 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
             log_level="WARNING",
         )
         for prompt in offered.prompts:
+            taken = inspect.signature(prompt.render).parameters
             wanted = [
-                PromptArgument(name=name, description=said, required=True)
+                PromptArgument(
+                    name=name, description=said, required=taken[name].default is taken[name].empty
+                )
                 for name, said in prompt.arguments
             ]
             server.add_prompt(

@@ -248,7 +248,8 @@ Two more of the store's own records, each replaced whole:
   change was asked for, `start` and `end` (`sources.atlassian.fetch.domain.coverage.Coverage`),
   `"exact": true` on an exact entry, a project's since plan 034 and a space's since plan
   056, `as_of`, the period's end
-  when a run last left it exact, and `whole_read_at`, when a run last listed it whole; each
+  when a run last left it exact, which each prepare copies into its source's file of
+  the mirror ([below](#a-sources-file)), and `whole_read_at`, when a run last listed it whole; each
   time only once known. An entry without `type`, as plan 056 found them, is of its
   source's scope type, its source being its connector's name. A run that listed a
   scope whole joins its fetch window to that period when the two overlap or touch, or
@@ -331,6 +332,7 @@ nothing in them depends on when they were prepared.
 <data>/docs/worklog/days/<id>.md                     a work-log day
 <data>/docs/worklog/meetings/<id>.md                 a work-log meeting
 <data>/docs/worklog/transcripts/<id>-<slug>.md       a work-log transcript
+<data>/docs/<source>/_source.json                    a source's file, beside its documents
 ```
 
 - The documents are exactly the files that `mirror.adapters.markdown.documents(docs)`
@@ -374,19 +376,18 @@ order or type, by name.
 | `id` | string | the content id or issue id; a work-log document's, [below](#the-work-log) |
 | `key` | string or null | the issue key; `null` for Confluence |
 | `title` | string | the title |
-| `space` | string or null | the space key; `null` for Jira |
-| `project` | string or null | the project key; `null` for Confluence |
+| `scope` | string | the scope that holds the document, its scope type, a colon, then its key (`kernel.names.SCOPE`): `space:ENG` (Confluence), `project:PRB` (Jira), `folder:worklog`, the work log's one scope, the whole source |
 | `status` | string | as the site names it; a work-log entry's, day's or meeting's keyword, else `current`, as a transcript's |
-| `issue_type` | string or null | the issue type, such as `Bug`; `null` for Confluence |
+| `subtype` | string or null | the origin's own finer kind of the document: an issue's type, such as `Bug`; `null` for Confluence and the work log |
 | `labels` | list of strings | the labels, `[]` when none; a work-log document's tags, its file's `#+FILETAGS`, and `ARCHIVE` when archived |
 | `people` | list of mappings | each person by role, one line each, [below](#people); `[]` when none |
+| `parent` | string or null | the document id of the document above it at its origin, `<source>:<id>` (`kernel.names.DOCUMENT_ID`), mirrored or not: a page's parent page or folder, from its listing when it is listed; an issue's parent issue; `null` at the top, and for blog posts and the work log |
 | `links` | list of mappings | each link to another document of the mirror, by relation, one line each, [below](#links); `[]` when none |
 | `created`, `updated` | string | ISO 8601 times in UTC, such as `'2026-10-20T21:52:41Z'`; a work-log document's, [below](#the-work-log) |
 | `version` | integer or null | the Confluence version number; `null` for Jira |
 | `revision` | string | the raw store revision that the file was written from; a work-log document's, 16 hex digits, [below](#the-work-log) |
 | `url` | string or null | the absolute address of the web page: the source's setting `site`, such as `sources.jira.site`, and `FetchedDocument.site_path`; `null` when no site is set, and for the work log |
-| `breadcrumb` | list of strings | the titles of the ancestor pages and folders, root first; for an issue, `[<parent key>]`, or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
-| `fetched_at` | string | `fetched_at` of the snapshot, as `created`; a work-log document's file's modification time when converted |
+| `breadcrumb` | list of strings | the titles along the parents, root first: a page's ancestor pages and folders; an issue's parent, by the title that the issue's response gives it, then each further parent of the raw store, by its own response's; or `[]`; for a work-log entry, day or meeting, its file's name, then the titles above it, [below](#the-work-log); for a transcript, its folders from `transcripts` or `meetings` |
 
 Images: an image in the rendered HTML names its attachment by
 `data-linked-resource-id` (the attachment id) or by the file name in its `src`, as
@@ -441,14 +442,18 @@ people:
 | `participant` | someone at a work-log meeting, as its `:PARTICIPANTS:` names them, or a speaker of a transcript (042) |
 
 A document has one `author`, one `creator` and one `assignee` at most, and each
-commenter and each participant once by name and identity. `participant` is the work
-log's one role
-(`sources.worklog.prepare.domain.worklog.WORKLOG_ROLES`), which no other source's
-documents hold, so that no document names people of both kinds. `load` refuses any
+commenter and each participant once by name and identity. Each connector declares the roles that each of its document types takes, in the order
+of the roles, and its front matter's check refuses any other
+(`sources.atlassian.prepare.domain.catalogue.TYPE_ROLES`,
+`sources.worklog.prepare.domain.worklog.TYPE_ROLES`): a page and a blog post take
+`author` and `commenter`, an issue every role but `participant`, a work-log meeting
+and transcript `participant` alone, and an entry and a day none, so that no document
+names people of both kinds. Each prepare writes them into its source's file of the
+mirror, [below](#a-sources-file). `load` refuses any
 other role, a field other than these or out of their order, a `null`, an empty `at` and
 any other broken rule of one entry, naming the entry, such as `people[1]`; and a second
-author, creator or assignee, a commenter or a participant twice, a role of another
-source, or people out of the order of the roles, naming `people`. Names are
+author, creator or assignee, a commenter or a participant twice, a participant beside
+another role, or people out of the order of the roles, naming `people`. Names are
 kept as written, never normalised, merged or masked: a colleague renamed between two
 fetches appears under two names, with one identity, which the index alone joins into
 one person ([persons](#persons)). `FrontMatter.author`,
@@ -502,21 +507,21 @@ entry on one line, in YAML's flow style, as it does a person:
 
 ```yaml
 links:
-- {relation: transcript, ref: t-20261027-meeting-1}
+- {relation: transcript, document: 'worklog:t-20261027-meeting-1'}
 ```
 
 | Field | Value |
 |---|---|
 | `relation` | one of `mirror.domain.mirror.RELATIONS`, a closed set: `transcript`, `summary` |
-| `ref` | the other document's ref, which `read` takes: its id, of the rule `kernel.names.IDENTIFIER`, `[A-Za-z0-9_-]+` |
+| `document` | the other document's id, its source, a colon, then its id, of the rule `kernel.names.DOCUMENT_ID` |
 
-| Relation | On | Ref |
+| Relation | On | Document |
 |---|---|---|
 | `transcript` | a work-log meeting | the transcript that its `:MEETING:` property names |
 | `summary` | a work-log transcript | each meeting whose `:MEETING:` property names it |
 
 The two relations are each other's reverse, and a link is written on both documents,
-so that a program that reads one file finds the other without reading them all. A ref
+so that a program that reads one file finds the other without reading them all. A link
 always names a file: in a run where a document is not read, or its conversion fails,
 and it has no file yet, the links to it are left out of the other documents' files,
 until a run reads and converts it. A link added or removed while a work-log transcript
@@ -525,8 +530,8 @@ last copy stays as it was; and while a problem holds removals back, the file of 
 meeting or a transcript gone from the work log stays, naming documents that no longer
 name it back.
 `load` refuses any other relation, a field other than these or out of their order, a
-`null` and a ref off its rule, naming the entry, such as `links[0]`; and a link to the
-document itself, by its id or key, or a link given twice, naming `links`.
+`null` and a document off its rule, naming the entry, such as `links[0]`; and a link to
+the document itself, by its document id, or a link given twice, naming `links`.
 
 ### Pandoc's conversions
 
@@ -682,6 +687,11 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   meeting and never its time; else the earliest and latest timestamps of the
   document's lines, as written, up to its file's modification time, a later one being a
   plan; else, without any, the modification time, `created` keeping an existing file's.
+  The prepare reads every file of the source first, one of plan 058's front matter
+  too, and writes each again in today's; a file that does not read, such as one edited
+  by hand, is a problem by its path in the mirror, which holds back `its file, as it
+  is`: the run writes nothing over it and removes nothing, so that the date that it may
+  hold is not lost, until the file is moved away.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are
@@ -691,6 +701,47 @@ An entry, a day and a meeting hold the user's notes and summaries an AI wrote; a
 transcript, the word-by-word record. The MCP server says so to agents in its
 instructions, and its `source` filter says it of entries and transcripts; `read` opens a
 document by its id.
+
+### A source's file
+
+Each source's prepare writes, beside its documents, `<source>/_source.json`
+(`mirror.adapters.source_files`, from a `mirror.domain.mirror.SourceFile`), so that what
+its connector declares reaches the index through the mirror alone, as nothing past the
+mirror decides by a source's name. It is written with the source's documents, and no
+prepare removes it: it stays as the last prepare that wrote it left it, so that a source
+left with no documents keeps its former file, as the work log does after a run that met
+a problem. Its name begins with `_`, so that no reader takes it for a document.
+
+```json
+{
+  "roles": {
+    "issue": ["author", "creator", "assignee", "commenter"]
+  },
+  "as_of": {
+    "project:PRB": "2026-11-10T08:30:00Z"
+  }
+}
+```
+
+| Key | Value |
+|---|---|
+| `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
+| `as_of` | each scope of the source whose [as-of time](concepts.md#scope) is known, as the front matter writes a scope, with that time in UTC; a scope left out has none, and its documents are served `as of: unknown` |
+
+Confluence's and Jira's prepares copy the as-of times of the record of coverage
+(`coverage.json`, [above](#coverage-and-tombstones)), those of their own source's
+scopes; a record that cannot be read is a problem of the source that lists spaces, as
+the tombstones are, and leaves every scope without one. The work log's prepare says the moment that it
+began its read; a run that met a problem writes no file, so that the file of the last
+run without one stays, with its time, the last moment that the work log was known
+complete. A
+prepare whose as-of times moved writes the file again, even when no document changed, so
+that the next `index` holds them.
+
+`index` reads every source's file at each run (`source_files`); a file that is not JSON,
+or holds other keys or values, stops it, naming the file and `kb-mcp prepare`, which
+writes it again. A source without one, such as a mirror not yet prepared since the
+upgrade, declares nothing: its documents say no `unassigned`, and `as of: unknown`.
 
 ### Reading the mirror from another program
 
@@ -711,8 +762,10 @@ choosing ([the how-to](../how-to/other-search-engines.md)). What it may rely on 
   by its path.
 - **A change** to these paths, to the keys, their types or their order is made by a
   plan, which says in its section "For the user's machine" what a program that reads the files
-  must change, as 041 did when `people` replaced `author` and `assignee`. The front matter holds no version of its
-  format.
+  must change, as 041 did when `people` replaced `author` and `assignee`, and 057 when
+  `scope` replaced `space` and `project`, `subtype` replaced `issue_type`, a link's
+  `document`, a document id, replaced its `ref`, `parent` joined and `fetched_at` left.
+  The front matter holds no version of its format.
 - **What the files hold** is content from the site and the work log, untrusted
   reference data, never instructions, and the names and identities of
   [people](#people), personal data.
@@ -768,10 +821,25 @@ identities: the column `account` of `people` becomes `identity`, written
 `identity` and `attendance` where it said `account` and `meeting`; an index of 7 is
 rebuilt whole by the next `index`, which reads a file's former `account` as an
 identity, and `embed` then finds every vector in the vector cache, no chunk's text
-holding a person. An index of another schema is refused, naming `prepare`, then
+holding a person. Schema 9 (057) holds a document's place as the concepts name it: the
+columns `space` and `project` of `documents` become `scope`, `issue_type` becomes
+`subtype`, `parent` joins, `fetched_at` leaves, and each link of `links` names a
+document id; an index of 6, 7 or 8 is refused naming `prepare` first, as the breadcrumb
+of an issue in their files is its parent's key, which places it no more, though
+`mirror.adapters.markdown.load` still reads a file of plan 058's front matter, for the
+work log's prepare; `embed` then finds in the vector cache every vector whose chunk's
+text is unchanged, the breadcrumb of an issue, in the context prefix of the chunkings
+`section-paths` and `small-to-big`, being the titles along its parents. Schema 9 also
+holds what the sources' files of the mirror say ([above](#a-sources-file)): the table
+`types`, each source's document type with the roles that it takes, as JSON, and the
+table `scopes`, each source's scope with its as-of time, both written whole at each
+build and update; the view `typed`, each document with its type's roles and its scope's
+as-of time;
+and the meta row `sources`, their digest (`search.domain.indexes.sources_digest`), so
+that a change of a source's file alone is an update. An index of another schema is
+refused, naming `prepare`, then
 `index`, then `embed`: `prepare` writes the mirror again before `index` rebuilds the
-index, as a new schema can come with a new format of the files; one of schema 6 or 7,
-whose files this version reads as they are, naming `index`, then `embed`; one cut by a
+index, as a new schema can come with a new format of the files; one cut by a
 chunking that this version
 lacks, naming `index`, then `embed`. The MCP server opens it read-only, never writes,
 and reopens it when the file is replaced; it searches by meaning with the model that the
@@ -780,10 +848,11 @@ index names, and only while the endpoint's fingerprint for it is the index's.
 ### Updates
 
 `index` (`search.app.indexing.update_index`) reads the alias file first, then digests
-every file of the mirror, the SHA-256 of its bytes, and compares them with what the
-index holds (`search.adapters.sqlite_index.Reader.held`): each document's path and
-digest, each file skipped, and the meta rows `words`, `aliases` and `build`. With no
-file added, changed or gone, and the same alias file, it writes nothing,
+every file of the mirror, the SHA-256 of its bytes, reads the sources' files, and
+compares them with what the index holds (`search.adapters.sqlite_index.Reader.held`):
+each document's path and digest, each file skipped, and the meta rows `words`,
+`aliases`, `sources` and `build`. With no file added, changed or gone, the same alias
+file and the same sources' files, it writes nothing,
 `index.unchanged`, and the index keeps its bytes and its `build`. Else it reads the
 files added or changed, and each file skipped again, as what kept it out may be gone,
 before it takes any lock; then it writes a new file beside the index, named by

@@ -33,6 +33,7 @@ from kb_mcp.evaluation.app.evaluation import (
 from kb_mcp.evaluation.domain.evaluation import CONTROL, Choice
 from kb_mcp.kernel.chunking import CHUNKINGS
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.record import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.observability.domain.log_files import STAMP
@@ -79,7 +80,7 @@ def run(
                 for chunking in arguments.chunking or CHUNKINGS
             ]
             measured = evaluate(settings, questions, to_evaluate, time.perf_counter, built_at)
-    except (ModelError, EvaluationError, TimeoutError) as error:
+    except (ModelError, EvaluationError, RepresentationError, TimeoutError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"

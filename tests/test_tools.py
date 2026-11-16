@@ -54,13 +54,20 @@ if TYPE_CHECKING:
     from kb_mcp.mirror.domain.mirror import FrontMatter
 
 NEWER = MOMENT + timedelta(days=1)
-HIT = re.compile(r"^\d+\. .*\n {3}(\S+) \|", re.MULTILINE)
-# A hit's ref, and what ends its second line after the mirror date.
-FACTS = re.compile(r"^ {3}(\S+) \| .* \| mirrored \d{4}-\d\d-\d\d \| (.*)$", re.MULTILINE)
+# A hit's ref, its source then its key or id, of which the key or id is kept.
+HIT = re.compile(r"^\d+\. .*\n {3}[a-z][a-z0-9]*:(\S+) \|", re.MULTILINE)
+# A hit's key or id, and what ends its second line after the update and as-of times.
+FACTS = re.compile(
+    r"^ {3}[a-z][a-z0-9]*:(\S+) \| \S+ \| updated [^|]* UTC \| as of[^|]* \| (.*)$", re.MULTILINE
+)
+# A hit's key or id, and what its second line says of its as-of time.
+AS_OF = re.compile(
+    r"^ {3}[a-z][a-z0-9]*:(\S+) \| \S+ \| updated [^|]* UTC \| (as of[^|]*) \|", re.MULTILINE
+)
 
 
 def refs(answer: str) -> list[str]:
-    """List the refs of a search's hits, in order."""
+    """List the keys or ids of a search's hits, in order, each cited after its source."""
     return HIT.findall(parts(answer)[1])
 
 
@@ -101,14 +108,14 @@ def test_a_page_with_many_matching_sections_is_one_hit(tmp_path: Path) -> None:
     library = built(tmp_path, [(page("196845", "Coordination"), body)])
     answer = library.search("zookeeper quorum")
     assert refs(answer) == ["196845"]
-    assert 'section 22 Quorum: read(ref="196845", section=22)' in answer
+    assert 'section 22 Quorum: read(ref="confluence:196845", section=22)' in answer
 
 
 def test_a_match_on_the_title_alone_opens_the_first_section(tmp_path: Path) -> None:
     """When no section holds the words, the document opens at its start."""
     body = f"# Grafana dashboards\n\n{LOREM}\n\n## Panels\n\n{LOREM}\n"
     library = built(tmp_path, [(page("196845", "Grafana dashboards"), body)])
-    assert 'section 1: read(ref="196845", section=1)' in library.search("grafana")
+    assert 'section 1: read(ref="confluence:196845", section=1)' in library.search("grafana")
 
 
 @pytest.mark.parametrize(
@@ -132,6 +139,80 @@ def test_identifiers_come_first(tmp_path: Path, query: str, first: str) -> None:
         ],
     )
     assert refs(library.search(query))[0] == first
+
+
+def test_a_ref_as_answers_cite_it_comes_first(tmp_path: Path) -> None:
+    """A ref of any source in the query puts its document above every match.
+
+    That document alone: another source's document of the same key is not named. A word
+    before a colon that is no source's is no ref, as before refs were cited.
+    """
+    about = "# Kafka\n\nKafka kafka kafka, see PROJ-7 and 196900.\n"
+    library = built(
+        tmp_path,
+        [
+            (page("196845", "Kafka"), about),
+            (page("196900", "Unrelated"), None),
+            (issue("PROJ-7", "Unrelated too"), None),
+            (replace(issue("PROJ-7", "Kafka elsewhere"), source="tracker"), None),
+            (worklog("transcript", "t-20261027-1", "Stand-up"), None),
+        ],
+    )
+
+    def cited(query: str) -> list[str]:
+        return re.findall(r"^ {3}(\S+) \|", parts(library.search(query))[1], re.MULTILINE)
+
+    assert cited("kafka confluence:196900")[0] == "confluence:196900"
+    assert cited("kafka worklog:t-20261027-1")[0] == "worklog:t-20261027-1"
+    assert cited("kafka jira:PROJ-7: upgraded")[:2] == ["jira:PROJ-7", "confluence:196845"]
+    # A word that names no source leaves the key bare, held by both sources.
+    assert sorted(cited("kafka issue:PROJ-7")[:2]) == ["jira:PROJ-7", "tracker:PROJ-7"]
+
+
+@pytest.mark.parametrize(
+    ("query", "first"),
+    [
+        ("kafka PRB-13 jira:PRB-12", ["jira:PRB-13", "jira:PRB-12"]),
+        ("kafka jira:PRB-12 PRB-13", ["jira:PRB-12", "jira:PRB-13"]),
+        ("196900 kafka PRB-13", ["confluence:196900", "jira:PRB-13"]),
+        ("PRB-13 kafka confluence:196900", ["jira:PRB-13", "confluence:196900"]),
+    ],
+)
+def test_documents_named_come_in_the_order_of_their_first_mention(
+    tmp_path: Path, query: str, first: list[str]
+) -> None:
+    """Refs, keys and ids alike: the one named first in the query comes first."""
+    library = built(
+        tmp_path,
+        [
+            (page("196845", "Kafka"), "# Kafka\n\nKafka kafka kafka.\n"),
+            (page("196900", "Unrelated"), None),
+            (issue("PRB-12", "Unrelated too"), None),
+            (issue("PRB-13", "Unrelated as well"), None),
+        ],
+    )
+    answer = parts(library.search(query))[1]
+    assert re.findall(r"^ {3}(\S+) \|", answer, re.MULTILINE)[:3] == [*first, "confluence:196845"]
+
+
+def test_a_query_without_a_colon_reads_no_source(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """A ref holds a colon: only a query that holds one has the index list its sources.
+
+    Its key still pins its document; a query with a ref lists them once.
+    """
+    library = built(tmp_path, [(issue("PROJ-7", "Kafka upgrade"), None)])
+    asked: list[str] = []
+    values = sqlite_index.Reader.values
+
+    def counting(reader: sqlite_index.Reader, name: str) -> list[tuple[str, int]]:
+        asked.append(name)
+        return values(reader, name)
+
+    monkeypatch.setattr(sqlite_index.Reader, "values", counting)
+    assert refs(library.search("kafka PROJ-7"))[0] == "PROJ-7"
+    assert asked == []
+    assert refs(library.search("kafka jira:PROJ-7"))[0] == "PROJ-7"
+    assert asked == ["source"]
 
 
 def test_an_exact_phrase_beats_the_same_words_scattered(tmp_path: Path) -> None:
@@ -193,14 +274,18 @@ def test_the_best_section_is_judged_without_the_title(tmp_path: Path) -> None:
     """A title word that a later section holds too opens that section, not the first."""
     body = f"# Rollback plan\n\n## Overview\n\n{LOREM}\n\n## Steps\n\nRoll the release back.\n"
     library = built(tmp_path, [(page("196845", "Rollback plan"), body)])
-    assert 'section 3 Steps: read(ref="196845", section=3)' in library.search("release rollback")
+    assert 'section 3 Steps: read(ref="confluence:196845", section=3)' in library.search(
+        "release rollback"
+    )
 
 
 def test_a_later_heading_like_the_title_stays_a_heading(tmp_path: Path) -> None:
     """Only the first section's heading, the title, is left out of the headings."""
     body = f"# Rollback\n\n{LOREM}\n\n## Rollback\n\nSteps.\n"
     library = built(tmp_path, [(page("196845", "Rollback"), body)])
-    assert 'section 2 Rollback: read(ref="196845", section=2)' in library.search("rollback")
+    assert 'section 2 Rollback: read(ref="confluence:196845", section=2)' in library.search(
+        "rollback"
+    )
 
 
 def test_a_page_id_names_confluence_documents_only(tmp_path: Path) -> None:
@@ -208,6 +293,102 @@ def test_a_page_id_names_confluence_documents_only(tmp_path: Path) -> None:
     library = built(tmp_path, [(issue("PROJ-7", "Kafka upgrade"), None)])
     assert issue("PROJ-7", "Kafka upgrade").id == "10007"
     assert refs(library.search("10007")) == []
+
+
+def test_a_ref_is_cited_by_its_source_and_read_alone_only_where_unique(tmp_path: Path) -> None:
+    """Plan 057, criterion 4: hits cite ``<source>:<key or id>``, which read takes.
+
+    PROJ-8 alone holds its key, which read takes with or without its source, as its id;
+    PROJ-7 is a key of two sources, which read refuses alone, giving each ref. A parent
+    is read as its ref when it is mirrored, else as its document id.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PROJ-7", "Kafka upgrade"), None),
+            (replace(issue("PROJ-7", "Kafka elsewhere"), source="tracker"), None),
+            (issue("PROJ-8", "Kafka story", parent="jira:10007"), None),
+            (issue("PROJ-9", "Kafka task", parent="jira:99999"), None),
+        ],
+    )
+    found = re.findall(r"^ {3}(\S+) \|", parts(library.search("kafka"))[1], re.MULTILINE)
+    assert sorted(found) == ["jira:PROJ-7", "jira:PROJ-8", "jira:PROJ-9", "tracker:PROJ-7"]
+    one = parts(library.read("jira:PROJ-8"))[1]
+    assert parts(library.read("PROJ-8"))[1] == parts(library.read("10008"))[1] == one
+    assert "\nref: jira:PROJ-8\n" in one
+    assert "\nparent: jira:PROJ-7\n" in one
+    assert "\nparent: jira:99999\n" in parts(library.read("PROJ-9"))[1]
+    assert "\nref: tracker:PROJ-7\n" in parts(library.read("tracker:PROJ-7"))[1]
+    with pytest.raises(UnanswerableError) as refused:
+        library.read("PROJ-7")
+    assert parts(str(refused.value))[1] == "jira:PROJ-7, tracker:PROJ-7"
+
+
+@pytest.mark.parametrize("ref", ["tracker:PAY-9", "confluence:PAY-9", "tracker:10009"])
+def test_a_ref_after_its_source_is_never_found_in_another(tmp_path: Path, ref: str) -> None:
+    """A ref names its source: one that this source lacks is not mirrored.
+
+    Whatever another source holds under that key or id: Jira holds PAY-9, of id 10009.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-9", "Payments"), None),
+            (replace(issue("PAY-1", "Rollout"), source="tracker"), None),
+        ],
+    )
+    assert library.read(ref).startswith("Not mirrored:")
+
+
+@pytest.mark.parametrize(
+    ("ref", "found"),
+    [
+        ("jira:PAY-1.", []),
+        ("jira:PAY-1,", []),
+        ("(jira:PAY-1)", []),
+        ("`jira:PAY-1`", []),
+        ("<jira:PAY-1>", []),
+        ("jira:PAY-1:", []),
+        ("Jira:PAY-1", []),
+        ("worklog:PAY-1.", []),
+        ("(Jira:PAY-9)", ["jira:PAY-9"]),
+        ("`tracker:PAY-1`.", ["tracker:PAY-1"]),
+    ],
+)
+def test_a_ref_within_a_text_is_looked_for_in_its_source_alone(
+    tmp_path: Path, ref: str, found: list[str]
+) -> None:
+    """Whatever surrounds a ref, and in whatever case its source, it names its source's.
+
+    The tracker holds PAY-1, which neither Jira nor the work log holds; Jira holds PAY-9.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-9", "Payments"), None),
+            (replace(issue("PAY-1", "Rollout"), source="tracker"), None),
+            (worklog("transcript", "t-20261027-1", "Stand-up"), None),
+        ],
+    )
+    answer = library.read(ref)
+    assert re.findall(r"^ref: (\S+)$", parts(answer)[1], re.MULTILINE) == found
+    assert answer.startswith("Not mirrored:") == (not found)
+
+
+def test_a_page_s_address_names_the_page_not_an_issue_of_its_id(tmp_path: Path) -> None:
+    """An address names its kind: a page's id names no issue, which is cited by its key.
+
+    The id alone, which both hold, is refused with their refs, as read takes it only
+    where it is unique.
+    """
+    library = built(
+        tmp_path, [(page("10007", "Kafka page"), None), (issue("PROJ-7", "Kafka issue"), None)]
+    )
+    address = "https://x.atlassian.net/wiki/spaces/ENG/pages/10007/Kafka+page"
+    assert "\nref: confluence:10007\n" in parts(library.read(address))[1]
+    with pytest.raises(UnanswerableError) as refused:
+        library.read("10007")
+    assert parts(str(refused.value))[1] == "confluence:10007, jira:PROJ-7"
 
 
 def test_a_decomposed_query_is_composed_first(tmp_path: Path) -> None:
@@ -231,7 +412,7 @@ def varied(tmp_path: Path) -> Library:
         tmp_path,
         [
             (page("196845", "Kafka runbook", labels=("runbook",), updated=NEWER), None),
-            (page("196846", "Kafka design", space="OPS", updated=midnight), None),
+            (page("196846", "Kafka design", scope="space:OPS", updated=midnight), None),
             (issue("PROJ-7", "Kafka upgrade", status="À faire", updated=midnight), None),
             (issue("PROJ-8", "Kafka rollback", status="Done"), None),
         ],
@@ -246,16 +427,16 @@ def test_what_changed_lists_the_newest_first(varied: Library) -> None:
 @pytest.mark.parametrize(
     ("query", "filters", "expected"),
     [
-        ("kafka", {"space": "ops"}, ["196846"]),
+        ("kafka", {"scope": "space:ops"}, ["196846"]),
         ("kafka", {"source": "jira"}, ["PROJ-8", "PROJ-7"]),
         ("kafka", {"status": "à faire"}, ["PROJ-7"]),
         ("kafka", {"label": "RUNBOOK"}, ["196845"]),
-        ("kafka 196845", {"space": "OPS"}, ["196846"]),
-        ("PROJ-7 kafka", {"project": "proj", "status": "Done"}, ["PROJ-8"]),
+        ("kafka 196845", {"scope": "OPS"}, ["196846"]),
+        ("PROJ-7 kafka", {"scope": "project:proj", "status": "Done"}, ["PROJ-8"]),
         ("", {"label": "runbook"}, ["196845"]),
         ("", {"updated_after": "2026-10-20", "source": "jira"}, ["PROJ-8", "PROJ-7"]),
-        ("", {"updated_before": "2026-10-20T00:00:01", "project": "PROJ"}, ["PROJ-7"]),
-        ("", {"updated_before": "2026-10-20", "project": "PROJ"}, []),
+        ("", {"updated_before": "2026-10-20T00:00:01", "scope": "PROJ"}, ["PROJ-7"]),
+        ("", {"updated_before": "2026-10-20", "scope": "project:PROJ"}, []),
     ],
 )
 def test_each_filter_narrows(
@@ -269,8 +450,8 @@ def test_each_filter_narrows(
 @pytest.mark.parametrize(
     ("filters", "valid"),
     [
-        ({"space": "NOPE"}, "ENG, OPS"),
-        ({"project": "NOPE"}, "PROJ"),
+        ({"scope": "space:NOPE"}, "space:ENG, project:PROJ, space:OPS"),
+        ({"scope": "NOPE"}, "ENG, PROJ, OPS"),
         ({"status": "Blocked"}, "current, Done, À faire"),
         ({"label": "nope"}, "runbook"),
     ],
@@ -288,6 +469,10 @@ def test_an_unknown_value_is_refused_with_the_valid_ones(
     ("arguments", "message"),
     [
         ({"filters": {"spaec": "ENG"}}, "filters: no spaec"),
+        # Plan 057, criterion 5: the former filters, which scope and subtype replace.
+        ({"filters": {"space": "ENG"}}, "filters: no space;"),
+        ({"filters": {"project": "PROJ"}}, "filters: no project;"),
+        ({"filters": {"issue_type": "Task"}}, "filters: no issue_type;"),
         ({"filters": {"updated_after": "yesterday"}}, "updated_after: an ISO 8601 date"),
         ({"filters": {"updated_after": "0001-01-01T00:00:00+05:00"}}, "updated_after: an ISO"),
         ({"filters": {"updated_before": "9999-12-31T23:59:59-05:00"}}, "updated_before: an ISO"),
@@ -311,7 +496,7 @@ def test_arguments_that_cannot_be_served_are_refused(
     [
         lambda library, cursor=None: library.search("lorem", limit=2, cursor=cursor),
         lambda library, cursor=None: library.ask("lorem", cursor=cursor),
-        lambda library, cursor=None: library.browse(space="ENG", limit=2, cursor=cursor),
+        lambda library, cursor=None: library.browse(scope="space:ENG", limit=2, cursor=cursor),
     ],
     ids=["search", "ask", "browse"],
 )
@@ -343,7 +528,7 @@ def people(tmp_path: Path) -> Library:
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        ({"issue_type": "bug"}, ["PROJ-1"]),
+        ({"subtype": "bug"}, ["PROJ-1"]),
         ({"author": "bo sample"}, ["PROJ-1", "196845"]),
         ({"assignee": "ADA EXAMPLE"}, ["PROJ-3", "PROJ-1"]),
         ({"assignee": "helene example"}, ["PROJ-2"]),
@@ -374,7 +559,7 @@ def test_people_and_created_dates_narrow_with_words_or_without(
     [
         ({"assignee": "helene"}, "Hélène Example, Ada Example"),
         ({"author": "AMPLE"}, "Bo Sample, Ada Example, A Person"),
-        ({"issue_type": "Epic"}, "Bug, Story, Task"),
+        ({"subtype": "Epic"}, "Bug, Story, Task"),
         ({"label": "resumé"}, "resume, résumé"),
     ],
 )
@@ -633,7 +818,7 @@ def test_no_answer_holds_an_account_id(commented: Library, tmp_path: Path) -> No
         commented.search(filters={"commenter": "a person"}, sort="created"),
         commented.ask("broker crash"),
         *(commented.read(front.key or front.id) for front in COMMENTED),
-        commented.browse(project="PROJ"),
+        commented.browse(scope="project:PROJ"),
         commented.status(),
     ]
     with pytest.raises(UnanswerableError) as refused:
@@ -648,7 +833,7 @@ def worklog(document_type: str, id_: str, title: str, *names: str) -> FrontMatte
         page(id_, title),
         source="worklog",
         type=document_type,
-        space=None,
+        scope="folder:worklog",
         people=tuple(Mention(role="participant", name=name) for name in names),
         version=None,
         revision="0123456789abcdef",
@@ -669,7 +854,7 @@ MET = (
             "Payments stand-up",
             *("Alex Example", "Sam Sample"),
         ),
-        links=(Link(relation="transcript", ref="t-20261027-1"),),
+        links=(Link(relation="transcript", document="worklog:t-20261027-1"),),
     ),
     worklog(
         "meeting",
@@ -680,7 +865,7 @@ MET = (
     worklog("meeting", "m-20261027-vendor-call", "Vendor call", "Sam Sample", "Alex Example"),
     replace(
         worklog("transcript", "t-20261027-1", "Stand-up", "Alex Example", "Sam Sample", "You"),
-        links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
+        links=(Link(relation="summary", document="worklog:m-20261027-payments-stand-up"),),
     ),
     worklog("transcript", "t-20261020-1", "Retrospective", "You", "Unverified"),
     worklog("transcript", "t-20261021-1", "Planning", "You", "Robin Example"),
@@ -772,11 +957,11 @@ def test_read_shows_a_meeting_s_participants_and_its_transcript_and_back(met: Li
     expected = {
         "m-20261027-payments-stand-up": [
             "participant: Alex Example; Sam Sample",
-            "transcript: t-20261027-1",
+            "transcript: worklog:t-20261027-1",
         ],
         "t-20261027-1": [
             "participant: Alex Example; Sam Sample; You",
-            "summary: m-20261027-payments-stand-up",
+            "summary: worklog:m-20261027-payments-stand-up",
         ],
     }
     for ref, lines in expected.items():
@@ -790,10 +975,11 @@ def test_read_shows_a_meeting_s_participants_and_its_transcript_and_back(met: Li
 def test_read_names_ten_links_of_a_relation_whole_then_how_many_more(tmp_path: Path) -> None:
     """Twelve meetings that one transcript summarises, each id of 64 characters after its day."""
     meetings = [f"m-20261027-{number:02}-{'x' * 61}" for number in range(12)]
-    links = tuple(Link(relation="summary", ref=each) for each in meetings)
+    links = tuple(Link(relation="summary", document=f"worklog:{each}") for each in meetings)
     front = replace(worklog("transcript", "t-20261027-1", "Stand-up"), links=links)
     read = parts(built(tmp_path, [(front, None)]).read("t-20261027-1"))[1]
-    assert f"\nsummary: {'; '.join(meetings[:10])}; 2 more\n" in read
+    shown = "; ".join(f"worklog:{each}" for each in meetings[:10])
+    assert f"\nsummary: {shown}; 2 more\n" in read
     assert "\ntranscript:" not in read
 
 
@@ -1214,7 +1400,7 @@ def test_a_section_starts_at_its_heading_and_stops_at_the_next(tmp_path: Path) -
     library = built(tmp_path, [(page("196845", "Kafka"), body)])
     answer = library.read("196845", section=2)
     assert parts(answer)[1].split("\n\n", 1)[1] == "## Retention\n\nSeven days.\n\n"
-    assert answer.endswith('Next section: read(ref="196845", section=3)')
+    assert answer.endswith('Next section: read(ref="confluence:196845", section=3)')
     assert continuation(library.read("196845", section=3)) is None
 
 
@@ -1249,8 +1435,8 @@ def test_out_of_range_is_refused(tmp_path: Path, arguments: dict[str, int], mess
         library.read("196845", **arguments)
 
 
-def test_every_slice_carries_the_mirror_date(tmp_path: Path) -> None:
-    """The first slice has every key; later ones the title, path and mirror date."""
+def test_a_later_slice_carries_the_title_and_path(tmp_path: Path) -> None:
+    """The first slice has every key; later ones the title and path."""
     library = built(tmp_path, [(page("196845", "Kafka", labels=("ops",)), None)])
     first = library.read("196845", max_chars=20)
     assert "\nlabels: ops\n" in parts(first)[1]
@@ -1260,13 +1446,15 @@ def test_every_slice_carries_the_mirror_date(tmp_path: Path) -> None:
     assert frame.splitlines() == [
         "title: Kafka",
         f"path: {location(page('196845', 'Kafka'))}",
-        "mirrored: 2026-10-20 21:52 UTC",
     ]
 
 
 def tree_lines(answer: str) -> list[str]:
-    """List the lines of a browse answer's block, without their dates."""
-    return [re.sub(r", updated .*\)$", ")", line) for line in parts(answer)[1].splitlines()]
+    """List the lines of a browse answer's block, each ref without its source or dates."""
+    return [
+        re.sub(r"\([a-z][a-z0-9]*:(\S+), updated .*\)$", r"(\1)", line)
+        for line in parts(answer)[1].splitlines()
+    ]
 
 
 def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
@@ -1274,15 +1462,15 @@ def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
     library = built(
         tmp_path,
         [
-            (page("100", "Home", space="DOC"), None),
-            (page("101", "A", space="DOC", breadcrumb=("Home",)), None),
-            (page("102", "A B", space="DOC", breadcrumb=("Home",)), None),
-            (page("103", "Item 10", space="DOC", breadcrumb=("Home", "Folder")), None),
-            (page("104", "Item 2", space="DOC", breadcrumb=("Home", "Folder")), None),
-            (page("105", "Child", space="DOC", breadcrumb=("Home", "A")), None),
+            (page("100", "Home", scope="space:DOC"), None),
+            (page("101", "A", scope="space:DOC", breadcrumb=("Home",)), None),
+            (page("102", "A B", scope="space:DOC", breadcrumb=("Home",)), None),
+            (page("103", "Item 10", scope="space:DOC", breadcrumb=("Home", "Folder")), None),
+            (page("104", "Item 2", scope="space:DOC", breadcrumb=("Home", "Folder")), None),
+            (page("105", "Child", scope="space:DOC", breadcrumb=("Home", "A")), None),
         ],
     )
-    assert tree_lines(library.browse(space="doc")) == [
+    assert tree_lines(library.browse(scope="space:doc")) == [
         "- Home (100)",
         "  - A (101)",
         "    - Child (105)",
@@ -1291,7 +1479,7 @@ def test_a_space_is_browsed_depth_first(tmp_path: Path) -> None:
         "    - Item 2 (104)",
         "    - Item 10 (103)",
     ]
-    assert tree_lines(library.browse(space="DOC", parent="101")) == ["- Child (105)"]
+    assert tree_lines(library.browse(scope="space:DOC", parent="101")) == ["- Child (105)"]
 
 
 def test_documents_with_one_place_in_the_tree_come_by_path(tmp_path: Path) -> None:
@@ -1299,11 +1487,11 @@ def test_documents_with_one_place_in_the_tree_come_by_path(tmp_path: Path) -> No
     library = built(
         tmp_path,
         [
-            (page("102", "Same", space="DOC"), f"# Same\n\n{LOREM}\n"),
-            (page("101", "Same", space="DOC"), f"# Same\n\n{LOREM}\n"),
+            (page("102", "Same", scope="space:DOC"), f"# Same\n\n{LOREM}\n"),
+            (page("101", "Same", scope="space:DOC"), f"# Same\n\n{LOREM}\n"),
         ],
     )
-    first = library.browse(space="DOC", limit=1)
+    first = library.browse(scope="space:DOC", limit=1)
     second = follow(library, first)
     assert second is not None
     assert [tree_lines(first), tree_lines(second)] == [["- Same (101)"], ["- Same (102)"]]
@@ -1314,66 +1502,289 @@ def test_a_page_of_results_names_the_ancestors_of_its_first_line(tmp_path: Path)
     library = built(
         tmp_path,
         [
-            (page("100", "Home", space="DOC"), None),
-            (page("101", "A", space="DOC", breadcrumb=("Home",)), None),
-            (page("105", "Child", space="DOC", breadcrumb=("Home", "A")), None),
+            (page("100", "Home", scope="space:DOC"), None),
+            (page("101", "A", scope="space:DOC", breadcrumb=("Home",)), None),
+            (page("105", "Child", scope="space:DOC", breadcrumb=("Home", "A")), None),
         ],
     )
-    second = follow(library, library.browse(space="DOC", limit=2))
+    second = follow(library, library.browse(scope="space:DOC", limit=2))
     assert second is not None
     assert tree_lines(second)[0] == "- [Home / A]"
     assert tree_lines(second)[1] == "    - Child (105)"
 
 
-def test_a_project_is_browsed_by_parent_chains(tmp_path: Path) -> None:
-    """An epic, its story and the story's sub-task nest, whatever their numbers."""
+def test_a_project_is_browsed_by_the_titles_along_parents(tmp_path: Path) -> None:
+    """An epic, its story and the story's sub-task nest; a parent not mirrored is context."""
     library = built(
         tmp_path,
         [
             (issue("PROJ-10", "Epic"), None),
-            (issue("PROJ-2", "Story", breadcrumb=("PROJ-10",)), None),
-            (issue("PROJ-1", "Sub-task", breadcrumb=("PROJ-2",)), None),
-            (issue("PROJ-3", "Orphan", breadcrumb=("OTHER-1",)), None),
+            (issue("PROJ-2", "Story", breadcrumb=("Epic",)), None),
+            (issue("PROJ-1", "Sub-task", breadcrumb=("Epic", "Story")), None),
+            (issue("PROJ-3", "Orphan", breadcrumb=("Other epic",)), None),
             (issue("PROJ-20", "Late"), None),
             (issue("PROJ-9", "Early"), None),
         ],
     )
-    assert tree_lines(library.browse(project="PROJ")) == [
-        "- [OTHER-1]",
-        "  - Orphan (PROJ-3)",
+    assert tree_lines(library.browse(scope="project:PROJ")) == [
         "- Early (PROJ-9)",
         "- Epic (PROJ-10)",
         "  - Story (PROJ-2)",
         "    - Sub-task (PROJ-1)",
         "- Late (PROJ-20)",
+        "- [Other epic]",
+        "  - Orphan (PROJ-3)",
     ]
+    assert tree_lines(library.browse(scope="PROJ", parent="PROJ-2")) == ["- Sub-task (PROJ-1)"]
+
+
+def test_two_parents_of_one_title_keep_their_own_children(tmp_path: Path) -> None:
+    """A scope's documents form a tree by their parents: an issue's title names no place.
+
+    Jira's summaries are not unique: each child sits under the parent that it names.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PRB-1", "Payments"), None),
+            (issue("PRB-7", "Payments"), None),
+            (issue("PRB-2", "Child of one", parent="jira:10001", breadcrumb=("Payments",)), None),
+            (issue("PRB-8", "Child of seven", parent="jira:10007", breadcrumb=("Payments",)), None),
+        ],
+    )
+    assert tree_lines(library.browse(scope="project:PRB")) == [
+        "- Payments (PRB-1)",
+        "  - Child of one (PRB-2)",
+        "- Payments (PRB-7)",
+        "  - Child of seven (PRB-8)",
+    ]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-1")) == ["- Child of one (PRB-2)"]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-7")) == ["- Child of seven (PRB-8)"]
+
+
+def test_a_parent_of_another_scope_is_placed_by_no_title(tmp_path: Path) -> None:
+    """An issue whose parent is another project's sits at the top, its ancestors bracketed.
+
+    PRB-2's parent, PORT-5, is under PORT-1, of PRB-1's title: PRB-2 is no descendant
+    of PRB-1, whatever its breadcrumb's titles.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PORT-1", "Grow revenue", id="20001"), None),
+            (
+                issue(
+                    "PORT-5",
+                    "Payments v2",
+                    id="20005",
+                    parent="jira:20001",
+                    breadcrumb=("Grow revenue",),
+                ),
+                None,
+            ),
+            (issue("PRB-1", "Grow revenue"), None),
+            (issue("PRB-9", "Child", parent="jira:10001", breadcrumb=("Grow revenue",)), None),
+            (
+                issue(
+                    "PRB-2",
+                    "Epic in PRB",
+                    parent="jira:20005",
+                    breadcrumb=("Grow revenue", "Payments v2"),
+                ),
+                None,
+            ),
+        ],
+    )
+    assert tree_lines(library.browse(scope="project:PRB")) == [
+        "- [Grow revenue / Payments v2]",
+        "    - Epic in PRB (PRB-2)",
+        "- Grow revenue (PRB-1)",
+        "  - Child (PRB-9)",
+    ]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-1")) == ["- Child (PRB-9)"]
+
+
+def test_a_parent_of_another_scope_under_a_listed_one_places_it_there(tmp_path: Path) -> None:
+    """Review round 3: PRB-2's parent PORT-5 is under PORT-1, itself under PRB-1, listed.
+
+    PRB-2 is a descendant of PRB-1: under it, the parents of another scope bracketed.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PRB-1", "Grow revenue"), None),
+            (
+                issue(
+                    "PORT-1",
+                    "Ports",
+                    id="20001",
+                    parent="jira:10001",
+                    breadcrumb=("Grow revenue",),
+                ),
+                None,
+            ),
+            (
+                issue(
+                    "PORT-5",
+                    "Payments v2",
+                    id="20005",
+                    parent="jira:20001",
+                    breadcrumb=("Grow revenue", "Ports"),
+                ),
+                None,
+            ),
+            (
+                issue(
+                    "PRB-2",
+                    "Epic in PRB",
+                    parent="jira:20005",
+                    breadcrumb=("Grow revenue", "Ports", "Payments v2"),
+                ),
+                None,
+            ),
+        ],
+    )
+    assert tree_lines(library.browse(scope="project:PRB")) == [
+        "- Grow revenue (PRB-1)",
+        "  - [Ports / Payments v2]",
+        "      - Epic in PRB (PRB-2)",
+    ]
+    assert tree_lines(library.browse(scope="PRB", parent="PRB-1")) == [
+        "- [Ports / Payments v2]",
+        "    - Epic in PRB (PRB-2)",
+    ]
+
+
+def test_a_page_under_a_folder_sits_under_the_folder_s_page(tmp_path: Path) -> None:
+    """A folder is no document: its title, from the breadcrumb, is a bracketed line.
+
+    The page above it is placed by the titles above the folder, its own and its
+    breadcrumb's, which are unique within a space.
+    """
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Home", scope="space:DOC"), None),
+            (
+                page(
+                    "101",
+                    "Design",
+                    scope="space:DOC",
+                    parent="confluence:100",
+                    breadcrumb=("Home",),
+                ),
+                None,
+            ),
+            (
+                page(
+                    "102",
+                    "API",
+                    scope="space:DOC",
+                    parent="confluence:500",
+                    breadcrumb=("Home", "Design", "Specs"),
+                ),
+                None,
+            ),
+        ],
+    )
+    assert tree_lines(library.browse(scope="space:DOC")) == [
+        "- Home (100)",
+        "  - Design (101)",
+        "    - [Specs]",
+        "      - API (102)",
+    ]
+    assert tree_lines(library.browse(scope="DOC", parent="101")) == ["- [Specs]", "  - API (102)"]
+
+
+def test_a_key_of_two_scopes_is_refused_unless_narrowed(tmp_path: Path) -> None:
+    """The space PAY and the project PAY: the key alone names both, as the filter does."""
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Payments home", scope="space:PAY"), None),
+            (issue("PAY-1", "Payments epic"), None),
+        ],
+    )
+    with pytest.raises(UnanswerableError) as refused:
+        library.browse(scope="pay")
+    assert parts(str(refused.value))[1] == "project:PAY (jira), space:PAY (confluence)"
+    assert tree_lines(library.browse(scope="space:pay")) == ["- Payments home (100)"]
+    assert tree_lines(library.browse(scope="PAY", source="jira")) == ["- Payments epic (PAY-1)"]
+    assert sorted(refs(library.search("payments", filters={"scope": "pay"}))) == ["100", "PAY-1"]
+
+
+def test_a_scope_that_two_sources_hold_is_browsed_by_its_source(tmp_path: Path) -> None:
+    """Plan 059 lets two sources of one connector both hold project PAY: browse asks which.
+
+    The filter takes the scope in both, as it takes a key alone in every source.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-1", "Payments epic"), None),
+            (replace(issue("PAY-2", "Payments rollout"), source="tracker"), None),
+        ],
+    )
+    with pytest.raises(UnanswerableError) as refused:
+        library.browse(scope="project:PAY")
+    assert parts(str(refused.value))[1] == "project:PAY (jira), project:PAY (tracker)"
+    rollout = library.browse(scope="project:PAY", source="tracker")
+    assert tree_lines(rollout) == ["- Payments rollout (PAY-2)"]
+    found = refs(library.search("payments", filters={"scope": "project:PAY"}))
+    assert sorted(found) == ["PAY-1", "PAY-2"]
 
 
 def test_a_deep_chain_still_moves_on(tmp_path: Path) -> None:
     """Sixty levels of long folder titles leave room for one document per page."""
     folders = tuple(f"Folder {level} " + "x" * 190 for level in range(60))
-    documents = [page(str(200 + n), f"Deep {n}", space="DOC", breadcrumb=folders) for n in range(3)]
+    documents = [
+        page(str(200 + n), f"Deep {n}", scope="space:DOC", breadcrumb=folders) for n in range(3)
+    ]
     library = built(tmp_path, [(front, None) for front in documents])
-    answer: str | None = library.browse(space="DOC", limit=1)
+    answer: str | None = library.browse(scope="space:DOC", limit=1)
     seen = []
     while answer is not None:
-        seen += re.findall(r"\((\d+), updated", answer)
+        seen += re.findall(r"\(confluence:(\d+), updated", answer)
         answer = follow(library, answer)
     assert seen == ["200", "201", "202"]
 
 
-def test_browse_needs_space_or_project(varied: Library) -> None:
-    """Neither, or both, is refused, listing the spaces and projects."""
+def test_browse_needs_a_scope(varied: Library) -> None:
+    """None is refused, listing the scopes, the most documents first."""
     with pytest.raises(UnanswerableError) as refused:
         varied.browse()
-    assert parts(str(refused.value))[1] == "space ENG, space OPS, project PROJ"
+    assert parts(str(refused.value))[1] == "space:ENG, project:PROJ, space:OPS"
+
+
+def test_each_document_is_served_as_of_its_scope_s_time_else_unknown(varied: Library) -> None:
+    """Plan 057, criterion 3: a hit and a tree give its day, read its time; else unknown.
+
+    The test mirror's source file says space:ENG's as-of time alone, MOMENT's.
+    """
+    hits = parts(varied.search("kafka"))[1]
+    assert dict(AS_OF.findall(hits)) == {
+        "196845": "as of 2026-10-20",
+        "196846": "as of: unknown",
+        "PROJ-7": "as of: unknown",
+        "PROJ-8": "as of: unknown",
+    }
+    assert "\nas of: 2026-10-20 21:52 UTC\n" in parts(varied.read("196845"))[1]
+    assert "\nas of: unknown\n" in parts(varied.read("PROJ-7"))[1]
+    assert ", as of 2026-10-20)" in varied.browse(scope="space:ENG")
+    assert ", as of: unknown)" in varied.browse(scope="project:PROJ")
 
 
 def test_status_says_what_the_index_holds(varied: Library) -> None:
-    """Counts by type, space and project, and the build time."""
+    """Counts by type and by scope, each scope's as-of time where known, and the build time.
+
+    Plan 057, criterion 3: the test mirror's source file says space:ENG's alone.
+    """
     content = parts(varied.status())[1]
     assert "documents: page 32, issue 2; sections: " in content
-    assert "spaces: ENG 31, OPS 1\nprojects: PROJ 2\n" in content
+    assert (
+        "scopes: space:ENG 31 (as of 2026-10-20 21:52 UTC), project:PROJ 2 (as of: unknown),"
+        " space:OPS 1 (as of: unknown)\n"
+    ) in content
     assert content.startswith("built: 2026-10-20 21:52 UTC\n")
 
 
@@ -1410,7 +1821,7 @@ def test_status_counts_the_persons_and_names_those_of_several_identities(
         write(tmp_path / "docs", front)
     build_index(tmp_path / "docs", tmp_path / "index.sqlite", MOMENT, aliases=aliases)
     content = parts(Library(SqliteIndex(tmp_path / "index.sqlite"), tmp_path / "docs").status())[1]
-    assert f"\nprojects: PAY 2\n{line}\nfiles skipped at build: 0\n" in content
+    assert f"\n{line}\nfiles skipped at build: 0\n" in content
 
 
 def test_status_names_five_names_of_several_identities_then_how_many_more(
@@ -1448,23 +1859,6 @@ def test_no_index_is_refused_with_the_command_that_builds_it(tmp_path: Path) -> 
         library.status()
 
 
-def test_each_tool_shows_the_mirror_date_apart_from_the_others(tmp_path: Path) -> None:
-    """The date of the copy, not of the last edit, is what each answer calls mirrored."""
-    fetched, created = MOMENT + timedelta(days=3), MOMENT - timedelta(days=10)
-    front = page("196845", "Kafka", fetched_at=fetched, created=created, labels=("ops",))
-    library = built(tmp_path, [(front, None)])
-    assert "| updated 2026-10-20 21:52 UTC | mirrored 2026-10-23 |" in library.search("kafka")
-    first = parts(library.read("196845", max_chars=20))[1]
-    for line in ("mirrored: 2026-10-23 21:52 UTC", "created: 2026-10-10 21:52 UTC"):
-        assert f"\n{line}\n" in first
-    assert "\nupdated: 2026-10-20 21:52 UTC\n" in first
-    later = follow(library, library.read("196845", max_chars=20))
-    assert later is not None
-    assert "\nmirrored: 2026-10-23 21:52 UTC\n" in parts(later)[1]
-    assert "(196845, updated 2026-10-20, mirrored 2026-10-23)" in library.browse(space="ENG")
-    assert "\nnewest mirror date: 2026-10-23 21:52 UTC\n" in library.status()
-
-
 def test_what_changed_pages_through_every_document_once(varied: Library) -> None:
     """Following the cursor of a listing by update gives each document once, in order."""
     answer: str | None = varied.search(sort="updated")
@@ -1484,7 +1878,7 @@ def test_what_changed_pages_through_every_document_once(varied: Library) -> None
 @pytest.mark.parametrize("parent", ["999999", "PROJ-7", "196846"])
 def test_a_parent_outside_the_space_is_not_mirrored(varied: Library, parent: str) -> None:
     """A parent that the space does not hold lists nothing."""
-    assert varied.browse(space="ENG", parent=parent).startswith("Not mirrored:")
+    assert varied.browse(scope="space:ENG", parent=parent).startswith("Not mirrored:")
 
 
 def test_only_a_query_of_more_than_ten_words_is_said_cut(tmp_path: Path) -> None:
@@ -1518,7 +1912,7 @@ def test_each_hit_ends_its_second_line_with_who_and_when(people: Library) -> Non
 def test_a_hit_cuts_each_name_type_and_status_at_60_characters(tmp_path: Path) -> None:
     """As labels are: 59 characters and an ellipsis."""
     long = "Long name " * 10
-    front = issue("PROJ-1", "Broker", issue_type=long, status=long, assignee=long, author=long)
+    front = issue("PROJ-1", "Broker", subtype=long, status=long, assignee=long, author=long)
     library = built(tmp_path, [(front, None)])
     cut = f"{long[:59]}…"
     assert dict(FACTS.findall(parts(library.search("broker"))[1])) == {
@@ -1534,7 +1928,7 @@ def test_an_issue_without_assignee_says_so_and_a_work_log_entry_its_status(
         page("e-0123456789abcdef-2", "Broker notes", status="WAITING"),
         source="worklog",
         type="entry",
-        space=None,
+        scope="folder:worklog",
         people=(),
         version=None,
         revision="0123456789abcdef",

@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Self
 
 from pydantic import model_validator
 
 from kb_mcp.kernel.names import (
+    DOCUMENT_ID,
     IDENTIFIER,
     IDENTITY,
     ISSUE_KEY,
-    PROJECT_KEY,
     REVISION_NAME,
+    SCOPE,
     SOURCE_NAME,
-    SPACE_KEY,
     TYPE_NAME,
     RefusedError,
     require,
@@ -75,24 +76,60 @@ class Mention(Record):
         return self
 
 
-def ref_of(key: str | None, identifier: str) -> str:
-    """Name a document as ``read`` takes it and links name it: its key, else its id."""
-    return key or identifier
+class SourceFile(Record):
+    """What a source's file of the mirror says beside its documents.
+
+    ``roles`` gives each of the source's document types, by name, the roles that its
+    documents take, in the order of ROLES, as its connector declares them; ``as_of``
+    each of its scopes whose as-of time is known, as the front matter writes a scope, that
+    time.
+    """
+
+    roles: Mapping[str, tuple[str, ...]]
+    as_of: Mapping[str, datetime]
+
+    @model_validator(mode="after")
+    def check_source_file(self) -> Self:
+        """Refuse a type off TYPE_NAME, and a role not in ROLES, given twice or out of order.
+
+        And a scope off SCOPE, and a time not in UTC.
+        """
+        for name, roles in self.roles.items():
+            require(TYPE_NAME, name, "roles")
+            if not set(roles) <= set(ROLES) or list(roles) != sorted(set(roles), key=ROLES.index):
+                message = "roles: not of the roles, or out of their order"
+                raise RefusedError(message)
+        for scope, moment in self.as_of.items():
+            require(SCOPE, scope, "as_of")
+            if moment.utcoffset() != timedelta(0):
+                message = "as_of: a time not in UTC"
+                raise RefusedError(message)
+        return self
+
+
+def document_id(source: str, identifier: str) -> str:
+    """Write a document id as a parent and a link name a document: ``<source>:<id>``."""
+    return f"{source}:{identifier}"
+
+
+def scope_name(scope_type: str, key: str) -> str:
+    """Write a scope as a document names the one that holds it: ``<scope type>:<key>``."""
+    return f"{scope_type}:{key}"
 
 
 class Link(Record):
-    """A link from a document to another of the mirror: the relation, and the other's ref."""
+    """A link from a document to another of the mirror: the relation, and the other's id."""
 
     relation: str
-    ref: str
+    document: str
 
     @model_validator(mode="after")
     def check_link(self) -> Self:
-        """Refuse a relation not in RELATIONS, and a ref off IDENTIFIER, as ``read`` takes it."""
+        """Refuse a relation not in RELATIONS, and a document off DOCUMENT_ID."""
         if self.relation not in RELATIONS:
             message = "relation: not one of the relations"
             raise RefusedError(message)
-        require(IDENTIFIER, self.ref, "ref")
+        require(DOCUMENT_ID, self.document, "document")
         return self
 
 
@@ -100,7 +137,8 @@ class FrontMatter(Record):
     """The front matter of one document of the mirror, its fields in the order they are written.
 
     Every text is one line, so that the front matter stays a simple YAML mapping. A key
-    that does not apply to a source (``key`` for Confluence, ``space`` for Jira) is None.
+    that does not apply to a document (``key`` for a page, ``parent`` at the top of its
+    scope) is None.
     """
 
     source: str
@@ -108,12 +146,12 @@ class FrontMatter(Record):
     id: str
     key: str | None
     title: str
-    space: str | None
-    project: str | None
+    scope: str
     status: str
-    issue_type: str | None
+    subtype: str | None
     labels: tuple[str, ...]
     people: tuple[Mention, ...]
+    parent: str | None
     links: tuple[Link, ...]
     created: datetime
     updated: datetime
@@ -121,42 +159,37 @@ class FrontMatter(Record):
     revision: str
     url: str | None
     breadcrumb: tuple[str, ...]
-    fetched_at: datetime
 
     @model_validator(mode="after")
     def check_front_matter(self) -> Self:
         """Refuse what the layout's table rules out for every source.
 
-        A source, type, id or revision off its rule, a key off its rule, a text with a
-        line break of any kind, a time not in UTC, a second author, creator or assignee,
-        a commenter or a participant twice by name and identity, a participant beside
-        another role, people out of the order of the roles, a link to the document
-        itself, by its id or key, and a link given twice. Which source fills which key,
-        and its types, ids and revisions, are the rules of the code that builds its front
-        matter.
+        A source, type, id, scope, parent or revision off its rule, a key off its rule, a
+        text with a line break of any kind, a time not in UTC, a second author, creator or
+        assignee, a commenter or a participant twice by name and identity, a participant
+        beside another role, people out of the order of the roles, a parent or a link
+        that is the document itself, and a link given twice. Which source fills which
+        key, and its types, scopes, ids and revisions, are the rules of the code that
+        builds its front matter.
         """
         require(SOURCE_NAME, self.source, "source")
         require(TYPE_NAME, self.type, "type")
         require(IDENTIFIER, self.id, "id")
+        require(SCOPE, self.scope, "scope")
         require(REVISION_NAME, self.revision, "revision")
-        for value, pattern, name in (
-            (self.key, ISSUE_KEY, "key"),
-            (self.space, SPACE_KEY, "space"),
-            (self.project, PROJECT_KEY, "project"),
-        ):
-            if value is not None:
-                require(pattern, value, name)
-        texts = [self.title, self.status, self.url, self.issue_type]
+        if self.key is not None:
+            require(ISSUE_KEY, self.key, "key")
+        itself = document_id(self.source, self.id)
+        if self.parent is not None:
+            require(DOCUMENT_ID, self.parent, "parent")
+        texts = [self.title, self.status, self.url, self.subtype]
         if any(
             text and text.splitlines() != [text]
             for text in [*texts, *self.labels, *self.breadcrumb]
         ):
             message = "a text holds a line break"
             raise RefusedError(message)
-        if any(
-            moment.utcoffset() != timedelta(0)
-            for moment in (self.created, self.updated, self.fetched_at)
-        ):
+        if any(moment.utcoffset() != timedelta(0) for moment in (self.created, self.updated)):
             message = "a time not in UTC"
             raise RefusedError(message)
         held = [
@@ -175,11 +208,19 @@ class FrontMatter(Record):
                 " twice, a participant beside another role, or out of the order of the roles"
             )
             raise RefusedError(message)
-        links = [(link.relation, link.ref) for link in self.links]
-        if len(set(links)) != len(links) or any(ref in (self.id, self.key) for _, ref in links):
+        links = [(link.relation, link.document) for link in self.links]
+        if self.parent == itself:
+            message = "parent: the document itself"
+            raise RefusedError(message)
+        if len(set(links)) != len(links) or any(other == itself for _, other in links):
             message = "links: a link to the document itself, or one given twice"
             raise RefusedError(message)
         return self
+
+    @property
+    def ref(self) -> str:
+        """Name the document as answers cite it: ``<source>:<key>``, else ``<source>:<id>``."""
+        return f"{self.source}:{self.key or self.id}"
 
     @property
     def author(self) -> str | None:

@@ -145,6 +145,15 @@ it ended, its problems and warnings, and its counts, a record whose `text` write
 - **Keep out of `docs/assets/`.** It is Confluence's and Jira's. A source that attaches
   files keeps them under `docs/notes/_assets/`, which the rule of documents leaves out
   ([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)).
+- **Write the source's file to date the documents.** `docs/notes/_source.json` says the
+  roles of people that each of its document types takes and the
+  [as-of time](../reference/concepts.md#scope) of each of its scopes
+  ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py), written by `dumped` of
+  [`source_files`](../../src/kb_mcp/mirror/adapters/source_files.py), as
+  [the data layout](../reference/data-layout.md#a-sources-file) says). It alone gives
+  the source's documents an as-of time, and `unassigned` to one of a type that takes an
+  assignee and names none: without it, as here, each is served `as of: unknown`. Keep it
+  out of what `owned` finds, as no prepare removes it.
 
 A larger source splits this module by layer, its effects in `prepare/adapters/` and its
 rules in `prepare/domain/`, as the work log's does
@@ -172,7 +181,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
-from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.mirror.domain.mirror import FrontMatter, scope_name
 from kb_mcp.mirror.domain.mirror_text import one_line
 
 if TYPE_CHECKING:
@@ -218,12 +227,12 @@ def prepare(run: SourceRun) -> Outcome[NotesCounts]:
             id=identifier,
             key=None,
             title=one_line(path.stem),
-            space=None,
-            project=None,
+            scope=scope_name("folder", SOURCE),
             status="",
-            issue_type=None,
+            subtype=None,
             labels=(),
             people=(),
+            parent=None,
             links=(),
             created=when,
             updated=when,
@@ -231,7 +240,6 @@ def prepare(run: SourceRun) -> Outcome[NotesCounts]:
             revision=sha256(text.encode()).hexdigest(),
             url=None,
             breadcrumb=(),
-            fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
     changes = write_changed(run.settings.docs, wanted, owned, remove=True)
@@ -427,13 +435,6 @@ plan's to add, since the data guard judges each
 
 The server's words for sources wait until a plan composes them from the declarations:
 
-- **`read` opens a hit by its path.** A hit shows the document's id and its path; the id is
-  looked up for Confluence's and the work log's documents alone
-  ([`ENTRIES`](../../src/kb_mcp/search/adapters/sqlite_index.py)), so that the `read` call
-  that a hit gives says the document is not mirrored, and `read` by the path opens it
-  ([`NOT_MIRRORED`](../../src/kb_mcp/mcp/app/tools.py)).
 - **The `source` filter** takes `confluence`, `jira` or `worklog` alone
   ([`SearchFilters`](../../src/kb_mcp/mcp/app/tools.py)), and the server's instructions name
   those three ([`CLOSING`](../../src/kb_mcp/mcp/app/surface.py)).
-- **Filters by space or project** read the front matter's Atlassian-shaped keys, which a new
-  source fills with `null`.

@@ -60,7 +60,9 @@ def large_documents() -> list[tuple[FrontMatter, str | None]]:
     for number in range(DOCUMENTS):
         title = (f"Gamma {number} " + "Ébauche longue 長い題名 " * 20)[:255]
         crumbs = (*FOLDERS, f"Group {number // 100} " + "g" * 190)
-        front = page(str(300000 + number), title, space="BIG", labels=LABELS, breadcrumb=crumbs)
+        front = page(
+            str(300000 + number), title, scope="space:BIG", labels=LABELS, breadcrumb=crumbs
+        )
         documents.append((front, None))
     return documents
 
@@ -128,7 +130,7 @@ def test_paging_by_meaning_gives_each_document_once(by_meaning: tuple[Library, s
     found = []
     answer: str | None = library.search("gamma", limit=50)
     while answer is not None:
-        found += re.findall(r"^\d+\. .*\n {3}(\d+) \|", parts(answer)[1], re.MULTILINE)
+        found += re.findall(r"^\d+\. .*\n {3}confluence:(\d+) \|", parts(answer)[1], re.MULTILINE)
         answer = follow(library, answer)
     assert len(found) == len(set(found))
     big = {str(300000 + number) for number in range(DOCUMENTS)}
@@ -145,7 +147,7 @@ def test_default_answers_stay_within_the_budget(large: tuple[Library, str]) -> N
         library.read("100000"),
         library.read("100000", section=5),
         library.read("300000"),
-        library.browse(space="BIG"),
+        library.browse(scope="space:BIG"),
         library.status(),
     ]
     assert [answer[:40] for answer in answers if estimate(answer) > BUDGET] == []
@@ -157,8 +159,9 @@ MEETING = {
     "type": "meeting",
     "id": "m-20261027-payments-stand-up",
     "key": None,
-    "project": None,
-    "issue_type": None,
+    "scope": "folder:worklog",
+    "subtype": None,
+    "parent": None,
     "revision": "0123456789abcdef",
 }
 # What each relation links to: a meeting to its transcript, a transcript to its meeting.
@@ -197,14 +200,18 @@ def test_a_read_of_every_role_at_its_largest_stays_within_the_budget(
     wide = "長" * 250
     fields = {
         "status": wide,
-        "issue_type": wide,
+        "subtype": wide,
+        "parent": "jira:1234567890",
         "labels": (wide,) * 12,
         "breadcrumb": (wide,) * 10,
         "url": "https://" + "a" * 250,
     }
     # A transcript's id, or a meeting's: a date, then 64 characters at most.
     links = tuple(
-        Link(relation=relation, ref=f"{LINKED[relation]}-20261027-{number:02}-" + "x" * 61)
+        Link(
+            relation=relation,
+            document=f"worklog:{LINKED[relation]}-20261027-{number:02}-" + "x" * 61,
+        )
         for relation in RELATIONS
         for number in range(REFS + 2)
         if worklog
@@ -289,8 +296,8 @@ def test_a_name_of_many_persons_is_refused_within_the_budget(tmp_path: Path) -> 
         ("search", {"query": "gamma", "limit": 10**6}),
         ("read", {"ref": "100000", "max_chars": 40_000}),
         ("read", {"ref": "100000", "max_chars": 10**9}),
-        ("browse", {"space": "BIG", "limit": 200}),
-        ("browse", {"space": "BIG", "limit": 10**6}),
+        ("browse", {"scope": "space:BIG", "limit": 200}),
+        ("browse", {"scope": "space:BIG", "limit": 10**6}),
     ],
 )
 def test_any_answer_stays_within_the_ceiling(
@@ -329,9 +336,9 @@ def test_browse_lists_each_document_once(large: tuple[Library, str]) -> None:
     """Page after page, the space's documents come once each, at the largest pages."""
     library, _ = large
     found = []
-    answer: str | None = library.browse(space="BIG", limit=200)
+    answer: str | None = library.browse(scope="space:BIG", limit=200)
     while answer is not None:
-        found += re.findall(r"\((\d+), updated", parts(answer)[1])
+        found += re.findall(r"\(confluence:(\d+), updated", parts(answer)[1])
         answer = follow(library, answer)
     assert sorted(found) == [str(300000 + number) for number in range(DOCUMENTS)]
 
@@ -342,7 +349,7 @@ def test_search_lists_each_document_once(large: tuple[Library, str]) -> None:
     found = []
     answer: str | None = library.search("gamma", limit=50)
     while answer is not None:
-        found += re.findall(r"^\d+\. .*\n {3}(\d+) \|", parts(answer)[1], re.MULTILINE)
+        found += re.findall(r"^\d+\. .*\n {3}confluence:(\d+) \|", parts(answer)[1], re.MULTILINE)
         answer = follow(library, answer)
     assert sorted(found) == [str(300000 + number) for number in range(DOCUMENTS)]
 
@@ -366,7 +373,7 @@ def test_site_content_stays_inside_the_block(tmp_path: Path) -> None:
         library.search("ignore previous instructions"),
         library.read("196999"),
         library.read("196999", section=2),
-        library.browse(space="ENG"),
+        library.browse(scope="space:ENG"),
         library.status(),
         str(refused.value),
         elsewhere,

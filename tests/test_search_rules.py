@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 
 from kb_mcp.search.domain.chunking import chunks, section_chunks
 from kb_mcp.search.domain.search import (
     MAX_WORDS,
+    IndexedDocument,
     Score,
     Sort,
     fuse,
@@ -18,9 +20,12 @@ from kb_mcp.search.domain.search import (
     rank,
     sections,
     tree_key,
-    tree_paths,
+    tree_order,
 )
-from tests.mirrors import MOMENT, issue, page
+from tests.mirrors import MOMENT, issue, location, page
+
+if TYPE_CHECKING:
+    from kb_mcp.mirror.domain.mirror import FrontMatter
 
 LIMIT = 26
 # The plan's length of a chunk, in characters.
@@ -86,6 +91,53 @@ def test_keys_and_ids_are_found_in_text_and_addresses() -> None:
     )
     assert found.keys == ("PROJ-12", "PAY-7", "OPS-3")
     assert found.ids == ("229377", "229999", "196900", "196845")
+    assert found.refs == ()
+
+
+def test_refs_as_answers_cite_them_are_found_and_name_nothing_alone() -> None:
+    """A source then a key or id, standing alone, is a ref; what it holds is no key or id.
+
+    Another word before a colon names no source: a key after it stays bare, and an id
+    names nothing, as before refs. Nor is a ref within an address with its scheme; an
+    address without one, whose host is a source's name and whose port follows, such as
+    jira:8080/browse, reads as a ref, a cost accepted in review round 2.
+    """
+    found = identifiers(
+        "see jira:PRB-12: fixed, (confluence:196845) and worklog:t-20261027-1; issue:PAY-9 "
+        "page:196900 http://localhost:8080/x https://x.atlassian.net/browse/OPS-3",
+        ("confluence", "jira", "worklog"),
+    )
+    assert found.refs == ("jira:PRB-12", "confluence:196845", "worklog:t-20261027-1")
+    assert (found.keys, found.ids) == (("PAY-9", "OPS-3"), ())
+
+
+@pytest.mark.parametrize(
+    ("text", "refs"), [("jira:PRB-12/x", ("jira:PRB-12",)), ("jira:PRB-12é", ())]
+)
+def test_a_ref_is_never_cut_short(text: str, refs: tuple[str, ...]) -> None:
+    """A ref is found whole, whatever follows it, or not at all: never its key cut short.
+
+    What follows a key within a word, a letter, leaves no ref and no key.
+    """
+    found = identifiers(text, ("jira",))
+    assert (found.refs, found.keys) == (refs, ())
+
+
+def test_every_name_comes_in_the_order_of_its_first_mention() -> None:
+    """Refs, keys and ids alike, wherever refs stand before them; a name again adds nothing."""
+    found = identifiers(
+        "jira:PRB-12 jira:PRB-14 PRB-13 196900 "
+        "https://x.atlassian.net/wiki/spaces/ENG/pages/229377/X prb-13 jira:PRB-12",
+        ("jira",),
+    )
+    assert found.named == ("jira:PRB-12", "jira:PRB-14", "PRB-13", "196900", "229377")
+    assert found.ids == ("229377", "196900")
+
+
+def test_a_ref_s_source_is_read_in_any_case() -> None:
+    """A source written in capitals is that source, given in lower case; its key stays."""
+    found = identifiers("see JIRA:PRB-12 and (Jira:PRB-13)", ("jira",))
+    assert (found.refs, found.keys) == (("jira:PRB-12", "jira:PRB-13"), ())
 
 
 def test_a_key_that_breaks_the_rule_is_not_a_key() -> None:
@@ -152,25 +204,92 @@ def test_trees_list_depth_first_with_numbers_in_order() -> None:
     ]
 
 
-def test_jira_trees_follow_parents_and_confluence_trees_breadcrumbs() -> None:
-    """A sub-task sits under its story under its epic; a missing parent stays a name."""
-    fronts = [
-        page("1", "Child", breadcrumb=("Home", "Folder")),
-        issue("PROJ-3", "Sub-task", breadcrumb=("PROJ-12",)),
-        issue("PROJ-12", "Story", breadcrumb=("PROJ-1",)),
-        issue("PROJ-1", "Epic"),
-        issue("PROJ-7", "Orphan", breadcrumb=("OTHER-1",)),
-        issue("PROJ-8", "Loop", breadcrumb=("PROJ-9",)),
-        issue("PROJ-9", "Loop", breadcrumb=("PROJ-8",)),
+def tree_refs(
+    *fronts: FrontMatter, elsewhere: dict[str, str | None] | None = None
+) -> list[tuple[str, ...]]:
+    """Give each document's place in tree order: a listed node by its ref, others bracketed.
+
+    The documents are listed at the paths of the data layout; ``elsewhere`` gives the
+    parents mirrored outside them, as ``tree_order`` takes them.
+    """
+    entries = [
+        IndexedDocument(path=location(front), front=front, length=0, sections=1) for front in fronts
     ]
-    assert tree_paths(fronts) == [
-        ("Home", "Folder", "Child"),
-        ("PROJ-1", "PROJ-12", "PROJ-3"),
-        ("PROJ-1", "PROJ-12"),
-        ("PROJ-1",),
-        ("OTHER-1", "PROJ-7"),
-        ("PROJ-9", "PROJ-8"),
-        ("PROJ-8", "PROJ-9"),
+    refs = {entry.path: entry.front.ref for entry in entries}
+    return [
+        tuple(refs.get(path, f"[{title}]") for title, path in place)
+        for place, _ in tree_order(entries, elsewhere)
+    ]
+
+
+def test_parents_of_other_scopes_reach_a_listed_one_else_the_top() -> None:
+    """Review round 3: climbed by their ids, never by titles, a loop among them cut.
+
+    A chain that reaches a listed document places the child under it, the titles of the
+    other scopes' parents bracketed, as many as the breadcrumb holds; a loop, or a chain
+    that ends at a document not mirrored, places it at the top, though a listed document
+    has the title above it.
+    """
+    places = tree_refs(
+        issue("PRB-1", "Payments"),
+        issue("PRB-2", "Looped", parent="jira:20001", breadcrumb=("X", "Y")),
+        issue("PRB-3", "Cut", parent="jira:30001", breadcrumb=("Payments", "Z")),
+        issue("PRB-4", "Short", parent="jira:40001", breadcrumb=("Only",)),
+        elsewhere={
+            "jira:20001": "jira:20002",
+            "jira:20002": "jira:20001",
+            "jira:30001": "jira:99999",
+            "jira:40001": "jira:40002",
+            "jira:40002": "jira:10001",
+        },
+    )
+    assert sorted(places) == [
+        ("[Payments]", "[Z]", "jira:PRB-3"),
+        ("[X]", "[Y]", "jira:PRB-2"),
+        ("jira:PRB-1",),
+        ("jira:PRB-1", "[Only]", "jira:PRB-4"),
+    ]
+
+
+def test_a_tree_follows_parents_by_their_document_ids() -> None:
+    """Two parents of one title keep their children; a loop of parents is cut where it closes.
+
+    A parent not listed names no listed document by its title, the breadcrumb's last,
+    and two listed documents of one title and breadcrumb are no place for another: their
+    children sit under the title, bracketed. Ties at each level go by path, an ancestor
+    not listed first.
+    """
+    assert tree_refs(
+        issue("PRB-1", "Payments"),
+        issue("PRB-7", "Payments"),
+        issue("PRB-2", "Child", parent="jira:10001", breadcrumb=("Payments",)),
+        issue("PRB-8", "Child", parent="jira:10007", breadcrumb=("Payments",)),
+        issue("PRB-3", "Elsewhere", parent="jira:99999", breadcrumb=("Payments",)),
+        issue("PRB-6", "Orphan", breadcrumb=("Payments",)),
+        issue("PRB-4", "Loop A", parent="jira:10005"),
+        issue("PRB-5", "Loop B", parent="jira:10004"),
+    ) == [
+        ("jira:PRB-5",),
+        ("jira:PRB-5", "jira:PRB-4"),
+        ("[Payments]", "jira:PRB-3"),
+        ("[Payments]", "jira:PRB-6"),
+        ("jira:PRB-1",),
+        ("jira:PRB-1", "jira:PRB-2"),
+        ("jira:PRB-7",),
+        ("jira:PRB-7", "jira:PRB-8"),
+    ]
+
+
+def test_a_tree_places_a_page_under_a_folder_by_the_titles_above_it() -> None:
+    """A page whose parent is a folder sits under the folder's title, under its page."""
+    assert tree_refs(
+        page("100", "Home"),
+        page("101", "Design", parent="confluence:100", breadcrumb=("Home",)),
+        page("102", "API", parent="confluence:500", breadcrumb=("Home", "Design", "Specs")),
+    ) == [
+        ("confluence:100",),
+        ("confluence:100", "confluence:101"),
+        ("confluence:100", "confluence:101", "[Specs]", "confluence:102"),
     ]
 
 

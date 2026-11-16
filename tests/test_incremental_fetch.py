@@ -717,7 +717,7 @@ def test_a_moved_page_takes_its_new_space_everywhere_and_leaves_the_old(tmp_path
     prepared_sources(store, docs, SITE, identity)
     [moved] = (docs / "confluence").rglob("196845-*.md")
     assert moved.parent.name == "OPS"
-    assert "space: OPS" in moved.read_text("utf-8")
+    assert "scope: space:OPS" in moved.read_text("utf-8")
     assert moved.name in (docs / "confluence" / "OPS" / "_tree.md").read_text("utf-8")
 
 

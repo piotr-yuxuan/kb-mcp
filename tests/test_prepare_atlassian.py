@@ -20,14 +20,21 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
+from kb_mcp.mcp.app.responses import facts
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
+from kb_mcp.mirror.adapters.source_files import source_files
 from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
+from kb_mcp.search.adapters.sqlite_index import reading
+from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
+from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
+from kb_mcp.sources.atlassian.fetch.domain.period import Period
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_source
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
@@ -62,9 +69,10 @@ WORDS = "Words of the leaf page."
 DOCUMENTS = {"confluence": 3, "jira": 1}
 # A conversion for each document's file, and Confluence's for the space's tree.
 CONVERSIONS = {"confluence": 4, "jira": 1}
-# Each source's files: its documents, Confluence's tree, and the file that its documents
-# attach, the leaf's image and the blog post's being one, the issue's another.
-FILES = {"confluence": 5, "jira": 2}
+# Each source's files: its documents, Confluence's tree, the file that its documents
+# attach, the leaf's image and the blog post's being one, the issue's another, and its
+# source's file.
+FILES = {"confluence": 6, "jira": 3}
 
 
 def listing_page(
@@ -262,7 +270,9 @@ def test_the_mirror_writes_exactly_the_layouts_paths(sandbox: Sandbox) -> None:
         "confluence/MFS/300-leaf.md",
         "confluence/MFS/blog/600-news.md",
         "confluence/MFS/_tree.md",
+        "confluence/_source.json",
         "jira/PRB/PRB-1.md",
+        "jira/_source.json",
         f"assets/{digest(IMAGE)}.png",
         f"assets/{digest(OTHER_IMAGE)}.png",
     }
@@ -279,12 +289,12 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         id="300",
         key=None,
         title="Leaf",
-        space="MFS",
-        project=None,
+        scope="space:MFS",
         status="archived",
-        issue_type=None,
+        subtype=None,
         labels=("probe",),
         people=(Mention(role="author", name="A Person", identity="atlassian:account-1"),),
+        parent="confluence:200",
         links=(),
         created=datetime(2026, 10, 20, 21, 27, 34, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC),
@@ -292,7 +302,6 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         revision="000002",
         url=f"{SITE}/wiki/spaces/MFS/pages/300/Leaf",
         breadcrumb=("Home", "Plans"),
-        fetched_at=FETCHED,
     )
     post, _ = load(sandbox.text("confluence/MFS/blog/600-news.md"), "post")
     assert (post.type, post.breadcrumb, post.url) == ("blogpost", (), f"{SITE}/wiki{POST_URL}")
@@ -303,10 +312,9 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
         id="10000",
         key="PRB-1",
         title="What are archived ideas?",
-        space=None,
-        project="PRB",
+        scope="project:PRB",
         status="Parking lot",
-        issue_type="Idea",
+        subtype="Idea",
         labels=("probe",),
         # The comment without an author names nobody.
         people=(
@@ -319,15 +327,82 @@ def test_each_front_matter_follows_the_layouts_table(sandbox: Sandbox) -> None:
                 at=(datetime(2026, 10, 21, 8, tzinfo=UTC),),
             ),
         ),
+        parent="jira:10002",
         links=(),
         created=datetime(2026, 10, 20, 21, 33, 32, tzinfo=UTC),
         updated=datetime(2026, 10, 20, 21, 37, 58, tzinfo=UTC),
         version=None,
         revision="20261020T213758.027000Z",
         url=f"{SITE}/browse/PRB-1",
-        breadcrumb=("PRB-3",),
-        fetched_at=FETCHED,
+        breadcrumb=("Ideas",),
     )
+
+
+def test_an_issue_breadcrumb_climbs_its_parents_in_the_store(sandbox: Sandbox) -> None:
+    """PRB-1's parent PRB-3 is stored, under an epic that is not: both titles lead."""
+    parent = v3_issue(id="10002", key="PRB-3")
+    fields = parent["fields"]
+    assert isinstance(fields, dict)
+    fields.update(
+        summary="Ideas, renamed",
+        attachment=[],
+        parent={"id": "10009", "key": "PRB-9", "fields": {"summary": "Epic"}},
+    )
+    with sandbox.jira.writing():
+        sandbox.jira.put(Issue, {jira_v3.ISSUE: parent, jira_v3.COMMENTS: []}, FETCHED, {})
+    sandbox.run(sources=("jira",))
+    issue, _ = load(sandbox.text("jira/PRB/PRB-1.md"), "issue")
+    assert issue.breadcrumb == ("Epic", "Ideas")
+
+
+def test_an_issue_without_assignee_is_unassigned_and_a_page_is_not(sandbox: Sandbox) -> None:
+    """Plan 057, criterion 6: by the roles that each type takes, as its prepare wrote them.
+
+    PRB-1 has no assignee, and an issue takes one; a page takes none, so says nothing of it.
+    """
+    sandbox.run()
+    build_index(sandbox.docs, sandbox.data / "index.sqlite", FETCHED)
+    with reading(sandbox.data / "index.sqlite") as reader:
+        issue, leaf = (reader.indexed_documents(refs=[ref])[0] for ref in ("PRB-1", "300"))
+    assert "assignee" in issue.type_roles
+    assert facts(issue).split(" | ")[2] == "unassigned"
+    assert "unassigned" not in facts(leaf)
+    assert leaf.type_roles == ("author", "commenter")
+
+
+def test_each_source_s_file_says_its_scopes_as_of_times_from_the_coverage(
+    sandbox: Sandbox,
+) -> None:
+    """Plan 057, criterion 3: a scope's as-of time, else none, never another source's."""
+    space = Scope(source="confluence", type=SPACE, key="MFS")
+    project = Scope(source="jira", type=PROJECT, key="PRB")
+    other = Scope(source="jira", type=PROJECT, key="OPS")
+    covered = Period(FETCHED.replace(year=2025), FETCHED)
+    coverage = Coverage(
+        periods={space: covered, project: covered, other: covered},
+        exact=frozenset({space, other}),
+        as_of={space: FETCHED, other: FETCHED.replace(day=1)},
+    )
+    with sandbox.store.writing():
+        sandbox.store.put_coverage(coverage)
+    sandbox.run()
+    said = source_files(sandbox.docs)
+    assert said["confluence"].as_of == {"space:MFS": FETCHED}
+    assert said["jira"].as_of == {"project:OPS": FETCHED.replace(day=1)}
+
+
+def test_a_coverage_that_does_not_read_is_a_problem_and_says_no_as_of_time(
+    sandbox: Sandbox,
+) -> None:
+    """The record is the lister's to report, as the tombstones are; no scope's time is known."""
+    (sandbox.data / "raw" / "coverage.json").write_text("{", encoding="utf-8")
+    outcomes = sandbox.run()
+    assert [each.where for each in outcomes["confluence"].problems] == ["coverage.json"]
+    assert [each.where for each in outcomes["jira"].warnings] == ["coverage.json"]
+    assert {name: each.as_of for name, each in source_files(sandbox.docs).items()} == {
+        "confluence": {},
+        "jira": {},
+    }
 
 
 def test_without_a_site_no_address_is_absolute(sandbox: Sandbox) -> None:
@@ -803,7 +878,11 @@ def test_jira_alone_links_confluence_s_pages_and_writes_its_own_files_alone(
     """
     outcomes = crossed.run(sources=("jira",))
     assert each(outcomes, lambda outcome: outcome.problems) == {"jira": ()}
-    assert set(crossed.files()) == {"jira/PRB/PRB-1.md", f"assets/{digest(IMAGE)}.png"}
+    assert set(crossed.files()) == {
+        "jira/PRB/PRB-1.md",
+        "jira/_source.json",
+        f"assets/{digest(IMAGE)}.png",
+    }
     _, body = load(crossed.text("jira/PRB/PRB-1.md"), "issue")
     assert "[the leaf](../../confluence/MFS/300-leaf.md)" in body
 

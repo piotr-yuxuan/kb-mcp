@@ -14,16 +14,21 @@ import re
 from itertools import takewhile
 from typing import TYPE_CHECKING
 
-from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, ref_of
+from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES
 from kb_mcp.search.domain import people
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.search.domain.search import Activity, IndexedDocument, IndexStatus, Passage
+    from kb_mcp.search.domain.search import (
+        Activity,
+        IndexedDocument,
+        IndexStatus,
+        Passage,
+        Place,
+    )
 
 BUDGET = 4_000  # estimated tokens of an answer to arguments at or below their defaults
 CEILING = 10_000  # estimated tokens of any answer
@@ -204,18 +209,18 @@ def roles(name: str, held: Sequence[tuple[str, int, datetime | None]]) -> str:
     return f"{short(name, LABEL)}: {', '.join(shown)}"
 
 
-def facts(front: FrontMatter) -> str:
+def facts(entry: IndexedDocument) -> str:
     """Say what a document is, who it is for and from, and when it was created.
 
-    Its issue type, its status unless current, its assignee (``unassigned`` for a document
-    with a key, an issue, with none), its author, its creator when named otherwise than its
-    author, and its created day, leaving out what it lacks.
+    Its subtype, its status unless current, its assignee (``unassigned`` for one of a
+    type that takes an assignee, and with none), its author, its creator when named
+    otherwise than its author, and its created day, leaving out what it lacks.
     """
-    # A stopgap: plan 057 decides it by the roles that the document's type takes.
-    unassigned = "unassigned" if front.key is not None else ""
+    front = entry.front
+    unassigned = "unassigned" if "assignee" in entry.type_roles else ""
     creator = front.creator
     shown = (
-        short(front.issue_type, LABEL) if front.issue_type else "",
+        short(front.subtype, LABEL) if front.subtype else "",
         "" if front.status == "current" else short(front.status, LABEL),
         f"assignee {short(front.assignee, LABEL)}" if front.assignee else unassigned,
         f"author {short(front.author, LABEL)}" if front.author else "",
@@ -225,13 +230,18 @@ def facts(front: FrontMatter) -> str:
     return " | ".join(part for part in shown if part)
 
 
-def dated(front: FrontMatter, held: str | None) -> str:
-    """Say when a ranked document was updated and mirrored, what it is, and who holds it.
+def as_of(entry: IndexedDocument) -> str:
+    """Say the day that a document is as of, its scope's as-of time, else that none is known."""
+    return "as of: unknown" if entry.as_of is None else f"as of {entry.as_of:%Y-%m-%d}"
+
+
+def dated(entry: IndexedDocument, held: str | None) -> str:
+    """Say when a ranked document was updated, what day it is as of, what it is, who holds it.
 
     ``held``, unless None, ends it: a person's roles there, as ``roles`` says them.
     """
-    when = f"updated {stamp(front.updated)} | mirrored {front.fetched_at:%Y-%m-%d}"
-    return f"{when} | {facts(front)}" + (f" | {held}" if held else "")
+    when = f"updated {stamp(entry.front.updated)} | {as_of(entry)}"
+    return f"{when} | {facts(entry)}" + (f" | {held}" if held else "")
 
 
 def hit(
@@ -241,7 +251,7 @@ def hit(
     front = entry.front
     lines = [
         f"{number}. {short(front.title)}",
-        f"   {ref_of(front.key, front.id)} | {entry.path} | {dated(front, held)}",
+        f"   {front.ref} | {entry.path} | {dated(entry, held)}",
     ]
     if front.breadcrumb:
         lines.append(f"   in {short(' / '.join(front.breadcrumb))}")
@@ -262,37 +272,39 @@ def passage(
     front = entry.front
     heading = f": {short(passage.heading)}" if passage.heading else ""
     about = (
-        f"{number}. {short(front.title)} | {ref_of(front.key, front.id)} | section"
-        f" {passage.number}{heading} | {dated(front, held)}"
+        f"{number}. {short(front.title)} | {front.ref} | section"
+        f" {passage.number}{heading} | {dated(entry, held)}"
     )
     return f"{about}\n{short(front.url or entry.path)} | {opening}\n{passage.text}"
 
 
-def metadata(entry: IndexedDocument, *, whole: bool) -> str:
+def metadata(entry: IndexedDocument, refs: Mapping[str, str], *, whole: bool) -> str:
     """Write a document's front matter as one-line ``key: value`` lines.
 
     ``whole`` gives every key that a reader needs, but the source, id, key, version and
-    revision that the ref and the dates stand for; otherwise the title, path and mirror
-    date alone. People
+    revision that the ref and the dates stand for, and the as-of time, its scope's, or
+    ``unknown``; otherwise the title and path alone.
+    The parent and each link name another document by its ref, as ``refs`` gives it by
+    document id, else by its document id, which a document not mirrored keeps. People
     come by name alone, one line per role in the order of the roles: NAMES names at
     most, then how many more, each commenter with their comments' count and the day of
-    the last. Links come by ref, one line per relation in the order of the relations:
-    LABELS refs at most, then how many more. A role's or a relation's line is not cut as a
-    value is, so that the count of the rest stays; each name or ref in it is, so that a
-    name that a hit cuts comes whole.
+    the last. Links come one line per relation in the order of the relations: LABELS refs
+    at most, then how many more. A role's or a relation's line is not cut as a value is,
+    so that the count of the rest stays; each name or ref in it is, so that a name that a
+    hit cuts comes whole.
     """
     front = entry.front
-    rows = [("title", front.title), ("path", entry.path), ("mirrored", stamp(front.fetched_at))]
+    rows = [("title", front.title), ("path", entry.path)]
     if whole:
         labels = ", ".join(short(label, LABEL) for label in front.labels[:LABELS])
         rows += [
-            ("ref", ref_of(front.key, front.id)),
+            ("ref", front.ref),
             ("type", front.type),
-            ("space", front.space),
-            ("project", front.project),
-            ("issue type", front.issue_type),
+            ("scope", front.scope),
+            ("subtype", front.subtype),
             ("status", front.status),
             ("labels", labels),
+            ("parent", front.parent and refs.get(front.parent, front.parent)),
             ("breadcrumb", " / ".join(front.breadcrumb)),
         ]
         for role in ROLES:
@@ -305,12 +317,17 @@ def metadata(entry: IndexedDocument, *, whole: bool) -> str:
             more = f"; {len(held) - NAMES} more" if len(held) > NAMES else ""
             rows.append((role, "; ".join(names) + more))
         for relation in RELATIONS:
-            refs = [short(link.ref) for link in front.links if link.relation == relation]
-            more = f"; {len(refs) - LABELS} more" if len(refs) > LABELS else ""
-            rows.append((relation, "; ".join(refs[:LABELS]) + more))
+            linked = [
+                short(refs.get(link.document, link.document))
+                for link in front.links
+                if link.relation == relation
+            ]
+            more = f"; {len(linked) - LABELS} more" if len(linked) > LABELS else ""
+            rows.append((relation, "; ".join(linked[:LABELS]) + more))
         rows += [
             ("created", stamp(front.created)),
             ("updated", stamp(front.updated)),
+            ("as of", "unknown" if entry.as_of is None else stamp(entry.as_of)),
             ("url", front.url),
         ]
     uncut = {*ROLES, *RELATIONS}
@@ -319,36 +336,36 @@ def metadata(entry: IndexedDocument, *, whole: bool) -> str:
     )
 
 
-def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) -> list[str]:
+def tree(pairs: Sequence[tuple[Place, IndexedDocument]], base: int) -> list[str]:
     """Write each document of a tree as one item, indented by its depth below ``base``.
 
     Ancestors not listed before it, in this list, come first as one context line in
-    brackets: folders, documents not mirrored, or, for the first item, documents
-    listed on an earlier page.
+    brackets, by their titles: folders, documents not mirrored, or, for the first item,
+    documents listed on an earlier page.
     """
     items: list[str] = []
-    previous: tuple[str, ...] = ()
-    for path, entry in pairs:
-        ancestors = path[base:-1]
+    previous: Place = ()
+    for place, entry in pairs:
+        ancestors = place[base:-1]
         shared = zip(previous, ancestors, strict=False)
         common = sum(1 for _ in takewhile(lambda pair: pair[0] == pair[1], shared))
         front = entry.front
         line = (
             f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
-            f" ({ref_of(front.key, front.id)}, updated {front.updated:%Y-%m-%d},"
-            f" mirrored {front.fetched_at:%Y-%m-%d})"
+            f" ({front.ref}, updated {front.updated:%Y-%m-%d}, {as_of(entry)})"
         )
-        if missing := ancestors[common:]:
+        if missing := [title for title, _ in ancestors[common:]]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"
         items.append(line)
-        previous = path[base:]
+        previous = place[base:]
     return items
 
 
 def status(state: IndexStatus, docs: Path) -> str:
     """Say what the index holds, and when it was built.
 
-    Its persons on one line: how many, in more than one source, and by name alone; then
+    Each scope with its documents' count and its as-of time, else ``as of: unknown``. Its
+    persons on one line: how many, in more than one source, and by name alone; then
     SHARED at most of the names of several identities, each with the persons holding it,
     and how many more, so that the agent knows which names to ask about by id.
     """
@@ -362,6 +379,12 @@ def status(state: IndexStatus, docs: Path) -> str:
         for name, count in persons.shared[:SHARED]
     )
     rest = len(persons.shared) - SHARED
+    scopes = ", ".join(
+        f"{name} {count} (as of {stamp(state.as_of[name])})"
+        if name in state.as_of
+        else f"{name} {count} (as of: unknown)"
+        for name, count in state.scopes.items()
+    )
 
     lines = [
         f"built: {stamp(state.built_at)}",
@@ -371,8 +394,7 @@ def status(state: IndexStatus, docs: Path) -> str:
             if state.model
             else "search by meaning: off, the index holds no vectors; run kb-mcp embed"
         ),
-        f"spaces: {counts(state.spaces)}",
-        f"projects: {counts(state.projects)}",
+        f"scopes: {scopes or 'none'}",
         (
             f"persons: {persons.count}, {persons.across} in more than one source,"
             f" {persons.alone} by name alone"
@@ -380,7 +402,6 @@ def status(state: IndexStatus, docs: Path) -> str:
             + (f", and {rest} more" if rest > 0 else "")
         ),
         f"files skipped at build: {state.skipped}",
-        f"newest mirror date: {stamp(state.newest_fetch) if state.newest_fetch else 'none'}",
         f"mirror files: {docs}",
     ]
     return answer("The index of the offline mirror.", "\n".join(lines))

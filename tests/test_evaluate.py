@@ -331,6 +331,26 @@ def test_an_endpoint_that_does_not_answer_evaluates_nothing(
     assert not (data / "eval").exists()
 
 
+def test_a_source_file_of_the_mirror_that_does_not_read_evaluates_nothing(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """As index stops on it: exit 1, the error eval.not_evaluated naming it and prepare.
+
+    The run's log file holds it too, and no results are written.
+    """
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    (data / "docs" / "confluence" / "_source.json").write_text("{not json", encoding="utf-8")
+    with serving(Scripted()) as url:
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url)]) == 1
+    named = "confluence/_source.json: not JSON; `kb-mcp prepare` writes it again"
+    err = capsys.readouterr().err
+    assert ("error", "eval.not_evaluated") in said(err)
+    assert named in err
+    (failed,) = logged_as(data.parent / "home", "eval.not_evaluated")
+    assert named in str(failed["reason"])
+    assert not (data / "eval" / "results").exists()
+
+
 def test_a_golden_file_is_read_from_a_pipe(data: Path, capsys: CaptureFixture[str]) -> None:
     """As a process substitution gives one, such as ``<(sops -d golden.sops.yaml)``.
 

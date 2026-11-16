@@ -134,10 +134,9 @@ def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFix
         assert reader.bounds(path) == [(0, second), (second, len(BODY))]
         summary = reader.index_status()
     assert summary.built_at.tzinfo is not None
-    assert (summary.types, summary.spaces, summary.projects) == (
+    assert (summary.types, summary.scopes) == (
         {"issue": 1, "page": 1},
-        {"ENG": 1},
-        {"PROJ": 1},
+        {"project:PROJ": 1, "space:ENG": 1},
     )
 
 
@@ -468,10 +467,10 @@ def test_a_new_index_is_read_from_the_next_reading(data: Path) -> None:
     """Replacing the file while nothing reads it is seen by the next reading."""
     write(data / "docs", page("196845", "Kafka"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
-    write(data / "docs", replace(page("196846", "Another"), space="OPS"))
+    write(data / "docs", replace(page("196846", "Another"), scope="space:OPS"))
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     with reading(data / "index.sqlite") as reader:
-        assert reader.index_status().spaces == {"ENG": 1, "OPS": 1}
+        assert reader.index_status().scopes == {"space:ENG": 1, "space:OPS": 1}
 
 
 @pytest.fixture
@@ -486,7 +485,7 @@ def people(data: Path) -> Path:
 @pytest.mark.parametrize(
     ("filters", "expected"),
     [
-        (Filters(issue_type="Bug"), ["PROJ-1"]),
+        (Filters(subtype="Bug"), ["PROJ-1"]),
         (Filters(author=anchored("name\nbo sample")), ["196845", "PROJ-1"]),
         (Filters(assignee=anchored("name\nada example")), ["PROJ-1", "PROJ-3"]),
         (Filters(created_after=CREATED), ["PROJ-1", "PROJ-3"]),
@@ -515,7 +514,7 @@ def test_people_and_the_created_range_narrow_each_list(
 def test_issue_types_authors_and_assignees_are_values_most_used_first(people: Path) -> None:
     """Each value that documents have, with its count; a page adds no issue type nor assignee."""
     with reading(people) as reader:
-        assert reader.values("issue_type") == [("Bug", 1), ("Story", 1), ("Task", 1)]
+        assert reader.values("subtype") == [("Bug", 1), ("Story", 1), ("Task", 1)]
         assert reader.values("author") == [("Bo Sample", 2), ("A Person", 1), ("Ada Example", 1)]
         assert reader.values("assignee") == [("Ada Example", 2), ("Hélène Example", 1)]
 
@@ -623,14 +622,14 @@ MEETING = replace(
     page("m-20261027-payments-stand-up", "Payments stand-up"),
     source="worklog",
     type="meeting",
-    space=None,
+    scope="folder:worklog",
     version=None,
     revision="0123456789abcdef",
     people=(
         Mention(role="participant", name="Alex Example"),
         Mention(role="participant", name="Kim (not in the header)"),
     ),
-    links=(Link(relation="transcript", ref="t-20261027-meeting-1"),),
+    links=(Link(relation="transcript", document="worklog:t-20261027-meeting-1"),),
 )
 TRANSCRIPT = replace(
     MEETING,
@@ -641,7 +640,7 @@ TRANSCRIPT = replace(
         Mention(role="participant", name="Alex Example"),
         Mention(role="participant", name="Sam Sample"),
     ),
-    links=(Link(relation="summary", ref="m-20261027-payments-stand-up"),),
+    links=(Link(relation="summary", document="worklog:m-20261027-payments-stand-up"),),
 )
 
 
@@ -872,7 +871,7 @@ def test_attendance_joins_by_summary_links_in_any_source(data: Path) -> None:
         "400002",
         "Retro recording",
         people=(Mention(role="participant", name="Robin"),),
-        links=(Link(relation="summary", ref="400001"),),
+        links=(Link(relation="summary", document="confluence:400001"),),
     )
     for front in (summary, summarised):
         write(data / "docs", front)
@@ -899,13 +898,13 @@ def test_a_summary_whose_own_summary_is_not_mirrored_still_joins_by_attendance(
         "400001",
         "Retro notes",
         people=(Mention(role="participant", name="Robin Example"),),
-        links=(Link(relation="summary", ref="10001"),),
+        links=(Link(relation="summary", document="confluence:10001"),),
     )
     summarised = page(
         "400002",
         "Retro recording",
         people=(Mention(role="participant", name="Robin"),),
-        links=(Link(relation="summary", ref="400001"),),
+        links=(Link(relation="summary", document="confluence:400001"),),
     )
     for front in (summary, summarised, *elsewhere):
         write(data / "docs", front)
@@ -974,6 +973,21 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
     assert meeting[0].endswith("(source=? AND id=?)")
 
 
+def test_refs_are_found_by_the_indexes_of_keys_and_ids_not_by_scanning(persons: Path) -> None:
+    """Each ref, alone or after its source, is looked up by key, then by id, each indexed.
+
+    Search finds the documents that a query names at each call, and read its document:
+    a scan of every document per ref took tens of milliseconds on 50,000 documents.
+    """
+    unbound = {"refs": "[]", "paths": "[]", "kept": None}
+    with closing(sqlite3.connect(persons)) as connection:
+        plan = connection.execute(f"EXPLAIN QUERY PLAN {sqlite_index.ENTRIES}", unbound)
+        steps = [row[3] for row in plan.fetchall()]
+    assert [step for step in steps if re.match(r"SCAN [de]\b", step)] == []
+    searched = {step.partition(" USING INDEX ")[2] for step in steps if step.startswith("SEARCH")}
+    assert {"documents_key (key=?)", "documents_id (id=?)"} <= searched
+
+
 def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:
     """Every person holding the key, in order; none for a key that no one holds.
 
@@ -1030,14 +1044,16 @@ def test_a_rebuild_embeds_nothing_with_or_without_new_aliases(data: Path) -> Non
     )
 
 
-@pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5"])
+@pytest.mark.parametrize("schema", ["1", "2", "3", "4", "5", "6", "7", "8"])
 def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     data: Path, schema: str
 ) -> None:
     """An index of plan 006, or built before the build id, people, links or persons.
 
     The commands named write the mirror's files before the index, as 041 changed them:
-    ``prepare``, then ``index``, then ``embed``.
+    ``prepare``, then ``index``, then ``embed``. Since plan 057 those of 6, 7 and 8 too,
+    whose files name an issue's parent by its key in its breadcrumb, which no longer
+    places it.
     """
     write(data / "docs", page("196845", "Kafka"), BODY)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
@@ -1054,23 +1070,6 @@ def test_an_index_of_an_earlier_schema_is_refused_with_the_command_to_rebuild(
     )
     with refused, reading(data / "index.sqlite"):
         pass
-
-
-@pytest.mark.parametrize("schema", ["6", "7"])
-def test_an_index_of_schema_6_is_refused_with_index_alone(data: Path, schema: str) -> None:
-    """Plans 054 and 058: the mirror's files of 6 and 7 are read as they are: no prepare.
-
-    Plan 058 reads their people's former ``account``.
-    """
-    write(data / "docs", page("196845", "Kafka"), BODY)
-    build_index(data / "docs", data / "index.sqlite", MOMENT)
-    with sqlite3.connect(data / "index.sqlite") as connection:
-        connection.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (schema,))
-    connection.close()
-    with pytest.raises(UnavailableIndexError) as refused, reading(data / "index.sqlite"):
-        pass
-    assert str(refused.value).endswith("rebuild it with `kb-mcp index`, then `kb-mcp embed`")
-    assert "prepare" not in str(refused.value)
 
 
 def child_environment(data: Path) -> dict[str, str]:
@@ -1401,7 +1400,6 @@ HANDBOOK = page(
     labels=("ops", "été"),
     breadcrumb=("Home", "Guidés"),
     created=MOMENT - timedelta(days=3),
-    fetched_at=MOMENT + timedelta(hours=1),
     url="https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
     people=(
         Mention(role="author", name="A Person", identity="atlassian:acct-0001"),
@@ -1411,7 +1409,7 @@ HANDBOOK = page(
             at=(MOMENT - timedelta(hours=2), MOMENT - timedelta(hours=1)),
         ),
     ),
-    links=(Link(relation="summary", ref="m-20261020-review"),),
+    links=(Link(relation="summary", document="worklog:m-20261020-review"),),
 )
 HANDBOOK_BODY = (
     "# Deploy\n\nWhy we deploy_it.\n\n"
@@ -1492,8 +1490,7 @@ PINNED_DOCUMENTS = [
         "1001",
         None,
         "Deploy",
-        "ENG",
-        None,
+        "space:ENG",
         "current",
         None,
         '["ops", "été"]',
@@ -1502,14 +1499,14 @@ PINNED_DOCUMENTS = [
             ' {"role": "commenter", "name": "Kim Doé", "identity": null,'
             ' "at": ["2026-10-20T19:52:41+00:00", "2026-10-20T20:52:41+00:00"]}]'
         ),
-        '[{"relation": "summary", "ref": "m-20261020-review"}]',
+        None,
+        '[{"relation": "summary", "document": "worklog:m-20261020-review"}]',
         "2026-10-17T21:52:41+00:00",
         "2026-10-20T21:52:41+00:00",
         1,
         "000001",
         "https://example.atlassian.net/wiki/spaces/ENG/pages/1001",
         '["Home", "Guidés"]',
-        "2026-10-20T22:52:41+00:00",
         110,
         1,
         3,
@@ -1521,12 +1518,12 @@ PINNED_DOCUMENTS = [
         "10001",
         "PROJ-1",
         "Économie",
-        None,
-        "PROJ",
+        "project:PROJ",
         "To Do",
         "Task",
         "[]",
         "[]",
+        None,
         "[]",
         "2026-10-20T21:52:41+00:00",
         "2026-10-20T21:52:41+00:00",
@@ -1534,7 +1531,6 @@ PINNED_DOCUMENTS = [
         "20261020T215241.000000Z",
         None,
         "[]",
-        "2026-10-20T21:52:41+00:00",
         41,
         4,
         5,
@@ -1577,9 +1573,9 @@ def test_what_a_whole_build_writes_of_a_document_is_pinned_under_words(data: Pat
     assert (
         rows_of(
             index,
-            "SELECT path, source, type, id, key, title, space, project, status, issue_type,"
-            " labels, people, links, created, updated, version, revision, url, breadcrumb,"
-            " fetched_at, length, first_section, last_section FROM documents ORDER BY path",
+            "SELECT path, source, type, id, key, title, scope, status, subtype, labels, people,"
+            " parent, links, created, updated, version, revision, url, breadcrumb, length,"
+            " first_section, last_section FROM documents ORDER BY path",
         )
         == PINNED_DOCUMENTS
     ), WORDS_CHANGED

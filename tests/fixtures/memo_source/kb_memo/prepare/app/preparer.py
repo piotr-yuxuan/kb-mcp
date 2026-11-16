@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from kb_mcp.kernel.outcome import Outcome
 from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
-from kb_mcp.mirror.domain.mirror import FrontMatter
+from kb_mcp.mirror.domain.mirror import FrontMatter, scope_name
 from kb_mcp.mirror.domain.mirror_text import one_line
 
 if TYPE_CHECKING:
@@ -64,12 +64,12 @@ def prepare(run: SourceRun) -> Outcome[MemoCounts]:
             id=identifier,
             key=None,
             title=one_line(path.stem),
-            space=None,
-            project=None,
+            scope=scope_name("folder", SOURCE),
             status="",
-            issue_type=None,
+            subtype=None,
             labels=(),
             people=(),
+            parent=None,
             links=(),
             created=when,
             updated=when,
@@ -77,7 +77,6 @@ def prepare(run: SourceRun) -> Outcome[MemoCounts]:
             revision=sha256(text.encode()).hexdigest(),
             url=None,
             breadcrumb=(),
-            fetched_at=when,
         )
         wanted[PurePosixPath(SOURCE, f"{identifier}.md")] = dump(matter, text).encode()
     changes = write_changed(run.settings.docs, wanted, owned, remove=True)
