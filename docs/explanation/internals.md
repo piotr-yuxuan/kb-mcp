@@ -188,16 +188,16 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 
 [`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work log's
 row of `prepare`, reads its folder in place and never writes there, following a link
-only inside it ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)).
+only inside it ([`listed`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)).
 It has no raw store: its files are already on this machine, and reading them whole costs
 less than keeping a copy. They become documents, one per day of the journal, one per
 meeting of a day, one per other top-level entry of `todo.org` and of its archive
-([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), and one
+([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), and one
 per transcript
-([`transcripts`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), each
+([`transcripts`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), each
 with an id that org's own edits leave alone. A document's revision is a digest of what
 pandoc reads, with pandoc's version and options
-([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
+([`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py),
 [`Pandoc.org_converter`](../../src/kb_mcp/mirror/adapters/pandoc.py)): a
 document whose file holds that revision keeps its body and its dates, but a day, a meeting
 or a dated transcript, dated afresh by its day; another is converted again
@@ -213,14 +213,14 @@ time, unless the run met a problem.
   whose bytes differ, renamed into place, and the files of documents gone removed
   ([`worklog_owned`](../../src/kb_mcp/sources/worklog/prepare/adapters/owned.py)).
 - **One document's failure**, a file that links out of the folder
-  ([`listed`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), is
+  ([`listed`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)), is
   over 32 MiB or is not UTF-8
-  ([`org_text`](../../src/kb_mcp/sources/worklog/prepare/adapters/files.py)), or a
+  ([`org_text`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)), or a
   conversion that fails, is named by its path, never by its content, with what it holds
-  back ([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
+  back ([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py));
   the run goes on, writes no file that a file not read builds, every one for `todo.org`
   or its archive, else that file's own
-  ([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+  ([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
   and then removes no file but the old one of a document written again under another
   title's path, so that the last good copy of each stays. A file of the mirror that
   does not read is a problem too, by its path in the mirror: the run writes nothing over
@@ -426,12 +426,12 @@ The work log's row does the same from the folder itself. Closing an entry turns 
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
 heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
 title, never from its keyword or planning lines
-([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)), so its
+([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), so its
 file keeps its name. Its text changed, so its revision did
-([`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)): the
+([`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)): the
 entry is converted again, its `status` becomes `DONE`, and its `updated` the latest of
 its timestamps up to the file's time of change, usually the closing one
-([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 Every other entry keeps its file as it was, dates included, though `todo.org`'s time
 changed ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). An
 entry archived to `todo.org_archive` keeps its id too: its file is rewritten, labelled

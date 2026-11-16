@@ -395,29 +395,29 @@ documents ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)).
 
 The work log's journal, a top-level heading with a day among its children, whatever its
 title, is no longer one entry: each day is a document, and each meeting of a day
-([`journal`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`journal`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 Both are found by their shape alone. A day is a heading at level 1 or 2 titled by one
 active timestamp of a date alone, such as `<2026-10-28 Wed>`
-([`date_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py),
-[`PlacedHeading.day`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
+([`date_title`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py),
+[`PlacedHeading.day`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py));
 a meeting, a child of a day with `:MEETING:` or `:PARTICIPANTS:` in its drawer
-([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`PlacedHeading.meeting`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 A heading that org archived joins the day, or the meeting, that its `:ARCHIVE_OLPATH:`
 names, and every part of one date makes one day
-([`days_and_meetings`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`days_and_meetings`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 A day's id is `d-` and its date; a meeting's, `m-`, its day's date and its title's
 slug, numbered in the journal's order where two share one
-([`meeting_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`meeting_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 A meeting names its participants as its `:PARTICIPANTS:` writes them
-([`participants`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`participants`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 and a transcript its speakers
-([`speakers`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py));
+([`speakers`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py));
 a meeting links the transcript whose file its `:MEETING:` names
-([`link_target`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)),
+([`link_target`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py)),
 which links it back
-([`linked_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)).
+([`linked_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)).
 A day, a meeting and a dated transcript are dated by their day
-([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 afresh at each run
 ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 
@@ -453,7 +453,7 @@ afresh at each run
   it, so that a search for that title misses those notes. An archived heading joins its
   meeting by the meeting's title as org writes it in `:ARCHIVE_OLPATH:`, whose `/` org
   does not escape
-  ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py)):
+  ([`Heading.outline_title`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py)):
   the longest title of the day that begins the path wins, but the day keeps a part of
   one of two meetings of that title, which the path names alike; a title holding `//`,
   or beginning or ending with `/`, or one whose keyword `todo.org` does not declare,
@@ -481,7 +481,7 @@ afresh at each run
   matter at its largest, twelve participants and twelve refs per relation, each of the
   longest, reads in 3,463 of `read`'s 4,000 with the smallest slice
   ([the tests](../../tests/test_budgets.py)): `participant` is the work log's role
-  alone ([`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+  alone ([`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
   since an issue with every other role and twelve participants would read 5,702, and
   an issue with those links 4,318, so backlinks for issue keys will need a budget of
   their own.
@@ -507,13 +507,13 @@ afresh at each run
 A file of the work log that cannot be read, over 32 MiB, linking out, not UTF-8, or a
 folder that cannot be listed, is reported at each run by its path and reason, with
 what it holds back
-([`held_back`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`held_back`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 and the run writes every document but those that it builds
-([`writable`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)):
+([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)):
 every document for `todo.org` or its archive, whence every day, meeting and entry; for
 a transcript, its own, whose last copy stays. A meeting needs nothing of its transcript
 but the id, which the path gives, so that it links a transcript read or not
-([`transcript_ids`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py)),
+([`transcript_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
 and a link is written when its other end is written in that run or kept from an
 earlier one ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 A run that meets a problem still removes no file but the old one of a document written

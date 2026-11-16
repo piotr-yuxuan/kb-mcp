@@ -47,10 +47,8 @@ from kb_mcp.mirror.domain.mirror import (
 )
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
-from kb_mcp.sources.worklog.prepare.adapters import files
-from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_globs, worklog_path
-from kb_mcp.sources.worklog.prepare.domain.worklog import (
+from kb_mcp.sources.worklog.fetch.adapters import files
+from kb_mcp.sources.worklog.fetch.domain.worklog import (
     TODO,
     TODO_ARCHIVE,
     TYPE_ROLES,
@@ -64,6 +62,8 @@ from kb_mcp.sources.worklog.prepare.domain.worklog import (
     transcripts,
     writable,
 )
+from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
+from kb_mcp.sources.worklog.prepare.domain.layout import worklog_globs, worklog_path
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
@@ -72,7 +72,7 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.output import Detail
     from kb_mcp.mirror.adapters.pandoc import Pandoc
     from kb_mcp.mirror.domain.mirror import FrontMatter
-    from kb_mcp.sources.worklog.prepare.domain.worklog import OrgText
+    from kb_mcp.sources.worklog.fetch.domain.worklog import OrgText
 
 TRACER = trace.get_tracer(__name__)
 # Why a meeting is a warning: its link reaches no transcript found.

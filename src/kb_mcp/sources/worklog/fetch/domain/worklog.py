@@ -34,7 +34,7 @@ from kb_mcp.kernel.outcome import OutcomeWarning
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, scope_name
-from kb_mcp.sources.worklog.prepare.domain import org
+from kb_mcp.sources.worklog.fetch.domain import org
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence

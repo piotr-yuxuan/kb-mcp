@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 
 from kb_mcp.kernel.outcome import Problem
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.worklog.prepare.domain.worklog import (
+from kb_mcp.sources.worklog.fetch.domain.worklog import (
     ARCHIVED,
     ORG,
     TODO,

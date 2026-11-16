@@ -75,7 +75,7 @@ work log's. A connector is a [`Connector`](../../src/kb_mcp/sources/declaration.
 [`Connector.checks`](../../src/kb_mcp/sources/declaration.py).
 The roles that each document type takes are Confluence's and Jira's
 [`TYPE_ROLES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) and the
-work log's [`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py),
+work log's [`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py),
 which each prepare writes into its source's file of the mirror, a
 [`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py), for the index.
 
@@ -234,7 +234,7 @@ the same document at other stages,
 [`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
-[`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py) and
+[`WorklogDocument`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py) and
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
 [`FrontMatter.ref`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each
 connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py), with
@@ -244,7 +244,7 @@ connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py)
 [`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py);
 [`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py),
 which gives a page's and an issue's breadcrumb;
-the work log's [`revision`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py);
+the work log's [`revision`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py);
 [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py),
 [`CONFIRM_AFTER`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py),
 [`too_many_gone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and
@@ -829,8 +829,8 @@ in place and never written, with one scope, whose documents are days, meetings, 
 and transcripts.
 
 - **In the code.** [`WORKLOG`](../../src/kb_mcp/sources/worklog/declared.py),
-  [`OrgFile`](../../src/kb_mcp/sources/worklog/prepare/domain/org.py) and
-  [`WorklogDocument`](../../src/kb_mcp/sources/worklog/prepare/domain/worklog.py).
+  [`OrgFile`](../../src/kb_mcp/sources/worklog/fetch/domain/org.py) and
+  [`WorklogDocument`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py).
 
 ### conversion cache
 

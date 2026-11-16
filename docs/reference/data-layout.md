@@ -362,7 +362,7 @@ does `load`: `source` a source's name, `type` a lower-case word, `id` one safe p
 `revision` a token, each key its own rule when it is set. What a source fills is checked
 by the code that builds its front matter
 (`sources.atlassian.prepare.domain.catalogue.AtlassianFrontMatter`,
-`sources.worklog.prepare.domain.worklog.WorklogFrontMatter`): a key that one Atlassian
+`sources.worklog.fetch.domain.worklog.WorklogFrontMatter`): a key that one Atlassian
 source alone has is `null` for the other and never for its own, and the work log fills
 none of them. Every text is one line, with no line break of any kind;
 times are in UTC, written as quoted strings to the second; strings that YAML 1.1 could
@@ -445,7 +445,7 @@ A document has one `author`, one `creator` and one `assignee` at most, and each
 commenter and each participant once by name and identity. Each connector declares the roles that each of its document types takes, in the order
 of the roles, and its front matter's check refuses any other
 (`sources.atlassian.prepare.domain.catalogue.TYPE_ROLES`,
-`sources.worklog.prepare.domain.worklog.TYPE_ROLES`): a page and a blog post take
+`sources.worklog.fetch.domain.worklog.TYPE_ROLES`): a page and a blog post take
 `author` and `commenter`, an issue every role but `participant`, a work-log meeting
 and transcript `participant` alone, and an entry and a day none, so that no document
 names people of both kinds. Each prepare writes them into its source's file of the

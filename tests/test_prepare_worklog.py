@@ -38,7 +38,7 @@ from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_files
 from kb_mcp.mirror.domain.mirror import Link
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
-from kb_mcp.sources.worklog.prepare.adapters import files
+from kb_mcp.sources.worklog.fetch.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
     AS_IT_IS,

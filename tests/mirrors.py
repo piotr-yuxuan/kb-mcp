@@ -23,7 +23,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, time
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES as ATLASSIAN_ROLES
 from kb_mcp.sources.registry import SOURCES
-from kb_mcp.sources.worklog.prepare.domain.worklog import TYPE_ROLES as WORKLOG_ROLES
+from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES as WORKLOG_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

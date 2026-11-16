@@ -27,8 +27,8 @@ import pytest
 
 from kb_mcp.kernel.names import WORKLOG_ID, RefusedError
 from kb_mcp.mirror.domain.mirror import RELATIONS, Mention
-from kb_mcp.sources.worklog.prepare.domain import org
-from kb_mcp.sources.worklog.prepare.domain.worklog import (
+from kb_mcp.sources.worklog.fetch.domain import org
+from kb_mcp.sources.worklog.fetch.domain.worklog import (
     SUMMARY,
     TRANSCRIBED,
     WORKLOG_REVISION,
