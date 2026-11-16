@@ -676,7 +676,8 @@ def test_a_refresh_s_configuration_run_twice_changes_no_document(
     """
     options = [*given(home, endpoint), *SINCE]
     data = home / "data"
-    assert refreshed(capsys, *options)[0] == ExitStatus.OK
+    status, first = refreshed(capsys, *options)
+    assert status == ExitStatus.OK
     copies = json.loads((data / "copies" / "worklog" / "copies.json").read_text("utf-8"))
     before = (files_but_times(data / "raw"), files_but_times(data / "docs"))
     built = indexed(data / "index.sqlite")
@@ -687,7 +688,9 @@ def test_a_refresh_s_configuration_run_twice_changes_no_document(
     assert {**again, "as_of": None} == {**copies, "as_of": None}
     assert (files_but_times(data / "raw"), files_but_times(data / "docs")) == before
     assert indexed(data / "index.sqlite") == built
-    assert len(list((data / "runs").iterdir())) == ExitStatus.REFUSED
+    # Each refresh is a run of its own, recorded in a folder of its own.
+    assert {path.name for path in (data / "runs").iterdir()} == {first["run"], second["run"]}
+    assert first["run"] != second["run"]
 
 
 @pytest.mark.usefixtures("site")
