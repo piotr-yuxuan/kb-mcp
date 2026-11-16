@@ -209,4 +209,6 @@ theme, with refs and dates. Needs `search`.
 Browse a scope, read its top documents' first sections, and say how it is organised and
 what to read first. Needs `browse` and `read`.
 
-- `scope`: as `status` names it, such as `space:ENG`, or its key alone.
+- `scope`: as `status` names it, such as `space:ENG`, or its key alone, written whole
+  in the text; refused, naming them, when several scopes match or several sources hold
+  it, as `browse` refuses it.

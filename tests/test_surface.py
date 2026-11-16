@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from copy import replace
 from typing import TYPE_CHECKING
 
 import anyio
@@ -19,9 +20,10 @@ from mcp.shared.exceptions import MCPError
 from mcp_types import TextContent
 
 from kb_mcp.cli.main import main
-from kb_mcp.mcp.app.tools import Library
+from kb_mcp.mcp.app.surface import prompts
+from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.app.indexing import build_index
-from tests.answers import estimate
+from tests.answers import built, estimate, parts
 from tests.mirrors import MOMENT, fillers, issue, page, write
 
 if TYPE_CHECKING:
@@ -237,7 +239,7 @@ def test_a_prompt_is_listed_only_when_its_tools_are_served(home: Path) -> None:
             ["space:eng", "eng"],
         ),
         ("overview", {"scope": "project:proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
-        ("overview", {"scope": "proj"}, ['browse(scope="PROJ")'], ["proj"]),
+        ("overview", {"scope": "proj"}, ['browse(scope="project:PROJ")'], ["proj"]),
     ],
 )
 def test_a_prompt_is_one_user_message_of_canonical_values(
@@ -252,6 +254,34 @@ def test_a_prompt_is_one_user_message_of_canonical_values(
     text = message.content.text
     assert all(each in text for each in canonical)
     assert not any(re.search(rf"(?<![\w/-]){re.escape(each)}(?![\w-])", text) for each in given)
+
+
+@pytest.mark.parametrize(
+    ("scope", "named"),
+    [
+        ("pay", "project:PAY (jira), project:PAY (tracker), space:PAY (confluence)"),
+        ("project:PAY", "project:PAY (jira), project:PAY (tracker)"),
+    ],
+)
+def test_an_overview_of_several_scopes_is_refused_as_browse_refuses_it(
+    tmp_path: Path, scope: str, named: str
+) -> None:
+    """The prompt never renders a call that browse refuses: it names each scope matched.
+
+    A key that two scopes hold, or a scope that two sources hold, as browse names them.
+    """
+    library = built(
+        tmp_path,
+        [
+            (page("100", "Payments home", scope="space:PAY"), None),
+            (issue("PAY-1", "Payments epic"), None),
+            (replace(issue("PAY-2", "Payments rollout"), source="tracker"), None),
+        ],
+    )
+    (overview,) = [each for each in prompts(library) if each.name == "overview"]
+    with pytest.raises(UnanswerableError) as refused:
+        overview.render(scope)
+    assert parts(str(refused.value))[1] == named
 
 
 @pytest.mark.parametrize(

@@ -551,6 +551,20 @@ def scope_of(reader: SearchReader, value: str | None) -> str | None:
     return canonical(reader, "scope" if value is None or ":" in value else "scope key", value)
 
 
+def sole_scope(listed: Sequence[IndexedDocument]) -> str | None:
+    """Give the one scope, whole, that these documents hold; None for none.
+
+    Raises UnanswerableError naming each scope with its source, as browse asks for one,
+    when they hold several, or one that several sources hold.
+    """
+    held = sorted({(entry.front.scope, entry.front.source) for entry in listed})
+    if len(held) > 1:
+        named = [f"{each} ({source})" for each, source in held]
+        message = "browse: several scopes match; give one whole, and its source if need be:"
+        raise UnanswerableError(responses.refusal(message, named[:VALUES_SHOWN], len(named)))
+    return held[0][0] if held else None
+
+
 def instant(name: str, value: str | None) -> datetime | None:
     """Read an ISO 8601 date or time; a date is its midnight, a time without offset UTC."""
     if value is None:
@@ -834,6 +848,12 @@ class Library:
         with self._reading() as reader:
             return scope_of(reader, scope) or ""
 
+    def sole_scope(self, scope: str) -> str:
+        """Give the one scope, whole, that browse lists for ``scope``; refuse as browse does."""
+        with self._reading() as reader:
+            listed = reader.listing(Filters(scope=scope_of(reader, scope)))
+        return sole_scope(listed) or ""
+
     def resolve(self, ref: str) -> str | None:
         """Find a document's path by its id, key, address or path, as read does."""
         with self._reading() as reader:
@@ -950,11 +970,7 @@ class Library:
             )
             listed = reader.listing(kept)
             top = None if parent is None else self._find(reader, parent)
-        held = sorted({(entry.front.scope, entry.front.source) for entry in listed})
-        if len(held) > 1:
-            named = [f"{each} ({source})" for each, source in held]
-            message = "browse: several scopes match; give one whole, and its source if need be:"
-            raise UnanswerableError(responses.refusal(message, named[:VALUES_SHOWN], len(named)))
+        sole_scope(listed)  # refuses several scopes, or one of several sources
         if parent is not None and top not in listed:
             return responses.answer(NOT_MIRRORED)
         # Ties go by path: pages of results need one order from call to call.

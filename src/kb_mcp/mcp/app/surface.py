@@ -81,12 +81,6 @@ class Surface(Record):
     prompts: tuple[ServedPrompt, ...]
 
 
-def scoped(library: Library, scope: str) -> str:
-    """Read a scope, whole or by its key, as the index holds it, as filters read it."""
-    bounded(scope=(scope, LONGEST["value"]))
-    return library.scope_of(scope)
-
-
 def prompts(library: Library) -> tuple[ServedPrompt, ...]:
     """Give every prompt, each rendering its text from canonical values alone."""
 
@@ -104,8 +98,8 @@ def prompts(library: Library) -> tuple[ServedPrompt, ...]:
         )
 
     def changes(scope: str, since: str) -> str:
-        held = scoped(library, scope)
-        bounded(since=(since, LONGEST["value"]))
+        bounded(scope=(scope, LONGEST["value"]), since=(since, LONGEST["value"]))
+        held = library.scope_of(scope)
         moment = cast("datetime", instant("since", since))  # None for None alone
         filters = json.dumps({"scope": held, "updated_after": moment.isoformat()})
         return (
@@ -116,7 +110,8 @@ def prompts(library: Library) -> tuple[ServedPrompt, ...]:
         )
 
     def overview(scope: str) -> str:
-        held = scoped(library, scope)
+        bounded(scope=(scope, LONGEST["value"]))
+        held = library.sole_scope(scope)
         return (
             f"Give an overview of the scope {held}: browse(scope={json.dumps(held)}), then"
             " each call that an answer ends with; read the first section of its top"
