@@ -206,6 +206,33 @@ def test_a_profile_that_fails_to_move_leaves_the_cookies(
     assert [each["event"] for each in logged] == ["session.not_moved"]
 
 
+def test_a_run_signed_in_by_a_session_not_moved_keeps_it_there_for_the_next_move(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review round 3: a fetch whose move failed signs in and keeps; the next run moves all.
+
+    Kept into the site's folder, the cookies would give the site a session of its own, and
+    the former profile would never move.
+    """
+    root = tmp_path / "session"
+    former(root, HOST)
+    session = SavedSession(
+        site=SITE, folder=folder_of(root, SITE), again="", source="jira", sites=SITES
+    )
+    with monkeypatch.context() as full:
+        failing_rename(full, PROFILE)
+        session.adopt_former()
+    with session.client() as client:
+        session.keep(client)
+    assert not (folder_of(root, SITE) / COOKIES).exists()
+    with capture_logs() as logged:
+        session.adopt_former()
+    assert sorted(each.name for each in folder_of(root, SITE).iterdir()) == [PROFILE, COOKIES]
+    assert not (root / COOKIES).exists()
+    assert not (root / PROFILE).exists()
+    assert [each["event"] for each in logged] == ["session.moved"]
+
+
 def test_a_lock_that_cannot_be_made_is_a_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

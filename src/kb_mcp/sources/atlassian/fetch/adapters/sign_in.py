@@ -71,26 +71,34 @@ class SavedSession(Record):
     sites: Mapping[str, str]
     name: str = "the session saved by login"
 
-    def client(self) -> httpx.Client:
-        """Return a client carrying the saved cookies; raise SignInNeededError if none are.
+    def cookies(self) -> Path:
+        """Give the file of the site's cookies: its own, or the session kept before.
 
         Until a run that writes moves it, the session kept before sessions were a site's
-        signs this site in when it is this site's, as ``kept_why`` judges, so that a dry run
-        or ``doctor`` before it needs no login; never another site.
+        is this site's when ``kept_why`` judges it so and the site has no cookies of its
+        own, so that a dry run or ``doctor`` before it needs no login; never another site's.
         """
         own, former = self.folder / COOKIES, self.folder.parent / COOKIES
         if not own.exists() and kept_why(former.parent, self.source, self.sites) is None:
-            own = former
+            return former
+        return own
+
+    def client(self) -> httpx.Client:
+        """Return a client carrying the saved cookies; raise SignInNeededError if none are."""
         try:
-            cookies = read_cookies(own)
+            cookies = read_cookies(self.cookies())
         except OSError, ValueError:
             raise SignInNeededError from None
         return http.client(self.site, cookies)
 
     def keep(self, client: httpx.Client) -> None:
-        """Write back the site's cookies that the client holds, renewed ones included."""
+        """Write back the site's cookies that the client holds, renewed ones included.
+
+        Into the file that signed it in, so that a session kept before and not moved yet,
+        as when its move failed, stays whole for the next run to move.
+        """
         host = urlsplit(self.site).hostname or ""
-        write_cookies(self.folder / COOKIES, for_site(http.jar(client), host))
+        write_cookies(self.cookies(), for_site(http.jar(client), host))
 
     def adopt_former(self) -> None:
         """Move the session kept before sessions were a site's into this site's folder."""
