@@ -223,7 +223,8 @@ def acted(ending: str) -> Planned:
 def test_each_entry_is_written_as_its_unit_ends_and_ctrl_c_ends_the_invocation() -> None:
     """Units ended keep theirs; the one stopped is interrupted, those after it not run: 130.
 
-    A unit per source whose source's fetch was interrupted is not run, nor acts.
+    A unit per source whose source's fetch was interrupted is not run, nor acts. Each unit
+    that ends is written as it ends; those that Ctrl-C ends, once.
     """
     written: list[list[tuple[str, str]]] = []
     acting: list[str] = []
@@ -261,8 +262,7 @@ def test_each_entry_is_written_as_its_unit_ends_and_ctrl_c_ends_the_invocation()
     ]
     assert done.exit_status == ExitStatus.INTERRUPTED
     assert written[0] == [("fetch", "jira")]
-    assert written[1] == [("fetch", "jira"), ("fetch", "worklog")]
-    assert len(written[-1]) == len(units)
+    assert [len(entries) for entries in written[1:]] == [len(units)]
 
 
 def test_an_error_that_no_unit_catches_passes_with_the_entries_before_it_written() -> None:

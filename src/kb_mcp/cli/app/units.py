@@ -102,33 +102,39 @@ class Progress(Record):
             for each in followed(unit, self.units)
         )
 
-    def end(self, unit: Unit, outcome: Outcome) -> None:
-        """Keep how a unit ended, as this invocation's entry, and write every unit's last."""
-        self.outcomes[unit] = outcome
-        self.entries[unit] = Recorded(
-            stage=unit.stage,
-            source=unit.source,
-            ending=outcome.ending,
-            counts=to_jsonable_python(outcome.counts),
-            problems=outcome.problems,
-            warnings=outcome.warnings,
-            invocation=self.invocation,
-        )
+    def end(self, ended: Mapping[Unit, Outcome]) -> None:
+        """Keep how each unit ended, as this invocation's entry, then write every unit's last."""
+        for unit, outcome in ended.items():
+            self.outcomes[unit] = outcome
+            self.entries[unit] = Recorded(
+                stage=unit.stage,
+                source=unit.source,
+                ending=outcome.ending,
+                counts=to_jsonable_python(outcome.counts),
+                problems=outcome.problems,
+                warnings=outcome.warnings,
+                invocation=self.invocation,
+            )
         self.acting = None
         self.write(tuple(self.entries[each] for each in self.units if each in self.entries))
 
     def interrupted(self) -> None:
         """End the invocation interrupted: the unit at work so, each other taken not run.
 
-        Once: Ctrl-C interrupts an invocation once, however many units it reaches.
+        Once: Ctrl-C interrupts an invocation once, however many units it reaches; every
+        unit's last entry is then written once.
         """
         if self.own:
             return
         self.own = ("interrupted",)
+        ended = {
+            unit: Outcome(ending="not run")
+            for unit in self.units
+            if unit in self.taken and unit not in self.outcomes
+        }
         if self.acting is not None:
-            self.end(self.acting, Outcome(ending="interrupted"))
-        for unit in [each for each in self.units if each in self.taken - set(self.outcomes)]:
-            self.end(unit, Outcome(ending="not run"))
+            ended[self.acting] = Outcome(ending="interrupted")
+        self.end(ended)
 
     def done(self) -> Done:
         """Give what the invocation did: its status folds its own ending and each unit's last."""
@@ -170,7 +176,7 @@ def run_sources(
                     outcome = each.act()
                 span.set_attribute("kb_mcp.ending", outcome.ending)
                 log.info(ended, source=source, ending=outcome.ending)
-                progress.end(each.unit, outcome)
+                progress.end({each.unit: outcome})
     except KeyboardInterrupt:
         acting = progress.acting
         log.warning(interrupted, source=None if acting is None else acting.source)
@@ -216,7 +222,7 @@ def run_units(
                 continue
             for each in group:
                 progress.acting = each.unit
-                progress.end(each.unit, each.act())
+                progress.end({each.unit: each.act()})
     except KeyboardInterrupt:
         progress.interrupted()
     return progress.done()
