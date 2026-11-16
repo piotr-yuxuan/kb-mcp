@@ -12,13 +12,14 @@ fixture, the embedding endpoint the tests' tiny model; each test has a scratch h
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
 import sqlite3
 import time
 from contextlib import closing
 from copy import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from typing import TYPE_CHECKING
 
 import pytest
@@ -50,6 +51,7 @@ from tests.endpoint import Scripted, nothing_listening, serving
 from tests.test_cli import logged_as
 from tests.test_fetching import SITE, FakeSite
 from tests.test_prepare_worklog import FIXTURE, settle
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -937,6 +939,31 @@ def test_a_record_changed_once_read_and_before_the_run_is_held_refuses_it(
     assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
     assert str(folder / "configuration.json") in capsys.readouterr().err
     assert (folder / "outcomes.json").read_bytes() == entries
+
+
+def test_the_run_s_start_and_the_invocation_recorded_are_its_log_file_s_instant(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The data layout: an entry's invocation names that invocation's log file.
+
+    One instant names the log file, starts the run and its invocation: the clock that
+    names the log file is made to say a time of its own, which the record says too.
+    """
+    instant = datetime(2026, 1, 2, 3, 4, 5, 678000, tzinfo=UTC)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, _tz: tzinfo | None = None) -> datetime:
+            return instant
+
+    monkeypatch.setattr("kb_mcp.observability.app.observed.datetime", Clock)
+    options = given(home, endpoint)
+    assert main(["fetch", "--yes", "--format", "json", *options, "worklog"]) == ExitStatus.OK
+    configured, entries = record_of(home, json.loads(capsys.readouterr().out)["run"])
+    assert datetime.fromisoformat(configured["started"]) == instant
+    assert [datetime.fromisoformat(each["invocation"]) for each in entries] == [instant]
+    logs = {path.name for path in user_log_folder(home.resolve()).iterdir()}
+    assert f"fetch-20260102T030405Z-{os.getpid()}.jsonl" in logs
 
 
 def test_a_dry_run_records_nothing(

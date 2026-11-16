@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from kb_mcp.cli.app.units import Done
-    from kb_mcp.cli.domain.command import Stage
     from kb_mcp.cli.domain.runs import Unit
     from kb_mcp.config.domain.settings import Loaded, Settings
     from kb_mcp.kernel.output import Detail
@@ -118,15 +117,16 @@ def whole_run(
     arguments: argparse.Namespace,
     loaded: Loaded,
     run: str,
-    stage: Stage,
+    started: datetime,
     options: Mapping[str, JsonValue],
 ) -> tuple[ExitStatus, Ended | None]:
-    """Run one stage over the whole, as a run recorded, its options as given; give its outcome.
+    """Run the command's stage over the whole, as a run recorded; give its outcome.
 
-    The configuration, resolved now, enables that stage alone; the status is its unit's
-    ending's, 2 when refused.
+    The configuration, resolved as of the run's start, ``started``, enables that stage
+    alone, with its ``options`` as given; the status is its unit's ending's, 2 when
+    refused.
     """
-    started = datetime.now(UTC)
+    stage = arguments.command.name
     configuration = Configuration(
         run=run,
         command=stage,

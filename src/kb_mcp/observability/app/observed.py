@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import metrics, trace
-from pydantic import ConfigDict, Field
+from pydantic import AwareDatetime, ConfigDict, Field
 from rich.console import Console
 
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -69,11 +69,15 @@ class Invocation(Record):
 
 
 class Run(Record):
-    """A run that ``observed`` watches: its id, and the exit status its body sets before it ends."""
+    """A run that ``observed`` watches: its id, its start, and the exit status its body sets.
+
+    ``started`` is the instant that names its log file.
+    """
 
     model_config = ConfigDict(frozen=False)
 
     id: str
+    started: AwareDatetime
     status: int = ExitStatus.OK
 
 
@@ -117,7 +121,7 @@ def observed(
     root = logging.getLogger()
     log = structlog.get_logger()
     command = invocation.command
-    run = Run(id=invocation.run or secrets.token_hex(8))
+    run = Run(id=invocation.run or secrets.token_hex(8), started=datetime.now(UTC))
     with ExitStack() as stack:
         for handler in [handler for handler in root.handlers if isinstance(handler, ConsoleLines)]:
             root.removeHandler(handler)
@@ -132,7 +136,7 @@ def observed(
         path = None
         try:
             path = stack.enter_context(
-                log_file(folder, command, run.id, datetime.now(UTC), invocation.commands)
+                log_file(folder, command, run.id, run.started, invocation.commands)
             )
         except OSError as error:
             log.warning("log.unwritable", folder=str(folder), reason=str(error))

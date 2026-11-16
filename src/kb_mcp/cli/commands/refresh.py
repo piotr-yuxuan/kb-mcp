@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -17,6 +16,7 @@ from kb_mcp.config.domain.settings import without_secrets
 
 if TYPE_CHECKING:
     import argparse
+    from datetime import datetime
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.exit_status import ExitStatus
@@ -24,17 +24,17 @@ if TYPE_CHECKING:
 
 
 def run(
-    arguments: argparse.Namespace, loaded: Loaded, run: str
+    arguments: argparse.Namespace, loaded: Loaded, run: str, started: datetime
 ) -> tuple[ExitStatus, Refreshed | None]:
     """Run every stage as a run recorded, or resume the run that --resume names; exit as it folds.
 
-    A refresh records its configuration, resolved now: the sources that a fetch would
-    take and those that a prepare would, each in their order, the fetch's options as of
-    now, and an index not rebuilt. A resume runs the configuration that its run recorded,
-    whichever command started it: each unit not last ended done, and each that follows
-    one of those. The status folds every unit's last ending and this invocation's own.
+    A refresh records its configuration, resolved as of this invocation's start,
+    ``started``: the sources that a fetch would take and those that a prepare would, each
+    in their order, the fetch's options as of then, and an index not rebuilt. A resume
+    runs the configuration that its run recorded, whichever command started it: each
+    unit not last ended done, and each that follows one of those. The status folds every
+    unit's last ending and this invocation's own.
     """
-    started = datetime.now(UTC)
     configuration = None
     if arguments.resume is None:
         values = values_of(loaded)

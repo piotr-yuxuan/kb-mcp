@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -17,24 +16,26 @@ from kb_mcp.config.domain.settings import without_secrets
 
 if TYPE_CHECKING:
     import argparse
+    from datetime import datetime
 
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.exit_status import ExitStatus
     from kb_mcp.kernel.output import Detail
 
 
-def run(arguments: argparse.Namespace, loaded: Loaded, run: str) -> tuple[ExitStatus, Ran | None]:
+def run(
+    arguments: argparse.Namespace, loaded: Loaded, run: str, started: datetime
+) -> tuple[ExitStatus, Ran | None]:
     """Run each source taken in this stage, as a run recorded; exit as its units' endings fold.
 
-    The entry refused what it could before asking. The configuration resolved now, the
-    sources taken in their order and, in a fetch, its options as of now, is recorded, then
-    run from its record (``recorded``), exit 2 when refused. What a ``preflight``
-    refuses, such as an --until before --since, or a work log that is not a folder, fails
-    its unit alone. Each unit's problems are said as it runs, by place and reason, never
-    content.
+    The entry refused what it could before asking. The configuration resolved as of the
+    run's start, ``started``, the sources taken in their order and, in a fetch, its
+    options as of then, is recorded, then run from its record (``recorded``), exit 2 when
+    refused. What a ``preflight`` refuses, such as an --until before --since, or a work
+    log that is not a folder, fails its unit alone. Each unit's problems are said as it
+    runs, by place and reason, never content.
     """
     stage = arguments.command.name
-    started = datetime.now(UTC)
     taken, _ = chosen(arguments, values_of(loaded))
     configuration = Configuration(
         run=run,
