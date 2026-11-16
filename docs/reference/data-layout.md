@@ -656,17 +656,20 @@ store, as `migrated`, with the as-of time that the source's file of the mirror h
 ([below](#a-sources-file)), as `as_of`, before it reads the folder: a document read
 takes its dates from there as its stored copy's, its text read then taken as theirs, one
 that no read takes yet keeps its file of the mirror, which prepare removes nothing of
-meanwhile, and a fetch with a problem leaves the as-of time as the former version served
-it. A file of the mirror that does not read then is a problem of the fetch by its path,
-never its content: what it holds is lost, a document dated afresh when read, and, as by
-any problem, the read finds no document gone and leaves `as_of`.
+meanwhile but the old file of a document written again under another path, and a fetch
+with a problem leaves the as-of time as the former version served it. A file of the
+mirror that does not read then is a problem of the fetch by its path, never its content:
+what it holds is lost, a document dated afresh when read, and, as by any problem, the
+read finds no document gone and leaves `as_of`.
 
 Prepare converts each document's text through the source's rows of the cache of
 conversions ([below](#pandocs-conversions)), and writes every file again, those whose
 bytes changed: deleting `<data>/docs/worklog/` and preparing again gives the same files
 back, converting nothing. A prepare whose conversion fails is a problem by the
-document's org file and id, and removes no file; a prepare that finds no copy store is a
-problem naming `kb-mcp fetch worklog`, its row failed and the others going on.
+document's org file and id, and removes no file but the old file of a document written
+again under another path, which the id that begins its name tells, the longest of the
+store's (`named_id`); a prepare that finds no copy store is a problem naming `kb-mcp
+fetch worklog`, its row failed and the others going on.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2

@@ -415,19 +415,26 @@ Its prepare reads that store alone and converts through the cache of conversions
   fetch of a store: the created and updated dates of the mirror are carried over before
   the read, and until a read without a problem takes them all, `prepare` removes no
   file; a file of the mirror that does not read then fails that fetch, by its path, so
-  that the loss of its dates is said once, loudly, not lost in a warning. A
-  prepare whose conversion fails removes no file, so that a document retitled meanwhile
-  keeps its old file beside its new one until a prepare converts everything, and the
-  others' links to the document that failed are left out meanwhile, its file no
-  longer known to prepare. The first fetch after the upgrade takes the text that it reads
-  as the one that the mirror's dates are of: a document without a day edited since the
-  former version last prepared keeps its file's dates until its text changes again.
+  that the loss of its dates is said once, loudly, not lost in a warning. A prepare
+  whose conversion fails removes no file either, and the others' links to the document
+  that failed are left out meanwhile, its file no longer known to prepare. Either way,
+  the old file of a document written again under another path goes, told by the id that
+  its name carries
+  ([`named_id`](../../src/kb_mcp/sources/worklog/prepare/domain/layout.py)), the
+  longest of the store's that begins it: the file of a document gone whose name begins
+  with a written document's id and a dash goes with it, sooner than it would. The first
+  fetch after the upgrade takes the text that it reads as the one that the mirror's dates
+  are of: a document without a day edited since the former version last prepared keeps
+  its file's dates until its text changes again.
 - **Rejected.** A store in SQLite, row by row: a file written whole is atomic by its
   rename, and a fetch reads the whole folder anyway. The store under `<data>/raw/`,
   whose module the Atlassian sources own, or named after the work log, which no context
   above the sources may name. The prepare comparing each copy's revision with its file
   of the mirror, which keeps the mirror as a memory; the cache of conversions keyed by
-  the text does it without one.
+  the text does it without one. A document's old file found by a path that the copy
+  store records: the fetch, which alone writes the store, would know the mirror's
+  layout, and could not tell which path a prepare last wrote; or by the id of each
+  file's front matter, the mirror read as a memory again.
 - **Settled** by plan 060, on 053's record of the concepts.
 
 ## The journal split by shape

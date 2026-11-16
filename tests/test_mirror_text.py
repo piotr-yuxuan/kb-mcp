@@ -17,7 +17,7 @@ from kb_mcp.sources.atlassian.prepare.domain.layout import (
     issue_path,
     tree_path,
 )
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import named_id, worklog_path
 
 MOMENT = datetime(2026, 10, 20, 21, 52, 41, tzinfo=UTC)
 DIGEST = "e" * 64
@@ -117,6 +117,37 @@ def test_work_log_documents_are_placed_by_type_id_and_title(
     """
     path = worklog_path("worklog", document_type, identifier, title)
     assert path == PurePosixPath("worklog", expected)
+
+
+ENTRY, SECOND = "e-0123456789abcdef", "e-0123456789abcdef-2"
+
+
+@pytest.mark.parametrize(
+    ("document_type", "identifier", "title", "found"),
+    [
+        ("entry", ENTRY, "Retrospective notes", ENTRY),
+        ("entry", SECOND, "Retrospective notes", SECOND),
+        ("entry", ENTRY, "2026 plan", ENTRY),
+        ("entry", ENTRY, "", ENTRY),
+        ("transcript", "t-20261021-notes-on-x", "Notes on the ledger", "t-20261021-notes-on-x"),
+        ("meeting", "m-20261026-one-to-one--2", "One-to-one", "m-20261026-one-to-one--2"),
+        ("day", "d-20261027", "<2026-10-27 Tue>", "d-20261027"),
+        ("entry", "e-fedcba9876543210", "Gone", None),
+    ],
+)
+def test_a_work_log_file_s_name_carries_its_document_s_id(
+    document_type: str, identifier: str, title: str, found: str | None
+) -> None:
+    """The id that begins a file's name, before a dash or alone, the longest of those known.
+
+    So that the second entry of one digest is told from the first, and a meeting's number
+    is its own. A name that begins with no id known carries none; one that begins with a
+    known id and a dash carries it, though its slug begins with a number.
+    """
+    known = {ENTRY, SECOND, "t-20261021-notes", "t-20261021-notes-on-x", "d-20261027"}
+    known |= {"m-20261026-one-to-one", "m-20261026-one-to-one--2"}
+    path = worklog_path("worklog", document_type, identifier, title)
+    assert named_id(path, known) == found
 
 
 def test_an_empty_slug_leaves_the_id_alone() -> None:

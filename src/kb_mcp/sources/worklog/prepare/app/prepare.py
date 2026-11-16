@@ -6,10 +6,11 @@ under the source's folder alone, those of documents gone. It reads nothing of th
 log's folder, and nothing of the mirror but what ``mirror_files`` compares: deleting the
 source's folder of the mirror and preparing again gives it back, converting nothing. A
 run that meets a problem, a conversion that failed, removes no file, nor does one while a
-document carried over from the mirror waits for its first read, so that its file stays;
-each problem says what it held back. Building and writing are each a span; each document
-is counted, and each conversion timed, by its document type, as
-``docs/reference/telemetry/prepare.md`` lists them.
+document carried over from the mirror waits for its first read, so that its file stays,
+but the old file of a document written again under another path; each problem says what
+it held back. Building and writing are each a span; each document is counted, and each
+conversion timed, by its document type, as ``docs/reference/telemetry/prepare.md`` lists
+them.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES, WorklogFrontMatter
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import named_id, worklog_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -107,8 +108,9 @@ def prepare_worklog(
     which stays until a read takes it. The source's file beside its documents says the
     roles that each of its types takes and the store's as-of time, written whenever the
     store holds a document. A run that found a problem, or whose store holds a carried
-    date, removes no file; one that found none deletes the source's conversions that it
-    did not use.
+    date, removes no file but the old ones of a document written, which the id that its
+    file's name carries tells, as ``named_id`` says; one that found none deletes the
+    source's conversions that it did not use.
 
     The task ``work-log documents`` reports each document, by its title; the spans
     ``worklog.convert`` and ``worklog.write`` hold building the files and writing them.
@@ -170,10 +172,12 @@ def prepare_worklog(
             log.debug(
                 "worklog.document", path=str(path), id=each.id, title=each.title, type=each.type
             )
-    ends = {
-        document_id(source, each)
-        for each in [*(matter.id for matter, _ in ready.values()), *copies.migrated]
-    }
+    written = {matter.id for matter, _ in ready.values()}
+    known = copies.documents.keys() | copies.migrated.keys()
+    found = worklog_owned(docs, source)
+    # Each file not written, by the id that its name carries.
+    placed = {path: named_id(path, known) for path in found - ready.keys()}
+    ends = {document_id(source, each) for each in [*written, *copies.migrated]}
     wanted: dict[PurePosixPath, bytes | Path] = {
         path: dump(
             copy.replace(
@@ -194,8 +198,9 @@ def prepare_worklog(
         changes = write_changed(
             docs,
             wanted,
-            lambda folder: worklog_owned(folder, source),
+            lambda _: found,
             remove=not problems and not copies.migrated,
+            retired={path for path, identifier in placed.items() if identifier in written},
         )
         pruned = 0 if problems else conversions.drop_unused()
     log.info(
@@ -225,13 +230,18 @@ def plan_worklog(copies: Copies, docs: Path, *, source: str) -> Outcome[WorklogP
     """Say what preparing what a work log's copy store holds would do, writing nothing.
 
     It ends not run. A file is to remove when no document of the store has its path,
-    unless the store holds a carried date, as a run would then keep it; what pandoc would
-    convert is not counted. ``worklog.end`` says at INFO what a run would do.
+    unless the store holds a carried date, as a run would then keep it, but the old file
+    of a document of the store, by the id that its name carries; what pandoc would convert
+    is not counted. ``worklog.end`` says at INFO what a run would do.
     """
     wanted = {
         worklog_path(source, each.type, each.id, each.title) for each in copies.documents.values()
     }
-    to_remove = 0 if copies.migrated else len(worklog_owned(docs, source) - wanted)
+    known = copies.documents.keys() | copies.migrated.keys()
+    stale = worklog_owned(docs, source) - wanted
+    to_remove = len(
+        [path for path in stale if not copies.migrated or named_id(path, known) in copies.documents]
+    )
     structlog.get_logger().info("worklog.end", documents=len(wanted), to_remove=to_remove)
     return Outcome.of(
         WorklogPlanned(documents=len(wanted), to_remove=to_remove), otherwise="not run"

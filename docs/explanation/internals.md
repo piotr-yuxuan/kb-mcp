@@ -242,7 +242,8 @@ same files back, converting nothing, and its source's file says the store's as-o
   ([`writable`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)), finds none
   gone, and leaves the as-of time as it was, so that the last good copy of each stays.
   A conversion that fails is the prepare's, named by the document's org file and id;
-  that prepare removes no file. A prepare whose store no fetch wrote fails its row,
+  that prepare removes no file but the old one of a document written again under
+  another path. A prepare whose store no fetch wrote fails its row,
   naming `kb-mcp fetch` and the source, and the other rows go on.
 - **Offline**, everything: the work log is on this machine.
 

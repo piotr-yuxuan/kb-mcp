@@ -41,6 +41,7 @@ from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped, source_files
 from kb_mcp.mirror.domain.mirror import Link, SourceFile
+from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.fetch.adapters import files
@@ -1334,6 +1335,48 @@ def test_an_entry_retitled_whose_conversion_fails_keeps_its_old_file(run: Run) -
     assert [each.where for each in outcome.problems] == [f"todo.org, {entry.matter.id}"]
     assert [each.path for each in run.files() if each.matter.id == entry.matter.id] == [entry.path]
     assert outcome.counts.changes.removed == 0
+
+
+def held_back_by_a_carried_date(run: Run) -> None:
+    """Give the data folder the base's mirror and no copy store, a transcript not read.
+
+    So that the store's first fetch meets a problem, and a carried date waits.
+    """
+    base_mirror(run.docs)
+    (run.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
+    settle(run.root, LATER)
+
+
+def held_back_by_a_conversion(run: Run) -> None:
+    """Prepare once, then edit another entry so that its conversion fails."""
+    run()
+    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
+
+
+@pytest.mark.parametrize(
+    "hold_back",
+    [held_back_by_a_carried_date, held_back_by_a_conversion],
+    ids=["a carried date", "a conversion"],
+)
+def test_an_entry_retitled_while_removals_are_held_back_keeps_one_file(
+    run: Run, hold_back: Callable[[Run], None]
+) -> None:
+    """Its old file is retired by the id that its name carries; nothing else is removed.
+
+    While a carried date waits, as after a first fetch that met a problem, or while a
+    conversion fails, two files of one id would leave index to skip one of them.
+    """
+    hold_back(run)
+    run.edit("todo.org", f"* {RUNBOOK}", f"* {RUNBOOK} v2")
+    entry = "e-bcedf74d5410c1d2"
+    assert run.plan().planned.to_remove == 1
+    outcome = run(failing="failing")
+    assert outcome.problems
+    assert [each.path for each in run.files() if each.matter.id == entry] == [
+        f"worklog/entries/{entry}-payout-gateway-rollback-runbook-v2.md"
+    ]
+    assert outcome.counts.changes.removed == 1
+    assert build_index(run.docs, run.data / "index.sqlite", datetime.now(UTC)).problems == ()
 
 
 def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
