@@ -18,7 +18,7 @@ tasks.
 | `eval.question` | debug | `id`, `chunking`, `mode`, `seconds`, `reciprocal_rank` | A golden question is ranked in a mode, then answered as `ask` answers: its id, never its text; the seconds are the ranking's |
 | `eval.evaluated` | info | `model`, `chunking`, `questions`, `embedded`, `index_seconds` | An index is evaluated: the questions, the texts embedded for its index, how long the index took |
 | `eval.refused` | error | `reason` | The golden file is refused, by the field at fault: exit 2 |
-| `eval.not_evaluated` | error | `reason` | A model fails, or a mode by meaning fell back to words, which would measure words twice: exit 1 |
+| `eval.not_evaluated` | error | `reason` | A model fails, a source's file of the mirror does not read, naming it and `kb-mcp prepare`, or a mode by meaning fell back to words, which would measure words twice: exit 1 |
 | `index.document` | debug | `path`, `type`, `sections` | A file of the mirror is indexed for the model |
 | `index.built` | info | `documents`, `sections`, `skipped`, `chunks`, `embedded`, `persons` | The model's index is complete, its people joined into persons without aliases |
 | `search.fallback` | warning | `mode`, `reason` | A search by meaning is ranked by words alone, which stops the evaluation |

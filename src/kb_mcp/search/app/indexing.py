@@ -285,8 +285,9 @@ def build_index(
     files are read, the documents' people are joined into persons through ``aliases``,
     the alias file's, else none, as for an evaluation's index: the counts count the
     persons, and the warnings say what the join left apart. The index replaces the old
-    one only once complete. Raises ModelError when the embedding fails; the old index
-    then stays. A chunk whose text the model refuses is left without a vector, and its
+    one only once complete. Raises ModelError when the embedding fails, and
+    RepresentationError for a source's file of the mirror that does not read; the old
+    index then stays. A chunk whose text the model refuses is left without a vector, and its
     document is a problem. With an embedding, the build holds the vector cache's lock shared,
     from before it reads the mirror until its index is in place, so that no prune
     deletes what it embeds; it waits for a prune in progress, and raises TimeoutError
