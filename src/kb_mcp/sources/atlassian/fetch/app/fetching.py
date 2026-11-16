@@ -213,8 +213,9 @@ class Fetching:
     ``due`` names the scopes searched by update time that this run also reads whole,
     and ``read_whole`` gathers every scope read whole. ``peers`` are the views of the
     other sources of the site, whose whole reads say, as the source's own do, which scopes
-    are kept. ``stored`` holds the ids of each document type that have a snapshot, read
-    once a run, as the store held them when the run first tracked a scope of that type.
+    are kept. ``snapshot_ids`` holds the ids of each document type that have a snapshot,
+    read once a run, as the store held them when the run first tracked a scope of that
+    type.
     """
 
     site: SiteClient
@@ -236,7 +237,7 @@ class Fetching:
     due: frozenset[Scope] = frozenset()
     read_whole: set[Scope] = field(default_factory=set)
     peers: tuple[RawStore, ...] = ()
-    stored: dict[type[FetchedDocument], set[str]] = field(default_factory=dict)
+    snapshot_ids: dict[type[FetchedDocument], set[str]] = field(default_factory=dict)
 
     def label(self, what: str | type[FetchedDocument]) -> str:
         """Name something of the source in the counts, a document type by its plural.
@@ -442,9 +443,9 @@ class Fetching:
         absent: dict[DocumentKey, Scope] = {}
         stored = 0
         for document_class, ids in held.items():
-            if document_class not in self.stored:
-                self.stored[document_class] = self.store.stored_ids(document_class)
-            before = ids & self.stored[document_class]
+            if document_class not in self.snapshot_ids:
+                self.snapshot_ids[document_class] = self.store.stored_ids(document_class)
+            before = ids & self.snapshot_ids[document_class]
             stored += len(before)
             named = document_class.document_type.name
             again = {key[2] for key in known if key[1] == named}
