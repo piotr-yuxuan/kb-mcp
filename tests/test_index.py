@@ -973,6 +973,21 @@ def test_a_transcript_s_meetings_are_found_by_source_and_id_not_by_scanning(
     assert meeting[0].endswith("(source=? AND id=?)")
 
 
+def test_refs_are_found_by_the_indexes_of_keys_and_ids_not_by_scanning(persons: Path) -> None:
+    """Each ref, alone or after its source, is looked up by key, then by id, each indexed.
+
+    Search finds the documents that a query names at each call, and read its document:
+    a scan of every document per ref took tens of milliseconds on 50,000 documents.
+    """
+    unbound = {"refs": "[]", "paths": "[]", "kept": None}
+    with closing(sqlite3.connect(persons)) as connection:
+        plan = connection.execute(f"EXPLAIN QUERY PLAN {sqlite_index.ENTRIES}", unbound)
+        steps = [row[3] for row in plan.fetchall()]
+    assert [step for step in steps if re.match(r"SCAN [de]\b", step)] == []
+    searched = {step.partition(" USING INDEX ")[2] for step in steps if step.startswith("SEARCH")}
+    assert {"documents_key (key=?)", "documents_id (id=?)"} <= searched
+
+
 def test_a_person_is_found_by_the_key_of_any_of_its_names(persons: Path) -> None:
     """Every person holding the key, in order; none for a key that no one holds.
 

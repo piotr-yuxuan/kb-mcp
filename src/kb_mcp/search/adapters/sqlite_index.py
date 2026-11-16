@@ -198,16 +198,23 @@ WHERE section_words MATCH :match
                        AND (SELECT last_section FROM documents WHERE path = :path)
 ORDER BY bm25(section_words, :title, :labels, :breadcrumb, :heading, :body), s.number LIMIT 1
 """
-# The documents of some paths and refs: each ref a key or id, alone or after its source.
+# The documents of some paths and refs: each ref a key or id, alone or after its source,
+# looked up by key and by id apart, so that each uses its index.
 ENTRIES = """
-WITH refs AS (SELECT value AS ref, instr(value, ':') AS colon FROM json_each(:refs))
+WITH refs AS (
+  SELECT CASE WHEN instr(value, ':') THEN substr(value, 1, instr(value, ':') - 1) END AS source,
+         substr(value, instr(value, ':') + 1) AS local
+  FROM json_each(:refs)
+),
+named AS (
+  SELECT e.rowid FROM refs r JOIN documents e ON e.key = r.local
+  WHERE r.source IS NULL OR e.source = r.source
+  UNION
+  SELECT e.rowid FROM refs r JOIN documents e ON e.id = r.local
+  WHERE r.source IS NULL OR e.source = r.source
+)
 SELECT d.* FROM typed d
-WHERE (d.path IN (SELECT value FROM json_each(:paths))
-       OR d.rowid IN (
-         SELECT e.rowid FROM refs r JOIN documents e
-         ON (r.colon = 0 AND r.ref IN (e.key, e.id))
-         OR (r.colon > 0 AND e.source = substr(r.ref, 1, r.colon - 1)
-             AND substr(r.ref, r.colon + 1) IN (e.key, e.id))))
+WHERE (d.path IN (SELECT value FROM json_each(:paths)) OR d.rowid IN named)
   AND (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
 ORDER BY d.path
 """
