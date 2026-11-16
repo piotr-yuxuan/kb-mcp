@@ -166,6 +166,28 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
 - **Settled** by the user, in
   plan 030.
 
+## A source refused alone
+
+What a source's `preflight` refuses, read as its row begins, fails that row alone, a
+problem by its source naming why, and the other sources run; the run exits 1
+([`run_each`](../../src/kb_mcp/cli/app/sources.py)). Only what no row can run with
+refuses the run, exit 2: the command's options and the settings, which the entry checks
+before it asks, the data directory, and a fetcher or a preparer that does not load.
+
+- **Why.** The user's word: "We should be tolerant". Since `fetch` with no source takes
+  the work log, a refusal of the whole run made a work-log folder not mounted yet stop
+  Confluence's and Jira's fetches, which never depended on it; now Jira refused leaves
+  Confluence and the work log fetched.
+- **Cost.** A run with a refused source exits 1, as one whose row failed: a script tells
+  a refusal from a failure by the row's problem, not by the status. A period that ends
+  before it starts, which the Atlassian fetcher's preflight finds against the clock,
+  fails each Atlassian row instead of refusing the run, and the work log, which ignores
+  the period, is fetched; a period option that does not read is still refused before
+  the run.
+- **Rejected.** Plan 030's refusal of the whole run before its first row, whichever
+  source is at fault, which wrote nothing when one source could not start.
+- **Settled** by the user, in plan 060.
+
 ## A list, not entry points
 
 The sources are a list in the code, [`SOURCES`](../../src/kb_mcp/sources/registry.py),

@@ -503,16 +503,21 @@ def test_each_key_that_the_help_names_is_one_of_the_json(
         assert sorted(named - written) == [], stage
 
 
-def test_an_until_before_since_exits_2_by_name_before_any_get(
+def test_an_until_before_since_fails_each_row_by_name_before_any_get(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Refused before the first row, naming them."""
+    """Each fetcher's preflight refuses it, naming them: its row fails, exit 1, nothing asked."""
     config = settings_file(home, None, atlassian=True)
     backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
-    assert main(command(home, config, "fetch", "--yes", *backwards)) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
+    given = command(home, config, "fetch", "--yes", "--format", "json", *backwards)
+    assert main(given) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    rows = json.loads(out)["sources"]
+    reason = "--until: must come after --since"
+    assert [(row["source"], row["ending"], row["problems"]) for row in rows] == [
+        (each, "failed", [{"where": each, "reason": reason}]) for each in ("confluence", "jira")
+    ]
     assert "fetch.refused" in err
-    assert "source 'confluence': fetch: --until: must come after --since" in err
     assert signed_in.asked == []
 
 
@@ -699,15 +704,20 @@ def test_a_prepare_problem_exits_1_with_the_work_log_mirrored(
     assert len(list((settings.docs / "worklog").rglob("*.md"))) == WORKLOG_DOCUMENTS
 
 
-def test_a_work_log_that_is_not_a_folder_is_refused_before_any_row(
+def test_a_work_log_that_is_not_a_folder_fails_its_row_writing_nothing(
     home: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """Named by its setting, by its fetch, which reads it; nothing is written."""
+    """Named by its setting, by its fetch, which reads it: a problem of its row, exit 1."""
     config = settings_file(home, tmp_path / "absent")
-    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
+    assert main(command(home, config, "fetch", "--yes", "--format", "json")) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    (row,) = json.loads(out)["sources"]
+    assert (row["source"], row["ending"], row["problems"]) == (
+        "worklog",
+        "failed",
+        [{"where": "worklog", "reason": "sources.worklog.path: not a folder"}],
+    )
     assert "fetch.refused" in err
-    assert "source 'worklog': fetch: sources.worklog.path: not a folder" in err
     assert not (home / "data" / "copies").exists()
 
 
@@ -997,10 +1007,10 @@ def test_the_settings_of_sources_left_out_are_said_not_applied(
 def test_a_work_log_that_is_a_file_is_refused_as_not_a_folder(
     home: Path, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A regular file named as the folder: its fetch exits 2."""
+    """A regular file named as the folder: its fetch fails, exit 1."""
     (tmp_path / "todo.org").write_text("* x\n", "utf-8")
     config = settings_file(home, tmp_path / "todo.org")
-    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.REFUSED
+    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.FAILED
     assert "sources.worklog.path: not a folder" in capsys.readouterr().err
 
 
@@ -1429,19 +1439,30 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     assert ended_with(planned_again, "documents", "to_remove") == (every - 1, 1)
 
 
-def test_every_role_s_preflight_runs_before_the_first_row(
+def test_a_source_that_its_preflight_refuses_fails_its_row_alone(
     home: Path, tmp_path: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 030: a work log that is not a folder refuses the run before any other's row.
+    """Plan 060, by the user: "We should be tolerant", so the others' rows run.
 
-    Its fetcher's preflight refuses it, so that Confluence's, whose row comes first, asks
-    and writes nothing.
+    A work log that is not a folder: its fetcher's preflight refuses it, which fails its
+    row, by its setting, and Confluence's and Jira's fetch as if it were not there; the
+    run exits 1, as some rows failed.
     """
     config = settings_file(home, tmp_path / "absent", atlassian=True)
-    assert main(command(home, config, "fetch", "--yes")) == ExitStatus.REFUSED
-    assert "sources.worklog.path: not a folder" in capsys.readouterr().err
-    assert not (home / "data" / "raw").exists()
-    assert signed_in.asked == []
+    assert main(command(home, config, "fetch", "--yes", "--format", "json")) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    rows = {row["source"]: row for row in json.loads(out)["sources"]}
+    assert {source: row["ending"] for source, row in rows.items()} == {
+        "confluence": "done",
+        "jira": "done",
+        "worklog": "failed",
+    }
+    assert rows["worklog"]["problems"] == [
+        {"where": "worklog", "reason": "sources.worklog.path: not a folder"}
+    ]
+    assert "fetch.refused" in err
+    assert (home / "data" / "raw").is_dir()
+    assert signed_in.asked
 
 
 @pytest.mark.parametrize(

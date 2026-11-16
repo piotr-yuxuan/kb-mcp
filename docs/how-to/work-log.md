@@ -149,7 +149,9 @@ kb-mcp index
 ```
 
 `fetch` reads the folder whole and keeps each document's text and what its front matter
-says in the copy store; `prepare` converts from there, and needs no folder. The files go
+says in the copy store; `prepare` converts from there, and needs no folder. A folder not
+there, such as one not mounted yet, fails the work log's row of `fetch`, by its setting,
+exit 1, and the other sources are fetched all the same. The files go
 to `<data>/docs/worklog/`: `entries/` and `transcripts/` as `<id>-<title>.md`, `days/`
 and `meetings/` as `<id>.md`. Each holds the usual front
 matter: the heading's keyword as its `status` (else `current`), its tags and those of

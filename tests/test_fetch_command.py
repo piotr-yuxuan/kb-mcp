@@ -320,12 +320,12 @@ def test_a_key_that_is_not_one_is_refused_by_the_options(
     assert "key" in capsys.readouterr().err
 
 
-def test_a_period_that_ends_before_it_starts_is_refused(
+def test_a_period_that_ends_before_it_starts_fails_the_fetch(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
     """The option at fault is named, by the error fetch.refused, in the log file too."""
     options = ("--space", "MFS", "--since", "2026-10-22", "--until", "2026-10-01")
-    assert main(command(home, *options)) == REFUSED
+    assert main(command(home, *options)) == SOME_FAILED
     err = capsys.readouterr().err
     assert ("error", "fetch.refused") in said(err)
     assert "--until" in err

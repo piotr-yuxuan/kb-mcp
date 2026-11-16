@@ -5,7 +5,7 @@ interfaces": a declaration names its fetcher, if any, and its preparers by modul
 which ``--help`` never imports; one fetcher and one preparer serve Confluence and Jira,
 each reading from ``run.source`` the source that it runs for, so its document types and its
 rows of the cache of conversions; the work log, read in place, has no fetcher;
-``preflight`` says what a fetcher or a preparer cannot go on with before any source starts; each
+``preflight`` says what a fetcher or a preparer cannot go on with, which fails its row alone; each
 preparer that converts finds pandoc itself, so that pandoc gone fails its result alone;
 a dry run plans the fetch, counts the work log and leaves Atlassian's prepare alone; and
 a result's ``text`` writes what its command writes. The site is plan 004's scripted one,
@@ -384,7 +384,7 @@ def test_a_dry_run_fetch_plans_and_writes_nothing(settings: Settings, site: Fake
 def test_the_fetcher_refuses_an_until_before_since_before_any_request(
     settings: Settings, site: FakeSite
 ) -> None:
-    """Read from disk before any source starts: the period names the options at fault."""
+    """Read before the fetch asks anything: the period names the options at fault."""
     fetcher = fetcher_of(JIRA)
     assert fetcher.preflight(run_of(JIRA, signed_in(settings), SINCE)) is None
     backwards = {"--since": "2026-10-20", "--until": "2026-10-01"}
@@ -394,10 +394,10 @@ def test_the_fetcher_refuses_an_until_before_since_before_any_request(
     assert site.asked == []
 
 
-def test_a_damaged_record_of_what_answered_as_gone_refuses_fetch_before_its_first_row(
+def test_a_damaged_record_of_what_answered_as_gone_fails_its_fetch_before_any_request(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 2, an event naming the file, no traceback, no request.
+    """Its row fails, exit 1, an event naming the source and the file, no traceback.
 
     The fetch reads the record before its first request, so its preflight reads it too.
     A site and a token, made up, leave nothing else to stop the run.
@@ -413,24 +413,24 @@ def test_a_damaged_record_of_what_answered_as_gone_refuses_fetch_before_its_firs
     )
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "made-up")
     given = ["fetch", "--yes", "--config", str(config), "--data-dir", str(data)]
-    assert main(given) == ExitStatus.REFUSED
+    assert main(given) == ExitStatus.FAILED
     err = capsys.readouterr().err
     assert "fetch.refused" in err
-    assert "source 'confluence': fetch: tombstones.json: not JSON" in err
+    assert "tombstones.json: not JSON" in err
     assert "run.failed" not in err
     assert "Traceback" not in err
     assert not (data / "docs").exists()
 
 
 @pytest.mark.parametrize("name", ["tombstones.json", "coverage.json"])
-def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
+def test_a_record_that_no_read_reaches_fails_the_fetch_as_a_damaged_one(
     home: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
     site: FakeSite,
     name: str,
 ) -> None:
-    """A folder in its place: exit 2, naming the file, no traceback, nothing asked of the site.
+    """A folder in its place: exit 1, naming the file, no traceback, nothing asked of the site.
 
     In ``fetch``, by its preflight, with or without a source named.
     """
@@ -445,7 +445,7 @@ def test_a_record_that_no_read_reaches_refuses_the_run_as_a_damaged_one(
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__API_TOKEN", "made-up")
     given = ["--yes", "--config", str(config), "--data-dir", str(data)]
     for command in (["fetch"], ["fetch", "confluence"]):
-        assert main([*command, *given]) == ExitStatus.REFUSED
+        assert main([*command, *given]) == ExitStatus.FAILED
         err = capsys.readouterr().err
         assert f"{name}: not read: IsADirectoryError" in err
         assert "run.failed" not in err

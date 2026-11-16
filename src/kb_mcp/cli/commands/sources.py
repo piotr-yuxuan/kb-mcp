@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.app.sources import SourcesRefusedError, run_each
+from kb_mcp.cli.app.sources import REFUSED, SourcesRefusedError, run_each
 from kb_mcp.cli.domain.echo import values_of
-from kb_mcp.cli.domain.sources import FETCH, PREPARE, chosen, given
+from kb_mcp.cli.domain.sources import FETCH, chosen, given
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.stages import SourceRun
 
@@ -21,19 +21,16 @@ if TYPE_CHECKING:
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Detail
 
-# What each command's refusal is called, written out as every event's name is.
-REFUSED = {FETCH: "fetch.refused", PREPARE: "prepare.refused"}
-
 
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Ran | None]:
     """Run each source taken in this stage; exit as the rows' endings fold, 2 when refused.
 
     The entry refused what it could before asking. Each source taken is run with its
-    table and, in a fetch, its options' values by flag. A fetcher or a
-    preparer that does not load, or what its ``preflight`` refuses, such as an --until
-    before --since, or a work log that is not a folder, is refused here, before any row
-    runs, an error, ``fetch.refused`` or ``prepare.refused``. Each row's problems are said
-    as it runs, by place and reason, never content.
+    table and, in a fetch, its options' values by flag. A fetcher or a preparer that does
+    not load is refused here, before any row runs, an error, ``fetch.refused`` or
+    ``prepare.refused``; what its ``preflight`` refuses, such as an --until before
+    --since, or a work log that is not a folder, fails its row alone. Each row's problems
+    are said as it runs, by place and reason, never content.
     """
     settings = loaded.settings
     stage = arguments.command.name

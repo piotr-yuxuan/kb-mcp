@@ -93,8 +93,8 @@ it against the runtime-checkable protocol. It may use the interfaces, the mirror
 [`LocalPath`](../../src/kb_mcp/config/domain/settings.py)), `observability` and the
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
-- **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk before any source
-  starts, so that a run is refused before its first row, whichever source is at fault: an
+- **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk as
+  its row begins, so that this row fails alone, naming why, and the other sources run: an
   `--until` before `--since`
   ([the fetcher's](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), or a work
   log that is not a folder
@@ -353,7 +353,7 @@ package, but each is a source: a row, a report and a set of files of its own.
 ## `fetch` and `prepare` through the registry
 
 [`run_each`](../../src/kb_mcp/cli/app/sources.py) is one use case over the sources taken:
-every `preflight`, then each fetcher or preparer, a row each. Each row runs even when an earlier one failed,
+each fetcher or preparer, a row each, which its `preflight` begins. Each row runs even when an earlier one failed,
 since the next reads what is on disk, Ctrl-C stops the rest, and the rows' endings fold into
 the exit status ([`folded`](../../src/kb_mcp/kernel/exit_status.py)). A row names its source, with its
 result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,

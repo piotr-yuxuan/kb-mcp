@@ -20,7 +20,7 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 | `prepare.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only counts |
 | `prepare.source` | info | `source`, `ending` | A source's row ended: `done`, `failed` or, in a dry run, `not run` |
 | `prepare.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
-| `prepare.refused` | error | `reason` | What the run cannot go on with, before its first row: a preparer that does not load, naming the source and the path, or what a preparer's preflight refuses, after its source and its stage (`source 'confluence': prepare: ...`), such as two sources of the pages of one site, or scope types that are not a space's or a project's: exit 2 |
+| `prepare.refused` | error | `source`, `reason` | What a preparer's preflight refuses as its source's row begins, such as two sources of the pages of one site, or scope types that are not a space's or a project's, a problem by the source: that row fails alone, and the next rows go on. Without `source`, a preparer that does not load, naming the source and the path: the run stops before its first row, exit 2 |
 | `prepare.interrupted` | warning | `source` | Ctrl-C stopped the row of this source, none once every row ended: later rows do not run, exit 130 |
 | `prepare.placed` | info | `source`, `documents`, `assets`, `problems` | The raw store is read and every document placed, so that links reach the other source's: the source's documents placed in the mirror, the files they attach, its problems so far |
 | `prepare.document` | debug | `path`, `id`, `title`, `seconds` | A document's file is built, or fails to be: its path in the mirror, its id or key, its title |

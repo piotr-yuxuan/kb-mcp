@@ -161,7 +161,7 @@ def test_fetch_records_as_documented(
         assert main(fetch_arguments(data, "--space", "NOPE", *since)) == ExitStatus.FAILED
     with emitted.gathering(telemetry, "fetch"):
         backwards = ("--since", "2026-10-22", "--until", "2026-10-01")
-        assert main(fetch_arguments(data, "--space", "MFS", *backwards)) == ExitStatus.REFUSED
+        assert main(fetch_arguments(data, "--space", "MFS", *backwards)) == ExitStatus.FAILED
     with emitted.gathering(telemetry, "fetch"), RawStore(chosen.raw, "confluence").writing():
         assert main(fetch_arguments(data, "--space", "MFS", *since)) == ExitStatus.FAILED
 
@@ -242,7 +242,8 @@ def test_prepare_records_as_documented(
     Gone once the run began. The pandoc on PATH passes its input through, unless it holds
     BREAK. The work log, configured, fails its row at first, not fetched yet; fetched, it
     is prepared whole, then in a dry run, then with a conversion that fails; then a pandoc
-    that gives no version, and Ctrl-C. Then two sources of the pages of one site, refused.
+    that gives no version, and Ctrl-C. Then two sources of the pages of one site, each
+    row refused.
     """
     data = tmp_path / "data"
     a_store_with_a_page_of_each_ending(data)
@@ -305,7 +306,7 @@ def test_prepare_records_as_documented(
     )
     with emitted.gathering(telemetry, "prepare"):
         two = ["prepare", "--yes", "--config", str(config), "--data-dir", str(data)]
-        assert main(two) == ExitStatus.REFUSED
+        assert main(two) == ExitStatus.FAILED
     assert undocumented("prepare", emitted) == []
 
 

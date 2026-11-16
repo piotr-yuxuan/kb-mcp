@@ -1,7 +1,7 @@
 """The work log's fetcher: its folder, read in place, into its source's copy store.
 
 The work log's declaration names this module, a ``Fetcher``: ``preflight`` refuses a work
-log that is not a folder before any source starts, and ``fetch`` reads it into its copy
+log that is not a folder, which fails its row alone, and ``fetch`` reads it into its copy
 store, or in a dry run says what that would change, and says the problems, as the work
 log's events do.
 """
@@ -26,7 +26,7 @@ BUSY = "another run is writing it; try again once that run ends"
 
 
 def preflight(run: SourceRun) -> str | None:
-    """Refuse a work log that is not a folder, by its setting, before any source starts."""
+    """Refuse a work log that is not a folder, by its setting, before it is read."""
     folder = run.source_table.path
     if folder is None or not folder.is_dir():
         return f"{run.source.paths[0]}: not a folder"

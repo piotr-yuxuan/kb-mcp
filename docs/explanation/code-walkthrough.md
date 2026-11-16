@@ -125,17 +125,18 @@ record: its declaration, the settings, its table, its options' values by flag, h
 configured, so no run is of it.
 
 [`run_each`](../../src/kb_mcp/cli/app/sources.py) loads each fetcher or preparer that a source's
-declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), then refuses what
-it can before any row: here an `--until` before `--since`, which the fetcher's
-[`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) finds from the
+declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), refusing the run
+for one that does not load, then runs each row, which its
+[`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py) begins: here it
+finds an `--until` before `--since` from the
 [`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the
 period's options, one space here.
 [`Purview.windows`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)
 asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py),
 from the coverage that the raw store holds, for each scope's fetch window and why it
 starts there, here `given`; a `--since` that does not come before the fetch windows' end raises
-[`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py):
-exit 2, naming both options. Then each row runs in turn, each source's fetcher or preparers within a span
+[`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py),
+which fails that row alone, naming both options. Each row runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
 one before it failed, as it reads what is on disk. The exit status folds the rows'
 endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/exit_status.py)):

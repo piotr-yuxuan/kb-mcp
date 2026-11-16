@@ -249,16 +249,17 @@ def test_a_dry_run_writes_nothing(
     assert not (config.parent / "data").exists()
 
 
-def test_a_folder_of_notes_that_is_not_one_is_refused_before_any_row(
+def test_a_folder_of_notes_that_is_not_one_fails_its_row(
     config: Path, registry: tuple[Source, ...], capsys: CaptureFixture[str]
 ) -> None:
-    """Its preflight refuses the run, exit 2, by its setting; nothing is written."""
+    """Its preflight fails its row, exit 1, by its setting; nothing is written."""
     (config.parent / "notes" / "orchard.txt").unlink()
     (config.parent / "notes" / "rota.txt").unlink()
     (config.parent / "notes").rmdir()
     given = ["prepare", "memo", "--yes", "--config", str(config)]
-    assert main(given, registry) == ExitStatus.REFUSED
-    assert "source 'memo': prepare: sources.memo.folder: not a folder" in capsys.readouterr().err
+    assert main(given, registry) == ExitStatus.FAILED
+    err = capsys.readouterr().err
+    assert ("prepare.refused" in err, "sources.memo.folder: not a folder" in err) == (True, True)
     assert not (config.parent / "data" / "docs").exists()
 
 

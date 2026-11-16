@@ -134,8 +134,8 @@ def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
 ) -> None:
     """Plan 030: Atlassian's preparer removes the files of all of a source's document types.
 
-    So a connector whose spaces hold the pages alone would remove every blog post:
-    ``prepare`` is refused before any row, naming the source and its types.
+    So a connector whose spaces hold the pages alone would remove every blog post: its
+    ``prepare`` fails its row, naming its types, and removes nothing.
     """
     spaces = replace(SPACE, document_types=types)
     registry = sourced(replace(CONFLUENCE, scope_types=(spaces,)), JIRA, WORKLOG)
@@ -149,10 +149,10 @@ def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     post.parent.mkdir(parents=True)
     post.write_text("kept", "utf-8")
     given = ["prepare", "confluence", "--yes", "--config", str(config)]
-    assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.REFUSED
+    assert main([*given, "--data-dir", str(data)], registry) == ExitStatus.FAILED
     err = capsys.readouterr().err
     assert "prepare.refused" in err
-    assert f"source 'confluence': prepare: scope types {named}: not a space's or a project's" in err
+    assert f"scope types {named}: not a space's or a project's" in err
     assert post.read_text("utf-8") == "kept"
 
 
