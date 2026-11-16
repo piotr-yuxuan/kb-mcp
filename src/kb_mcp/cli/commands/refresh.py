@@ -35,11 +35,10 @@ def run(
     one of those. The status folds every unit's last ending and this invocation's own.
     """
     started = datetime.now(UTC)
-    values = values_of(loaded)
-    configuration = (
-        None
-        if arguments.resume
-        else Configuration(
+    configuration = None
+    if arguments.resume is None:
+        values = values_of(loaded)
+        configuration = Configuration(
             run=run,
             command="refresh",
             started=started,
@@ -51,7 +50,6 @@ def run(
             options={FETCH: fetch_options(arguments, started), INDEX: {"--rebuild": False}},
             settings=without_secrets(loaded.settings),
         )
-    )
     status, done = recorded(loaded, run, started, configuration, partial(planned, arguments))
     if done is None:
         return status, None
