@@ -213,7 +213,8 @@ class Fetching:
     ``due`` names the scopes searched by update time that this run also reads whole,
     and ``read_whole`` gathers every scope read whole. ``peers`` are the views of the
     other sources of the site, whose whole reads say, as the source's own do, which scopes
-    are kept.
+    are kept. ``stored`` holds the ids of each document type that have a snapshot, read
+    once a run, as the store held them when the run first tracked a scope of that type.
     """
 
     site: SiteClient
@@ -235,6 +236,7 @@ class Fetching:
     due: frozenset[Scope] = frozenset()
     read_whole: set[Scope] = field(default_factory=set)
     peers: tuple[RawStore, ...] = ()
+    stored: dict[type[FetchedDocument], set[str]] = field(default_factory=dict)
 
     def label(self, what: str | type[FetchedDocument]) -> str:
         """Name something of the source in the counts, a document type by its plural.
@@ -438,7 +440,9 @@ class Fetching:
         absent: dict[DocumentKey, Scope] = {}
         stored = 0
         for document_class, ids in held.items():
-            before = ids & self.store.stored_ids(document_class)
+            if document_class not in self.stored:
+                self.stored[document_class] = self.store.stored_ids(document_class)
+            before = ids & self.stored[document_class]
             stored += len(before)
             named = document_class.document_type.name
             again = {key[2] for key in known if key[1] == named}
@@ -467,8 +471,14 @@ class Fetching:
         pending until then. Raises SignInNeededError when too many answer gone and the
         session no longer holds; when the site does not answer, nothing is believed. The
         task ``probes`` reports a scope's probes, each by its document's id; all is the
-        span ``fetch.probes``.
+        span ``fetch.probes``. The scopes kept, those whose whole reads the site's sources
+        keep, this one's and its peers', are read once, and each one's whole read once,
+        when a probe first finds a document there.
         """
+        stores = (self.store, *self.peers)
+        types = {CLASSES[key[1]] for absent, _, _ in self.absent.values() for key in absent}
+        kept = {each: {h for store in stores for h in store.holders(each)} for each in types}
+        listings: dict[tuple[str, type[FetchedDocument]], set[str]] = {}
         with TRACER.start_as_current_span("fetch.probes"):
             for scope, (absent, stored, before) in self.absent.items():
                 known = {k: s for k, s in self.tombstones.items() if s.scope == scope}
@@ -476,7 +486,9 @@ class Fetching:
                 order = probing_order(absent, before)[:MAX_PROBES]
                 with task("probes", len(order)) as probes:
                     answers = {
-                        k: a for k in probes.each(order, lambda key: key[2]) if (a := self.probe(k))
+                        k: a
+                        for k in probes.each(order, lambda key: key[2])
+                        if (a := self.probe(k, kept, listings))
                     }
                 canary = SIGNED_IN[scope.type.name]
                 if too_many_gone(answers, stored) and not self.reachable(scope.source, *canary):
@@ -490,13 +502,19 @@ class Fetching:
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
                 self.counts.add(f"{self.label('documents')}: absent, waiting for a probe", waiting)
 
-    def probe(self, key: DocumentKey) -> ProbeAnswer | None:
+    def probe(
+        self,
+        key: DocumentKey,
+        kept: Mapping[type[FetchedDocument], set[str]],
+        listings: dict[tuple[str, type[FetchedDocument]], set[str]],
+    ) -> ProbeAnswer | None:
         """GET a document absent from its scope's whole read, and say what became of it.
 
-        The scopes kept are those whose whole reads the site's sources keep, this one's
-        and its peers', so that a scope of another site, whose keys may be the same, is
-        never one. A probe that fails is a problem by its document, as ``fetch_document``
-        names one.
+        ``kept`` are the scopes, by document type, whose whole reads the site's sources
+        keep, this one's and its peers', so that a scope of another site, whose keys may
+        be the same, is never one; ``listings`` the ids that each kept scope's whole reads
+        name, by scope and type, which a probe that first finds a document there reads.
+        A probe that fails is a problem by its document, as ``fetch_document`` names one.
         """
         document_class = CLASSES[key[1]]
         request, whereabouts = PROBES[document_class]
@@ -511,12 +529,14 @@ class Fetching:
         except RepresentationError as error:
             self.failed(self.label("probes"), where, error)
             return None
-        stores = (self.store, *self.peers)
-        kept = {holder for each in stores for holder in each.holders(document_class)}
-        named = found in kept and any(
-            key[2] in each.listed_ids(found, document_class) for each in stores
-        )
-        return answer_of(found, status, kept, named=named)
+        holders = kept[document_class]
+        if found in holders and (found, document_class) not in listings:
+            stores = (self.store, *self.peers)
+            listings[found, document_class] = {
+                i for each in stores for i in each.listed_ids(found, document_class)
+            }
+        named = key[2] in listings.get((found, document_class), set())
+        return answer_of(found, status, holders, named=named)
 
     def folders(self, pages: Iterable[object]) -> list[object]:
         """GET every folder above the listed pages, following folders' own parents.

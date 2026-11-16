@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -21,7 +22,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSn
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain import names
-from kb_mcp.sources.atlassian.fetch.domain.content import Page
+from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, FetchWindow, Scope
 from kb_mcp.sources.atlassian.fetch.domain.deletions import CONFIRM_AFTER
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
@@ -1713,3 +1714,41 @@ def test_a_whole_read_of_before_drops_no_confirmed_tombstone(
     )
     prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
     assert sorted((chosen.docs / "jira").glob("*/*.md")) == []
+
+
+def test_a_run_reads_the_stored_issues_and_the_scopes_kept_once(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: what the store holds is read once a run, not once a project or a probe.
+
+    A run of OPS and PRB, both read whole, reads the ids of the issues stored once; the
+    three issues that OPS's whole read misses, each found in PRB, read the scopes kept
+    once by each view of the site, Jira's and Confluence's, and PRB's whole read once by
+    each, beside Jira's reading it as what PRB held.
+    """
+    chosen = settings(tmp_path)
+    three = {each: in_project(each, "OPS") for each in ("20001", "20002", "20003")}
+    first = ProjectSite(projects={"OPS": three, "PRB": {}})
+    run(chosen, monkeypatch, first, first_week([], ["OPS", "PRB"]), FIRST)
+    moved = ProjectSite(projects={"OPS": {}, "PRB": {}}, moved_issues=dict.fromkeys(three, "PRB"))
+    calls: Counter[tuple[object, ...]] = Counter()
+    for name in ("stored_ids", "holders", "listed_ids"):
+        read = getattr(RawStore, name)
+
+        def counted(
+            store: RawStore, *given: object, name: str = name, read: Callable[..., object] = read
+        ) -> object:
+            calls[(store.source, name, *given)] += 1
+            return read(store, *given)
+
+        monkeypatch.setattr(RawStore, name, counted)
+    run(chosen, monkeypatch, moved, catch_up([], ["OPS", "PRB"]), FIRST + WEEK)
+    assert sorted(jira_asked(moved)) == [f"/rest/api/3/issue/{each}" for each in sorted(three)]
+    assert calls == {
+        ("jira", "stored_ids", Issue): 1,
+        ("jira", "listed_ids", "OPS", Issue): 1,
+        ("jira", "listed_ids", "PRB", Issue): 2,
+        ("jira", "holders", Issue): 1,
+        ("confluence", "holders", Issue): 1,
+        ("confluence", "listed_ids", "PRB", Issue): 1,
+    }
