@@ -730,7 +730,9 @@ Confluence's and Jira's prepares copy the as-of times of the record of coverage
 (`coverage.json`, [above](#coverage-and-tombstones)), those of their own source's
 scopes; a record that cannot be read is a problem of the source that lists spaces, as
 the tombstones are, and leaves every scope without one. The work log's prepare says the moment that it
-began its read, unless it met a problem, which leaves its one scope without one. A
+began its read; a run that met a problem writes no file, so that the file of the last
+run without one stays, with its time, the last moment that the work log was known
+complete. A
 prepare whose as-of times moved writes the file again, even when no document changed, so
 that the next `index` holds them.
 

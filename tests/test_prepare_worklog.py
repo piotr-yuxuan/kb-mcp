@@ -34,7 +34,7 @@ from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
-from kb_mcp.mirror.adapters.source_files import source_files
+from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_files
 from kb_mcp.mirror.domain.mirror import Link
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
@@ -841,17 +841,25 @@ def test_a_file_of_the_mirror_that_does_not_read_is_a_problem_kept_as_it_is(run:
     assert not (run.docs / gone).exists()
 
 
-def test_the_source_s_file_says_the_moment_of_the_read_unless_a_problem(run: Run) -> None:
-    """Plan 057: a read in place is as of its moment; a run that met a problem knows none."""
+def test_the_source_s_file_says_the_moment_of_the_last_read_without_a_problem(run: Run) -> None:
+    """Plan 057: a read in place is as of its moment; a run that met a problem writes no file.
+
+    So the file of the last read without one stays, with its time; before any, none is.
+    """
+    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
+    assert run(failing="failing").problems
+    assert "worklog" not in source_files(run.docs)
+    run.edit("todo.org", "Drafted, failing, on", "Drafted on")
     before = datetime.now(UTC)
     assert run().problems == ()
     after = datetime.now(UTC)
+    written = (run.docs / "worklog" / SOURCE_FILE).read_bytes()
     ((scope, moment),) = source_files(run.docs)["worklog"].as_of.items()
     assert scope == "folder:worklog"
     assert before <= moment <= after
     run.edit("todo.org", "Drafted on", "Drafted, failing, on")
     assert run(failing="failing").problems
-    assert source_files(run.docs)["worklog"].as_of == {}
+    assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
 
 
 def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing(

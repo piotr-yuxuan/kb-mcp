@@ -364,8 +364,9 @@ parent's from its snapshot in the raw store
 A document is served with its scope's as-of time, the last moment that the scope is
 known complete, else `as of: unknown`. Each prepare writes its source's scopes' times
 into the source's file of the mirror, Confluence's and Jira's copied from the coverage,
-the work log's the moment of its read, unless the run met a problem; `index` holds them
-beside the documents ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)).
+the work log's the moment of its read, written only by a run without a problem, so
+that one with a problem leaves the last such read's time; `index` holds them beside the
+documents ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)).
 
 - **Why.** A snapshot's time of fetch says when one document was read, not whether its
   scope is complete: a fetch that failed midway leaves older copies beside newer ones.

@@ -268,8 +268,9 @@ def prepare_worklog(
     outcome and document type, and each conversion timed. A link is written only when its other
     end is written in this run or kept from an earlier one, so that each link names a
     file: a transcript not read, or whose conversion failed, without a file yet is no
-    link's other end. The source's file says the moment of the read as its scope's as-of
-    time, unless the run found a problem. A file of the mirror that does not read is a
+    link's other end. A run that found no problem writes the source's file, which says
+    the moment of the read as its scope's as-of time; one that found a problem leaves the
+    file of the last run without one. A file of the mirror that does not read is a
     problem that holds back AS_IT_IS: nothing is written over it.
     """
     log = structlog.get_logger()
@@ -361,13 +362,13 @@ def prepare_worklog(
         for path, (matter, body) in ready.items()
         if path not in unread
     }
-    if ready:
+    if ready and not problems:
         # The source's file beside its documents: the roles that each of its types takes,
-        # and its one scope's as-of time, the moment of its read, unless a problem leaves
-        # it unknown.
+        # and its one scope's as-of time, the moment of its read. A problem leaves the
+        # file of the last read without one: the last moment the scope was known complete.
         scope = f"{WORKLOG_SCOPE_TYPE}:{source}"
         wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
-            SourceFile(roles=TYPE_ROLES, as_of={} if problems else {scope: read_at})
+            SourceFile(roles=TYPE_ROLES, as_of={scope: read_at})
         )
     retired = moved((matter.id for matter, _ in ready.values()), placed)
     with TRACER.start_as_current_span("worklog.write"):
