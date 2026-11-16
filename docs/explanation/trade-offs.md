@@ -450,7 +450,9 @@ but the id, which the path gives, so that it links a transcript read or not
 and a link is written when its other end is written in that run or kept from an
 earlier one ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)).
 A run that meets a problem still removes no file but the old one of a document written
-again under another title's path, and `prepare` exits 1.
+again under another title's path, and `prepare` exits 1. A file of the mirror that does
+not read is such a problem, by its path in the mirror (057), and the run writes nothing
+over it: an undated entry's created date is held in its file alone.
 
 - **Why.** Once a meeting is its day and is numbered in the journal's order, nothing
   that it holds draws on a transcript's text: one transcript not read, or past the
@@ -469,12 +471,15 @@ again under another title's path, and `prepare` exits 1.
   but a file elsewhere of the same id takes that id for the run, its copy replacing the
   hidden file's last one, and the meeting links it. Past the bound, each meeting that
   links a file past it loses its link, but for the same, and the row fails at each run.
+  A document whose file of the mirror does not read is not written again until that
+  file is moved away.
 - **Rejected.** Leaving out every link to a transcript not read: both ways always, but
   `read` of the meeting loses its record for as long as the file stays unread, which
   past the bound is for good. Keeping a meeting's links from its last copy: a file
   written from two runs' reads. Removing files while a file is not read, but those that
   it builds: a second rule in the prepare and in its dry run. Lifting the bound, or one in
-  bytes: not needed for ten years or more.
+  bytes: not needed for ten years or more. Leaving out in silence a file of the mirror
+  that does not read, as before 057, which lost the created date that it held.
 - **Settled** by plan
   044, on the
   user's answers, its questions answered by their defaults when the user

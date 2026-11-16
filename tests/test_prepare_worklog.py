@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import yaml
 from pydantic import Field
 from structlog.testing import capture_logs
 
@@ -40,12 +41,14 @@ from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
 from kb_mcp.sources.worklog.prepare.adapters import files
 from kb_mcp.sources.worklog.prepare.app import prepare
 from kb_mcp.sources.worklog.prepare.app.prepare import (
+    AS_IT_IS,
     UNLINKED,
     WorklogCounts,
     WorklogPlanned,
     plan_worklog,
     prepare_worklog,
 )
+from tests.test_markdown import LAYOUT_KEYS
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -764,6 +767,78 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_until_a_clean_run(run: R
     run.edit("todo.org", "Drafted, failing, on", "Drafted on")
     assert run().problems == ()
     assert not gone.exists()
+
+
+def former(text: str) -> str:
+    """Write a file of the mirror again in plan 058's front matter, its body kept.
+
+    Its scope as its space or project, its subtype as its issue type, no parent, each link
+    by the key or id of its own source, and a time of fetch, as ``FORMER_KEYS`` orders them.
+    """
+    _, front, body = text.split("---\n", 2)
+    values = yaml.safe_load(front)
+    kind, _, key = values["scope"].partition(":")
+    held = {
+        **{name: values[name] for name in ("source", "type", "id", "key", "title")},
+        "space": key if kind == "space" else None,
+        "project": key if kind == "project" else None,
+        "status": values["status"],
+        "issue_type": values["subtype"],
+        "labels": values["labels"],
+        "people": values["people"],
+        "links": [
+            {"relation": each["relation"], "ref": each["document"].partition(":")[2]}
+            for each in values["links"]
+        ],
+        **{name: values[name] for name in ("created", "updated", "version", "revision")},
+        "url": values["url"],
+        "breadcrumb": values["breadcrumb"],
+        "fetched_at": values["updated"],
+    }
+    return f"---\n{yaml.safe_dump(held, sort_keys=False, allow_unicode=True)}---\n{body}"
+
+
+def test_a_mirror_of_the_former_front_matter_keeps_every_created_date(run: Run) -> None:
+    """Plan 057, criterion 2: read in the former format, every file written in the new.
+
+    The org files' times move on, so that a date taken afresh would differ from the one
+    that the mirror held.
+    """
+    run()
+    created = {each.matter.id: each.matter.created for each in run.files()}
+    for path in (run.docs / "worklog").rglob("*.md"):
+        path.write_text(former(path.read_text("utf-8")), "utf-8")
+    settle(run.root, LATER)
+    assert run().problems == ()
+    files = run.files()
+    assert {each.matter.id: each.matter.created for each in files} == created
+    for each in files:
+        front = (run.docs / each.path).read_text("utf-8").split("---\n", 2)[1]
+        assert list(yaml.safe_load(front)) == LAYOUT_KEYS
+
+
+def test_a_file_of_the_mirror_that_does_not_read_is_a_problem_kept_as_it_is(run: Run) -> None:
+    """Plan 057: it removes nothing and is written over by nothing, until it is moved away.
+
+    So the created date that it may hold is never lost in silence.
+    """
+    run()
+    damaged = run.by_title("Tidy the runbooks folder").path
+    gone = run.by_title("WAITING Notes").path
+    (run.docs / damaged).write_text("not a file of the mirror\n", "utf-8")
+    (run.root / "transcripts/misc/a.org").unlink()
+    planned = run.plan()
+    assert ([each.where for each in planned.problems], planned.counts.to_remove) == ([damaged], 0)
+    outcome = run()
+    (problem,) = outcome.problems
+    assert (problem.where, problem.reason) == (damaged, f"{damaged}: no front matter")
+    assert outcome.counts.held_back == {damaged: AS_IT_IS}
+    assert (run.docs / damaged).read_text("utf-8") == "not a file of the mirror\n"
+    assert (run.docs / gone).exists()
+    (run.docs / damaged).unlink()
+    assert run().problems == ()
+    assert run.by_title("Tidy the runbooks folder").matter.created == MODIFIED
+    assert not (run.docs / gone).exists()
 
 
 def test_the_source_s_file_says_the_moment_of_the_read_unless_a_problem(run: Run) -> None:

@@ -687,6 +687,11 @@ telemetry](telemetry/prepare.md)), at each run until it is fixed.
   meeting and never its time; else the earliest and latest timestamps of the
   document's lines, as written, up to its file's modification time, a later one being a
   plan; else, without any, the modification time, `created` keeping an existing file's.
+  The prepare reads every file of the source first, one of plan 058's front matter
+  too, and writes each again in today's; a file that does not read, such as one edited
+  by hand, is a problem by its path in the mirror, which holds back `its file, as it
+  is`: the run writes nothing over it and removes nothing, so that the date that it may
+  hold is not lost, until the file is moved away.
 - The body is pandoc's GitHub Markdown of the org text, its lines as written. `COMMENT`
   and `noexport` subtrees are kept; with `sources.worklog.archives = false`, the archive
   file, `transcripts/archive/`, `meetings/archive/` and subtrees tagged `ARCHIVE` are

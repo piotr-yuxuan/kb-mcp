@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import trace
 
+from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE, WORKLOG_SCOPE_TYPE
 from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
@@ -69,6 +70,9 @@ if TYPE_CHECKING:
 TRACER = trace.get_tracer(__name__)
 # Why a meeting is a warning: its link reaches no transcript found.
 UNLINKED = "its :MEETING: link reaches no transcript found"
+# What a file of the mirror that does not read holds back: itself, neither written over
+# nor removed, with the created date that it may hold.
+AS_IT_IS = "its file, as it is"
 
 
 class Read(Record):
@@ -203,23 +207,34 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
 
 def existing(
     docs: Path, source: str
-) -> tuple[dict[str, tuple[FrontMatter, str]], dict[str, set[PurePosixPath]]]:
+) -> tuple[
+    dict[str, tuple[FrontMatter, str]],
+    dict[str, set[PurePosixPath]],
+    dict[PurePosixPath, Problem],
+]:
     """Return a work log source's files under ``docs``, by their document's id: front matter, body.
 
     Then where they are, from ``docs``, by id: every file of one id, though only the last
-    read of two is returned first, as a run under a problem may leave two. A damaged one
-    is left out: it is the prepare's own, written again or removed.
+    read of two is returned first, as a run under a problem may leave two. Then each file
+    that does not read, by its path, a problem, never its content, so that a run writes
+    nothing over it and removes nothing: the created date that it may hold is never lost
+    in silence.
     """
     kept: dict[str, tuple[FrontMatter, str]] = {}
     placed: dict[str, set[PurePosixPath]] = {}
+    unread: dict[PurePosixPath, Problem] = {}
     for file in documents(docs, worklog_globs(source)):
+        path = PurePosixPath(file.relative_to(docs).as_posix())
         try:
-            matter, body = load(file.read_text(encoding="utf-8"), str(file))
-        except OSError, ValueError:
+            matter, body = load(file.read_text(encoding="utf-8"), str(path))
+        except (OSError, ValueError) as error:
+            # A refusal names the file and the key; any other message could quote content.
+            reason = str(error) if isinstance(error, RepresentationError) else type(error).__name__
+            unread[path] = Problem(where=str(path), reason=reason)
             continue
         kept[matter.id] = (matter, body)
-        placed.setdefault(matter.id, set()).add(PurePosixPath(file.relative_to(docs).as_posix()))
-    return kept, placed
+        placed.setdefault(matter.id, set()).add(path)
+    return kept, placed, unread
 
 
 def moved(
@@ -254,13 +269,17 @@ def prepare_worklog(
     end is written in this run or kept from an earlier one, so that each link names a
     file: a transcript not read, or whose conversion failed, without a file yet is no
     link's other end. The source's file says the moment of the read as its scope's as-of
-    time, unless the run found a problem.
+    time, unless the run found a problem. A file of the mirror that does not read is a
+    problem that holds back AS_IT_IS: nothing is written over it.
     """
     log = structlog.get_logger()
-    kept, placed = existing(docs, source)
+    kept, placed, unread = existing(docs, source)
     read_at = datetime.now(UTC)
     read = read_worklog(folder, archives=archives)
-    problems, held = list(read.problems), dict(read.held_back)
+    problems, held = (
+        [*read.problems, *unread.values()],
+        read.held_back | dict.fromkeys(map(str, unread), AS_IT_IS),
+    )
     converter = pandoc.org_converter()
     ready: dict[PurePosixPath, tuple[FrontMatter, str]] = {}
     with (
@@ -340,6 +359,7 @@ def prepare_worklog(
             body,
         ).encode()
         for path, (matter, body) in ready.items()
+        if path not in unread
     }
     if ready:
         # The source's file beside its documents: the roles that each of its types takes,
@@ -381,14 +401,15 @@ def plan_worklog(
     It ends not run, a dry run's, or failed for a problem found.
 
     A document is to convert when no file holds its revision; a file is to remove when no
-    document read has its path, unless a problem was found, as a run would then keep it,
-    but for the old file of a document read under another path, as ``moved`` says.
-    Pandoc runs for its version alone, which names revisions; raises
-    ``PandocFailedError`` when it gives none. ``worklog.end`` says at INFO what a run
-    would do.
+    document read has its path, unless a problem was found, a file of the mirror that does
+    not read among them, as a run would then keep it, but for the old file of a document
+    read under another path, as ``moved`` says. Pandoc runs for its version alone, which
+    names revisions; raises ``PandocFailedError`` when it gives none. ``worklog.end`` says
+    at INFO what a run would do.
     """
-    kept, placed = existing(docs, source)
+    kept, placed, unread = existing(docs, source)
     read = read_worklog(folder, archives=archives)
+    problems = [*read.problems, *unread.values()]
     converter = pandoc.org_converter()
     held = {identifier: matter.revision for identifier, (matter, _) in kept.items()}
     to_convert = sum(
@@ -399,13 +420,13 @@ def plan_worklog(
     wanted = {worklog_path(source, each.type, each.id, each.title) for each in read.documents}
     stale = worklog_owned(docs, source) - wanted
     retired = moved((each.id for each in read.documents), placed)
-    to_remove = len(stale & retired if read.problems else stale)
+    to_remove = len(stale & retired if problems else stale)
     structlog.get_logger().info(
         "worklog.end",
         documents=len(read.documents),
         to_convert=to_convert,
         to_remove=to_remove,
-        problems=len(read.problems),
+        problems=len(problems),
     )
     return Outcome.of(
         WorklogPlanned(
@@ -413,9 +434,9 @@ def plan_worklog(
             to_convert=to_convert,
             to_remove=to_remove,
             html=read.html,
-            held_back=read.held_back,
+            held_back=read.held_back | dict.fromkeys(map(str, unread), AS_IT_IS),
         ),
-        read.problems,
+        problems,
         read.warnings,
         otherwise="not run",
     )
