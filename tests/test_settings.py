@@ -483,7 +483,7 @@ def test_the_old_keys_at_the_top_of_the_file_are_refused_naming_their_new_places
     ("sources", "to"),
     [
         ({}, "sources.confluence.site and sources.jira.site"),
-        ({"jira": {"projects": ["PRB"]}}, "sources.jira.site"),
+        ({"jira": {"projects": ["PRB"]}}, "sources.confluence.site and sources.jira.site"),
         ({"confluence": {"site": "https://own.example.invalid"}}, "sources.jira.site"),
         (
             {"confluence": {"site": "https://a.invalid"}, "jira": {"site": "https://b.invalid"}},
@@ -495,9 +495,10 @@ def test_the_old_keys_at_the_top_of_the_file_are_refused_naming_their_new_places
 def test_a_moved_key_goes_to_each_source_that_holds_no_value_of_its_own(
     sources: dict[str, object], to: str
 ) -> None:
-    """Review rounds 1 and 2: each source that read the account and holds no value of its own.
+    """Review rounds 1 to 3: each source that read the account and holds no value of its own.
 
-    Those configured, when there are any, so that none left out is given a value.
+    Configured or not: a flag may give a source what it covers, so that one configured by
+    flags alone read the account's site too, and the advice is the same whatever the run.
     """
     settings = MODEL(data_dir=HOME, sources=sources)
     with pytest.raises(SettingsError) as refused:

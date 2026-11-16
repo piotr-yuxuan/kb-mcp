@@ -686,21 +686,17 @@ def moved_to(key: str, sources: BaseModel) -> tuple[tuple[str, ...], ...]:
     """Give the paths of a key moved into the sources' tables: that of each source that read it.
 
     A source of the registry, named after its connector, as no other read it where it was,
-    whose table holds it and gives it no value of its own, which another layer may write:
-    those configured, whose first setting holds a value, when there are any, so that no
-    source left unconfigured is given a value that it would not read; else every one.
+    whose table holds it and gives it no value of its own, which another layer may write;
+    configured or not, as a flag may give a source what it covers, so that the advice is
+    the same whatever the run that prints it.
     """
-    holding = [
-        (name, table)
+    return tuple(
+        ("sources", name, key)
         for name, table in sources
         if key in (fields := type(table).model_fields)
         and get_args(fields[CONNECTOR].annotation) == (name,)
         and not getattr(table, key)
-    ]
-    configured = [
-        name for name, table in holding if getattr(table, next(iter(type(table).model_fields)))
-    ]
-    return tuple(("sources", name, key) for name in configured or [name for name, _ in holding])
+    )
 
 
 def refuse_moved(
