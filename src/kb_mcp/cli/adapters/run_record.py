@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 from kb_mcp.cli.domain.runs import Configuration, Outcomes, Recorded
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.record import refused_fields
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -117,9 +118,5 @@ class RunRecord:
         try:
             return kind.model_validate_json(data, strict=True)
         except ValidationError as error:
-            reasons = "; ".join(
-                f"{'.'.join(str(part) for part in problem['loc']) or 'the file'}: {problem['msg']}"
-                for problem in error.errors(include_input=False)
-            )
-            message = f"{where}: {reasons}"
+            message = f"{where}: {refused_fields(error)}"
             raise RepresentationError(message) from None

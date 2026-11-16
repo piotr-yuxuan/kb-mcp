@@ -48,7 +48,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
 from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
 from kb_mcp.kernel.names import CONNECTOR, MODEL_NAME, NESTING, PREFIX, RESERVED, SOURCE_NAME
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.record import Record, refused_fields
 from kb_mcp.kernel.reranking import DEPTHS
 
 if TYPE_CHECKING:
@@ -999,11 +999,7 @@ def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
     try:
         return model.model_validate(tree)
     except ValidationError as error:
-        problems = [
-            f"{'.'.join(str(part) for part in problem['loc'])}: {problem['msg']}"
-            for problem in error.errors(include_input=False)
-        ]
-        raise SettingsError("; ".join(problems)) from None
+        raise SettingsError(refused_fields(error)) from None
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
