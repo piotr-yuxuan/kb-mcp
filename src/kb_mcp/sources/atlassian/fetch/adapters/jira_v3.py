@@ -251,6 +251,19 @@ def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Req
     return comments, following
 
 
+def probe_request(issue_id: str) -> Request:
+    """GET an issue's project alone, to learn where the issue is, if anywhere."""
+    return Request(path=f"/rest/api/3/issue/{issue_id}", params={"fields": "project"})
+
+
+def whereabouts(fields: Fields) -> tuple[str, str | None]:
+    """Read where a probed issue is: its project's key; an issue has no status of its content.
+
+    Its status is its workflow's, which says nothing of whether it is gone.
+    """
+    return fields.object("fields").object("project").text("key"), None
+
+
 def myself_request() -> Request:
     """GET the site user whom the session signs in; Jira answers 401 to an expired session."""
     return Request(path="/rest/api/3/myself")

@@ -38,8 +38,14 @@ from kb_mcp.sources.atlassian.fetch.adapters.http import (
     TooManyFailuresError,
 )
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import REPRESENTATIONS, RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
-from kb_mcp.sources.atlassian.fetch.domain.content import CONFLUENCE_CLASSES, BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in, sites_of
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    CONFLUENCE_CLASSES,
+    DOCUMENT_CLASSES,
+    BlogPost,
+    Issue,
+    Page,
+)
 from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Coverage,
     CoverageChange,
@@ -47,6 +53,7 @@ from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     Reason,
     Scope,
     fetch_window,
+    whole_read_due,
 )
 from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     DocumentKey,
@@ -58,7 +65,7 @@ from kb_mcp.sources.atlassian.fetch.domain.deletions import (
     too_many_gone,
 )
 from kb_mcp.sources.atlassian.fetch.domain.files import skip_reason
-from kb_mcp.sources.atlassian.fetch.domain.names import ISSUE, PAGE, PROJECT, SPACE
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, ISSUE, PAGE, PROJECT, SPACE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Mapping
@@ -73,6 +80,7 @@ if TYPE_CHECKING:
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
 
     type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
+    type Whereabouts = Callable[[Fields], tuple[str, str | None]]
 
 # A listing longer than this many pages is refused rather than followed.
 MAX_PAGES = 400
@@ -99,6 +107,21 @@ SNAPSHOT_REQUESTS: dict[type[FetchedDocument], SnapshotRequests] = {
     Page: confluence_v2.snapshot_requests,
     BlogPost: confluence_v2.snapshot_requests,
     Issue: jira_v3.snapshot_requests,
+}
+# How a document absent from its scope's whole read is asked for, and where its answer
+# says it is: its scope as its listings are kept, and its own status if it has one.
+PROBES: dict[type[FetchedDocument], tuple[Callable[[str], Request], Whereabouts]] = {
+    Page: (partial(confluence_v2.probe_request, PAGE.plural), confluence_v2.whereabouts),
+    BlogPost: (partial(confluence_v2.probe_request, BLOGPOST.plural), confluence_v2.whereabouts),
+    Issue: (jira_v3.probe_request, jira_v3.whereabouts),
+}
+# Each document class by its document type's name, as a tombstone names it.
+CLASSES = {each.document_type.name: each for each in DOCUMENT_CLASSES}
+# What says, of each scope type by name, whether its source still signs in: the request of
+# the signed-in site user, and how to read the answer.
+SIGNED_IN: dict[str, tuple[Callable[[], Request], Callable[[Fields], bool]]] = {
+    SPACE.name: (confluence_v2.current_user_request, confluence_v2.is_signed_in),
+    PROJECT.name: (jira_v3.myself_request, jira_v3.is_signed_in),
 }
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -187,6 +210,10 @@ class Fetching:
     document found and not stored whole; ``held``, the scopes skipped and those read
     whole whose coverage stays as it was, and why. ``problems`` holds each failure by its
     place, a scope, a document or a file, and its reason, as ``failed`` keeps it.
+    ``due`` names the scopes searched by update time that this run also reads whole,
+    and ``read_whole`` gathers every scope read whole. ``peers`` are the views of the
+    other sources of the site, whose whole reads say, as the source's own do, which scopes
+    are kept.
     """
 
     site: SiteClient
@@ -205,6 +232,9 @@ class Fetching:
     absent: dict[Scope, tuple[dict[DocumentKey, Scope], int, dict[DocumentKey, Tombstone]]] = field(
         default_factory=dict
     )
+    due: frozenset[Scope] = frozenset()
+    read_whole: set[Scope] = field(default_factory=set)
+    peers: tuple[RawStore, ...] = ()
 
     def label(self, what: str | type[FetchedDocument]) -> str:
         """Name something of the source in the counts, a document type by its plural.
@@ -221,32 +251,29 @@ class Fetching:
         holds. A source that does not answer at all (a site without Jira) is counted as a
         failure, by its name, and its scopes skipped. A scope without a window is skipped
         too, and asked nothing. The task ``scopes`` reports those of the sources that
-        answer, each by its key. Confluence's probes and site users follow its spaces
-        alone, so that a run of projects alone does and counts nothing of Confluence's.
+        answer, each by its key. What the scopes' whole reads no longer name is probed
+        once every scope is read; Confluence's site users follow its spaces alone, so
+        that a run of projects alone does and counts nothing of Confluence's.
         """
         self.held |= {scope: "after --until" for scope, w in self.windows.items() if w is None}
-        spaces = [scope for scope in scopes if scope.type == SPACE]
-        projects = [scope for scope in scopes if scope.type == PROJECT]
-        confluence = bool(spaces) and self.reachable(
-            spaces[0].source, confluence_v2.current_user_request(), confluence_v2.is_signed_in
-        )
-        jira = bool(projects) and self.reachable(
-            projects[0].source, jira_v3.myself_request(), jira_v3.is_signed_in
-        )
-        answered_spaces = spaces if confluence else []
-        answered_projects = projects if jira else []
-        with task("scopes", len(answered_spaces) + len(answered_projects)) as each:
-            for scope in each.each(answered_spaces, lambda scope: scope.key):
+        by_type: dict[str, list[Scope]] = {}
+        for scope in scopes:
+            by_type.setdefault(scope.type.name, []).append(scope)
+        answered = [
+            scope
+            for name, group in by_type.items()
+            if self.reachable(group[0].source, *SIGNED_IN[name])
+            for scope in group
+        ]
+        with task("scopes", len(answered)) as each:
+            for scope in each.each(answered, lambda scope: scope.key):
                 window = self.windows[scope]
-                if window is not None and self.space(scope, window):
+                read = self.space if scope.type == SPACE else self.project
+                if window is not None and read(scope, window):
                     self.covered[scope] = window.period
-            if spaces and not self.plan:
+            if self.absent and not self.plan:
                 self.probe_absent()
-            for scope in each.each(answered_projects, lambda scope: scope.key):
-                window = self.windows[scope]
-                if window is not None and self.project(scope, window):
-                    self.covered[scope] = window.period
-        if spaces and not self.plan:
+        if SPACE.name in by_type and not self.plan:
             self.users()
 
     def failed(self, what: str, where: str, error: Exception | str) -> Problem:
@@ -273,13 +300,15 @@ class Fetching:
             "fetch.scope_failed", scope=f"{failed.where}: {failed.reason}"
         )
 
-    def reachable(self, source: str, request: Request, signed_in: Callable[[Fields], bool]) -> bool:
+    def reachable(
+        self, source: str, request: Callable[[], Request], signed_in: Callable[[Fields], bool]
+    ) -> bool:
         """GET the signed-in site user of a source; say whether the source answers.
 
         Raises SignInNeededError when it answers as to nobody.
         """
         try:
-            user = Fields(self.site.json(request), "user")
+            user = Fields(self.site.json(request()), "user")
         except (RepresentationError, SiteError) as error:
             self.failed(source, source, error)
             return False
@@ -377,55 +406,61 @@ class Fetching:
                 # Pending first: a run that stops between keeps the former listing.
                 self.store.put_pending(space.id, joined - whole)
                 self.store.put_space(found[0], pages, posts, folders, listed_at=self.now())
+            self.read_whole.add(scope)
             return True
 
     def track(
-        self, scope: Scope, space_id: str, listed: Mapping[type[FetchedDocument], set[str]]
+        self, scope: Scope, holder: str, listed: Mapping[type[FetchedDocument], set[str]]
     ) -> None:
-        """Record, as pending, what the space's last listing named and the new one does not.
+        """Record, as pending, what the scope's last whole read named and the new one does not.
 
-        The absent are the documents the last listing named, read by id alone, and the
-        store holds, and those already tombstoned in the space's scope. The record is
+        ``holder`` is the scope as its listings are kept, a space by its id, a project by
+        its key; ``listed`` the ids that the new whole read names, by document class. The
+        absent are the documents the last whole read named, read by id alone, and the
+        store holds, and those already tombstoned in the scope; a document that the new
+        one names is present, and loses any tombstone, of whichever scope. The record is
         written before the listing is replaced, so that no absent document is lost to a
-        run that stops; they are probed once every space of the run is listed.
+        run that stops; they are probed once every scope of the run is read.
         """
         # A former entry of an unresolved space keeps its id as its key: found now.
         known = {
             key: replace(stone, scope=scope)
             for key, stone in self.tombstones.items()
-            if stone.scope in {scope, replace(scope, key=space_id)}
+            if stone.scope in {scope, replace(scope, key=holder)}
         }
         absent: dict[DocumentKey, Scope] = {}
         stored = 0
-        for document_class in CONFLUENCE_CLASSES:
-            before = self.store.listed_ids(space_id, document_class) & self.store.stored_ids(
+        for document_class, ids in listed.items():
+            before = self.store.listed_ids(holder, document_class) & self.store.stored_ids(
                 document_class
             )
             stored += len(before)
             named = document_class.document_type.name
             again = {key[2] for key in known if key[1] == named}
-            absent |= {
-                (scope.source, named, each): scope
-                for each in (before | again) - listed[document_class]
-            }
+            absent |= {(scope.source, named, each): scope for each in (before | again) - ids}
+        present = {
+            (scope.source, each.document_type.name, i) for each, ids in listed.items() for i in ids
+        }
         self.absent[scope] = (absent, stored, known)
-        others = {key: stone for key, stone in self.tombstones.items() if key not in known}
+        others = {
+            key: stone
+            for key, stone in self.tombstones.items()
+            if key not in known and key not in present
+        }
         self.tombstones = {**others, **after_probes(known, absent, {}, self.now())}
         self.store.put_tombstones(self.tombstones.values())
 
     def probe_absent(self) -> None:
-        """Probe what each space's scope no longer lists, and record what is gone.
+        """Probe what each scope's whole read no longer names, and record what is gone.
 
-        Those not confirmed are probed, at most ``MAX_PROBES`` a space and a run, those
+        Those not confirmed are probed, at most ``MAX_PROBES`` a scope and a run, those
         on their way first; the rest stay pending. A document answering from another
-        space is followed there once that space's stored listing names it, and stays
+        scope is followed there once that scope's last whole read names it, and stays
         pending until then. Raises SignInNeededError when too many answer gone and the
         session no longer holds; when the site does not answer, nothing is believed. The
-        task ``probes`` reports a space's probes, each by its document's id; all is the
+        task ``probes`` reports a scope's probes, each by its document's id; all is the
         span ``fetch.probes``.
         """
-        canary = (confluence_v2.current_user_request(), confluence_v2.is_signed_in)
-        kept = {each.id for each in self.store.spaces() if not isinstance(each, Problem)}
         with TRACER.start_as_current_span("fetch.probes"):
             for scope, (absent, stored, before) in self.absent.items():
                 known = {k: s for k, s in self.tombstones.items() if s.scope == scope}
@@ -433,10 +468,9 @@ class Fetching:
                 order = probing_order(absent, before)[:MAX_PROBES]
                 with task("probes", len(order)) as probes:
                     answers = {
-                        k: a
-                        for k in probes.each(order, lambda key: key[2])
-                        if (a := self.probe(k, kept))
+                        k: a for k in probes.each(order, lambda key: key[2]) if (a := self.probe(k))
                     }
+                canary = SIGNED_IN[scope.type.name]
                 if too_many_gone(answers, stored) and not self.reachable(scope.source, *canary):
                     answers = {}  # the site stopped answering: believe none of these answers
                 now = after_probes(known, absent, answers, self.now())
@@ -448,17 +482,19 @@ class Fetching:
                 waiting = sum(1 for stone in now.values() if stone.first_gone is None)
                 self.counts.add(f"{self.label('documents')}: absent, waiting for a probe", waiting)
 
-    def probe(self, key: DocumentKey, kept: set[str]) -> ProbeAnswer | None:
-        """GET a document absent from its listing, and say what became of it.
+    def probe(self, key: DocumentKey) -> ProbeAnswer | None:
+        """GET a document absent from its scope's whole read, and say what became of it.
 
-        A probe that fails is a problem by its document, as ``fetch_document`` names one.
+        The scopes kept are those whose whole reads the site's sources keep, this one's
+        and its peers', so that a scope of another site, whose keys may be the same, is
+        never one. A probe that fails is a problem by its document, as ``fetch_document``
+        names one.
         """
-        document_class = Page if key[1] == Page.document_type.name else BlogPost
-        request = confluence_v2.probe_request(document_class.document_type.plural, key[2])
+        document_class = CLASSES[key[1]]
+        request, whereabouts = PROBES[document_class]
         where = f"{self.label(document_class)} {key[2]}"
         try:
-            response = Fields(self.site.json(request), "probe")
-            found_space, status = confluence_v2.whereabouts(response)
+            found, status = whereabouts(Fields(self.site.json(request(key[2])), "probe"))
         except SiteError as error:
             if error.status == HTTP_NOT_FOUND:
                 return ProbeAnswer.GONE
@@ -467,8 +503,12 @@ class Fetching:
         except RepresentationError as error:
             self.failed(self.label("probes"), where, error)
             return None
-        named = found_space in kept and key[2] in self.store.listed_ids(found_space, document_class)
-        return answer_of(found_space, status, kept, named=named)
+        stores = (self.store, *self.peers)
+        kept = {holder for each in stores for holder in each.holders(document_class)}
+        named = found in kept and any(
+            key[2] in each.listed_ids(found, document_class) for each in stores
+        )
+        return answer_of(found, status, kept, named=named)
 
     def folders(self, pages: Iterable[object]) -> list[object]:
         """GET every folder above the listed pages, following folders' own parents.
@@ -513,17 +553,20 @@ class Fetching:
     def project(self, scope: Scope, window: FetchWindow) -> bool:
         """Search a project's issues updated in its window, and fetch what changed.
 
-        The task ``listing`` reports the pages of the search read, and ``fetch_listed``
-        the issues found. Return whether the search was read whole, each of its entries
-        read: an entry that the adapter refuses has no update time for the coverage to
-        stop at, so it holds the project's. All is the span ``fetch.project``, an error
-        when the search could not be read.
+        A run that writes first tracks what the project no longer holds
+        (``track_project``). The task ``listing`` reports the pages of the search read,
+        and ``fetch_listed`` the issues found. Return whether the search was read whole,
+        each of its entries read: an entry that the adapter refuses has no update time
+        for the coverage to stop at, so it holds the project's. All is the span
+        ``fetch.project``, an error when the search could not be read.
         """
         key = scope.key
         start = (window.period.start - JQL_MARGIN).date()
         end = (window.period.end + JQL_MARGIN).date()
         attributes = {"kb_mcp.scope": key}
         with TRACER.start_as_current_span("fetch.project", attributes=attributes) as span:
+            if not self.plan:
+                self.track_project(scope)
             try:
                 with task("listing") as listing:
                     search = jira_v3.search_request(key, start, end)
@@ -540,6 +583,31 @@ class Fetching:
                 self.held[scope] = "entries refused"
                 return False
             return True
+
+    def track_project(self, scope: Scope) -> None:
+        """Track what a project no longer holds, by its last whole read, made anew when due.
+
+        A project ``due`` is read whole, every issue by id whatever its update time, and
+        that read replaces its last; one that fails is counted, ``fetch.scope_failed``,
+        and the last stays, the search going on. What the last whole read named and this
+        one does not is tracked as absent; a project not due keeps its last, so that
+        what is absent already is still probed at each run. The task ``listing`` reports
+        the pages of the whole read.
+        """
+        key, issues = scope.key, None
+        if scope in self.due:
+            try:
+                with task("listing") as listing:
+                    request = jira_v3.listing_request(key)
+                    issues = self.collect(request, jira_v3.search_page, listing.advance)
+            except (RepresentationError, SiteError) as error:
+                self.scope_failed(f"{self.label('projects')} read whole", f"project {key}", error)
+        listed = self.store.listed_ids(key, Issue) if issues is None else jira_v3.entry_ids(issues)
+        # Tombstones first: a run that stops between keeps the former listing.
+        self.track(scope, key, {Issue: listed})
+        if issues is not None:
+            self.store.put_project(key, issues)
+            self.read_whole.add(scope)
 
     def fetch_listed(
         self,
@@ -898,11 +966,12 @@ def run_fetch(
 
     The scopes are one source's, whose name ends the record's,
     ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
-    another fetch. Each scope is fetched over its window. The coverage of every
-    scope listed or searched whole grows as ``Coverage.extended`` rules, and each listed
-    whole was read whole when the run started. The tombstones are
-    Confluence's: a fetch of spaces reads them and keeps each as it finds it, even when
-    the run stops, and a fetch of projects neither reads nor rewrites them.
+    another fetch. Each scope is fetched over its window, and one searched by update time
+    also read whole when ``whole_read_due`` says so. The coverage of every scope listed
+    or searched whole grows as ``Coverage.extended`` rules, and each read whole was read
+    whole when the run started. Every fetch reads the tombstones and keeps each as it
+    finds it, even when the run stops; the other sources of its site, by their whole
+    reads, say with its own which scopes are kept.
     ``fetch.coverage`` says at INFO what became of each finished scope's coverage,
     and why it was held, if it was. It ends done when nothing failed, failed when
     something did, and sign in again when the sign-in no longer holds or no session was
@@ -928,9 +997,15 @@ def run_fetch(
                     now,
                     counts,
                     windows=windows,
-                    tombstones=store.tombstones()
-                    if any(s.type == SPACE for s in purview.scopes)
-                    else {},
+                    tombstones=store.tombstones(),
+                    due=frozenset(
+                        s for s in purview.scopes if whole_read_due(coverage, s, started)
+                    ),
+                    peers=tuple(
+                        RawStore(settings.raw, name)
+                        for name, site in sites_of(settings).items()
+                        if site == signing.site and name != store.source
+                    ),
                 )
                 problems = run.problems
                 try:
@@ -955,12 +1030,12 @@ def run_fetch(
                     for scope, why in run.held.items():
                         extensions[scope] = "held"
                         log.info("fetch.coverage", scope=str(scope), outcome="held", reason=why)
-                    # Each scope listed whole was read whole as the run started.
+                    # Each scope read whole was read whole as the run started.
                     store.put_coverage(
                         replace(
                             coverage,
                             whole_read_at=coverage.whole_read_at
-                            | {s: started for s in run.covered if s.type.enumeration == "listed"},
+                            | dict.fromkeys(run.read_whole, started),
                         )
                     )
                 ending = found  # once the coverage is stored, else an error stopped it

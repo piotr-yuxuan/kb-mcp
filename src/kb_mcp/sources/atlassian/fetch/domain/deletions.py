@@ -1,10 +1,10 @@
 """Documents that the site no longer has: when to say so, and when not to believe it.
 
-A document absent from its scope's new whole read, a space's listing, gets a tombstone,
-pending until a probe answers. A first answer of gone dates it; a second, on a later
-run, confirms it, and the mirror then leaves the document out. Too many gone at once is
-more likely a lost session than a mass deletion, so the caller checks the session before
-believing it.
+A document absent from its scope's new whole read, a space's listing or a project's,
+gets a tombstone, pending until a probe answers. A first answer of gone dates it; a
+second, on a later run, confirms it, and the mirror then leaves the document out. Too
+many gone at once is more likely a lost session than a mass deletion, so the caller
+checks the session before believing it.
 """
 
 from __future__ import annotations
@@ -39,9 +39,9 @@ GONE_STATUSES = frozenset({"trashed", "deleted", "purged"})
 class ProbeAnswer(StrEnum):
     """What a probe of an absent document found."""
 
-    GONE = "gone"  # 404 (deleted, or no longer visible), trashed, or in a space never kept
-    MOVED = "moved"  # in a space whose stored listing names it: followed there now
-    UNSETTLED = "unsettled"  # found, but no stored listing names it yet: probed again
+    GONE = "gone"  # 404 (deleted, or no longer visible), trashed, or in a scope never kept
+    MOVED = "moved"  # in a scope whose last whole read names it: followed there now
+    UNSETTLED = "unsettled"  # found, but no whole read names it yet: probed again
 
 
 class Tombstone(Record):
@@ -110,16 +110,18 @@ def too_many_gone(answers: Mapping[DocumentKey, ProbeAnswer], stored: int) -> bo
     return gone > MASS_COUNT or gone > MASS_SHARE * stored
 
 
-def answer_of(found_space: str, status: str, kept: Collection[str], *, named: bool) -> ProbeAnswer:
+def answer_of(found: str, status: str | None, kept: Collection[str], *, named: bool) -> ProbeAnswer:
     """Say what a probe that the site answered found.
 
-    ``kept`` are the spaces whose listings the raw store keeps; ``named`` says whether the
-    found space's stored listing names the document. A document trashed, or in a space
-    the raw store never listed, is gone; one that a stored listing names has moved there, and
-    is followed by that space's own listing; any other is still somewhere, unsettled,
-    and probed again on a later run, so that its tracking never ends unseen.
+    ``found`` is the scope that holds the document now, and ``kept`` those whose whole
+    reads the raw store keeps, each as its listings are kept; ``status`` is the
+    document's own, where the site gives one; ``named`` says whether the found scope's
+    last whole read names the document. A document trashed, or in a scope never read
+    whole, is gone; one that a whole read names has moved there, and is followed by that
+    scope's own reads; any other is still somewhere, unsettled, and probed again on a
+    later run, so that its tracking never ends unseen.
     """
-    if status in GONE_STATUSES or found_space not in kept:
+    if status in GONE_STATUSES or found not in kept:
         return ProbeAnswer.GONE
     return ProbeAnswer.MOVED if named else ProbeAnswer.UNSETTLED
 

@@ -15,6 +15,7 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.outcome import Problem
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
+from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
@@ -22,8 +23,11 @@ from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, FetchWindow, Scope
+from kb_mcp.sources.atlassian.fetch.domain.deletions import CONFIRM_AFTER
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
-from tests.composed import MODEL
+from kb_mcp.sources.declaration import Source
+from kb_mcp.sources.registry import SOURCES
+from tests.composed import MODEL, model_of
 from tests.mirrors import prepared_sources
 from tests.samples import v2_page, v2_space
 from tests.test_fetching import (
@@ -64,13 +68,14 @@ class RefreshSite(FakeSite):
     """The scripted site of plan 004, whose listing and pages can change between runs.
 
     ``listing`` replaces the space's pages; ``gone`` answer 404 when probed, ``moved``
-    answer from another space; Confluence reads as anonymous after ``anonymous_after``
-    asks for the current user.
+    answer from another space, and ``moved_issues`` from another project; Confluence reads
+    as anonymous after ``anonymous_after`` asks for the current user.
     """
 
     listing: dict[str, dict[str, object]] = field(default_factory=lambda: dict(PAGES))
     gone: set[str] = field(default_factory=set)
     moved: dict[str, str] = field(default_factory=dict)
+    moved_issues: dict[str, str] = field(default_factory=dict)
     others: dict[str, list[dict[str, object]]] = field(default_factory=dict)
     anonymous_after: int | None = None
     user_asks: int = 0
@@ -102,6 +107,9 @@ class RefreshSite(FakeSite):
             routes[f"/wiki/api/v2/pages/{page_id}/attachments"] = lambda _: httpx.Response(
                 200, json={"results": [], "_links": {}}
             )
+        for issue_id, project in self.moved_issues.items():
+            moved = {"id": issue_id, "fields": {"project": {"key": project}}}
+            routes[f"/rest/api/3/issue/{issue_id}"] = lambda _, m=moved: httpx.Response(200, json=m)
         return routes
 
     def user(self, _: httpx.Request) -> httpx.Response:
@@ -347,14 +355,15 @@ def test_an_old_page_that_the_first_listing_named_waits_for_an_edit_or_since(
     assert "1003" not in stored_pages(chosen)
 
 
-def test_a_fetch_of_spaces_records_each_one_s_whole_read_and_one_of_projects_none(
+def test_a_fetch_records_the_whole_read_of_a_space_and_of_a_project_at_its_first_fetch(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """For plan 061: a space listed whole is read whole when the run starts; a search is not."""
+    """Plan 061: each is read whole as the run starts; a project's search is not one."""
     chosen = settings(tmp_path)
     run(chosen, monkeypatch, RefreshSite(), first_week(["MFS"], []), FIRST)
     run(chosen, monkeypatch, RefreshSite(), first_week([], ["PRB"]), FIRST)
-    assert RawStore(chosen.raw, "confluence").coverage().whole_read_at == {MFS: FIRST}
+    run(chosen, monkeypatch, RefreshSite(), catch_up([], ["PRB"]), SECOND)
+    assert RawStore(chosen.raw, "confluence").coverage().whole_read_at == {MFS: FIRST, PRB: FIRST}
 
 
 def test_an_earlier_since_reaches_further_and_moves_the_covered_start(
@@ -872,9 +881,17 @@ def two_issues() -> dict[str, dict[str, object]]:
     return {"20001": issue_at("20001", FAILING), "20002": issue_at("20002", FINE, files=False)}
 
 
-def exactly(start: datetime, end: datetime) -> Coverage:
-    """Return PRB covered exactly from ``start`` to ``end``, as of its end."""
-    return Coverage(periods={PRB: Period(start, end)}, exact=frozenset({PRB}), as_of={PRB: end})
+def exactly(start: datetime, end: datetime, read_whole: datetime = RUN) -> Coverage:
+    """Return PRB covered exactly from ``start`` to ``end``, as of its end.
+
+    And read whole at ``read_whole``: its first fetch, by default at ``RUN``.
+    """
+    return Coverage(
+        periods={PRB: Period(start, end)},
+        exact=frozenset({PRB}),
+        as_of={PRB: end},
+        whole_read_at={PRB: read_whole},
+    )
 
 
 def said_coverage(events: list[dict[str, object]]) -> list[tuple[object, ...]]:
@@ -1069,12 +1086,12 @@ def test_an_entry_from_before_034_is_replaced_by_a_catch_up_and_capped(
     assert windows == {PRB: FetchWindow(period=Period(START, NEXT), reason="covered start")}
     failing = RefreshSite(issues=two_issues(), failing_issues={"20001": 500})
     run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), NEXT)
-    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, FAILING, NEXT)
     again = RefreshSite(issues=two_issues())
     later = NEXT + timedelta(hours=6)
     run(chosen, monkeypatch, again, catch_up([], ["PRB"]), later)
     assert "/rest/api/3/issue/20001" in [url.path for url in again.asked]
-    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, later)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, later, NEXT)
 
 
 def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
@@ -1091,7 +1108,7 @@ def test_an_entry_from_before_034_met_by_a_later_since_stays_inexact(
     )
     run(chosen, monkeypatch, failing, inside, NEXT)
     after = RawStore(chosen.raw, "confluence").coverage()
-    assert after == Coverage(periods={PRB: Period(START, NEXT)})
+    assert after == Coverage(periods={PRB: Period(START, NEXT)}, whole_read_at={PRB: NEXT})
     later = NEXT + timedelta(hours=6)
     assert catch_up([], ["PRB"]).windows(after, later) == {
         PRB: FetchWindow(period=Period(START, later), reason="covered start")
@@ -1127,7 +1144,7 @@ def test_a_project_catches_up_from_a_day_before_its_last_fetch(
         Purview(scopes=scopes([], ["PRB"]), max_file_bytes=CAP, since=START),
         LAST_FETCH,
     )
-    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, LAST_FETCH)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, LAST_FETCH, LAST_FETCH)
     issues = {
         "20010": stored,
         "20011": issue_at("20011", datetime(2026, 10, 26, 9, tzinfo=UTC), files=False),
@@ -1140,7 +1157,7 @@ def test_a_project_catches_up_from_a_day_before_its_last_fetch(
     assert 'updated >= "2026-10-24"' in search.params["jql"]
     fetched = {path for path in jira_asked(later) if not path.endswith("/comment")}
     assert fetched == {"/rest/api/3/issue/20011", "/rest/api/3/issue/20013"}
-    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, CATCH_UP)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, CATCH_UP, LAST_FETCH)
 
 
 def test_a_catch_up_until_a_moment_reaches_that_moment(
@@ -1167,7 +1184,7 @@ def test_a_catch_up_until_a_moment_reaches_that_moment(
         CATCH_UP,
     )
     assert jira_asked(later) == []
-    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, until)
+    assert RawStore(chosen.raw, "confluence").coverage() == exactly(START, until, LAST_FETCH)
 
 
 def test_a_failure_at_the_start_of_a_catch_up_ends_the_coverage_there(
@@ -1339,7 +1356,7 @@ def test_a_coverage_record_of_pre_kb_mcp_is_written_anew_by_the_next_fetch(
     """Plan 056: read as the tag wrote it, it is written with each scope's type, periods kept.
 
     The fetch, of the project apart from its covered period, holds every period as it was,
-    Confluence's too, which it did not fetch.
+    Confluence's too, which it did not fetch; it reads the project whole, plan 061's.
     """
     chosen = settings(tmp_path)
     chosen.raw.mkdir(parents=True)
@@ -1354,7 +1371,14 @@ def test_a_coverage_record_of_pre_kb_mcp_is_written_anew_by_the_next_fetch(
     written = json.loads((chosen.raw / "coverage.json").read_text("utf-8"))
     assert written == [
         {"source": "confluence", "type": "space", "key": "MFS", **period},
-        {"source": "jira", "type": "project", "key": "PRB", **period, "exact": True},
+        {
+            "source": "jira",
+            "type": "project",
+            "key": "PRB",
+            **period,
+            "exact": True,
+            "whole_read_at": (RUN + timedelta(days=2)).isoformat(),
+        },
     ]
 
 
@@ -1398,3 +1422,140 @@ def test_a_dry_run_counts_once_an_issue_that_the_search_names_twice(
     )
     assert planned.counts.counts["jira issues: to fetch"] == 1
     assert planned.counts.counts["files: to download"] == 1
+
+
+# Plan 061: a project read whole, as a space is listed, starts its issues' absences.
+WHOLE_READ = 'project = "PRB" ORDER BY key'
+CLIENT_SITE = "https://client.example.invalid"
+
+
+def whole_reads(fake: FakeSite) -> list[bool]:
+    """Say of each search that a run asked, in order, whether it read the project whole."""
+    asked = [url for url in fake.asked if url.path == "/rest/api/3/search/jql"]
+    return [url.params["jql"] == WHOLE_READ for url in asked]
+
+
+def test_a_project_is_searched_alone_within_its_interval_and_read_whole_past_it(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Criterion 2: its first fetch, and one a week after, read it whole first.
+
+    A fetch between searches it by update time alone, and leaves the time of its last
+    whole read as it was.
+    """
+    chosen = settings(tmp_path)
+    first, within, past = RefreshSite(), RefreshSite(), RefreshSite()
+    run(chosen, monkeypatch, first, first_week([], ["PRB"]), FIRST)
+    run(chosen, monkeypatch, within, catch_up([], ["PRB"]), FIRST + WEEK - timedelta(minutes=1))
+    assert RawStore(chosen.raw, "jira").coverage().whole_read_at == {PRB: FIRST}
+    run(chosen, monkeypatch, past, catch_up([], ["PRB"]), FIRST + WEEK)
+    assert (whole_reads(first), whole_reads(within), whole_reads(past)) == (
+        [True, False],
+        [False],
+        [True, False],
+    )
+    assert RawStore(chosen.raw, "jira").coverage().whole_read_at == {PRB: FIRST + WEEK}
+
+
+def test_an_issue_absent_from_a_whole_read_is_probed_at_each_run_until_confirmed(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Gone at its first 404; a second within the hour confirms nothing, one past it does.
+
+    The runs after the whole read that found it absent search by update time alone, and
+    still probe it.
+    """
+    chosen = settings(tmp_path)
+    kept = issue_at("20001", FIRST - timedelta(days=1), files=False)
+    both = {"20001": kept, "20002": issue_at("20002", FIRST - timedelta(days=2), files=False)}
+    run(chosen, monkeypatch, RefreshSite(issues=both), first_week([], ["PRB"]), FIRST)
+    assert RawStore(chosen.raw, "jira").tombstones() == {}
+    absent = FIRST + WEEK
+    for moment in (absent, absent + CONFIRM_AFTER - timedelta(minutes=1)):
+        run(chosen, monkeypatch, RefreshSite(issues={"20001": kept}), catch_up([], ["PRB"]), moment)
+        [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+        assert (stone.key, stone.first_gone, stone.confirmed) == (
+            ("jira", "issue", "20002"),
+            absent,
+            False,
+        )
+    later = RefreshSite(issues={"20001": kept})
+    run(chosen, monkeypatch, later, catch_up([], ["PRB"]), absent + CONFIRM_AFTER)
+    assert whole_reads(later) == [False]
+    assert "/rest/api/3/issue/20002" in jira_asked(later)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert stone.confirmed
+
+
+def test_an_issue_listed_again_by_a_whole_read_loses_its_tombstone(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Hidden from the sign-in for a while, it answered 404; read whole again, it is present."""
+    chosen = settings(tmp_path)
+    issue = {"20002": issue_at("20002", FIRST - timedelta(days=2), files=False)}
+    run(chosen, monkeypatch, RefreshSite(issues=issue), first_week([], ["PRB"]), FIRST)
+    run(chosen, monkeypatch, RefreshSite(issues={}), catch_up([], ["PRB"]), FIRST + WEEK)
+    assert list(RawStore(chosen.raw, "jira").tombstones()) == [("jira", "issue", "20002")]
+    run(chosen, monkeypatch, RefreshSite(issues=issue), catch_up([], ["PRB"]), FIRST + 2 * WEEK)
+    assert RawStore(chosen.raw, "jira").tombstones() == {}
+
+
+def in_project(issue_id: str, project: str) -> dict[str, object]:
+    """Return an issue of another project, as its search entry and its GET give it."""
+    issue = issue_at(issue_id, FIRST - timedelta(days=2), files=False)
+    values = issue["fields"]
+    assert isinstance(values, dict)
+    project_of = {"id": "10100", "key": project}
+    return {**issue, "key": f"{project}-1", "fields": {**values, "project": project_of}}
+
+
+@pytest.mark.parametrize(
+    ("keeper", "answer"),
+    [("otherjira", "moved"), ("clientjira", "gone")],
+    ids=["a source of the same site", "a source of another site"],
+)
+def test_an_issue_moved_to_a_project_is_followed_only_where_a_source_of_its_site_keeps_it(
+    tmp_path: Path, monkeypatch: MonkeyPatch, keeper: str, answer: str
+) -> None:
+    """Revised at 059's merge: each source probes its own site; a project of another's is none.
+
+    Two Jira sources of two sites read a project of one key, OPS: the issue absent from
+    PRB, found in OPS on its site, has moved when a source of its site reads OPS whole
+    and names it, and is gone when only the other site's source does, whose OPS is
+    another project.
+    """
+    model = model_of(
+        (
+            *SOURCES,
+            Source(name="otherjira", connector=JIRA),
+            Source(name="clientjira", connector=JIRA),
+        )
+    )
+    tables = {"jira": {"site": SITE}, "otherjira": {"connector": "jira", "site": SITE}}
+    tables["clientjira"] = {"connector": "jira", "site": CLIENT_SITE}
+    chosen = model(sources=tables, data_dir=tmp_path / "data")
+    for site in (SITE, CLIENT_SITE):
+        cookie = [{"name": "s", "value": "v", "domain": "x"}]
+        write_cookies(folder_of(chosen.session, site) / COOKIES, cookie)
+    moved = in_project("20002", "OPS")
+    ours = RefreshSite(issues={"20002": issue_at("20002", FIRST - timedelta(days=2))})
+    sites = {SITE: ours, CLIENT_SITE: RefreshSite(issues={"20002": moved})}
+    monkeypatch.setattr(http, "client", lambda site, *_: sites[site].client())
+
+    def fetched(source: str, key: str, now: datetime) -> None:
+        scope = Scope(source=source, type=names.PROJECT, key=key)
+        purview = Purview(scopes=[scope], max_file_bytes=CAP, since=FIRST - WEEK)
+        assert run_fetch(chosen, purview, lambda: now, lambda _: None).ending == "done"
+
+    fetched("jira", "PRB", FIRST)
+    if keeper == "otherjira":
+        sites[SITE] = RefreshSite(issues={"20002": moved})
+    fetched(keeper, "OPS", FIRST)
+    after = RefreshSite(issues={}, moved_issues={"20002": "OPS"})
+    sites[SITE] = after
+    fetched("jira", "PRB", FIRST + WEEK)
+    assert "/rest/api/3/issue/20002" in jira_asked(after)
+    stones = RawStore(chosen.raw, "jira").tombstones()
+    gone = {key: stone.first_gone for key, stone in stones.items()}
+    expected = {} if answer == "moved" else {("jira", "issue", "20002"): FIRST + WEEK}
+    assert gone == expected

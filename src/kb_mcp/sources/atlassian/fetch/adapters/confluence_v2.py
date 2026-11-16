@@ -216,7 +216,7 @@ def probe_request(plural: str, document_id: str) -> Request:
     return Request(path=f"{WIKI}/api/v2/{plural}/{document_id}")
 
 
-def whereabouts(fields: Fields) -> tuple[str, str]:
+def whereabouts(fields: Fields) -> tuple[str, str | None]:
     """Read where a probed page or blog post is: its space's id, and its status."""
     return fields.text("spaceId"), fields.text("status")
 

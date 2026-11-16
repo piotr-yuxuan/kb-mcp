@@ -372,12 +372,13 @@ def test_a_space_is_listed_whole_with_its_folders_and_authors(tmp_path: Path) ->
 
 
 def test_a_run_reports_its_scopes_their_listings_documents_and_probes(tmp_path: Path) -> None:
-    """Each task's last event progress, as it ends: the space's, its probes, the project's.
+    """Each task's last event progress, as it ends: the space's, then the project's, each probes.
 
     The space's pages are listed in two pages, its blog posts in one; it lists three
     pages and a post, of which two pages and the post changed in the week, and are
     fetched. Nothing was stored before, so nothing is probed. The search reads one page
-    of two issues, one of them changed in the week.
+    of two issues, one of them changed in the week; the project, not due a whole read,
+    keeps its last, none, and probes nothing either.
     """
     with capture_logs() as events:
         run(RawStore(tmp_path / "raw", "confluence"), FakeSite())
@@ -392,6 +393,7 @@ def test_a_run_reports_its_scopes_their_listings_documents_and_probes(tmp_path: 
         ("scopes", 1, 1),
         ("listing", 1, None),
         ("documents", 1, 1),
+        ("probes", 0, 0),
         ("scopes", 1, 1),
     ]
 
@@ -543,9 +545,10 @@ def test_a_run_of_no_source_or_of_both_is_refused_before_anything_is_written(
 def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     tmp_path: Path, monkeypatch: MonkeyPatch, telemetry: InMemory
 ) -> None:
-    """Plan 030: Jira's fetch asks Confluence nothing, probes nothing, names no user.
+    """Plan 030: Jira's fetch asks Confluence nothing and names no user.
 
-    Neither its report nor its trace holds anything of Confluence's.
+    Neither its report nor its trace holds anything of Confluence's; its probes, of its
+    first whole read, are its own.
     """
     fake = FakeSite()
     chosen = saved_session(tmp_path, monkeypatch, fake)
@@ -556,7 +559,7 @@ def test_a_run_of_projects_alone_does_nothing_of_confluence_s(
     assert [url.path for url in fake.asked if url.path.startswith("/wiki/")] == []
     spans = {span.name for span in telemetry.spans.get_finished_spans()}
     assert "fetch.project" in spans
-    assert spans & {"fetch.space", "fetch.probes", "fetch.users"} == set()
+    assert spans & {"fetch.space", "fetch.users"} == set()
 
 
 def test_an_expired_session_stops_the_run_before_anything_is_stored(
