@@ -414,7 +414,8 @@ Its prepare reads that store alone and converts through the cache of conversions
   copy store fails the work log's row, naming the fetch. One migration, at the first
   fetch of a store: the created and updated dates of the mirror are carried over before
   the read, and until a read without a problem takes them all, `prepare` removes no
-  file. A
+  file; a file of the mirror that does not read then fails that fetch, by its path, so
+  that the loss of its dates is said once, loudly, not lost in a warning. A
   prepare whose conversion fails removes no file, so that a document retitled meanwhile
   keeps its old file beside its new one until a prepare converts everything, and the
   others' links to the document that failed are left out meanwhile, its file no

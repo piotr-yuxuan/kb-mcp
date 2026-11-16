@@ -52,8 +52,10 @@ if TYPE_CHECKING:
 TRACER = trace.get_tracer(__name__)
 # Why a meeting is a warning: its link reaches no transcript found.
 UNLINKED = "its :MEETING: link reaches no transcript found"
-# Why a file of the mirror is a warning when a store begins.
+# Why a file of the mirror that does not read is a problem when a store begins, and what
+# it holds back: no document's copy.
 NOT_CARRIED = "its dates are not carried over"
+NOTHING = "nothing"
 
 
 class Read(Record):
@@ -170,17 +172,17 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
 
 def carried_over(
     docs: Path, source: str
-) -> tuple[dict[str, tuple[datetime, datetime]], list[OutcomeWarning]]:
+) -> tuple[dict[str, tuple[datetime, datetime]], list[Problem]]:
     """Read the created and updated dates of each document of a work log's files of the mirror.
 
     By its id. The files of ``source``'s folders of ``docs`` that ``worklog_globs`` finds,
     those that its prepare writes, in today's front matter or plan 058's, so that each
     document keeps its dates when its copy store begins. A file that does not read, or
-    holds no document of the work log's rules, is a warning by its path, never its
-    content: its dates are not carried over.
+    holds no document of the work log's rules, is a problem by its path, never its
+    content: its dates are not carried over, and so lost.
     """
     carried: dict[str, tuple[datetime, datetime]] = {}
-    warnings: list[OutcomeWarning] = []
+    problems: list[Problem] = []
     for file in documents(docs, worklog_globs(source)):
         path = file.relative_to(docs).as_posix()
         try:
@@ -190,10 +192,10 @@ def carried_over(
             # A refusal names the file or the key; any other message could quote content.
             named = isinstance(error, RepresentationError | RefusedError)
             reason = str(error) if named else type(error).__name__
-            warnings.append(OutcomeWarning(where=path, reason=f"{reason}; {NOT_CARRIED}"))
+            problems.append(Problem(where=path, reason=f"{reason}; {NOT_CARRIED}"))
             continue
         carried[matter.id] = (matter.created, matter.updated)
-    return carried, warnings
+    return carried, problems
 
 
 def fetch_worklog(
@@ -208,7 +210,9 @@ def fetch_worklog(
 
     A store never written first takes the dates of the source's files of the mirror, as
     ``carried_over`` reads them, and is written so before the read, whatever the read
-    then meets. The read, begun at ``now()``, is then kept as ``fetched`` says.
+    then meets; each file of the mirror that does not read is a problem of the fetch,
+    which holds back ``NOTHING``. The read, begun at ``now()``, is then kept as ``fetched``
+    says, complete when the fetch met no problem.
     Without the table's ``archives``, the archive file, ``transcripts/archive/``,
     ``meetings/archive/`` and the subtrees tagged ARCHIVE are left out. A dry run takes
     no lock and writes nothing, and ends not run, or failed for a problem found.
@@ -222,7 +226,7 @@ def fetch_worklog(
     log = structlog.get_logger()
     with contextlib.nullcontext() if dry_run else store.writing():
         stored = store.read()
-        carried: list[OutcomeWarning] = []
+        carried: list[Problem] = []
         if stored is None:
             dates, carried = carried_over(settings.docs, source)
             stored = Copies(documents={}, migrated=dates, as_of=None)
@@ -231,7 +235,8 @@ def fetch_worklog(
                 store.put(stored)
         at = now()
         read = read_worklog(table.path, archives=table.archives)
-        copies = fetched(stored, read.documents, at, complete=not read.problems)
+        problems = (*carried, *read.problems)
+        copies = fetched(stored, read.documents, at, complete=not problems)
         if not dry_run:
             store.put(copies)
     revisions = {key: each.revision for key, each in stored.documents.items()}
@@ -244,7 +249,7 @@ def fetch_worklog(
         ),
         gone=len(revisions.keys() - copies.documents.keys()),
         html=read.html,
-        held_back=read.held_back,
+        held_back={**dict.fromkeys((each.where for each in carried), NOTHING), **read.held_back},
     )
     log.info(
         "worklog.fetched",
@@ -252,11 +257,11 @@ def fetch_worklog(
         new=counts.new,
         changed=counts.changed,
         gone=counts.gone,
-        problems=len(read.problems),
+        problems=len(problems),
     )
     return Outcome.of(
         counts,
-        read.problems,
-        (*carried, *read.warnings),
+        problems,
+        read.warnings,
         otherwise="not run" if dry_run else "done",
     )

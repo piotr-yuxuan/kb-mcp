@@ -396,23 +396,34 @@ def test_the_carried_dates_are_written_before_the_read(
     assert fetch.held().migrated == dates
 
 
-def test_a_file_of_the_mirror_that_does_not_read_is_a_warning_and_its_date_not_carried(
+def test_a_file_of_the_mirror_that_does_not_read_fails_the_fetch_its_dates_lost(
     fetch: Fetch,
 ) -> None:
-    """By its path in the mirror, never its content; the fetch goes on and ends done."""
+    """A problem by its path in the mirror, never its content, so that the loss is loud.
+
+    Every document is read, that one dated afresh, but as by any problem, the read is not
+    the as-of time; the next fetch, its store begun, meets no such problem.
+    """
     dates = mirrored(fetch.settings.docs)
     damaged = next((fetch.settings.docs / "worklog" / "entries").glob(f"{TIDY}-*.md"))
-    damaged.write_text("not a file of the mirror\n", "utf-8")
+    damaged.write_text("not a file of the mirror, secret\n", "utf-8")
     path = damaged.relative_to(fetch.settings.docs).as_posix()
-    outcome = fetch()
-    assert outcome.ending == "done"
+    settle(fetch.root, LATER)
+    with capture_logs() as logged:
+        outcome = fetcher.fetch(fetch.run())
     reason = f"{path}: no front matter; its dates are not carried over"
-    assert [(each.where, each.reason) for each in outcome.warnings] == [
-        (path, reason),
-        (UNLINKED_MEETING.where, UNLINKED_MEETING.reason),
-    ]
-    assert fetch.held().documents[TIDY].created == MODIFIED
-    assert len(dates) == DOCUMENTS
+    assert (outcome.ending, outcome.problems, outcome.warnings) == (
+        "failed",
+        (Problem(where=path, reason=reason),),
+        (UNLINKED_MEETING,),
+    )
+    (problem,) = [each for each in logged if each["event"] == "worklog.problem"]
+    assert (problem["where"], problem["held_back"]) == (path, fetching.NOTHING)
+    assert "secret" not in repr(logged)
+    held = fetch.held()
+    assert (len(held.documents), held.as_of) == (len(dates), None)
+    assert (held.documents[TIDY].created, held.documents[TIDY].updated) == (LATER, LATER)
+    assert (fetch(SECOND).ending, fetch.held().as_of) == ("done", SECOND)
 
 
 def test_two_work_logs_keep_a_store_each(fetch: Fetch, tmp_path: Path) -> None:

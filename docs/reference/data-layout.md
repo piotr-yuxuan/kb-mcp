@@ -654,8 +654,10 @@ source's folders of the mirror that prepare writes, one of each document type
 (`worklog_globs`), in today's front matter or plan 058's, and writes them into the
 store, as `migrated`, before it reads the folder: a document read takes its dates from
 there as its stored copy's, its text read then taken as theirs, and one that no read
-takes yet keeps its file of the mirror, which prepare removes nothing of meanwhile. A file of the mirror that does not read then is a warning by its path: its
-date is not carried over.
+takes yet keeps its file of the mirror, which prepare removes nothing of meanwhile. A
+file of the mirror that does not read then is a problem of the fetch by its path, never
+its content: its dates are lost, its document dated afresh when read, and, as by any
+problem, the read finds no document gone and leaves `as_of`.
 
 Prepare converts each document's text through the source's rows of the cache of
 conversions ([below](#pandocs-conversions)), and writes every file again, those whose

@@ -204,8 +204,11 @@ the folder: a document without a day keeps both, as the text that this fetch rea
 that an entry without a timestamp, whose dates the file of the mirror alone held, keeps
 them, and no document is dated afresh by its org file's time. One edited since the
 former version last prepared keeps them too, until its text changes again. A file of the
-mirror that does not read is a warning by its path, and its dates are lost. Until a fetch reads the work log without a problem, `prepare` removes no file,
-so that the file of a document that the first fetch could not read stays.
+mirror that does not read is a problem by its path, and the fetch ends failed, exit 1:
+its document's dates are lost, taken afresh from its org file, and the next fetch, its
+store begun, does not meet it again. Until a fetch reads the work log without a problem,
+`prepare` removes no file, so that the file of a document that the first fetch could not
+read stays.
 
 `index` then brings the index of the mirror's words up to the mirror, without a model,
 reading only the files that changed. For search by meaning, `kb-mcp embed`, after it,
