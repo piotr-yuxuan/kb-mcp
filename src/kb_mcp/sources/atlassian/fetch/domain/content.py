@@ -115,7 +115,7 @@ class Comment(Record):
 
 
 class FetchedDocument(Record):
-    """A page, a blog post or an issue: what becomes one file of the mirror.
+    """A page, a blog post or an issue: a document with a body, fetched by its revisions.
 
     ``document_type`` names where its source's view of the raw store keeps it; ``revision``
     names this state of it, and orders states as text.

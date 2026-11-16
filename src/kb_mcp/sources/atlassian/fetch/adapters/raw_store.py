@@ -212,8 +212,9 @@ class RawStore:
     the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file per response
     plus the store's record. It is written whole into a hidden folder and renamed into
     place, so it is either complete or absent, and its responses never change. A space's
-    listings are ``<root>/<source>/spaces/<id>/*.json``, each replaced whole, and its
-    site's users ``<root>/<source>/users.json``, merged. A file is
+    listings are ``<root>/<source>/spaces/<id>/*.json``, a project's last whole read
+    ``<root>/<source>/projects/<key>/issues.json``, each replaced whole, and its site's
+    users ``<root>/<source>/users.json``, merged. A file is
     ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
     """
 
