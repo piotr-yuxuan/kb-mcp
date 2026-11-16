@@ -304,8 +304,9 @@ place, so that it is the last write or the one before it, never part of one.
 ```json
 {
   "as_of": "2026-11-16T08:30:00.250000+00:00",
-  "migrated": {"t-20261021-notes-on-x": {"created": "2026-10-22T06:00:00+00:00",
-                                         "updated": "2026-10-22T06:00:00+00:00"}},
+  "migrated": {"t-20261021-notes-on-x": {
+    "path": "worklog/transcripts/t-20261021-notes-on-x-notes-on-the-ledger.md",
+    "created": "2026-10-22T06:00:00+00:00", "updated": "2026-10-22T06:00:00+00:00"}},
   "documents": [
     {"type": "meeting", "id": "m-20261027-payments-stand-up", "title": "Payments stand-up",
      "status": "current", "labels": ["work"],
@@ -321,7 +322,7 @@ place, so that it is the last write or the one before it, never part of one.
 | Key | Value |
 |---|---|
 | `as_of` | the moment at which the last read of the work log that met no problem began, the as-of time of its one scope; before any, the one that the source's file of the mirror held as the store began ([a source's file](#a-sources-file)), else `null` |
-| `migrated` | by document id, the `created` and `updated` that the mirror held of each document that no read has taken since the store began ([the work log](#the-work-log)) |
+| `migrated` | by document id, what the mirror held of each document that no read has taken since the store began: the `path` of its file, from `<data>/docs/`, and the `created` and `updated` of its front matter ([the work log](#the-work-log)) |
 | `documents` | each document as the last read that took it found it, in the order read: its `type`, `id` and `title`, its `status`, `labels`, `breadcrumb` and `people`, each name as written, its `links`, each a relation and the id of the other document, of the same source, its `created` and `updated`, `file`, the org file that holds it, from the work log's folder, and `text`, what pandoc converts |
 
 Times are ISO 8601 with their offset, to the microsecond. A document's revision is the
@@ -564,12 +565,15 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A link
-always names a file that the prepare leaves: one that it writes, or one that stays, of
-a document whose conversion fails in that prepare, which keeps its file and its links,
-or carried over from the mirror while no read has taken it and its file is there. A
-document of the work log without a file then, not read before it has a copy, or whose
-conversion fails before it has one, is left out of the other documents' links until a
-run reads and converts it. A link added or removed while a work-log
+always names a document whose file the prepare leaves at its place, never one found by
+its name alone: for a document of the store, the path of its id and title, where the
+prepare writes it, or where it stays when its conversion fails in that prepare, which
+keeps its file and its links; for one carried over from the mirror that no read has
+taken, the path where the store's first fetch found its file, while the file is there.
+A document of the work log without a file there then, not read before it has a copy,
+or whose conversion fails before it has one at its path, as in the prepare after a new
+title, whose old file stays, is left out of the other documents' links until a run
+reads and converts it. A link added or removed while a work-log
 transcript is not read is written on its meeting alone until a run reads the
 transcript, whose last copy stays as it was; and while a fetch's problem keeps a meeting
 or a transcript gone from the work log in the copy store, its file stays, naming
@@ -651,15 +655,15 @@ replaces it; it finds no document gone, and leaves `as_of` as it was. So each la
 stays in the store, and in the mirror, which prepare writes from it. Each problem says
 what it held back, as `worklog.problem` ([fetch's telemetry](telemetry/fetch.md)), at
 each run until it is fixed. A store's first fetch, on a data directory without the
-source's copy store, first reads the `created` and `updated` of each file of the
+source's copy store, first reads the path, `created` and `updated` of each file of the
 source's folders of the mirror that prepare writes, one of each document type
 (`worklog_globs`), in today's front matter or plan 058's, and writes them into the
 store, as `migrated`, with the as-of time that the source's file of the mirror holds
 ([below](#a-sources-file)), as `as_of`, before it reads the folder: a document read
 takes its dates from there as its stored copy's, its text read then taken as theirs, one
-that no read takes yet keeps its file of the mirror, which prepare removes nothing of
-meanwhile but the old file of a document written again under another path, and a fetch
-with a problem leaves the as-of time as the former version served it. A file of the
+that no read takes yet keeps its file of the mirror at the path found, which prepare
+removes nothing of meanwhile but the old file of a document written again under another
+path, and a fetch with a problem leaves the as-of time as the former version served it. A file of the
 mirror that does not read then is a problem of the fetch by its path, never its content:
 what it holds is lost, a document dated afresh when read, and, as by any problem, the
 read finds no document gone and leaves `as_of`.
@@ -671,9 +675,13 @@ back, converting nothing, but while a carried date waits: the file of a document
 read has taken yet is in no store, so that deleting the folder loses it, and the links to
 it, until its org file reads. A prepare whose conversion fails is a problem by the
 document's org file and id, and removes no file but the old file of a document written
-again under another path, which the id that begins its name tells, the longest of the
-store's (`named_id`); a prepare that finds no copy store is a problem naming `kb-mcp
-fetch worklog`, its row failed and the others going on.
+again under another path: a file at no document's path (`places`), that of each
+document of the store and the one found for each carried over, whose name only the ids
+of documents written begin, alone or before a dash (`retired`). A name that the id of
+a document of the store not written, or carried over, also begins stays, such as
+`e-<digest>-2-notes.md`, which `e-<digest>` titled `2 notes` would take as well as
+`e-<digest>-2` titled `Notes`. A prepare that finds no copy store is a problem naming
+`kb-mcp fetch worklog`, its row failed and the others going on.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2

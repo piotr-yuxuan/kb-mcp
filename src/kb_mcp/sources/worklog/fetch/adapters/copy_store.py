@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.sources.worklog.fetch.domain.copies import Copies, WorklogCopy
+from kb_mcp.sources.worklog.fetch.domain.copies import Carried, Copies, WorklogCopy
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -115,7 +115,11 @@ class CopyStore:
             return Copies(
                 documents=documents,
                 migrated={
-                    key: (each.time("created"), each.time("updated"))
+                    key: Carried(
+                        path=each.text("path"),
+                        created=each.time("created"),
+                        updated=each.time("updated"),
+                    )
                     for key, each in carried.items()
                 },
                 as_of=None if fields.optional_text("as_of") is None else fields.time("as_of"),
@@ -129,8 +133,12 @@ class CopyStore:
         value = {
             "as_of": None if copies.as_of is None else copies.as_of.isoformat(),
             "migrated": {
-                key: {"created": created.isoformat(), "updated": updated.isoformat()}
-                for key, (created, updated) in copies.migrated.items()
+                key: {
+                    "path": each.path,
+                    "created": each.created.isoformat(),
+                    "updated": each.updated.isoformat(),
+                }
+                for key, each in copies.migrated.items()
             },
             "documents": [
                 {

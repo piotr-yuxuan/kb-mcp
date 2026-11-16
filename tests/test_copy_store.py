@@ -21,7 +21,7 @@ from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import COPIES, CopyStore, CopyStoreBusyError
-from kb_mcp.sources.worklog.fetch.domain.copies import Copies, WorklogCopy
+from kb_mcp.sources.worklog.fetch.domain.copies import Carried, Copies, WorklogCopy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -57,9 +57,14 @@ ENTRY = WorklogCopy(
     file="todo.org",
     text="* TODO Tidy the runbooks folder\n",
 )
+CARRIED = "t-20261021-notes-on-x"
 HELD = Copies(
     documents={MEETING.id: MEETING, ENTRY.id: ENTRY},
-    migrated={"t-20261021-notes-on-x": (SEEN, DAY)},
+    migrated={
+        CARRIED: Carried(
+            path=f"worklog/transcripts/{CARRIED}-notes-on-the-ledger.md", created=SEEN, updated=DAY
+        )
+    },
     as_of=SEEN,
 )
 
@@ -165,6 +170,10 @@ def test_a_write_that_fails_leaves_the_last_whole_file_and_no_hidden_one(
             "worklog/copies.json.migrated: missing",
         ),
         (
+            lambda value: {**value, "migrated": {CARRIED: {"created": SEEN.isoformat()}}},
+            f"worklog/copies.json.migrated.{CARRIED}.path: missing",
+        ),
+        (
             lambda value: {**value, "documents": [{**value["documents"][0], "id": "d-x"}]},
             "worklog/copies.json.documents[0]: id: does not match",
         ),
@@ -195,6 +204,7 @@ def test_a_write_that_fails_leaves_the_last_whole_file_and_no_hidden_one(
         "not an object",
         "a time",
         "a field missing",
+        "a carried path missing",
         "an id off its rule",
         "a document's field missing",
         "a relation",

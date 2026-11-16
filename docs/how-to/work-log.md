@@ -213,7 +213,7 @@ a problem by its path, and the fetch ends failed, exit 1: what it holds is lost,
 document's dates taken afresh from its org file, and the next fetch, its store begun,
 does not meet it again. Until a fetch reads the work log without a problem, `prepare`
 removes no file but the old one of a document retitled, so that the file of a document
-that the first fetch could not read stays.
+that the first fetch could not read stays where that fetch found it.
 
 `index` then brings the index of the mirror's words up to the mirror, without a model,
 reading only the files that changed. For search by meaning, `kb-mcp embed`, after it,
@@ -249,8 +249,11 @@ Its first run embeds the whole mirror.
   a meeting renamed, or an entry renamed without `:ID:`, is found under its old id and
   its new, and one deleted stays, its file still naming the transcript or the meetings
   that no longer name it back. A prepare whose conversion failed removes no file but the
-  old one of a document retitled, until a prepare converts it; the document whose
-  conversion failed keeps its file and its links, and the others' links to it. A
+  old one of a document retitled, until a prepare converts it, and only when that file's
+  name could be no other document's: the second of two entries of one title keeps its
+  old file beside its new one while the first fails. The document whose conversion
+  failed keeps its file and its links, and the others' links to it; one retitled in that
+  run keeps its old file, which the others link again once its new file is written. A
   document not read before it has a copy, or whose conversion fails before it has a
   file, is named in no other's `links` until a run reads and converts it.
 - A file not read also holds back the files that it builds, which stay as they were: for

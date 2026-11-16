@@ -33,6 +33,7 @@ from kb_mcp.sources.worklog.declared import WORKLOG
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import COPIES, CopyStore
 from kb_mcp.sources.worklog.fetch.app import fetcher, fetching
 from kb_mcp.sources.worklog.fetch.app.fetching import WorklogFetched, fetch_worklog
+from kb_mcp.sources.worklog.fetch.domain.copies import Carried
 from kb_mcp.sources.worklog.settings import WorklogTable
 from tests.test_prepare_worklog import (
     DOCUMENTS,
@@ -372,7 +373,10 @@ def test_the_carried_dates_are_kept_while_a_file_is_not_read(fetch: Fetch) -> No
     (fetch.root / "transcripts/misc/a.org").write_bytes(NOT_UTF8)
     assert fetch().ending == "failed"
     held = fetch.held()
-    assert (WAITING in held.documents, held.migrated) == (False, {WAITING: dates[WAITING]})
+    assert WAITING not in held.documents
+    assert {key: (each.created, each.updated) for key, each in held.migrated.items()} == {
+        WAITING: dates[WAITING]
+    }
     (fetch.root / "transcripts/misc/a.org").write_bytes(text)
     settle(fetch.root / "transcripts/misc/a.org", LATER)
     assert fetch(SECOND).ending == "done"
@@ -384,8 +388,15 @@ def test_the_carried_dates_are_kept_while_a_file_is_not_read(fetch: Fetch) -> No
 def test_the_carried_dates_are_written_before_the_read(
     fetch: Fetch, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """In one step, whatever the read then meets, even a failure that ends the run."""
+    """In one step, whatever the read then meets, even a failure that ends the run.
+
+    Each with the path of the file where it was found, from the mirror's folder.
+    """
     dates = mirrored(fetch.settings.docs)
+    paths = {
+        load(path.read_text("utf-8"), path.name)[0].id: path.relative_to(MIRROR).as_posix()
+        for path in MIRROR.rglob("*.md")
+    }
 
     def failing(*_: object, **__: object) -> None:
         message = "the read fails"
@@ -394,7 +405,10 @@ def test_the_carried_dates_are_written_before_the_read(
     monkeypatch.setattr(fetching, "read_worklog", failing)
     with pytest.raises(RuntimeError, match="the read fails"):
         fetch()
-    assert fetch.held().migrated == dates
+    assert fetch.held().migrated == {
+        key: Carried(path=paths[key], created=created, updated=updated)
+        for key, (created, updated) in dates.items()
+    }
 
 
 def test_a_file_of_the_mirror_that_does_not_read_fails_the_fetch_its_dates_lost(

@@ -70,17 +70,29 @@ class WorklogCopy(Record):
         return self
 
 
+class Carried(Record):
+    """What a store began with of one document: its file of the mirror and that file's dates.
+
+    ``path``, where the migration found the file, from the mirror's folder; ``created`` and
+    ``updated``, the dates that its front matter held.
+    """
+
+    path: str
+    created: datetime
+    updated: datetime
+
+
 class Copies(Record):
     """What one work log's copy store holds.
 
     ``documents``, each document as last read whole, by its id, in the order read;
-    ``migrated``, by id, the created and updated dates that the mirror held of each
-    document that no read has taken since the store began, carried over before its first
-    read; ``as_of``, the moment of the last read that met no problem, None before any.
+    ``migrated``, by id, what the mirror held of each document that no read has taken
+    since the store began, carried over before its first read; ``as_of``, the moment of
+    the last read that met no problem, None before any.
     """
 
     documents: Mapping[str, WorklogCopy]
-    migrated: Mapping[str, tuple[datetime, datetime]]
+    migrated: Mapping[str, Carried]
     as_of: datetime | None
 
     @model_validator(mode="after")
@@ -110,14 +122,12 @@ def fetched(
     copies: dict[str, WorklogCopy] = {}
     for document in read:
         old = stored.documents.get(document.id)
-        if old is None:
-            last, holds = stored.migrated.get(document.id), True
-        else:
-            last, holds = (old.created, old.updated), old.revision == digest(document.text)
+        last = stored.migrated.get(document.id) if old is None else old
+        holds = old is None or old.revision == digest(document.text)
         if last is not None and holds and document.day is None:
-            created, updated = last
+            created, updated = last.created, last.updated
         else:
-            created, updated = document.dates(None if last is None else last[0])
+            created, updated = document.dates(None if last is None else last.created)
         copies[document.id] = WorklogCopy(
             type=document.type,
             id=document.id,

@@ -412,17 +412,22 @@ Its prepare reads that store alone and converts through the cache of conversions
   written again at each fetch, as its as-of time moves. One more command to refresh the
   work log alone, `fetch worklog` before `prepare worklog`, and a `prepare` without the
   copy store fails the work log's row, naming the fetch. One migration, at the first
-  fetch of a store: the created and updated dates of the mirror are carried over before
-  the read, and until a read without a problem takes them all, `prepare` removes no
-  file; a file of the mirror that does not read then fails that fetch, by its path, so
-  that the loss of its dates is said once, loudly, not lost in a warning; meanwhile, the
-  mirror holds the files of the documents that no read has taken, which deleting it
-  loses until their org files read. A prepare whose conversion fails removes no file
-  either, so that the document keeps its file, and the others their links to it. Either
-  way, the old file of a document written again under another path goes, told by the id
-  that its name carries
-  ([`named_id`](../../src/kb_mcp/sources/worklog/prepare/domain/layout.py)), the
-  longest of the store's that begins it: the file of a document gone whose name begins
+  fetch of a store: the path of each file of the mirror and its created and updated
+  dates are carried over before the read, and until a read without a problem takes them
+  all, `prepare` removes no file; a file of the mirror that does not read then fails
+  that fetch, by its path, so that the loss of its dates is said once, loudly, not lost
+  in a warning; meanwhile, the mirror holds the files of the documents that no read has
+  taken, at the paths carried, which deleting it loses until their org files read. A
+  prepare whose conversion fails removes no file either, so that the document keeps its
+  file at its path, and the others their links to it. Either way, the old file of a
+  document written again under another path goes: a file at no document's path whose
+  name only the ids of documents written begin
+  ([`retired`](../../src/kb_mcp/sources/worklog/prepare/domain/layout.py)), as a name
+  may be that of several ids. One that an id not written also begins stays, so that
+  the second of two entries of one title, retitled while the first fails, keeps its old
+  file beside its new one, which index skips as a duplicate id; a document retitled in
+  the prepare whose conversion fails keeps its old file, but the others link it again
+  only once its new file is written; and the file of a document gone whose name begins
   with a written document's id and a dash goes with it, sooner than it would. The first
   fetch after the upgrade takes the text that it reads as the one that the mirror's dates
   are of: a document without a day edited since the former version last prepared keeps
@@ -561,8 +566,8 @@ every document for `todo.org` or its archive, whence every day, meeting and entr
 a transcript, its own, whose last copy stays in the copy store. A meeting needs nothing
 of its transcript but the id, which the path gives, so that it links a transcript read
 or not ([`transcript_ids`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)),
-and a link is written when its other end has a file in that prepare
-([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). A fetch
+and a link is written when its other end has a file at its path once that prepare is
+done ([`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py)). A fetch
 that meets a problem finds no document gone, and `fetch` exits 1; the prepare then
 writes each document's last copy, and removes the old file of a document written again
 under another title's path.

@@ -1421,6 +1421,80 @@ def test_an_entry_retitled_while_removals_are_held_back_keeps_one_file(
     assert build_index(run.docs, run.data / "index.sqlite", datetime.now(UTC)).problems == ()
 
 
+def test_an_entry_that_fails_keeps_its_file_though_another_s_id_begins_its_name(
+    run: Run,
+) -> None:
+    """Its file is at its place: the second entry of its digest, written, takes nothing.
+
+    Both retrospectives retitled ``2 retro notes``, the first's file name begins with the
+    second's id and a dash, as the second's own does; the dry run agrees with the run.
+    """
+    run.edit("todo.org", "* Retrospective notes\n  First", "* 2 retro notes\n  First")
+    run.edit("todo.org", "* Retrospective notes\n  Second", "* 2 retro notes\n  Second")
+    assert run().problems == ()
+    (first,) = [each for each in run.files() if "First retrospective" in each.body]
+    second = f"{first.matter.id}-2"
+    assert (first.path, run.by_id(second).path) == (
+        f"worklog/entries/{second}-retro-notes.md",
+        f"worklog/entries/{second}-2-retro-notes.md",
+    )
+    before = (run.docs / first.path).read_bytes()
+    run.edit("todo.org", "First retrospective", "First failing retrospective")
+    assert run.plan().planned.to_remove == 0
+    outcome = run(failing="failing")
+    assert [each.where for each in outcome.problems] == [f"todo.org, {first.matter.id}"]
+    assert ((run.docs / first.path).read_bytes(), outcome.counts.changes.removed) == (before, 0)
+
+
+def test_a_carried_transcript_keeps_its_file_though_another_s_id_begins_its_name(
+    run: Run,
+) -> None:
+    """Its file is where the migration found it: ``notes on x.org``, read, takes nothing.
+
+    ``notes.org`` titled ``On x, the ledger``: its file name begins with the id of
+    ``notes on x.org`` and a dash. The copy store deleted, as before an upgrade, and
+    ``notes.org`` not read, its date waits and its file stays; the dry run agrees.
+    """
+    notes = run.root / "transcripts/current/2026-10-21 Wed/notes.org"
+    notes.write_text("* On x, the ledger\nKim: the schema owner answered.\n", "utf-8")
+    settle(notes)
+    assert run().problems == ()
+    kept = run.docs / run.by_id("t-20261021-notes").path
+    assert kept.name == "t-20261021-notes-on-x-the-ledger.md"
+    before = kept.read_bytes()
+    shutil.rmtree(run.store.folder)
+    notes.write_bytes(NOT_UTF8)
+    assert run.plan().planned.to_remove == 0
+    outcome = run()
+    assert [each.where for each in outcome.problems] == [
+        "transcripts/current/2026-10-21 Wed/notes.org"
+    ]
+    assert (kept.read_bytes(), outcome.counts.changes.removed) == (before, 0)
+
+
+def test_a_renamed_transcript_that_fails_is_no_link_s_other_end(run: Run) -> None:
+    """Its place holds no file, though the file of the one that it was begins with its id.
+
+    ``notes on x.org``, which the ledger review names as ``notes.org``, renamed so, its
+    text failing: the old file, of a document gone, stays as removals are held back, and
+    the meeting links no document without a file.
+    """
+    day = "transcripts/current/2026-10-21 Wed"
+    run.edit(
+        "todo.org",
+        ":PARTICIPANTS: Robin Example, Kim",
+        f":MEETING: [[./{day}/notes.org]]\n:PARTICIPANTS: Robin Example, Kim",
+    )
+    assert run().problems == ()
+    gone = run.docs / run.by_id("t-20261021-notes-on-x").path
+    (run.root / day / "notes on x.org").rename(run.root / day / "notes.org")
+    run.edit(f"{day}/notes.org", "Kim: the ledger", "Kim: failing, the ledger")
+    outcome = run(failing="failing")
+    assert [each.where for each in outcome.problems] == [f"{day}/notes.org, t-20261021-notes"]
+    assert gone.exists()
+    assert (links_of(run.by_id("m-20261027-ledger-review")), one_way(run.files())) == ([], [])
+
+
 def test_a_transcript_linking_out_holds_back_itself_by_its_id(run: Run, tmp_path: Path) -> None:
     """Named by its path alone, as listed reports it, it keeps its id and its last copy.
 

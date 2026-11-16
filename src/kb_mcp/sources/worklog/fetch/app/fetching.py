@@ -32,7 +32,7 @@ from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_file
 from kb_mcp.mirror.domain.mirror import scope_name
 from kb_mcp.sources.worklog.fetch.adapters import files
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStore
-from kb_mcp.sources.worklog.fetch.domain.copies import Copies, fetched
+from kb_mcp.sources.worklog.fetch.domain.copies import Carried, Copies, fetched
 from kb_mcp.sources.worklog.fetch.domain.worklog import (
     TODO,
     TODO_ARCHIVE,
@@ -182,15 +182,16 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
 def carried_over(docs: Path, source: str) -> tuple[Copies, list[Problem]]:
     """Give what a work log's copy store begins with: what its files of the mirror hold.
 
-    By its id, the created and updated dates of each document of the files of
+    By its id, the path, created and updated dates of each document of the files of
     ``source``'s folders of ``docs`` that ``worklog_globs`` finds, those that its prepare
-    writes, in today's front matter or plan 058's, so that each document keeps its dates;
-    and the as-of time of its one scope that its source's file holds, the moment of the
-    former version's last read without a problem, so that a fetch with a problem leaves
-    it. A file that does not read, or holds no document of the work log's rules, is a
-    problem by its path, never its content: what it holds is not carried over, and so lost.
+    writes, in today's front matter or plan 058's, so that each document keeps its dates,
+    and its file until a read takes it; and the as-of time of its one scope that its
+    source's file holds, the moment of the former version's last read without a problem,
+    so that a fetch with a problem leaves it. A file that does not read, or holds no
+    document of the work log's rules, is a problem by its path, never its content: what it
+    holds is not carried over, and so lost.
     """
-    carried: dict[str, tuple[datetime, datetime]] = {}
+    carried: dict[str, Carried] = {}
     problems: list[Problem] = []
     for file in documents(docs, worklog_globs(source)):
         path = file.relative_to(docs).as_posix()
@@ -203,7 +204,7 @@ def carried_over(docs: Path, source: str) -> tuple[Copies, list[Problem]]:
             reason = str(error) if named else type(error).__name__
             problems.append(Problem(where=path, reason=f"{reason}; {NOT_CARRIED}"))
             continue
-        carried[matter.id] = (matter.created, matter.updated)
+        carried[matter.id] = Carried(path=path, created=matter.created, updated=matter.updated)
     try:
         held = source_file(docs, source)
     except (OSError, RepresentationError) as error:

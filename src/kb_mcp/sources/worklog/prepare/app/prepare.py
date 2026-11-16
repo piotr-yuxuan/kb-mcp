@@ -7,10 +7,10 @@ log's folder, and nothing of the mirror but what ``mirror_files`` compares: dele
 source's folder of the mirror and preparing again gives it back, converting nothing. A
 run that meets a problem, a conversion that failed, removes no file, nor does one while a
 document carried over from the mirror waits for its first read, so that its file stays,
-but the old file of a document written again under another path; each problem says what
-it held back. Building and writing are each a span; each document is counted, and each
-conversion timed, by its document type, as ``docs/reference/telemetry/prepare.md`` lists
-them.
+but the old file of a document written again under another path, which no other
+document of the store could own; each problem says what it held back. Building and
+writing are each a span; each document is counted, and each conversion timed, by its
+document type, as ``docs/reference/telemetry/prepare.md`` lists them.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES, WorklogFrontMatter
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
-from kb_mcp.sources.worklog.prepare.domain.layout import named_id, worklog_path
+from kb_mcp.sources.worklog.prepare.domain.layout import places, retired, worklog_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -104,14 +104,14 @@ def prepare_worklog(
     Each document's text is converted through ``conversions``, the source's rows of the
     cache; a conversion that fails is a problem by the document's org file and id, never
     its content, which holds back that id. A link is written only when its other end has
-    a file once the run is done: one written in it, or one that stays, which the id that
-    its name carries tells, as of a document whose conversion failed, or carried over from
-    the mirror until a read takes it. The source's file beside its documents says the
-    roles that each of its types takes and the store's as-of time, written whenever the
-    store holds a document. A run that found a problem, or whose store holds a carried
-    date, removes no file but the old ones of a document written, which the id that its
-    file's name carries tells, as ``named_id`` says; one that found none deletes the
-    source's conversions that it did not use.
+    a file at its place once the run is done, as ``places`` gives it: one written in it,
+    or one that stays, of a document whose conversion failed, or carried over from the
+    mirror until a read takes it; never a file by its name alone. The source's file beside
+    its documents says the roles that each of its types takes and the store's as-of time,
+    written whenever the store holds a document. A run that found a problem, or whose
+    store holds a carried date, removes no file but the old ones of documents written, as
+    ``retired`` tells them; one that found none deletes the source's conversions that it
+    did not use.
 
     The task ``work-log documents`` reports each document, by its title; the spans
     ``worklog.convert`` and ``worklog.write`` hold building the files and writing them.
@@ -176,14 +176,14 @@ def prepare_worklog(
     written = {matter.id for matter, _ in ready.values()}
     known = copies.documents.keys() | copies.migrated.keys()
     found = worklog_owned(docs, source)
-    # Each file not written, by the id that its name carries: a written document's is its
-    # old one, retired; any other stays, unless the run removes what it does not write. A
-    # link's other end has a file once the run is done: written, or one that stays.
-    placed = {path: named_id(path, known) for path in found - ready.keys()}
+    placed = places(copies, source)
     remove = not problems and not copies.migrated
-    retired = {path for path, identifier in placed.items() if identifier in written}
-    stay = () if remove else (each for path, each in placed.items() if path not in retired)
-    ends = {document_id(source, each) for each in [*written, *stay] if each is not None}
+    # Unless the run removes what it does not write, the files that go are the old ones of
+    # documents written; any other stays. A link's other end is a document whose place
+    # holds a file once the run is done.
+    old = retired(found - placed.keys(), known, written)
+    left = ready.keys() | (set() if remove else found - old)
+    ends = {document_id(source, each) for path, each in placed.items() if path in left}
     wanted: dict[PurePosixPath, bytes | Path] = {
         path: dump(
             copy.replace(
@@ -201,7 +201,7 @@ def prepare_worklog(
             SourceFile(roles=TYPE_ROLES, as_of=as_of)
         )
     with TRACER.start_as_current_span("worklog.write"):
-        changes = write_changed(docs, wanted, lambda _: found, remove=remove, retired=retired)
+        changes = write_changed(docs, wanted, lambda _: found, remove=remove, retired=old)
         pruned = 0 if problems else conversions.drop_unused()
     log.info(
         "worklog.end",
@@ -231,17 +231,16 @@ def plan_worklog(copies: Copies, docs: Path, *, source: str) -> Outcome[WorklogP
 
     It ends not run. A file is to remove when no document of the store has its path,
     unless the store holds a carried date, as a run would then keep it, but the old file
-    of a document of the store, by the id that its name carries; what pandoc would convert
-    is not counted. ``worklog.end`` says at INFO what a run would do.
+    of a document of the store, as ``retired`` tells it; what pandoc would convert is not
+    counted, nor so what a conversion that fails would keep. ``worklog.end`` says at INFO
+    what a run would do.
     """
     wanted = {
         worklog_path(source, each.type, each.id, each.title) for each in copies.documents.values()
     }
     known = copies.documents.keys() | copies.migrated.keys()
-    stale = worklog_owned(docs, source) - wanted
-    to_remove = len(
-        [path for path in stale if not copies.migrated or named_id(path, known) in copies.documents]
-    )
+    stray = worklog_owned(docs, source) - places(copies, source).keys()
+    to_remove = len(retired(stray, known, copies.documents.keys()) if copies.migrated else stray)
     structlog.get_logger().info("worklog.end", documents=len(wanted), to_remove=to_remove)
     return Outcome.of(
         WorklogPlanned(documents=len(wanted), to_remove=to_remove), otherwise="not run"

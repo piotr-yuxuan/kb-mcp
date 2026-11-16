@@ -208,8 +208,9 @@ transcript, dated afresh by its day; another takes its own, an undated one keepi
 stored created date ([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py),
 [`WorklogDocument.dates`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py)). A
 read without a problem finds each document gone at once that it no longer reads, and its
-moment is the store's as-of time. A store's first fetch first takes the created and
-updated dates that the mirror's files hold, of today's front matter or plan 058's
+moment is the store's as-of time. A store's first fetch first takes the paths of the
+mirror's files and the created and updated dates that they hold, of today's front
+matter or plan 058's
 ([`carried_over`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)), and writes
 them before it reads: a document that its first read takes keeps them as its stored
 dates, its text read then taken as theirs.
@@ -244,7 +245,9 @@ that no read has taken yet, and its source's file says the store's as-of time.
   gone, and leaves the as-of time as it was, so that the last good copy of each stays.
   A conversion that fails is the prepare's, named by the document's org file and id;
   that prepare removes no file but the old one of a document written again under
-  another path. A prepare whose store no fetch wrote fails its row,
+  another path, at no document's path and of a name that only the ids of documents
+  written begin ([`retired`](../../src/kb_mcp/sources/worklog/prepare/domain/layout.py)).
+  A prepare whose store no fetch wrote fails its row,
   naming `kb-mcp fetch` and the source, and the other rows go on.
 - **Offline**, everything: the work log is on this machine.
 

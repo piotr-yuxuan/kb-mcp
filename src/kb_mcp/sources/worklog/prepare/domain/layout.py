@@ -14,7 +14,10 @@ from kb_mcp.kernel.names import WORKLOG_TYPES
 from kb_mcp.kernel.slug import slug
 
 if TYPE_CHECKING:
-    from collections.abc import Container
+    from collections.abc import Iterable
+    from collections.abc import Set as AbstractSet
+
+    from kb_mcp.sources.worklog.fetch.domain.copies import Copies
 
 
 def worklog_path(source: str, document_type: str, identifier: str, title: str) -> PurePosixPath:
@@ -29,17 +32,35 @@ def worklog_path(source: str, document_type: str, identifier: str, title: str) -
     return PurePosixPath(source, WORKLOG_TYPES[document_type].plural, f"{name}.md")
 
 
-def named_id(path: PurePosixPath, identifiers: Container[str]) -> str | None:
-    """Return the id among ``identifiers`` that the name of the file at ``path`` carries.
+def places(copies: Copies, source: str) -> dict[PurePosixPath, str]:
+    """Give, by its path, the id of each document of a source's ``copies`` that has a file.
 
-    ``worklog_path`` names a file by its id, alone or before a dash and its title's slug:
-    of the ids that so begin the name, the longest, so that ``e-<digest>-2-notes.md`` is
-    ``e-<digest>-2``'s, not ``e-<digest>``'s; None when none does. A file of an id not
-    among them, such as a document's gone, whose name begins with one and a dash, is
-    given that one.
+    Each document of the store, where ``worklog_path`` places it, whether a run writes it
+    or not; each carried over, where the migration found its file.
     """
-    stem = path.stem
-    ends = [index for index, character in enumerate(stem) if character == "-"]
-    return next(
-        (stem[:end] for end in [len(stem), *reversed(ends)] if stem[:end] in identifiers), None
-    )
+    carried = {PurePosixPath(each.path): key for key, each in copies.migrated.items()}
+    return carried | {
+        worklog_path(source, each.type, each.id, each.title): each.id
+        for each in copies.documents.values()
+    }
+
+
+def retired(
+    stray: Iterable[PurePosixPath], known: AbstractSet[str], written: AbstractSet[str]
+) -> set[PurePosixPath]:
+    """Return the files of ``stray``, of no document's place, whose name only written ids begin.
+
+    ``worklog_path`` names a file by its id, alone or before a dash and its title's slug,
+    so that a name may be that of several ids: ``e-<digest>-2-notes.md`` is
+    ``e-<digest>-2``'s titled ``Notes`` and ``e-<digest>``'s titled ``2 notes``. A file
+    is retired, as the old file of a document written under another path, when each id of
+    ``known`` that begins its name, alone or before a dash, is ``written``, one at least;
+    else its owner is not known, and it stays.
+    """
+    found: set[PurePosixPath] = set()
+    for path in stray:
+        stem = path.stem
+        named = known & {stem, *(stem[:end] for end, mark in enumerate(stem) if mark == "-")}
+        if named and named <= written:
+            found.add(path)
+    return found
