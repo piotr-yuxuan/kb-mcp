@@ -11,12 +11,15 @@ import yaml
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.mirror.adapters import markdown
 from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped, source_files
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile, scope_name
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from _pytest.monkeypatch import MonkeyPatch
 
 # The keys of data-layout.md's front-matter table, in its order.
 LAYOUT_KEYS = [
@@ -500,6 +503,22 @@ def test_a_front_matter_of_plan_058_reads_as_today_s() -> None:
     assert former.links == (
         Link(relation="summary", document="worklog:m-20261027-payments-stand-up"),
     )
+
+
+def test_a_former_work_log_file_reads_in_the_work_log_s_scope_type(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Its scope is the work log's one scope type and its source, written as every scope is.
+
+    So that a rename of that type renames the scope of the former files with the
+    prepared ones', which the work log's own rule then takes.
+    """
+    monkeypatch.setattr(markdown, "WORKLOG_SCOPE_TYPE", "log")
+    transcript = FORMER_ISSUE.replace("source: jira", "source: worklog").replace(
+        "project: PRB", "project: null"
+    )
+    assert load(transcript, "transcript.md")[0].scope == scope_name("log", "worklog")
+    assert scope_name("space", "ENG") == "space:ENG"
 
 
 def test_strings_that_look_like_other_types_are_quoted() -> None:

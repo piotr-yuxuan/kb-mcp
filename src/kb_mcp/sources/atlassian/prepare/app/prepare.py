@@ -35,7 +35,7 @@ from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
-from kb_mcp.mirror.domain.mirror import SourceFile
+from kb_mcp.mirror.domain.mirror import SourceFile, scope_name
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     COVERAGE,
@@ -390,7 +390,7 @@ def prepare_atlassian(
                     for each in document_classes
                 },
                 as_of={
-                    f"{scope.type.name}:{scope.key}": moment.astimezone(UTC)
+                    scope_name(scope.type.name, scope.key): moment.astimezone(UTC)
                     for scope, moment in catalogue.as_of.items()
                     if scope.source == source
                 },

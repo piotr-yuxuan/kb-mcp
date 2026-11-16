@@ -112,6 +112,11 @@ def document_id(source: str, identifier: str) -> str:
     return f"{source}:{identifier}"
 
 
+def scope_name(scope_type: str, key: str) -> str:
+    """Write a scope as a document names the one that holds it: ``<scope type>:<key>``."""
+    return f"{scope_type}:{key}"
+
+
 class Link(Record):
     """A link from a document to another of the mirror: the relation, and the other's id."""
 

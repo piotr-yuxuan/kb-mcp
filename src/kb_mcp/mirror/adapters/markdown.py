@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 import yaml
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import ASSETS, ATLASSIAN_ISSUER
-from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, document_id
+from kb_mcp.kernel.names import ASSETS, ATLASSIAN_ISSUER, WORKLOG_SCOPE_TYPE
+from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, document_id, scope_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -161,9 +161,12 @@ def load(text: str, path: str) -> tuple[FrontMatter, str]:
             )
     if former:
         named = [
-            f"{name}:{key}" for name in ("space", "project") if (key := fields.optional_text(name))
+            scope_name(name, key)
+            for name in ("space", "project")
+            if (key := fields.optional_text(name))
         ]
-        scope, subtype, parent = (named or [f"folder:{source}"])[0], "issue_type", None
+        scope = (named or [scope_name(WORKLOG_SCOPE_TYPE, source)])[0]
+        subtype, parent = "issue_type", None
     else:
         scope, subtype = fields.text("scope"), "subtype"
         parent = fields.optional_text("parent")

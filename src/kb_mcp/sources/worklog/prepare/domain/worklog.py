@@ -33,7 +33,7 @@ from kb_mcp.kernel.names import (
 from kb_mcp.kernel.outcome import OutcomeWarning
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.slug import slug
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter
+from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, scope_name
 from kb_mcp.sources.worklog.prepare.domain import org
 
 if TYPE_CHECKING:
@@ -174,7 +174,7 @@ class WorklogFrontMatter(FrontMatter):
         if self.type not in WORKLOG_TYPES:
             message = "type: not one of the work log's types"
             raise RefusedError(message)
-        if self.scope != f"{WORKLOG_SCOPE_TYPE}:{self.source}":
+        if self.scope != scope_name(WORKLOG_SCOPE_TYPE, self.source):
             message = "scope: not the source's one scope"
             raise RefusedError(message)
         filled = [name for name in NOT_FILLED if getattr(self, name) is not None]

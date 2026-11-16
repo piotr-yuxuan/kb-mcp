@@ -19,7 +19,7 @@ from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER, RefusedError, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.mirror.domain.mirror import FrontMatter, Mention, document_id
+from kb_mcp.mirror.domain.mirror import FrontMatter, Mention, document_id, scope_name
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
@@ -248,7 +248,11 @@ def front_matter(
         id=document.id,
         key=None if issue is None else issue.key,
         title=one_line(document.title),
-        scope=f"{PROJECT.name}:{issue.project}" if space is None else f"{SPACE.name}:{space.key}",
+        scope=(
+            scope_name(PROJECT.name, issue.project)
+            if space is None
+            else scope_name(SPACE.name, space.key)
+        ),
         status=one_line(catalogue.status(document)),
         subtype=None if issue is None else one_line(issue.issue_type),
         labels=tuple(one_line(label) for label in document.labels),

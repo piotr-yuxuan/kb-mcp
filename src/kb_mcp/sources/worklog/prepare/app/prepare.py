@@ -37,7 +37,14 @@ from kb_mcp.mirror.adapters.markdown import documents, dump, load
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
-from kb_mcp.mirror.domain.mirror import PARTICIPANT, Link, Mention, SourceFile, document_id
+from kb_mcp.mirror.domain.mirror import (
+    PARTICIPANT,
+    Link,
+    Mention,
+    SourceFile,
+    document_id,
+    scope_name,
+)
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.worklog.prepare.adapters import files
@@ -317,7 +324,7 @@ def prepare_worklog(
                 id=document.id,
                 key=None,
                 title=one_line(document.title),
-                scope=f"{WORKLOG_SCOPE_TYPE}:{source}",
+                scope=scope_name(WORKLOG_SCOPE_TYPE, source),
                 status=one_line(document.status),
                 subtype=None,
                 labels=tuple(one_line(label) for label in document.labels),
@@ -366,7 +373,7 @@ def prepare_worklog(
         # The source's file beside its documents: the roles that each of its types takes,
         # and its one scope's as-of time, the moment of its read. A problem leaves the
         # file of the last read without one: the last moment the scope was known complete.
-        scope = f"{WORKLOG_SCOPE_TYPE}:{source}"
+        scope = scope_name(WORKLOG_SCOPE_TYPE, source)
         wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
             SourceFile(roles=TYPE_ROLES, as_of={scope: read_at})
         )
