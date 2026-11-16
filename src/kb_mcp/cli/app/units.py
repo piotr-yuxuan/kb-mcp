@@ -68,12 +68,14 @@ class Done(Record):
     """What an invocation of a run did: its exit status, each unit's last entry, its outcomes.
 
     ``entries`` are every unit's last, in their order, those of earlier invocations
-    included; ``outcomes`` this invocation's, by unit, in their order.
+    included; ``outcomes`` this invocation's, by unit, in their order. ``recorded`` says
+    whether the run is recorded under ``runs/``, which a dry run is not.
     """
 
     exit_status: ExitStatus
     entries: tuple[Recorded, ...]
     outcomes: Mapping[Unit, InstanceOf[Outcome]]
+    recorded: bool = True
 
 
 class Progress(Record):

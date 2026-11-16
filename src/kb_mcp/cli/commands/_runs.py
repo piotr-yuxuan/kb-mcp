@@ -6,6 +6,7 @@ from any source, so that ``index`` and ``embed`` read the mirror alone.
 
 from __future__ import annotations
 
+from copy import replace
 from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING
@@ -89,7 +90,7 @@ def recorded(
     except SourcesRefusedError as error:
         structlog.get_logger().error(REFUSED[error.stage], reason=str(error))
         return ExitStatus.REFUSED, None
-    return done.exit_status, done
+    return done.exit_status, replace(done, recorded=record.folder is not None)
 
 
 def whole_planned(

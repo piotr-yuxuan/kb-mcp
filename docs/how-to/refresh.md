@@ -197,8 +197,8 @@ change in its copy store, the documents new, changed and gone. `prepare --dry-ru
 the work log's documents and the files that it would remove, from what its last fetch kept,
 but not what it would convert. Confluence and Jira cannot count without converting, so
 their rows say `not run` and that they are not counted. Neither writes anything, nor
-asks, nor records itself under `<data>/runs/`, so neither can be resumed. `refresh`,
-`index` and `embed` take none.
+asks, nor records itself under `<data>/runs/`, so neither can be resumed: its text says
+`run <run id>, not recorded`. `refresh`, `index` and `embed` take none.
 
 ## 8. Read the result
 

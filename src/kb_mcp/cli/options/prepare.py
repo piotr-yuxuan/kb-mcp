@@ -33,7 +33,8 @@ def register(
         "prepare",
         help="turn what each source holds into the Markdown mirror",
         epilog=(
-            "With --format json: `run`, the run's id, which refresh --resume takes;"
+            "With --format json: `run`, the run's id, which refresh --resume takes, but"
+            " for a dry run, which records nothing, as its text says after the id;"
             " `exit_status`, the run's; `sources`, a row per source"
             " taken, in the registry's order, each with its `source`, its `ending` (done,"
             " failed, interrupted, not run), its `counts`, null when it gave none, as a dry"

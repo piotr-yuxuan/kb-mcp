@@ -53,12 +53,15 @@ def run(
     rows = tuple(
         Row(source=str(unit.source), **dict(outcome)) for unit, outcome in done.outcomes.items()
     )
-    return status, Ran(run=run, exit_status=status, sources=rows)
+    return status, Ran(run=run, exit_status=status, sources=rows, recorded=done.recorded)
 
 
 def text(ran: Ran, detail: Detail) -> str:
-    """Write the run's id, then a row per source, how it ended, its outcome's own text, indented."""
-    written = [f"run {ran.run}\n"]
+    """Write the run's id, then a row per source, how it ended, its outcome's own text, indented.
+
+    A run not recorded, a dry run, says so after its id, which no resume takes.
+    """
+    written = [f"run {ran.run}{'' if ran.recorded else ', not recorded'}\n"]
     for row in ran.sources:
         written.append(f"{row.source}: {row.ending}\n")
         written.extend(f"  {line}\n" for line in row.text(detail).splitlines())

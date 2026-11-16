@@ -969,9 +969,20 @@ def test_the_run_s_start_and_the_invocation_recorded_are_its_log_file_s_instant(
 def test_a_dry_run_records_nothing(
     home: Path, site: FakeSite, endpoint: str, capsys: CaptureFixture[str]
 ) -> None:
-    """Q8: it writes nothing, so neither its record; its result still names its run."""
+    """Q8: it writes nothing, so neither its record; its result names its run, not recorded.
+
+    Its text says so after the id, which no resume takes; its JSON keeps the key.
+    """
     options = given(home, endpoint)
     assert main(["fetch", "--dry-run", *options, *SINCE, "jira"]) == ExitStatus.OK
-    assert capsys.readouterr().out.startswith("run ")
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first.startswith("run ")
+    assert first.endswith(", not recorded")
+    assert main(["fetch", "--dry-run", "--format", "json", *options, *SINCE, "jira"]) == 0
+    run = json.loads(capsys.readouterr().out)["run"]
     assert not (home / "data" / "runs").exists()
     assert site.asked
+    assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
+    assert f"run {run}: no record under " in capsys.readouterr().err
+    assert main(["fetch", "--yes", *options, *SINCE, "jira"]) == ExitStatus.OK
+    assert not capsys.readouterr().out.splitlines()[0].endswith(", not recorded")

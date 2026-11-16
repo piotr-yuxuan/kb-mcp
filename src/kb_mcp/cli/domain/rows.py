@@ -36,11 +36,16 @@ class Row(Outcome):
 
 
 class Ran(Record):
-    """What a run of sources did: its run id, its exit status, then a row per source, in order."""
+    """What a run of sources did: its run id, its exit status, then a row per source, in order.
+
+    ``recorded``, which its text says and JSON leaves out, is whether the run is recorded,
+    so that refresh --resume takes its id: a dry run is not.
+    """
 
     run: str
     exit_status: ExitStatus
     sources: tuple[Row, ...]
+    recorded: bool = Field(default=True, exclude=True)
 
 
 class Ended(Outcome):

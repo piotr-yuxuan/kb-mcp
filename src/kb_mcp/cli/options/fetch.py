@@ -75,7 +75,8 @@ def register(
         "fetch",
         help="bring what changed in each source into its store",
         epilog=(
-            "With --format json: `run`, the run's id, which refresh --resume takes;"
+            "With --format json: `run`, the run's id, which refresh --resume takes, but"
+            " for a dry run, which records nothing, as its text says after the id;"
             " `exit_status`, the run's; `sources`, a row per source"
             " taken, in the registry's order, each with its `source`, its `ending` (done,"
             " failed, sign in again, interrupted, not run), its `counts`, null when it gave"
