@@ -20,6 +20,7 @@ from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
+from kb_mcp.sources.atlassian.fetch.app import fetching
 from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import Issue, Page
@@ -1635,11 +1636,16 @@ class ProjectSite(RefreshSite):
     """The scripted site whose searches answer by project: ``projects`` holds each one's issues.
 
     An issue of any project answers its GET, and any other 404, as deleted. With
-    ``searches_fail``, a search by update time answers 400, and a whole read still answers.
+    ``searches_fail``, a search by update time answers 400, and a whole read still answers;
+    with ``whole_reads_fail``, the other way round. The site user that Jira signs in is
+    nobody after ``myself_after`` asks.
     """
 
     projects: dict[str, dict[str, dict[str, object]]] = field(default_factory=dict)
     searches_fail: bool = False
+    whole_reads_fail: bool = False
+    myself_after: int | None = None
+    myself_asks: int = 0
 
     def __post_init__(self) -> None:
         """Serve every project's issues by id."""
@@ -1651,12 +1657,19 @@ class ProjectSite(RefreshSite):
         """Serve the scripted site, each search with the issues of its project alone."""
         routes = super().routes()
         routes["/rest/api/3/search/jql"] = self.by_project
+        routes["/rest/api/3/myself"] = self.myself
         return routes
+
+    def myself(self, _: httpx.Request) -> httpx.Response:
+        """Answer the signed-in site user, until the session is made to expire."""
+        self.myself_asks += 1
+        expired = self.myself_after is not None and self.myself_asks > self.myself_after
+        return httpx.Response(200, json={} if expired else {"accountId": "account-1"})
 
     def by_project(self, request: httpx.Request) -> httpx.Response:
         """Answer a search, whole or by update time, with every issue of its project."""
         jql = request.url.params["jql"]
-        if self.searches_fail and "updated" in jql:
+        if self.searches_fail if "updated" in jql else self.whole_reads_fail:
             return httpx.Response(400, json={"errorMessages": ["refused"]})
         key = jql.split('"')[1]
         issues = list(self.projects.get(key, {}).values())
@@ -1776,3 +1789,96 @@ def test_a_whole_read_is_kept_for_a_project_without_a_period_yet(
     later = ProjectSite(projects=issues)
     run(chosen, monkeypatch, later, catch_up([], ["PRB"]), FIRST + timedelta(hours=1))
     assert whole_reads(later) == [False]
+
+
+def test_a_failed_whole_read_keeps_the_last_and_the_search_goes_on(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: a whole read refused is no listing; nothing it misses is absent.
+
+    The search by update time still fetches what changed; the last whole read, and when
+    it was made, stay, so that the next run reads the project whole again.
+    """
+    chosen = settings(tmp_path)
+    old = {each: issue_at(each, FIRST - timedelta(days=1), files=False) for each in ("1", "2")}
+    run(chosen, monkeypatch, ProjectSite(projects={"PRB": old}), first_week([], ["PRB"]), FIRST)
+    new = {"3": issue_at("3", FIRST + WEEK - timedelta(hours=1), files=False)}
+    failing = ProjectSite(projects={"PRB": new}, whole_reads_fail=True)
+    assert run(chosen, monkeypatch, failing, catch_up([], ["PRB"]), FIRST + WEEK) == "failed"
+    assert "/rest/api/3/issue/3" in jira_asked(failing)
+    store = RawStore(chosen.raw, "jira")
+    assert (store.listed_ids("PRB", Issue), store.tombstones()) == ({"1", "2"}, {})
+    assert store.coverage().whole_read_at == {PRB: FIRST}
+    again = ProjectSite(projects={"PRB": new})
+    run(chosen, monkeypatch, again, catch_up([], ["PRB"]), FIRST + WEEK + timedelta(hours=1))
+    assert whole_reads(again) == [True, False]
+
+
+def gone_from_prb(chosen: Settings, monkeypatch: MonkeyPatch, ids: tuple[str, ...]) -> None:
+    """Read PRB whole, naming each of ``ids``, which are then deleted."""
+    issues = {each: issue_at(each, FIRST - timedelta(days=1), files=False) for each in ids}
+    run(chosen, monkeypatch, ProjectSite(projects={"PRB": issues}), first_week([], ["PRB"]), FIRST)
+
+
+def test_a_run_probes_at_most_max_probes_issues_of_a_project(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: the cap holds for issues; those over it wait, pending, for a later run."""
+    chosen = settings(tmp_path)
+    gone_from_prb(chosen, monkeypatch, ("1", "2", "3"))
+    monkeypatch.setattr(fetching, "MAX_PROBES", 2)
+    deleted = ProjectSite(projects={"PRB": {}})
+    run(chosen, monkeypatch, deleted, catch_up([], ["PRB"]), FIRST + WEEK)
+    assert jira_asked(deleted) == ["/rest/api/3/issue/1", "/rest/api/3/issue/2"]
+    stones = RawStore(chosen.raw, "jira").tombstones()
+    assert {key[2]: stone.first_gone for key, stone in stones.items()} == {
+        "1": FIRST + WEEK,
+        "2": FIRST + WEEK,
+        "3": None,
+    }
+
+
+def test_many_issues_answering_gone_are_believed_only_while_jira_signs_in(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: Jira's sign-in is checked before many answers of gone are believed.
+
+    Every issue of PRB answers 404, more than a share of those stored; the session, asked
+    again, signs in nobody, so the run stops for a sign-in and none of them is dated.
+    """
+    chosen = settings(tmp_path)
+    gone_from_prb(chosen, monkeypatch, ("1", "2", "3"))
+    expired = ProjectSite(projects={"PRB": {}}, myself_after=1)
+    assert run(chosen, monkeypatch, expired, catch_up([], ["PRB"]), FIRST + WEEK) == (
+        "sign in again"
+    )
+    asked = [url.path for url in expired.asked if url.path.endswith("/myself")]
+    assert asked == ["/rest/api/3/myself", "/rest/api/3/myself"]  # at the start, then again
+    stones = RawStore(chosen.raw, "jira").tombstones()
+    assert {key[2]: stone.first_gone for key, stone in stones.items()} == dict.fromkeys(
+        ("1", "2", "3")
+    )
+
+
+def test_this_run_s_whole_read_of_another_project_ends_an_absence(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: 20002, missing from OPS and found in PRB, is present once PRB names it.
+
+    OPS's whole read misses it; found in PRB, whose last whole read does not name it yet,
+    it is unsettled, pending; PRB's whole read of a later run names it, and its tombstone
+    goes.
+    """
+    chosen = settings(tmp_path)
+    ops = ProjectSite(projects={"OPS": {"20002": in_project("20002", "OPS")}, "PRB": {}})
+    run(chosen, monkeypatch, ops, first_week([], ["OPS", "PRB"]), FIRST)
+    prb = ProjectSite(projects={"OPS": {}, "PRB": {"20002": in_project("20002", "PRB")}})
+    run(chosen, monkeypatch, prb, catch_up([], ["OPS"]), FIRST + WEEK)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert (stone.key, stone.scope.key, stone.first_gone) == (
+        ("jira", "issue", "20002"),
+        "OPS",
+        None,
+    )
+    run(chosen, monkeypatch, prb, catch_up([], ["PRB"]), FIRST + WEEK + timedelta(hours=1))
+    assert RawStore(chosen.raw, "jira").tombstones() == {}
