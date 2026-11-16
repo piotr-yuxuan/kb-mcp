@@ -616,7 +616,8 @@ def test_a_resume_is_refused_for_no_record_another_data_directory_or_no_consent(
     """Q7: each exit 2 before any unit, naming the run; a source named, too; a run held, too.
 
     An endpoint off this machine needs this invocation's --allow-remote-embeddings while
-    embed has to run again; a run held by another invocation refuses the resume.
+    embed has to run again; a run held by another invocation refuses the resume; so does
+    a run of a source that the settings no longer configure.
     """
     options = given(home, endpoint)
     assert main(["refresh", "--yes", "--resume", RUN, *options]) == ExitStatus.REFUSED
@@ -651,6 +652,10 @@ def test_a_resume_is_refused_for_no_record_another_data_directory_or_no_consent(
     configured.write_text(json.dumps(held), "utf-8")
     assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
     assert f"run {run}: embedding_url: " in capsys.readouterr().err
+    held["sources"]["fetch"] = ["clientjira", "worklog"]
+    configured.write_text(json.dumps(held), "utf-8")
+    assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
+    assert f"run {run}: source clientjira: no longer configured" in capsys.readouterr().err
 
 
 def test_a_dry_run_records_nothing(

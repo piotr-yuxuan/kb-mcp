@@ -451,8 +451,9 @@ Each unit's entry holds its `stage`, its `source`, null for `index` and `embed`,
 `ending`, its `counts` as its stage's command writes them in JSON, its `problems` and
 `warnings`, by place and reason, never content, and the start of the `invocation` that
 gave it, which names that invocation's log file. A unit of a prepare is a source's
-preparer: a source of several has an entry for each, in their order. A unit that no
-invocation reached has no entry yet. A file that does not read, or that holds a field
+preparer: a source of several has an entry for each, in their order, by which a resume
+matches them. A unit that no invocation reached has no entry yet: a run that a fetcher or
+a preparer that does not load refuses, exit 2, keeps its configuration alone. A file that does not read, or that holds a field
 missing, of another type or refused, is refused by its path from the data directory and
 the field, never the value, and a resume of it with it.
 
