@@ -199,12 +199,17 @@ was.
 
 ## 8. What runs do differently
 
-The mirror stays the same, byte for byte, but for its people, and what a run says and
-keeps has changed since the former name:
+The mirror's documents say the same, but their front matter is written anew, and what a
+run says and keeps has changed since the former name:
 
-- **The first prepare rewrites every Confluence and Jira file's `people`.** Each entry's
-  `account: <id>` becomes `identity: 'atlassian:<id>'`; until then `index` reads the
-  former entries as those identities, and no person's id changes.
+- **The first prepare rewrites every file's front matter.** A person's `account: <id>`
+  becomes `identity: 'atlassian:<id>'`, and no person's id changes; `space` and `project`
+  become `scope` (`space:ENG`, `project:PRB`, the work log's `folder:worklog`),
+  `issue_type` becomes `subtype`, a document names its `parent` and its links' documents
+  by `<source>:<id>`, an issue's breadcrumb holds its parents' titles, and `fetched_at`
+  goes. Beside each source's documents, `<source>/_source.json` holds its types' roles
+  and its scopes' as-of times. The work log keeps every created date that its files
+  held.
 
 - **The cache of conversions is kept.** It holds its rows by source now, so the first
   prepare makes each row of the former file a row of Confluence and of Jira,
