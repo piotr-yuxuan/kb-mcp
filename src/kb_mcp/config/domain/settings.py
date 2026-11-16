@@ -671,13 +671,14 @@ def moved(path: tuple[str, ...], model: type[Settings]) -> bool:
     """Say whether a path is where a setting was before: under ``MOVED``, or a source's at the top.
 
     A key at the top that no setting holds, and that a source's table holds, such as
-    ``site``; not a misspelt one.
+    ``site``; not a misspelt one, nor ``connector``, which every table holds and none
+    held at the top.
     """
     sources = model.model_fields["sources"].annotation
     tables = [each.annotation for each in sources.model_fields.values()]
     return path[0] == MOVED or (
         len(path) == 1
-        and path[0] not in model.model_fields
+        and path[0] not in (*model.model_fields, CONNECTOR)
         and any(path[0] in each.model_fields for each in tables)
     )
 

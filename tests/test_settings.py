@@ -506,6 +506,12 @@ def test_a_moved_key_goes_to_each_source_that_holds_no_value_of_its_own(
     assert refused.value.advice.endswith(f"  accounts.atlassian.site ({FILE}) to {to}\n")
 
 
+def test_connector_at_the_top_is_not_a_setting_rather_than_moved() -> None:
+    """Every source's table holds ``connector``, which no settings file held at its top."""
+    with pytest.raises(SettingsError, match=re.escape(f"connector ({FILE}): not a setting")):
+        file_entries({"connector": "jira"}, FILE, MODEL)
+
+
 @pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "DATA_DIR", "unknown"])
 def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: str) -> None:
     """A key that names no setting is refused, from any layer, never taken as an option.
