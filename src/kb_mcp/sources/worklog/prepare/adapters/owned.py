@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.adapters.mirror_files import regular_files
-from kb_mcp.sources.worklog.prepare.domain.layout import worklog_globs
+from kb_mcp.sources.worklog.fetch.domain.worklog import worklog_globs
 
 if TYPE_CHECKING:
     from pathlib import Path, PurePosixPath

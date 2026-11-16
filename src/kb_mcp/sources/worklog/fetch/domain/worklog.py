@@ -189,6 +189,11 @@ class WorklogFrontMatter(FrontMatter):
         return self
 
 
+def worklog_globs(source: str) -> tuple[str, ...]:
+    """Give where a work log source's documents lie, relative to <data>/docs: its folders."""
+    return tuple(f"{source}/{each.plural}/*.md" for each in WORKLOG_TYPES.values())
+
+
 class PlacedHeading(Record):
     """A heading of ``todo.org`` or its archive, and the titles above it: org's outline.
 

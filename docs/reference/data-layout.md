@@ -648,8 +648,9 @@ replaces it; it finds no document gone, and leaves `as_of` as it was. So each la
 stays in the store, and in the mirror, which prepare writes from it. Each problem says
 what it held back, as `worklog.problem` ([fetch's telemetry](telemetry/fetch.md)), at
 each run until it is fixed. A store's first fetch, on a data directory without the
-source's copy store, first reads the `created` of each file of the source's folder of the
-mirror, in today's front matter or plan 058's, and writes them into the store, as
+source's copy store, first reads the `created` of each file of the source's folders of
+the mirror that prepare writes, one of each document type (`worklog_globs`), in today's
+front matter or plan 058's, and writes them into the store, as
 `migrated`, before it reads the folder: a document read takes its date from there, and
 one that no read takes yet keeps its file of the mirror, which prepare removes nothing
 of meanwhile. A file of the mirror that does not read then is a warning by its path: its

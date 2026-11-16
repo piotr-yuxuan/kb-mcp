@@ -339,6 +339,28 @@ def test_a_store_s_first_fetch_carries_over_every_created_date_of_the_mirror(
     assert (carried["documents"], carried["not_read"]) == (DOCUMENTS, 0)
 
 
+def test_a_store_s_first_fetch_reads_the_work_log_s_folders_of_the_mirror_alone(
+    fetch: Fetch,
+) -> None:
+    """Those of its document types, which the prepare owns: a copy moved aside is not read.
+
+    The copy, of an undated entry under another date, would else give its date.
+    """
+    created = mirrored(fetch.settings.docs)
+    (tidy,) = (fetch.settings.docs / "worklog" / "entries").glob(f"{TIDY}-*.md")
+    matter, body = load(tidy.read_text("utf-8"), tidy.name)
+    aside = fetch.settings.docs / "worklog" / "old" / tidy.name
+    aside.parent.mkdir()
+    aside.write_text(dump(copy.replace(matter, created=SEEN), body), "utf-8")
+    (fetch.settings.docs / "worklog" / "old" / "notes.md").write_text("not a document\n", "utf-8")
+    settle(fetch.root, LATER)
+    with capture_logs() as logged:
+        outcome = fetch()
+    assert (outcome.ending, fetch.held().documents[TIDY].created) == ("done", created[TIDY])
+    (carried,) = [each for each in logged if each["event"] == "worklog.carried"]
+    assert (carried["documents"], carried["not_read"]) == (DOCUMENTS, 0)
+
+
 def test_the_carried_dates_are_kept_while_a_file_is_not_read(fetch: Fetch) -> None:
     """Plan 060: one org file not read at the first fetch; its date waits until it is read."""
     created = mirrored(fetch.settings.docs)

@@ -35,6 +35,7 @@ from kb_mcp.sources.worklog.fetch.domain.worklog import (
     linked_back,
     transcript_ids,
     transcripts,
+    worklog_globs,
     writable,
 )
 
@@ -170,14 +171,15 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
 def carried_over(docs: Path, source: str) -> tuple[dict[str, datetime], list[OutcomeWarning]]:
     """Read the created date of each document of a work log's files of the mirror, by its id.
 
-    The files of ``source``'s folder of ``docs``, in today's front matter or plan 058's,
-    so that each document keeps its created date when its copy store begins. A file that
-    does not read, or holds no document of the work log's rules, is a warning by its
-    path, never its content: its date is not carried over.
+    The files of ``source``'s folders of ``docs`` that ``worklog_globs`` finds, those that
+    its prepare writes, in today's front matter or plan 058's, so that each document keeps
+    its created date when its copy store begins. A file that does not read, or holds no
+    document of the work log's rules, is a warning by its path, never its content: its
+    date is not carried over.
     """
     carried: dict[str, datetime] = {}
     warnings: list[OutcomeWarning] = []
-    for file in documents(docs, (f"{source}/*/*.md",)):
+    for file in documents(docs, worklog_globs(source)):
         path = file.relative_to(docs).as_posix()
         try:
             matter, _ = load(file.read_text(encoding="utf-8"), path)
