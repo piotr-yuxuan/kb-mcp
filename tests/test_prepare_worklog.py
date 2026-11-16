@@ -862,6 +862,20 @@ def test_the_source_s_file_says_the_moment_of_the_last_read_without_a_problem(ru
     assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
 
 
+def test_a_work_log_left_without_documents_keeps_its_source_s_file(run: Run) -> None:
+    """No prepare removes the source's file: it stays as the last run that wrote it left it.
+
+    The documents go with the work log's files, which a read without problem finds gone.
+    """
+    run()
+    written = (run.docs / "worklog" / SOURCE_FILE).read_bytes()
+    for each in sorted(run.root.rglob("*.org*")):
+        each.unlink()
+    outcome = run()
+    assert (outcome.problems, run.files()) == ((), [])
+    assert (run.docs / "worklog" / SOURCE_FILE).read_bytes() == written
+
+
 def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing(
     run: Run,
 ) -> None:

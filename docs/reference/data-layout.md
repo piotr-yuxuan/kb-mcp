@@ -707,8 +707,10 @@ document by its id.
 Each source's prepare writes, beside its documents, `<source>/_source.json`
 (`mirror.adapters.source_files`, from a `mirror.domain.mirror.SourceFile`), so that what
 its connector declares reaches the index through the mirror alone, as nothing past the
-mirror decides by a source's name. It is written with the source's documents, and none
-when it has none; its name begins with `_`, so that no reader takes it for a document.
+mirror decides by a source's name. It is written with the source's documents, and no
+prepare removes it: it stays as the last prepare that wrote it left it, so that a source
+left with no documents keeps its former file, as the work log does after a run that met
+a problem. Its name begins with `_`, so that no reader takes it for a document.
 
 ```json
 {
