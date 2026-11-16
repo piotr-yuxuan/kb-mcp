@@ -22,6 +22,7 @@ no location and is not for commands.
 | Path | `Settings` | Written by | Read by |
 |---|---|---|---|
 | `<data>/raw/` | `raw` | `fetch` (004) | `prepare` (005) |
+| `<data>/copies/` | `copies` | `fetch`, of a work log (060) | `prepare`, of a work log (060) |
 | `<data>/docs/` | `docs` | `prepare` (005) | agents, and `index` (006); `embed`, for the files' digests alone (035) |
 | `<data>/conversions.sqlite` | `conversions` | `prepare` (039) | `prepare` (039) |
 | `<data>/index.sqlite` | `index` | `index` (006), `embed` (031) | the MCP server (006), `embed`'s prune (023), `index` and `embed`, which update it (035) |
@@ -289,6 +290,46 @@ Two more of the store's own records, each replaced whole:
   before the space's listing is replaced, so that no absent document is lost to a run
   that stops, and they are probed once every space of the run is listed. A fetch of
   projects neither reads nor rewrites the record.
+
+## The work log's copy store
+
+Owned by `sources.worklog.fetch.adapters.copy_store.CopyStore`; nothing else reads or
+writes under `<data>/copies/`. Each work log, each source of the `worklog` connector, has
+a folder of its own, `<data>/copies/<source>/`, which holds one file, `copies.json`, and
+its writers' lock, `.lock`: one run at a time writes a source's store, inside
+`CopyStore.writing()`, which raises `CopyStoreBusyError` when another run holds it, and `put`
+refuses to run outside it. The file is replaced whole, through a hidden file renamed into
+place, so that it is the last write or the one before it, never part of one.
+
+```json
+{
+  "as_of": "2026-11-16T08:30:00.250000+00:00",
+  "migrated": {"t-20261021-notes-on-x": "2026-10-22T06:00:00+00:00"},
+  "documents": [
+    {"type": "meeting", "id": "m-20261027-payments-stand-up", "title": "Payments stand-up",
+     "status": "current", "labels": ["work"],
+     "breadcrumb": ["todo.org", "Entries", "<2026-10-27 Tue>"],
+     "people": ["Alex Example", "Sam Sample"],
+     "links": [{"relation": "transcript", "document": "t-20261027-1"}],
+     "created": "2026-10-27T00:00:00+00:00", "updated": "2026-10-27T00:00:00+00:00",
+     "file": "todo.org", "text": "#+TODO: TODO WAITING | DONE\n* Payments stand-up\n"}
+  ]
+}
+```
+
+| Key | Value |
+|---|---|
+| `as_of` | the moment at which the last read of the work log that met no problem began, the as-of time of its one scope; `null` before any |
+| `migrated` | by document id, the `created` that the mirror held of each document that no read has taken since the store began ([the work log](#the-work-log)) |
+| `documents` | each document as the last read that took it found it, in the order read: its `type`, `id` and `title`, its `status`, `labels`, `breadcrumb` and `people`, each name as written, its `links`, each a relation and the id of the other document, of the same source, its `created` and `updated`, `file`, the org file that holds it, from the work log's folder, and `text`, what pandoc converts |
+
+Times are ISO 8601 with their offset, to the microsecond. A document's revision is the
+first 16 hex digits of the SHA-256 of its `text` alone
+(`sources.worklog.fetch.domain.copies.WorklogCopy.revision`), so it is not written. `read()`
+gives the store as a `Copies`, or None for one never written, and raises
+`RepresentationError` for a file that cannot be read, is not JSON, or holds a field
+missing, of another type, a document off the work log's rules or an id given twice, naming
+the file, `<source>/copies.json`, and the field, never its value.
 
 ## Run reports
 
