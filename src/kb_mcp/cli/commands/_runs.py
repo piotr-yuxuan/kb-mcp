@@ -62,9 +62,11 @@ def recorded(
     record gone or that no longer reads once the run is held, as another program may have
     changed it since the entry read it, refuses it alike, ``run.refused``, naming the
     record; and a fetcher or a preparer that does not load, ``fetch.refused`` or
-    ``prepare.refused``, without a source. A run recorded whose units did not all last
-    end done says, a warning ``run.resumable``, the command that resumes it, even as an
-    error that no unit caught passes.
+    ``prepare.refused``, without a source: before a new run's record is written, as
+    ``planned`` is first asked of the configuration resolved, then of the one read back.
+    A run recorded whose units did not all last end done says, a warning
+    ``run.resumable``, the command that resumes it, even as an error that no unit caught
+    passes.
     """
     unrecorded = configuration is not None and (
         configuration.dry_run
@@ -72,6 +74,8 @@ def recorded(
     )
     record = RunRecord(None if unrecorded else loaded.settings.runs / run)
     try:
+        if configuration is not None:
+            planned(configuration, loaded.settings)
         with record.holding():
             try:
                 if configuration is not None:

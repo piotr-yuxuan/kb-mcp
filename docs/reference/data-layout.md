@@ -457,10 +457,11 @@ preparer: a source of several has an entry for each, in their order, by which a 
 matches them. Ctrl-C ends the unit at work `interrupted`, and an error that nothing catches
 ends it `failed`, its problem naming the error's type alone, before the run fails; either
 way each later unit that the invocation takes is `not run`, so that a resume runs them. A
-unit that no invocation reached has no entry yet: a run that a fetcher or
-a preparer that does not load refuses, exit 2, keeps its configuration alone. A file that does not read, or that holds a field
-missing, of another type or refused, is refused by its path from the data directory and
-the field, never the value, and a resume of it with it.
+unit that no invocation reached has no entry yet. A run that a fetcher or a preparer that
+does not load refuses, exit 2, writes nothing, as it is refused before its record is
+written. A file that does not read, or that holds a field missing, of another type or
+refused, is refused by its path from the data directory and the field, never the value,
+and a resume of it with it.
 
 What a run records names its sources and scopes, as its settings do, and the places and
 reasons of its problems, as its result does: like the log files, it stays on this
