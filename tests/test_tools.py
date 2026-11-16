@@ -1410,6 +1410,27 @@ def test_a_key_of_two_scopes_is_refused_unless_narrowed(tmp_path: Path) -> None:
     assert sorted(refs(library.search("payments", filters={"scope": "pay"}))) == ["100", "PAY-1"]
 
 
+def test_a_scope_that_two_sources_hold_is_browsed_by_its_source(tmp_path: Path) -> None:
+    """Plan 059 lets two sources of one connector both hold project PAY: browse asks which.
+
+    The filter takes the scope in both, as it takes a key alone in every source.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-1", "Payments epic"), None),
+            (replace(issue("PAY-2", "Payments rollout"), source="tracker"), None),
+        ],
+    )
+    with pytest.raises(UnanswerableError) as refused:
+        library.browse(scope="project:PAY")
+    assert parts(str(refused.value))[1] == "project:PAY (jira), project:PAY (tracker)"
+    rollout = library.browse(scope="project:PAY", source="tracker")
+    assert tree_lines(rollout) == ["- Payments rollout (PAY-2)"]
+    found = refs(library.search("payments", filters={"scope": "project:PAY"}))
+    assert sorted(found) == ["PAY-1", "PAY-2"]
+
+
 def test_a_deep_chain_still_moves_on(tmp_path: Path) -> None:
     """Sixty levels of long folder titles leave room for one document per page."""
     folders = tuple(f"Folder {level} " + "x" * 190 for level in range(60))
