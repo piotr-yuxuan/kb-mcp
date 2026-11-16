@@ -40,10 +40,11 @@ def source_files(docs: Path) -> dict[str, SourceFile]:
             if list(fields.value) != KEYS:
                 message = f"{path}: keys other than {', '.join(KEYS)}"
                 raise RepresentationError(message)
-            roles = fields.object("roles")
+            roles, as_of = fields.object("roles"), fields.object("as_of")
             with fields.refusals():
                 found[file.parent.name] = SourceFile(
-                    roles={name: roles.texts(name) for name in roles.value}
+                    roles={name: roles.texts(name) for name in roles.value},
+                    as_of={scope: as_of.time(scope) for scope in as_of.value},
                 )
         except ValueError as error:
             # Not UTF-8 or not JSON, whose messages may quote the file; or its own refusal.

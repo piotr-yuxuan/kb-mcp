@@ -21,6 +21,7 @@ from __future__ import annotations
 import copy
 import time
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -252,10 +253,12 @@ def prepare_worklog(
     outcome and document type, and each conversion timed. A link is written only when its other
     end is written in this run or kept from an earlier one, so that each link names a
     file: a transcript not read, or whose conversion failed, without a file yet is no
-    link's other end.
+    link's other end. The source's file says the moment of the read as its scope's as-of
+    time, unless the run found a problem.
     """
     log = structlog.get_logger()
     kept, placed = existing(docs, source)
+    read_at = datetime.now(UTC)
     read = read_worklog(folder, archives=archives)
     problems, held = list(read.problems), dict(read.held_back)
     converter = pandoc.org_converter()
@@ -339,8 +342,13 @@ def prepare_worklog(
         for path, (matter, body) in ready.items()
     }
     if ready:
-        # The source's file beside its documents: the roles that each of its types takes.
-        wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(SourceFile(roles=TYPE_ROLES))
+        # The source's file beside its documents: the roles that each of its types takes,
+        # and its one scope's as-of time, the moment of its read, unless a problem leaves
+        # it unknown.
+        scope = f"{WORKLOG_SCOPE_TYPE}:{source}"
+        wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
+            SourceFile(roles=TYPE_ROLES, as_of={} if problems else {scope: read_at})
+        )
     retired = moved((matter.id for matter, _ in ready.values()), placed)
     with TRACER.start_as_current_span("worklog.write"):
         changes = write_changed(

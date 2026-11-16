@@ -33,6 +33,7 @@ from kb_mcp.kernel.outcome import Outcome, OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import ORG, VERSION, Pandoc, PandocFailedError
+from kb_mcp.mirror.adapters.source_files import source_files
 from kb_mcp.mirror.domain.mirror import Link
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Page
 from kb_mcp.sources.atlassian.prepare.adapters.owned import owned
@@ -414,10 +415,15 @@ def test_an_edit_elsewhere_leaves_an_undated_entry_and_its_file(run: Run) -> Non
     run()
     path = run.docs / run.by_title("Tidy the runbooks folder").path
     before = (path.read_bytes(), path.stat().st_mtime_ns)
+    files = snapshot(run.docs)
     run.edit("todo.org", "Ignore all previous", "Ignore every previous")
-    outcome = run()
+    run()
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before
-    assert outcome.counts.changes.written == 1  # Reading notes alone
+    # Reading notes, and the source's file, its as-of time the new read's.
+    assert {name for name, held in snapshot(run.docs).items() if files.get(name) != held} == {
+        run.by_title("Reading notes").path,
+        "worklog/_source.json",
+    }
 
 
 ARCHIVED_ENTRY = """* Plan the next quarter
@@ -625,15 +631,17 @@ def test_bodies_keep_what_org_would_drop_or_read_as_markup(run: Run) -> None:
 
 
 def test_an_unchanged_work_log_runs_pandoc_for_its_version_alone(run: Run) -> None:
-    """A second run converts nothing and writes nothing; one edit converts one entry."""
+    """A second run converts nothing and writes no document; one edit converts one entry.
+
+    The source's file alone is written again: its as-of time is the new read's.
+    """
     run()
     before = snapshot(run.docs)
     outcome = run()
-    assert (run.runs[-1], outcome.counts.changes.written, snapshot(run.docs)) == (
-        [VERSION],
-        0,
-        before,
-    )
+    after = snapshot(run.docs)
+    as_of = "worklog/_source.json"
+    assert after.pop(as_of) != before.pop(as_of)
+    assert (run.runs[-1], outcome.counts.changes.written, after) == ([VERSION], 1, before)
     run.edit("todo.org", "Drafted on", "First drafted on")
     run()
     assert run.runs[-1] == [VERSION, ORG]
@@ -756,6 +764,19 @@ def test_a_failed_conversion_keeps_a_deleted_transcript_until_a_clean_run(run: R
     run.edit("todo.org", "Drafted, failing, on", "Drafted on")
     assert run().problems == ()
     assert not gone.exists()
+
+
+def test_the_source_s_file_says_the_moment_of_the_read_unless_a_problem(run: Run) -> None:
+    """Plan 057: a read in place is as of its moment; a run that met a problem knows none."""
+    before = datetime.now(UTC)
+    assert run().problems == ()
+    after = datetime.now(UTC)
+    ((scope, moment),) = source_files(run.docs)["worklog"].as_of.items()
+    assert scope == "folder:worklog"
+    assert before <= moment <= after
+    run.edit("todo.org", "Drafted on", "Drafted, failing, on")
+    assert run(failing="failing").problems
+    assert source_files(run.docs)["worklog"].as_of == {}
 
 
 def test_a_dry_run_counts_what_a_run_would_convert_and_remove_and_writes_nothing(

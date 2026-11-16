@@ -80,18 +80,29 @@ class SourceFile(Record):
     """What a source's file of the mirror says beside its documents.
 
     ``roles`` gives each of the source's document types, by name, the roles that its
-    documents take, in the order of ROLES, as its connector declares them.
+    documents take, in the order of ROLES, as its connector declares them; ``as_of``
+    each of its scopes whose as-of time is known, as the front matter writes a scope, that
+    time.
     """
 
     roles: Mapping[str, tuple[str, ...]]
+    as_of: Mapping[str, datetime]
 
     @model_validator(mode="after")
     def check_source_file(self) -> Self:
-        """Refuse a type off TYPE_NAME, and a role not in ROLES, given twice or out of order."""
+        """Refuse a type off TYPE_NAME, and a role not in ROLES, given twice or out of order.
+
+        And a scope off SCOPE, and a time not in UTC.
+        """
         for name, roles in self.roles.items():
             require(TYPE_NAME, name, "roles")
             if not set(roles) <= set(ROLES) or list(roles) != sorted(set(roles), key=ROLES.index):
                 message = "roles: not of the roles, or out of their order"
+                raise RefusedError(message)
+        for scope, moment in self.as_of.items():
+            require(SCOPE, scope, "as_of")
+            if moment.utcoffset() != timedelta(0):
+                message = "as_of: a time not in UTC"
                 raise RefusedError(message)
         return self
 

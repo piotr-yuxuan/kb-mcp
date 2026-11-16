@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from datetime import UTC
+from datetime import UTC, datetime
 from functools import cached_property
 from html import escape
 from typing import TYPE_CHECKING, Self
@@ -30,12 +30,11 @@ from kb_mcp.sources.atlassian.fetch.domain.content import (
     Page,
     Space,
 )
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, ISSUE, PAGE, PROJECT, SPACE
 from kb_mcp.sources.atlassian.prepare.domain.layout import NONE
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from kb_mcp.sources.atlassian.fetch.domain.content import SiteUser, Snapshot
 
 # The roles that each document type takes, by its name, in the order of the roles.
@@ -86,8 +85,8 @@ class Catalogue(Record):
     """The spaces, the site users' names, the documents and folders last listed, the issues.
 
     ``spaces`` are by id, ``names`` by account id, ``listed`` pages and blog posts by id,
-    ``folders`` by the id of the space that listed them, and ``issues``, those of the
-    raw store, by id.
+    ``folders`` by the id of the space that listed them, ``issues``, those of the raw
+    store, by id, and ``as_of`` each scope's as-of time, as its coverage records it.
     """
 
     spaces: Mapping[str, Space]
@@ -95,6 +94,7 @@ class Catalogue(Record):
     listed: Mapping[str, Page | BlogPost]
     folders: Mapping[str, Sequence[Folder]]
     issues: Mapping[str, Issue] = Field(default_factory=dict)
+    as_of: Mapping[Scope, datetime] = Field(default_factory=dict)
 
     @cached_property
     def nodes(self) -> dict[str, Page | Folder]:

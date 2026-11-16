@@ -310,7 +310,7 @@ def test_a_source_s_file_changed_alone_writes_a_build_holding_what_it_says(data:
     step.equal()
     library = Library(SqliteIndex(data / "index.sqlite"), docs)
     assert "| unassigned |" in library.search("rollback")
-    declared = SourceFile(roles={"issue": ("author", "creator", "commenter")})
+    declared = SourceFile(roles={"issue": ("author", "creator", "commenter")}, as_of={})
     (docs / "jira" / SOURCE_FILE).write_bytes(dumped(declared))
     updated = update_index(step.indexing(), MOMENT)
     assert updated is not None

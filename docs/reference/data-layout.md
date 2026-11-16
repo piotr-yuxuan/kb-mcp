@@ -248,7 +248,8 @@ Two more of the store's own records, each replaced whole:
   change was asked for, `start` and `end` (`sources.atlassian.fetch.domain.coverage.Coverage`),
   `"exact": true` on an exact entry, a project's since plan 034 and a space's since plan
   056, `as_of`, the period's end
-  when a run last left it exact, and `whole_read_at`, when a run last listed it whole; each
+  when a run last left it exact, which each prepare copies into its source's file of
+  the mirror ([below](#a-sources-file)), and `whole_read_at`, when a run last listed it whole; each
   time only once known. An entry without `type`, as plan 056 found them, is of its
   source's scope type, its source being its connector's name. A run that listed a
   scope whole joins its fetch window to that period when the two overlap or touch, or
@@ -708,6 +709,9 @@ when it has none; its name begins with `_`, so that no reader takes it for a doc
 {
   "roles": {
     "issue": ["author", "creator", "assignee", "commenter"]
+  },
+  "as_of": {
+    "project:PRB": "2026-11-10T08:30:00Z"
   }
 }
 ```
@@ -715,6 +719,15 @@ when it has none; its name begins with `_`, so that no reader takes it for a doc
 | Key | Value |
 |---|---|
 | `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
+| `as_of` | each scope of the source whose [as-of time](concepts.md#scope) is known, as the front matter writes a scope, with that time in UTC; a scope left out has none |
+
+Confluence's and Jira's prepares copy the as-of times of the record of coverage
+(`coverage.json`, [above](#coverage-and-tombstones)), those of their own source's
+scopes; a record that cannot be read is a problem of the source that lists spaces, as
+the tombstones are, and leaves every scope without one. The work log's prepare says the moment that it
+began its read, unless it met a problem, which leaves its one scope without one. A
+prepare whose as-of times moved writes the file again, even when no document changed, so
+that the next `index` holds them.
 
 `index` reads every source's file at each run (`source_files`); a file that is not JSON,
 or holds other keys or values, stops it, naming the file and `kb-mcp prepare`, which

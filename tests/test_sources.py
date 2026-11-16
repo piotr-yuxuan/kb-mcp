@@ -678,7 +678,7 @@ def test_a_prepare_and_its_dry_run_leave_the_work_log_as_it_was(
     assert main(command(home, config, "prepare", "worklog", "--yes")) == 0
     assert snapshot(worklog) == before
     second = capsys.readouterr().out.split("worklog: done\n")[-1]
-    assert "files written: 0\n" in second
+    assert "files written: 1\n" in second  # the source's file alone, its as-of time
 
 
 def test_a_failed_conversion_keeps_a_deleted_transcript_s_file_saying_so(
@@ -1305,7 +1305,8 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
 
     Fresh, thirteen entries, two days, eight meetings, six transcripts and one HTML
     transcript read, none unread; each document prepared, by its type and path; a file
-    each written. Unchanged, each kept and none written. A dry run says each to convert
+    each written. Unchanged, each kept and none written but the source's file, its as-of
+    time the new read's. A dry run says each to convert
     on an empty mirror, none after a run, and one file to remove once a transcript is
     deleted.
     """
@@ -1336,7 +1337,7 @@ def test_the_work_log_s_events_say_what_was_read_written_and_would_be(
     fields = ("documents", "written", "unchanged", "removed", "problems")
     every = WORKLOG_DOCUMENTS
     assert ended_with(fresh, *fields) == (every, WORKLOG_FILES, 0, 0, 0)
-    assert ended_with(unchanged, *fields) == (every, 0, WORKLOG_FILES, 0, 0)
+    assert ended_with(unchanged, *fields) == (every, 1, WORKLOG_FILES - 1, 0, 0)
     kept = {each["outcome"] for each in logged_as(unchanged, "worklog.document")}
     assert kept == {"kept"}
     assert ended_with(planned, "to_convert", "to_remove", "problems") == (every, 0, 0)
@@ -1450,7 +1451,8 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
 ) -> None:
     """Plan 030: a declaration's preparers are a tuple: each runs, in its order, a row each.
 
-    The same preparer twice here, the second finding its files written by the first.
+    The same preparer twice here, the second finding its files written by the first, but
+    the source's, its as-of time the second read's.
     """
     settings = chosen_settings(tmp_path, worklog)
     twice = replace(WORKLOG, preparers=WORKLOG.preparers * 2)
@@ -1460,7 +1462,7 @@ def test_each_preparer_that_a_source_declares_is_a_row_of_its_own(
         ("worklog", "done"),
     ]
     written = [row.counts.changes.written for row in ran.sources]
-    assert written == [WORKLOG_FILES, 0]
+    assert written == [WORKLOG_FILES, 1]
 
 
 def test_pandoc_gone_fails_each_preparer_s_row_and_the_run_exits_1(

@@ -38,6 +38,7 @@ from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
 from kb_mcp.mirror.domain.mirror import SourceFile
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
+    COVERAGE,
     UNREADABLE,
     RawStore,
     StoredSnapshot,
@@ -169,12 +170,18 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
 def read_catalogue(
     store: RawStore, problems: list[Problem]
 ) -> tuple[Catalogue, set[str], dict[str, datetime]]:
-    """Read the spaces, site users and listings.
+    """Read the spaces, site users, listings and the scopes' as-of times.
 
-    Also return the spaces whose listing failed, and when each space was listed.
+    Also return the spaces whose listing failed, and when each space was listed. A record
+    of coverage that cannot be read is a problem, and no as-of time is known.
     """
     spaces = {space.id: space for space in readable(store.spaces(), problems)}
     users = readable(store.users(), problems)
+    try:
+        as_of = store.coverage().as_of
+    except UNREADABLE as error:
+        problems.append(Problem(where=COVERAGE, reason=reason(error)))
+        as_of = {}
     times = {space_id: listed_at(store, space_id, problems) for space_id in spaces}
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
@@ -189,7 +196,8 @@ def read_catalogue(
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    return Catalogue(spaces=spaces, names=names, listed=listed, folders=folders), damaged, times
+    catalogue = Catalogue(spaces=spaces, names=names, listed=listed, folders=folders, as_of=as_of)
+    return catalogue, damaged, times
 
 
 def place(
@@ -373,13 +381,19 @@ def prepare_atlassian(
     )
     wanted: dict[PurePosixPath, bytes | Path] = {**files}
     if own:
-        # The source's file beside its documents: the roles that each of its types takes.
+        # The source's file beside its documents: the roles that each of its types takes,
+        # and its scopes' as-of times.
         wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
             SourceFile(
                 roles={
                     each.document_type.name: TYPE_ROLES[each.document_type.name]
                     for each in document_classes
-                }
+                },
+                as_of={
+                    f"{scope.type.name}:{scope.key}": moment.astimezone(UTC)
+                    for scope, moment in catalogue.as_of.items()
+                    if scope.source == source
+                },
             )
         )
     unsupported: Counter[str] = Counter()

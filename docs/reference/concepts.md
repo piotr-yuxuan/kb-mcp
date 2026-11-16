@@ -148,8 +148,9 @@ tree.
 [`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), a run's scopes, and
 [`ScopeFetchWindow`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py);
 [`Listed`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py), the stored
-listings and `listed_at.json`, which are what a scope listed at its last whole read. On
-the serving side: the front matter's field `scope`, as `space:ENG`, the filter of the
+listings and `listed_at.json`, which are what a scope listed at its last whole read. The
+as-of times reach the index through the mirror, in each source's file,
+[`SourceFile.as_of`](../../src/kb_mcp/mirror/domain/mirror.py). On the serving side: the front matter's field `scope`, as `space:ENG`, the filter of the
 same name, read by [`scope_of`](../../src/kb_mcp/mcp/app/tools.py), and
 `browse(scope=, parent=, source=)`.
 

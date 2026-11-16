@@ -49,9 +49,11 @@ LOREM = (
 FILLERS = 30
 # What each source's prepare writes beside its documents, as its connector declares it.
 DECLARED = {
-    "confluence": SourceFile(roles={name: ATLASSIAN_ROLES[name] for name in ("page", "blogpost")}),
-    "jira": SourceFile(roles={"issue": ATLASSIAN_ROLES["issue"]}),
-    "worklog": SourceFile(roles=WORKLOG_ROLES),
+    "confluence": SourceFile(
+        roles={name: ATLASSIAN_ROLES[name] for name in ("page", "blogpost")}, as_of={}
+    ),
+    "jira": SourceFile(roles={"issue": ATLASSIAN_ROLES["issue"]}, as_of={}),
+    "worklog": SourceFile(roles=WORKLOG_ROLES, as_of={}),
 }
 WORKLOG_FOLDERS = {
     "entry": "entries",

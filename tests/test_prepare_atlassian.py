@@ -25,12 +25,16 @@ from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.mirror_files import write_changed
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocFailedError
+from kb_mcp.mirror.adapters.source_files import source_files
 from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
 from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
+from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
+from kb_mcp.sources.atlassian.fetch.domain.period import Period
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_source
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
@@ -364,6 +368,41 @@ def test_an_issue_without_assignee_is_unassigned_and_a_page_is_not(sandbox: Sand
     assert facts(issue).split(" | ")[2] == "unassigned"
     assert "unassigned" not in facts(leaf)
     assert leaf.type_roles == ("author", "commenter")
+
+
+def test_each_source_s_file_says_its_scopes_as_of_times_from_the_coverage(
+    sandbox: Sandbox,
+) -> None:
+    """Plan 057, criterion 3: a scope's as-of time, else none, never another source's."""
+    space = Scope(source="confluence", type=SPACE, key="MFS")
+    project = Scope(source="jira", type=PROJECT, key="PRB")
+    other = Scope(source="jira", type=PROJECT, key="OPS")
+    covered = Period(FETCHED.replace(year=2025), FETCHED)
+    coverage = Coverage(
+        periods={space: covered, project: covered, other: covered},
+        exact=frozenset({space, other}),
+        as_of={space: FETCHED, other: FETCHED.replace(day=1)},
+    )
+    with sandbox.store.writing():
+        sandbox.store.put_coverage(coverage)
+    sandbox.run()
+    said = source_files(sandbox.docs)
+    assert said["confluence"].as_of == {"space:MFS": FETCHED}
+    assert said["jira"].as_of == {"project:OPS": FETCHED.replace(day=1)}
+
+
+def test_a_coverage_that_does_not_read_is_a_problem_and_says_no_as_of_time(
+    sandbox: Sandbox,
+) -> None:
+    """The record is the lister's to report, as the tombstones are; no scope's time is known."""
+    (sandbox.data / "raw" / "coverage.json").write_text("{", encoding="utf-8")
+    outcomes = sandbox.run()
+    assert [each.where for each in outcomes["confluence"].problems] == ["coverage.json"]
+    assert [each.where for each in outcomes["jira"].warnings] == ["coverage.json"]
+    assert {name: each.as_of for name, each in source_files(sandbox.docs).items()} == {
+        "confluence": {},
+        "jira": {},
+    }
 
 
 def test_without_a_site_no_address_is_absolute(sandbox: Sandbox) -> None:

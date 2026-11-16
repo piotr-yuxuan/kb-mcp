@@ -654,7 +654,10 @@ def test_each_source_s_file_reads_back_by_its_folder_and_a_source_without_one_ha
     tmp_path: Path,
 ) -> None:
     """``_source.json`` of each source's folder, by the folder's name; no document is it."""
-    declared = SourceFile(roles={"issue": ("author", "assignee"), "page": ()})
+    declared = SourceFile(
+        roles={"issue": ("author", "assignee"), "page": ()},
+        as_of={"project:PRB": datetime(2026, 11, 10, 8, 30, tzinfo=UTC)},
+    )
     (tmp_path / "jira").mkdir()
     (tmp_path / "jira" / SOURCE_FILE).write_bytes(dumped(declared))
     (tmp_path / "memo").mkdir()
@@ -666,11 +669,26 @@ def test_each_source_s_file_reads_back_by_its_folder_and_a_source_without_one_ha
     ("text", "reason"),
     [
         ("{", "not JSON"),
-        ('{"roles": {}, "as_of": {}}', "keys other than roles"),
-        ('{"roles": {"issue": ["reviewer"]}}', "roles: not of the roles"),
-        ('{"roles": {"issue": ["assignee", "author"]}}', "roles: not of the roles, or out"),
-        ('{"roles": {"Issue": []}}', "roles: does not match"),
-        ('{"roles": {"issue": "author"}}', r"roles\.issue: expected a list"),
+        ('{"roles": {}}', "keys other than roles, as_of"),
+        ('{"as_of": {}, "roles": {}}', "keys other than roles, as_of"),
+        ('{"roles": {}, "as_of": {}, "fetched": {}}', "keys other than roles, as_of"),
+        ('{"roles": {"issue": ["reviewer"]}, "as_of": {}}', "roles: not of the roles"),
+        (
+            '{"roles": {"issue": ["assignee", "author"]}, "as_of": {}}',
+            "roles: not of the roles, or out",
+        ),
+        ('{"roles": {"Issue": []}, "as_of": {}}', "roles: does not match"),
+        ('{"roles": {"issue": "author"}, "as_of": {}}', r"roles\.issue: expected a list"),
+        ('{"roles": {}, "as_of": {"PRB": "2026-11-10T08:30:00Z"}}', "as_of: does not match"),
+        (
+            '{"roles": {}, "as_of": {"project:PRB": "2026-11-10T08:30:00"}}',
+            r"as_of\.project:PRB: expected an ISO 8601 time with an offset",
+        ),
+        (
+            '{"roles": {}, "as_of": {"project:PRB": "2026-11-10T09:30:00+01:00"}}',
+            "as_of: a time not in UTC",
+        ),
+        ('{"roles": {}, "as_of": {"project:PRB": null}}', r"as_of\.project:PRB: expected"),
     ],
 )
 def test_a_source_s_file_off_its_format_names_it_and_prepare(
