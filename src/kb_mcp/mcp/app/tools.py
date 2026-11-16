@@ -193,12 +193,19 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     planned, filters, by_date = asked.planned, asked.filters, asked.sort != "relevance"
     with TRACER.start_as_current_span("search.lexical"):
         found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
-        named = [*planned.identifiers.keys, *planned.identifiers.ids]
-        # Each document that the query names as it is cited, by its key, else its id.
-        cited = reader.indexed_documents(refs=named, filters=filters)
-        pinned = [entry for entry in cited if (entry.front.key or entry.front.id) in named]
-        ordered = sorted(pinned, key=lambda e: named.index(e.front.key or e.front.id))
-        first = [entry.path for entry in ordered]
+        given = identifiers(asked.query, [source for source, _ in reader.values("source")])
+        named = [*given.refs, *given.keys, *given.ids]
+        # Each document that the query names as it is cited: by its ref, else by its key,
+        # else its id, alone; each at the place of its first name in the query.
+        cited = {
+            entry.path: [
+                named.index(each)
+                for each in (entry.front.ref, entry.front.key or entry.front.id)
+                if each in named
+            ]
+            for entry in reader.indexed_documents(refs=named, filters=filters)
+        }
+        first = sorted((path for path, at in cited.items() if at), key=lambda p: min(cited[p]))
         words = rank((one for one, _ in found), first, sort=asked.sort)
         whole = all(every for _, every in found)
     if asked.mode == "lexical" or by_date:

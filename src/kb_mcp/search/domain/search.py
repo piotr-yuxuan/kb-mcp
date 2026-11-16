@@ -19,7 +19,7 @@ from numpy.typing import NDArray
 from pydantic import ConfigDict
 
 from kb_mcp.kernel.chunking import Chunking
-from kb_mcp.kernel.names import ISSUE_KEY
+from kb_mcp.kernel.names import DOCUMENT_ID, ISSUE_KEY
 from kb_mcp.kernel.record import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, document_id
 from kb_mcp.search.domain.people import Person
@@ -178,6 +178,9 @@ STOP_WORDS = frozenset(
 )
 # An issue key in any case, not inside a longer word; the domain's rule then checks it.
 KEY_IN_TEXT = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9_]*-[0-9]+(?![\w-])")
+# What reads as a ref, a source then a key or id, standing alone: not within an address,
+# whose scheme, or host and port, would read alike.
+REF_IN_TEXT = re.compile(rf"(?<![\w/.:-])({DOCUMENT_ID.pattern})(?![\w/])")
 # The id in the address of a page or a blog post, as the site's address bar shows it.
 ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9]{2}/)([0-9]+)")
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")
@@ -199,8 +202,9 @@ Place = tuple[tuple[str, str], ...]
 
 
 class Identifiers(Record):
-    """The issue keys and page ids that a text names, in its order."""
+    """The refs, issue keys and page ids that a text names, in its order."""
 
+    refs: tuple[str, ...]
     keys: tuple[str, ...]
     ids: tuple[str, ...]
 
@@ -217,7 +221,6 @@ class Plan(Record):
     words: tuple[str, ...]
     expressions: tuple[str, ...]
     match: str
-    identifiers: Identifiers
     dropped: int  # words beyond MAX_WORDS, not searched
 
 
@@ -417,19 +420,24 @@ def quote(text: str) -> str:
     return '"' + text.replace('"', '""') + '"'
 
 
-def identifiers(text: str) -> Identifiers:
-    """Find the issue keys, in any case, and the page ids that a text names.
+def identifiers(text: str, sources: Collection[str] = ()) -> Identifiers:
+    """Find the refs, the issue keys, in any case, and the page ids that a text names.
 
-    A page id is a number standing alone between spaces, punctuation aside, or the id in
-    a page's address; those of addresses come first.
+    A ref is one of ``sources``, then a key or id, as answers cite a document; its key or
+    id is not named apart, as another word before a colon leaves it. A page id is a
+    number standing alone between spaces, punctuation aside, or the id in a page's
+    address; those of addresses come first.
     """
-    keys = (key.upper() for key in KEY_IN_TEXT.findall(text))
-    alone = (word.strip(string.punctuation) for word in text.split())
+    refs = [ref for ref in REF_IN_TEXT.findall(text) if ref.partition(":")[0] in sources]
+    rest = REF_IN_TEXT.sub(lambda found: " " if found[0] in refs else found[0], text)
+    keys = (key.upper() for key in KEY_IN_TEXT.findall(rest))
+    alone = (word.strip(string.punctuation) for word in rest.split())
     ids = (
-        *ID_IN_ADDRESS.findall(text),
+        *ID_IN_ADDRESS.findall(rest),
         *(word for word in alone if word.isascii() and word.isdigit()),
     )
     return Identifiers(
+        refs=tuple(dict.fromkeys(refs)),
         keys=tuple(dict.fromkeys(key for key in keys if ISSUE_KEY.fullmatch(key))),
         ids=tuple(dict.fromkeys(ids)),
     )
@@ -450,7 +458,6 @@ def plan_query(query: str) -> Plan:
         words=words,
         expressions=(*(quote(word) for word in words), *phrase),
         match=" OR ".join(quote(word) for word in words),
-        identifiers=identifiers(query),
         dropped=len(distinct) - len(words),
     )
 

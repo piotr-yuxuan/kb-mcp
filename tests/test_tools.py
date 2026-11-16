@@ -141,6 +141,34 @@ def test_identifiers_come_first(tmp_path: Path, query: str, first: str) -> None:
     assert refs(library.search(query))[0] == first
 
 
+def test_a_ref_as_answers_cite_it_comes_first(tmp_path: Path) -> None:
+    """A ref of any source in the query puts its document above every match.
+
+    That document alone: another source's document of the same key is not named. A word
+    before a colon that is no source's is no ref, as before refs were cited.
+    """
+    about = "# Kafka\n\nKafka kafka kafka, see PROJ-7 and 196900.\n"
+    library = built(
+        tmp_path,
+        [
+            (page("196845", "Kafka"), about),
+            (page("196900", "Unrelated"), None),
+            (issue("PROJ-7", "Unrelated too"), None),
+            (replace(issue("PROJ-7", "Kafka elsewhere"), source="tracker"), None),
+            (worklog("transcript", "t-20261027-1", "Stand-up"), None),
+        ],
+    )
+
+    def cited(query: str) -> list[str]:
+        return re.findall(r"^ {3}(\S+) \|", parts(library.search(query))[1], re.MULTILINE)
+
+    assert cited("kafka confluence:196900")[0] == "confluence:196900"
+    assert cited("kafka worklog:t-20261027-1")[0] == "worklog:t-20261027-1"
+    assert cited("kafka jira:PROJ-7: upgraded")[:2] == ["jira:PROJ-7", "confluence:196845"]
+    # A word that names no source leaves the key bare, held by both sources.
+    assert sorted(cited("kafka issue:PROJ-7")[:2]) == ["jira:PROJ-7", "tracker:PROJ-7"]
+
+
 def test_an_exact_phrase_beats_the_same_words_scattered(tmp_path: Path) -> None:
     """The phrase decides against a newer document first by path, whose sections are shorter."""
     adjacent = f"# Monitoring\n\n## Signals\n\nConsumer lag. {LOREM}\n"

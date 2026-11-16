@@ -21,8 +21,8 @@ surface](../explanation/mcp-surface.md).
 Answers a question with passages to quote, the best first: one passage per document,
 as many documents as fit the budget, 20 at most, then the call that continues.
 
-- `question`: the question, in words, at most 500 characters. Issue keys and page ids
-  in it put their documents first.
+- `question`: the question, in words, at most 500 characters. Refs, such as
+  `confluence:196845`, issue keys and page ids in it put their documents first.
 - `filters`: as `search`'s, below.
 - `cursor`: the one that the previous answer ended with.
 
@@ -40,7 +40,7 @@ says why.
 
 ### search
 
-Finds documents by words, issue keys, page ids or page addresses, the best first, each
+Finds documents by words, refs, issue keys, page ids or page addresses, the best first, each
 with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref, such as `jira:PRB-12`,
 path and update time, the day that it is as of, its scope's
 [as-of time](concepts.md#scope), such as `as of 2026-11-10`, or `as of: unknown` where

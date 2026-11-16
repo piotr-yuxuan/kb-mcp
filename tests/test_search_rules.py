@@ -91,6 +91,22 @@ def test_keys_and_ids_are_found_in_text_and_addresses() -> None:
     )
     assert found.keys == ("PROJ-12", "PAY-7", "OPS-3")
     assert found.ids == ("229377", "229999", "196900", "196845")
+    assert found.refs == ()
+
+
+def test_refs_as_answers_cite_them_are_found_and_name_nothing_alone() -> None:
+    """A source then a key or id, standing alone, is a ref; what it holds is no key or id.
+
+    Another word before a colon names no source: what follows it is a key or id, as
+    before. Nor is a ref within an address, whose scheme or host and port read alike.
+    """
+    found = identifiers(
+        "see jira:PRB-12: fixed, (confluence:196845) and worklog:t-20261027-1; issue:PAY-9 "
+        "page:196900 http://localhost:8080/x https://x.atlassian.net/browse/OPS-3",
+        ("confluence", "jira", "worklog"),
+    )
+    assert found.refs == ("jira:PRB-12", "confluence:196845", "worklog:t-20261027-1")
+    assert (found.keys, found.ids) == (("PAY-9", "OPS-3"), ())
 
 
 def test_a_key_that_breaks_the_rule_is_not_a_key() -> None:
