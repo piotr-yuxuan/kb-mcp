@@ -257,7 +257,8 @@ Its first run embeds the whole mirror.
   failed keeps its file and its links, and the others' links to it; one retitled in that
   run keeps its old file, which the others link again once its new file is written. A
   document not read before it has a copy, or whose conversion fails before it has a
-  file, is named in no other's `links` until a run reads and converts it.
+  file, is named in no other's `links` until a run reads and converts it, unless another
+  document's old file lies at its place, as when two names are alike.
 - A file not read also holds back the files that it builds, which stay as they were: for
   `todo.org` or its archive, every file; for a transcript, its own; for a folder that
   cannot be listed, the transcripts under it, but one whose id a file elsewhere takes,

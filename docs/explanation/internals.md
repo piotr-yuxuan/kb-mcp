@@ -75,8 +75,9 @@ names given choose among those that a command can take
   prepared while the site asks to sign in again. What a source's preflight refuses
   fails its row alone: a space or project with nowhere to start
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
-  or a work log that is not a folder; only a fetcher or a preparer that does not load
-  refuses the run, before its first row
+  or a work log that is not a folder; a fetcher or a preparer that does not load, and
+  a source's light check of its settings, which the entry asks before the run (plan 070
+  makes the latter tolerant too), refuse the run, before its first row
   ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/sources.py)). Ctrl-C ends
   the row it stops and runs no later one. The exit status folds how the rows ended:
   interrupted, then sign in again, then failed

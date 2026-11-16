@@ -176,8 +176,10 @@ before it asks, the data directory, and a fetcher or a preparer that does not lo
 
 - **Why.** The user's word: "We should be tolerant". Since `fetch` with no source takes
   the work log, a refusal of the whole run made a work-log folder not mounted yet stop
-  Confluence's and Jira's fetches, which never depended on it; now Jira refused leaves
-  Confluence and the work log fetched.
+  Confluence's and Jira's fetches, which never depended on it; now Jira refused by its
+  preflight leaves Confluence and the work log fetched. A source's light check of its
+  settings, such as a Jira without its site, still refuses the run, exit 2, until plan
+  070; a source named on the command line keeps refusing it then, as the user ruled.
 - **Cost.** A run with a refused source exits 1, as one whose row failed: a script tells
   a refusal from a failure by the row's problem, not by the status. A period that ends
   before it starts, which the Atlassian fetcher's preflight finds against the clock,

@@ -565,8 +565,9 @@ links:
 
 The two relations are each other's reverse, and a link is written on both documents,
 so that a program that reads one file finds the other without reading them all. A link
-always names a document whose file the prepare leaves at its place, never one found by
-its name alone: for a document of the store, the path of its id and title, where the
+names a document whose place holds a file once the prepare is done, never one found by
+its name alone, though that file may be another document's, left at that place when two
+names are alike and the document's conversion fails (see the trade-offs' cost): for a document of the store, the path of its id and title, where the
 prepare writes it, or where it stays when its conversion fails in that prepare, which
 keeps its file and its links; for one carried over from the mirror that no read has
 taken, the path where the store's first fetch found its file, while the file is there.
