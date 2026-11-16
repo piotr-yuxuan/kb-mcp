@@ -853,6 +853,7 @@ reader takes it for a document.
   "roles": {
     "issue": ["author", "creator", "assignee", "commenter"]
   },
+  "containers": [],
   "as_of": {
     "project:PRB": "2026-11-10T08:30:00Z"
   }
@@ -862,6 +863,7 @@ reader takes it for a document.
 | Key | Value |
 |---|---|
 | `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles, none for a container such as `folder`; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
+| `containers` | the source's document types that are containers, by name, as its connector declares them (`DocumentType.container`): Confluence's `folder`; each one of `roles`. A file written before plan 061, without the key, names none |
 | `as_of` | each scope of the source whose [as-of time](concepts.md#scope) is known, as the front matter writes a scope, with that time in UTC; a scope left out has none, and its documents are served `as of: unknown` |
 
 Confluence's and Jira's prepares copy the as-of times of the record of coverage
@@ -974,10 +976,12 @@ build and update; the view `typed`, each document with its type's roles and its 
 as-of time;
 and the meta row `sources`, their digest (`search.domain.indexes.sources_digest`), so
 that a change of a source's file alone is an update. Schema 10 (061) holds documents
-of no section: a container's body is empty, and an empty body has no section
-(`search.domain.search.sections`), so that its row's `length` is 0 and its
-`last_section` one less than its `first_section`; its words are none, it has no chunk,
-and neither a search nor `ask` ever gives it, while `browse` and `read` do. An index of
+of no section, the containers: a document of a type that its source's file names a
+container has none, whatever its file holds (`search.app.indexing.read_document`), so
+that its row's `length` is 0 and its `last_section` one less than its `first_section`;
+its words are none, it has no chunk, and neither a search nor `ask` ever gives it,
+while `browse` and `read` do. A document of any other type has one section at least,
+an empty body one empty section (`search.domain.search.sections`). An index of
 9 is refused as any other; the `prepare` that it names first writes the folders' files.
 An index of another schema is
 refused, naming `prepare`, then

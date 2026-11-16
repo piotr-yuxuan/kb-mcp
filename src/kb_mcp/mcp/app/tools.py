@@ -922,7 +922,7 @@ class Library:
                 message = (
                     f"section: 1 to {len(bounds)} for this document"
                     if bounds
-                    else "section: none, for a document without a body"
+                    else "section: none, for a container, which has no body"
                 )
                 raise UnanswerableError(message)
             start, end = bounds[section - 1] if section else (0, entry.length)

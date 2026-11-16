@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 SOURCE_FILE = "_source.json"
 KEYS = list(SourceFile.model_fields)
+# The keys of a file written before plan 061, which names no container.
+FORMER_KEYS = [key for key in KEYS if key != "containers"]
 
 
 def dumped(source_file: SourceFile) -> bytes:
@@ -29,9 +31,10 @@ def dumped(source_file: SourceFile) -> bytes:
 def source_file(docs: Path, source: str) -> SourceFile | None:
     """Read the file of ``source`` of the mirror at ``docs``, None when it has none.
 
-    Raises RepresentationError for a file that is not JSON, or holds other keys or values
-    than ``SourceFile``'s, naming the file and ``kb-mcp prepare``, which writes it again;
-    and OSError for one that cannot be read.
+    A file without ``containers``, written before plan 061, names none. Raises
+    RepresentationError for a file that is not JSON, or holds other keys or values than
+    ``SourceFile``'s, naming the file and ``kb-mcp prepare``, which writes it again; and
+    OSError for one that cannot be read.
     """
     path = f"{source}/{SOURCE_FILE}"
     try:
@@ -40,13 +43,15 @@ def source_file(docs: Path, source: str) -> SourceFile | None:
         return None
     try:
         fields = Fields(json.loads(data), path)
-        if list(fields.value) != KEYS:
+        if list(fields.value) not in (KEYS, FORMER_KEYS):
             message = f"{path}: keys other than {', '.join(KEYS)}"
             raise RepresentationError(message)
         roles, as_of = fields.object("roles"), fields.object("as_of")
+        containers = fields.texts("containers") if "containers" in fields.value else ()
         with fields.refusals():
             return SourceFile(
                 roles={name: roles.texts(name) for name in roles.value},
+                containers=containers,
                 as_of={scope: as_of.time(scope) for scope in as_of.value},
             )
     except ValueError as error:

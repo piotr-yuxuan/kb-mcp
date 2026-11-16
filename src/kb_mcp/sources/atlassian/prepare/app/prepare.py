@@ -61,6 +61,7 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     normalise,
 )
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import (
+    CONTAINERS,
     TYPE_ROLES,
     Catalogue,
     folder_front_matter,
@@ -421,7 +422,7 @@ def prepare_atlassian(
     wanted: dict[PurePosixPath, bytes | Path] = {**files, **dict(folders.values())}
     if own:
         # The source's file beside its documents: the roles that each of its types takes,
-        # and its scopes' as-of times.
+        # its containers, a source of pages' folders, and its scopes' as-of times.
         wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
             SourceFile(
                 roles={
@@ -431,6 +432,7 @@ def prepare_atlassian(
                         *((Folder,) if Page in document_classes else ()),
                     )
                 },
+                containers=CONTAINERS if Page in document_classes else (),
                 as_of={
                     scope_name(scope.type.name, scope.key): moment.astimezone(UTC)
                     for scope, moment in catalogue.as_of.items()

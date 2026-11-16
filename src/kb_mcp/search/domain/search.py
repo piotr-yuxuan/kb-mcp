@@ -481,11 +481,8 @@ def plan_query(query: str) -> Plan:
 def sections(body: str) -> list[Section]:
     """Cut a Markdown body before each ATX heading outside fenced code.
 
-    The sections' texts, in order, give back the body exactly: an empty body, a
-    container's, has none.
+    The sections' texts, in order, give back the body exactly.
     """
-    if not body:
-        return []
     cuts: list[tuple[int, str, int]] = []  # where, the heading, the heading line's length
     fence = ""
     offset = 0

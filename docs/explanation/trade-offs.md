@@ -100,7 +100,8 @@ confirmed gone
 
 A Confluence folder is a document of the type `folder`, a container of [the
 concepts](../reference/concepts.md#document): its file is its front matter and no body,
-in its space, under its parent; the index holds it with no section; `browse` places a
+in its space, under its parent; the index holds it with no section, as its source's
+file of the mirror names its type a container; `browse` places a
 folder's pages under it by its id, and `read` lists its children
 ([`folder_files`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)).
 

@@ -207,8 +207,8 @@ run says and keeps has changed since the former name:
   become `scope` (`space:ENG`, `project:PRB`, the work log's `folder:worklog`),
   `issue_type` becomes `subtype`, a document names its `parent` and its links' documents
   by `<source>:<id>`, an issue's breadcrumb holds its parents' titles, and `fetched_at`
-  goes. Beside each source's documents, `<source>/_source.json` holds its types' roles
-  and its scopes' as-of times. The work log keeps every created date that its files
+  goes. Beside each source's documents, `<source>/_source.json` holds its types' roles,
+  which of them are containers, and its scopes' as-of times. The work log keeps every created date that its files
   held.
 
 - **The cache of conversions is kept.** It holds its rows by source now, so the first

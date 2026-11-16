@@ -85,7 +85,24 @@ def test_words_spread_over_sections_rank_their_page_first(tmp_path: Path) -> Non
     assert refs(library.search("kafka retention compaction"))[:2] == ["196845", "196846"]
 
 
-def test_a_document_without_a_body_is_read_but_never_ranked(tmp_path: Path) -> None:
+def test_an_empty_body_of_a_type_that_is_no_container_is_one_section(tmp_path: Path) -> None:
+    """Review of 061: a page with an empty body is a document like any other, not a container.
+
+    Named by its id, it is pinned first; listed by date, it is newest; its read gives its
+    one empty section, and no children.
+    """
+    older = MOMENT - timedelta(days=1)
+    library = built(
+        tmp_path, [(page("200", "Plans"), ""), (page("201", "Plans", updated=older), None)]
+    )
+    assert refs(library.search("200 plans"))[0] == "200"
+    listed = library.search(filters={"scope": "space:ENG"}, sort="updated", limit=50)
+    assert refs(listed)[:2] == ["200", "201"]
+    read = library.read("confluence:200", section=1)
+    assert "Children:" not in read
+
+
+def test_a_container_is_read_but_never_ranked(tmp_path: Path) -> None:
     """Plan 061: a container named by its id, or newest, is no hit; read gives its front matter.
 
     Its title's words find the page of the same words alone.
@@ -1766,7 +1783,9 @@ def test_a_folder_is_browsed_with_its_children_and_its_read_lists_them(
     assert listed[-1] == (
         'More: browse(scope="space:DOC", parent="confluence:200", source="confluence")'
     )
-    with pytest.raises(UnanswerableError, match=r"^section: none, for a document without a body$"):
+    with pytest.raises(
+        UnanswerableError, match=r"^section: none, for a container, which has no body$"
+    ):
         library.read("confluence:200", section=1)
 
 

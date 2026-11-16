@@ -247,11 +247,13 @@ def differences(digests: Mapping[str, str | None], held: Held) -> Differences:
     )
 
 
-def read_document(file: Path, path: str) -> Put | Skipped:
+def read_document(file: Path, path: str, sources: Mapping[str, SourceFile]) -> Put | Skipped:
     """Read the file of the mirror that ``path`` names: its document, or why it gives none.
 
     Its digest is that of the bytes read; a file that cannot be read has none. A file not
-    in UTF-8, or that ``markdown.load`` refuses, gives a reason that holds no content.
+    in UTF-8, or that ``markdown.load`` refuses, gives a reason that holds no content. A
+    document of a type that its source's file, among ``sources``, names a container has
+    no section; any other has one at least, an empty body one empty section.
     """
     digest = None
     try:
@@ -266,7 +268,9 @@ def read_document(file: Path, path: str) -> Put | Skipped:
     except RepresentationError as error:
         reason = str(error).removeprefix(f"{path}: ")
     else:
-        return Put(path=path, digest=digest, front=front, sections=tuple(sections(body)))
+        said = sources.get(front.source)
+        cut = () if said is not None and front.type in said.containers else sections(body)
+        return Put(path=path, digest=digest, front=front, sections=tuple(cut))
     return Skipped(path=path, digest=digest, reason=reason)
 
 
@@ -293,7 +297,7 @@ def build_index(
     deletes what it embeds; it waits for a prune in progress, and raises TimeoutError
     past ``WAIT_S``, the conversions'.
     """
-    files = document_files(docs)
+    files, sources = document_files(docs), source_files(docs)
     report, skipped, refused = IndexCounts(index=index), [], []
     model = embedding.embedder if embedding else None
     embedded = (
@@ -316,7 +320,7 @@ def build_index(
     ):
         with TRACER.start_as_current_span("index.files"), task("files", len(files)) as indexed:
             for path in indexed.each(files, str):
-                read = read_document(files[path], path)
+                read = read_document(files[path], path, sources)
                 if isinstance(read, Put):
                     try:
                         first = writer.add(read)
@@ -340,7 +344,7 @@ def build_index(
                     texts[key] = text
                 FILES.add(1, {"kb_mcp.outcome": "indexed"})
                 log.debug("index.document", path=path, type=front.type, sections=len(cut))
-        writer.describe(source_files(docs))
+        writer.describe(sources)
         report.persons = writer.join(aliases or {})
         if embedding is not None:
             with TRACER.start_as_current_span("index.embed"):
@@ -403,7 +407,7 @@ def change_of(
     chosen = [path for path in files if path in paths]
     with TRACER.start_as_current_span("index.files"), task("files", len(chosen)) as reading:
         for path in reading.each(chosen, str):
-            read = read_document(files[path], path)
+            read = read_document(files[path], path, sources)
             if isinstance(read, Skipped):
                 skipped.append(read)
                 continue

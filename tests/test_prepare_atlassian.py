@@ -483,12 +483,11 @@ def test_each_folder_is_a_document_without_a_body(sandbox: Sandbox) -> None:
         ),
         "",
     )
-    roles = json.loads(sandbox.text("confluence/_source.json"))["roles"]
-    assert roles == {
-        "page": ["author", "commenter"],
-        "blogpost": ["author", "commenter"],
-        "folder": [],
-    }
+    declared = json.loads(sandbox.text("confluence/_source.json"))
+    assert (declared["roles"], declared["containers"]) == (
+        {"page": ["author", "commenter"], "blogpost": ["author", "commenter"], "folder": []},
+        ["folder"],
+    )
 
 
 def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(

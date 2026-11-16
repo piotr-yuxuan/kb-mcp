@@ -52,6 +52,10 @@ TYPE_ROLES = {
     ISSUE.name: ("author", "creator", "assignee", "commenter"),
     FOLDER.name: (),
 }
+# The container types, by name, as Confluence and Jira declare them: no body, no section.
+CONTAINERS = tuple(
+    each.name for each in (*SPACE.document_types, *PROJECT.document_types) if each.container
+)
 # Keys that the documents of one scope type alone have, always: a space's, a project's.
 ONLY = {"version": SPACE, "key": PROJECT, "subtype": PROJECT}
 

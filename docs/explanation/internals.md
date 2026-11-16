@@ -143,8 +143,8 @@ document's front matter names its scope, its parent and its links by document id
 its breadcrumb is the titles along its parents, an issue's climbing the parents that
 the raw store holds
 ([`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py));
-beside the documents, the source's file says the roles that each of its types takes and
-its scopes' as-of times, copied from the coverage
+beside the documents, the source's file says the roles that each of its types takes,
+which of them are containers, and its scopes' as-of times, copied from the coverage
 ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)). Confluence and Jira are prepared apart, Confluence first,
 each its own document types, and each places every document, since a page links an issue, and an
 issue a page. It places each document in the space whose freshest listing names it,

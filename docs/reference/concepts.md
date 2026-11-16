@@ -81,7 +81,11 @@ The roles that each document type takes are Confluence's and Jira's
 [`TYPE_ROLES`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py) and the
 work log's [`TYPE_ROLES`](../../src/kb_mcp/sources/worklog/fetch/domain/worklog.py),
 which each prepare writes into its source's file of the mirror, a
-[`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py), for the index.
+[`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py), for the index, with its
+container types,
+[`SourceFile.containers`](../../src/kb_mcp/mirror/domain/mirror.py), whose documents the
+index gives no section
+([`read_document`](../../src/kb_mcp/search/app/indexing.py)).
 
 ### source
 
