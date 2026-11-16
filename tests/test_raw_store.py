@@ -584,6 +584,25 @@ def test_a_pending_record_that_does_not_read_is_refused_by_name(store: RawStore,
         store.pending("196613")
 
 
+@pytest.mark.parametrize("text", ['["20001", "20', '{"searched": []}', '["../x"]'])
+def test_a_record_of_searches_that_does_not_read_is_refused_by_name(
+    store: RawStore, text: str
+) -> None:
+    """Review of 061: as a pending record is, so that no issue that it held is missed."""
+    store.put_project("PRB", [])
+    (store.root / "confluence" / "projects" / "PRB" / "searched.json").write_text(text, "utf-8")
+    with pytest.raises(RepresentationError, match=r"^confluence/projects/PRB/searched\.json: "):
+        store.searched("PRB")
+
+
+def test_a_record_of_searches_keeps_its_ids_until_none_removes_it(store: RawStore) -> None:
+    """Review of 061: the ids that searches found read back; none removes the record."""
+    store.put_searched("PRB", {"20003", "20001"})
+    assert store.searched("PRB") == {"20001", "20003"}
+    store.put_searched("PRB", ())
+    assert (store.searched("PRB"), store.listed_ids("PRB", Issue)) == (set(), set())
+
+
 def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:
     """A damaged record is refused by name, rather than hiding a page for no reason."""
     (store.root / "tombstones.json").write_text(
