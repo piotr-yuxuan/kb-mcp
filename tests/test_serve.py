@@ -133,7 +133,10 @@ def test_a_client_calls_every_tool_over_stdio(home: Path) -> None:
             build_index(data / "docs", data / "index.sqlite", MOMENT)
             status = (await client.call_tool("status", {})).content[0]
             assert isinstance(status, TextContent)
-            assert "scopes: space:ENG 31, project:PROJ 1, space:OPS 1" in status.text
+            assert (
+                "scopes: space:ENG 31 (as of 2026-10-20 21:52 UTC), project:PROJ 1"
+                " (as of: unknown), space:OPS 1 (as of: unknown)"
+            ) in status.text
             found = (await client.call_tool("search", {"query": "another space"})).content[0]
             assert isinstance(found, TextContent)
             assert "\n1. Another space\n" in found.text

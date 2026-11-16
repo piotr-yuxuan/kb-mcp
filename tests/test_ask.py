@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 # A passage's two lines about it, then its text, which runs to the next passage.
 ABOUT = re.compile(
     r"^(\d+)\. (.*) \| [a-z][a-z0-9]*:(\S+) \| section (\d+)(?:: (.*))?"
-    r" \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC) \| (.*)\n(.*) \| (read\(.*\))\n",
+    r" \| updated (\d{4}-\d\d-\d\d \d\d:\d\d UTC) \| (as of[^|]*) \| (.*)\n(.*) \| (read\(.*\))\n",
     re.MULTILINE,
 )
 RETENTION = (
@@ -92,12 +92,12 @@ def passages(answer: str) -> list[dict[str, str]]:
     found = list(ABOUT.finditer(block))
     ends = [match.start() - 2 for match in found[1:]] + [len(block)]
     names = (
-        *("number", "title", "ref", "section", "heading", "updated", "facts"),
+        *("number", "title", "ref", "section", "heading", "updated", "as of", "facts"),
         "address",
     )
     return [
-        dict(zip(names, match.groups()[:8], strict=True))
-        | {"read": match[9], "text": block[match.end() : end]}
+        dict(zip(names, match.groups()[:9], strict=True))
+        | {"read": match[10], "text": block[match.end() : end]}
         for match, end in zip(found, ends, strict=True)
     ]
 
@@ -306,9 +306,19 @@ def test_a_person_s_passages_open_as_search_s_hits_do_and_name_their_roles(
 
 
 def test_a_passage_s_first_line_ends_with_who_and_when(tmp_path: Path) -> None:
-    """As a hit's: an issue's type, status, assignee, author and created day; a page's last two."""
+    """As a hit's: an issue's type, status, assignee, author and created day; a page's last two.
+
+    After its as-of day, its scope's, which the test mirror says of space:ENG alone.
+    """
     people = built(tmp_path, [(front, None) for front in PEOPLE])
-    found = {each["ref"]: each["facts"] for each in passages(people.ask("which broker?"))}
+    said = passages(people.ask("which broker?"))
+    assert {each["ref"]: each["as of"] for each in said} == {
+        "PROJ-1": "as of: unknown",
+        "PROJ-2": "as of: unknown",
+        "PROJ-3": "as of: unknown",
+        "196845": "as of 2026-10-20",
+    }
+    found = {each["ref"]: each["facts"] for each in said}
     assert found == {
         "PROJ-1": "Bug | Done | assignee Ada Example | author Bo Sample | created 2026-10-25",
         "PROJ-2": (

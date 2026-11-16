@@ -252,9 +252,10 @@ ls ~/kb-mcp/docs/confluence/<KEY>
 ```
 
 A Markdown file per page, named by the page's id and its title, and `_tree.md`, the
-space's tree of pages. The id is the page's ref, by which agents cite it. Each file
-begins with front matter, where `fetched_at` is the page's fetch time: the time `fetch`
-fetched it.
+space's tree of pages. The id, after `confluence:`, is the page's ref, by which agents
+cite it. Each file begins with front matter, where `scope` is the page's space, such as
+`space:ENG`; the time up to which the space is known complete, its as-of time, is in
+`confluence/_source.json`.
 
 ## 7. Give the mirror to Claude Code
 
@@ -286,12 +287,12 @@ file holds, if it exists:
 
 Start `claude` in any folder, and ask, with your space's key:
 
-> What does the home page of the space `<KEY>` say? Cite it by its ref, with its mirror
+> What does the home page of the space `<KEY>` say? Cite it by its ref, with its as-of
 > date.
 
 Claude calls the server's tools, such as `ask`, then answers from the page. Its answer
-should name the page's ref, the id that begins its file's name, and its fetch time,
-today's: the content is as of that date, not live. Keep Ollama running: without it, the
+should name the page's ref, `confluence:` then the id that begins its file's name, and
+its as-of date, today's: the content is as of that date, not live. Keep Ollama running: without it, the
 server ranks by words alone, and says so.
 
 ## What you have done

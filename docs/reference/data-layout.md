@@ -719,7 +719,7 @@ when it has none; its name begins with `_`, so that no reader takes it for a doc
 | Key | Value |
 |---|---|
 | `roles` | each document type of the source, by name, with the roles of [people](#people) that its documents take, in the order of the roles; `facts` says `unassigned` for a document of a type that takes `assignee` and names none |
-| `as_of` | each scope of the source whose [as-of time](concepts.md#scope) is known, as the front matter writes a scope, with that time in UTC; a scope left out has none |
+| `as_of` | each scope of the source whose [as-of time](concepts.md#scope) is known, as the front matter writes a scope, with that time in UTC; a scope left out has none, and its documents are served `as of: unknown` |
 
 Confluence's and Jira's prepares copy the as-of times of the record of coverage
 (`coverage.json`, [above](#coverage-and-tombstones)), those of their own source's
@@ -732,7 +732,7 @@ that the next `index` holds them.
 `index` reads every source's file at each run (`source_files`); a file that is not JSON,
 or holds other keys or values, stops it, naming the file and `kb-mcp prepare`, which
 writes it again. A source without one, such as a mirror not yet prepared since the
-upgrade, declares nothing: its documents say no `unassigned`.
+upgrade, declares nothing: its documents say no `unassigned`, and `as of: unknown`.
 
 ### Reading the mirror from another program
 
@@ -821,8 +821,10 @@ in the vector cache every vector whose chunk's text is unchanged, the breadcrumb
 issue, in the context prefix of the chunkings `section-paths` and `small-to-big`, being
 the titles along its parents once `prepare` has written its file again. Schema 9 also
 holds what the sources' files of the mirror say ([above](#a-sources-file)): the table
-`types`, each source's document type with the roles that it takes, as JSON, written
-whole at each build and update; the view `typed`, each document with its type's roles;
+`types`, each source's document type with the roles that it takes, as JSON, and the
+table `scopes`, each source's scope with its as-of time, both written whole at each
+build and update; the view `typed`, each document with its type's roles and its scope's
+as-of time;
 and the meta row `sources`, their digest (`search.domain.indexes.sources_digest`), so
 that a change of a source's file alone is an update. An index of another schema is
 refused, naming `prepare`, then

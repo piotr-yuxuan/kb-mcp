@@ -42,7 +42,9 @@ says why.
 
 Finds documents by words, issue keys, page ids or page addresses, the best first, each
 with its best section's `read()` call and a snippet. A [hit](concepts.md#tool)'s second line gives its ref, such as `jira:PRB-12`,
-path and update time, then what the document has of its subtype, such as an issue's type, its status
+path and update time, the day that it is as of, its scope's
+[as-of time](concepts.md#scope), such as `as of 2026-11-10`, or `as of: unknown` where
+none is known, then what the document has of its subtype, such as an issue's type, its status
 unless `current`, `assignee <name>` (`unassigned` for a document of a type that takes an assignee, as
 its connector declares, such as an issue, with none, which no
 filter selects), `author <name>`, `creator <name>` when an issue's creator is named
@@ -125,7 +127,7 @@ Reads a document, or one of its sections, from a character offset, in slices. Ea
 slice opens with the document's title and path, and one from the body's
 start with its front matter, a `key: value` line each, of what it has: its ref, type,
 scope, subtype, status, labels, parent, breadcrumb, people, links, created and updated
-days and address. People come there one line
+times, the time that it is as of, its scope's, or `as of: unknown`, and address. People come there one line
 per role, `author`, `creator`, `assignee`, `commenter` and `participant`, by name,
 without the identity that the mirror keeps beside it, an account id standing for the
 name only where the source gives none: ten names at most, then how many more, each commenter with
@@ -148,7 +150,8 @@ document linked, come by their ref when they are mirrored, else by their documen
 
 ### browse
 
-Lists the documents of a scope in tree order, or those under a parent. A document sits
+Lists the documents of a scope in tree order, or those under a parent, each with its
+ref, its update day and the day that it is as of, as a hit says it. A document sits
 under the titles of its breadcrumb, its parents' titles; those not listed come as a
 context line in brackets.
 
@@ -163,7 +166,9 @@ context line in brackets.
 
 Says what the mirror holds, when its index was built, and whether it searches by
 meaning: the model, the chunks, and the chunking that cut them. A line counts the
-documents of each scope, the most first, such as `scopes: space:ENG 31, project:PRB 2`. A line counts the
+documents of each scope, the most first, each with its as-of time, else `as of:
+unknown`, such as `scopes: space:ENG 31 (as of 2026-11-10 08:30 UTC), project:PRB 2 (as
+of: unknown)`. A line counts the
 persons, those in more than one source and those by name alone, of no identity, then
 names the keys that names of several identities share, five at most, then how many
 more, each with the persons holding it, such as `persons: 42, 12 in more than one

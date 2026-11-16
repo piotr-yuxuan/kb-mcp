@@ -292,13 +292,17 @@ class Filters(Record):
 
 
 class IndexedDocument(Record):
-    """A document as the index holds it, with the roles that its type takes, if declared."""
+    """A document as the index holds it, with the roles that its type takes, if declared.
+
+    And its scope's as-of time, None when unknown.
+    """
 
     path: str  # relative to <data>/docs, with /
     front: FrontMatter
     length: int  # characters of the body
     sections: int
     type_roles: tuple[str, ...] = ()
+    as_of: datetime | None = None
 
 
 class Passage(Record):
@@ -327,6 +331,7 @@ class IndexStatus(Record):
     skipped: int  # files of the mirror that could not be read
     types: dict[str, int]  # documents per type: page, blogpost, issue
     scopes: dict[str, int]  # documents per scope, as space:ENG
+    as_of: dict[str, datetime]  # each scope's as-of time, where known
     sections: int
     persons: PersonCounts
     model: str | None = None  # the model of the vectors, if any

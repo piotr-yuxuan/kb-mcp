@@ -80,7 +80,7 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
 # section_words; 8 from plan 058, with identities; 9 from plan 057, with scopes, subtypes,
-# parents, and links by document id.
+# parents, links by document id, and the types' roles and the scopes' as-of times.
 SCHEMA = "9"
 # The former schemas whose mirror's files this version reads as they are: rebuilding the
 # index is enough, with no prepare first.
@@ -111,8 +111,13 @@ CREATE INDEX documents_id ON documents (id);
 CREATE TABLE types (
   source TEXT NOT NULL, type TEXT NOT NULL, roles TEXT NOT NULL, PRIMARY KEY (source, type)
 );
+CREATE TABLE scopes (
+  source TEXT NOT NULL, scope TEXT NOT NULL, as_of TEXT NOT NULL, PRIMARY KEY (source, scope)
+);
 CREATE VIEW typed AS
-SELECT d.*, t.roles AS type_roles FROM documents d LEFT JOIN types t USING (source, type);
+SELECT d.*, t.roles AS type_roles, s.as_of AS as_of FROM documents d
+LEFT JOIN types t ON t.source = d.source AND t.type = d.type
+LEFT JOIN scopes s ON s.source = d.source AND s.scope = d.scope;
 CREATE TABLE skipped (path TEXT PRIMARY KEY, digest TEXT, reason TEXT NOT NULL);
 CREATE TABLE labels (document INTEGER NOT NULL, label TEXT NOT NULL);
 CREATE TABLE people (
@@ -369,6 +374,11 @@ WHERE EXISTS (
 GROUP BY n.key HAVING count(DISTINCT n.person) > 1
 ORDER BY 2 DESC, 1
 """
+# What status says of scopes: each one's as-of time, the earliest of the sources that
+# hold it, and none when one of its documents' sources knows none.
+SCOPE_AS_OF = """
+SELECT scope, min(as_of) FROM typed GROUP BY scope HAVING count(as_of) = count(*)
+"""
 # Each value that a filter can take, with how many documents have it, the most used first.
 VALUES = {
     "source": "SELECT source, count(*) FROM documents GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -524,7 +534,7 @@ class Writer:
         return first
 
     def describe(self, sources: Mapping[str, SourceFile]) -> None:
-        """Hold what the sources' files of the mirror say: the roles of each document type.
+        """Hold what the sources' files of the mirror say: each type's roles, each scope's as-of.
 
         Called once a build; the build records their digest.
         """
@@ -535,6 +545,14 @@ class Writer:
                 (source, name, json.dumps(roles))
                 for source, said in sources.items()
                 for name, roles in said.roles.items()
+            ],
+        )
+        self._connection.executemany(
+            "INSERT INTO scopes (source, scope, as_of) VALUES (?, ?, ?)",
+            [
+                (source, scope, moment(at))
+                for source, said in sources.items()
+                for scope, at in said.as_of.items()
             ],
         )
 
@@ -761,7 +779,7 @@ def building(path: Path, built_at: datetime, embedded: Embedded | None = None) -
 
 
 def indexed_document(row: sqlite3.Row) -> IndexedDocument:
-    """Read a row of ``typed`` back: the front matter it was written from, its type's roles."""
+    """Read a row of ``typed`` back: its front matter, its type's roles, its scope's as-of."""
     front = FrontMatter(
         source=row["source"],
         type=row["type"],
@@ -800,6 +818,7 @@ def indexed_document(row: sqlite3.Row) -> IndexedDocument:
         length=row["length"],
         sections=sections,
         type_roles=tuple(json.loads(row["type_roles"] or "[]")),
+        as_of=None if row["as_of"] is None else datetime.fromisoformat(row["as_of"]),
     )
 
 
@@ -1123,6 +1142,10 @@ class Reader:
             skipped=int(meta["skipped"]),
             types=dict(self.values("type")),
             scopes=dict(self.values("scope")),
+            as_of={
+                scope: datetime.fromisoformat(at)
+                for scope, at in self._connection.execute(SCOPE_AS_OF)
+            },
             sections=sections,
             persons=PersonCounts(count=persons, across=across, alone=alone, shared=shared),
             model=meta["model"] or None,

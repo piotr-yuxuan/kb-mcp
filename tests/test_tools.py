@@ -56,8 +56,14 @@ if TYPE_CHECKING:
 NEWER = MOMENT + timedelta(days=1)
 # A hit's ref, its source then its key or id, of which the key or id is kept.
 HIT = re.compile(r"^\d+\. .*\n {3}[a-z][a-z0-9]*:(\S+) \|", re.MULTILINE)
-# A hit's key or id, and what ends its second line after the update time.
-FACTS = re.compile(r"^ {3}[a-z][a-z0-9]*:(\S+) \| \S+ \| updated [^|]* UTC \| (.*)$", re.MULTILINE)
+# A hit's key or id, and what ends its second line after the update and as-of times.
+FACTS = re.compile(
+    r"^ {3}[a-z][a-z0-9]*:(\S+) \| \S+ \| updated [^|]* UTC \| as of[^|]* \| (.*)$", re.MULTILINE
+)
+# A hit's key or id, and what its second line says of its as-of time.
+AS_OF = re.compile(
+    r"^ {3}[a-z][a-z0-9]*:(\S+) \| \S+ \| updated [^|]* UTC \| (as of[^|]*) \|", re.MULTILINE
+)
 
 
 def refs(answer: str) -> list[str]:
@@ -1426,11 +1432,35 @@ def test_browse_needs_a_scope(varied: Library) -> None:
     assert parts(str(refused.value))[1] == "space:ENG, project:PROJ, space:OPS"
 
 
+def test_each_document_is_served_as_of_its_scope_s_time_else_unknown(varied: Library) -> None:
+    """Plan 057, criterion 3: a hit and a tree give its day, read its time; else unknown.
+
+    The test mirror's source file says space:ENG's as-of time alone, MOMENT's.
+    """
+    hits = parts(varied.search("kafka"))[1]
+    assert dict(AS_OF.findall(hits)) == {
+        "196845": "as of 2026-10-20",
+        "196846": "as of: unknown",
+        "PROJ-7": "as of: unknown",
+        "PROJ-8": "as of: unknown",
+    }
+    assert "\nas of: 2026-10-20 21:52 UTC\n" in parts(varied.read("196845"))[1]
+    assert "\nas of: unknown\n" in parts(varied.read("PROJ-7"))[1]
+    assert ", as of 2026-10-20)" in varied.browse(scope="space:ENG")
+    assert ", as of: unknown)" in varied.browse(scope="project:PROJ")
+
+
 def test_status_says_what_the_index_holds(varied: Library) -> None:
-    """Counts by type, space and project, and the build time."""
+    """Counts by type and by scope, each scope's as-of time where known, and the build time.
+
+    Plan 057, criterion 3: the test mirror's source file says space:ENG's alone.
+    """
     content = parts(varied.status())[1]
     assert "documents: page 32, issue 2; sections: " in content
-    assert "scopes: space:ENG 31, project:PROJ 2, space:OPS 1\n" in content
+    assert (
+        "scopes: space:ENG 31 (as of 2026-10-20 21:52 UTC), project:PROJ 2 (as of: unknown),"
+        " space:OPS 1 (as of: unknown)\n"
+    ) in content
     assert content.startswith("built: 2026-10-20 21:52 UTC\n")
 
 

@@ -41,7 +41,8 @@ server never fetches from the site.
   restored with an older version. A line of `&&`, or a shell function, makes the refresh
   one thing to remember, while each stage still runs alone, to redo one after a fix.
 - **Cost.** The mirror is as old as its last run. Each answer gives every document's
-  mirror date, the time its snapshot was fetched, and `status` the newest, so that an
+  as-of time, its scope's, the last moment that the scope is known complete, or `as of:
+  unknown`, and `status` each scope's, so that an
   agent can tell how old its evidence is. And catching up is not free: each run lists
   every space whole, and reads the work log whole. A project's search no longer grows
   with the age of its coverage, but misses an issue moved into it, or newly visible,

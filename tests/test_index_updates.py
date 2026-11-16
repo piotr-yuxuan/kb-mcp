@@ -12,6 +12,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from copy import replace
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -20,7 +21,7 @@ from kb_mcp.mcp.app.tools import Library
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
 from kb_mcp.mirror.domain.mirror import Mention, SourceFile
 from kb_mcp.search.adapters.aliases import read_aliases
-from kb_mcp.search.adapters.sqlite_index import SqliteIndex
+from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import (
     Embedding,
     Indexing,
@@ -324,6 +325,31 @@ def test_a_source_s_file_changed_alone_writes_a_build_holding_what_it_says(data:
     (problem,) = failed.problems
     assert problem.reason == "jira/_source.json: not JSON; `kb-mcp prepare` writes it again"
     assert (data / "index.sqlite").read_bytes() == before
+
+
+def test_a_scope_s_as_of_time_changed_alone_is_indexed_and_served(data: Path) -> None:
+    """Plan 057, criterion 3: ``index`` reads each scope's as-of time from its source's file.
+
+    Unknown until the file says it, then as the file says it, in status and read alike.
+    """
+    docs = data / "docs"
+    step = Step(data)
+    write(docs, issue("PROJ-8", "Broker rollback"))
+    step.equal()
+    library = Library(SqliteIndex(data / "index.sqlite"), docs)
+    assert "\nas of: unknown\n" in library.read("PROJ-8")
+    later = MOMENT + timedelta(days=3)
+    declared = SourceFile(roles={"issue": ()}, as_of={"project:PROJ": later})
+    (docs / "jira" / SOURCE_FILE).write_bytes(dumped(declared))
+    updated = update_index(step.indexing(), MOMENT)
+    assert updated is not None
+    assert updated.ending == "done"
+    assert rows(data / "index.sqlite") == rows(step.whole())
+    with reading(data / "index.sqlite") as reader:
+        (entry,) = reader.indexed_documents(refs=["PROJ-8"])
+        assert (entry.as_of, reader.index_status().as_of["project:PROJ"]) == (later, later)
+    assert "\nas of: 2026-10-23 21:52 UTC\n" in library.read("PROJ-8")
+    assert "project:PROJ 1 (as of 2026-10-23 21:52 UTC)" in library.status()
 
 
 def test_an_alias_file_changed_alone_writes_a_build_copying_every_document(data: Path) -> None:

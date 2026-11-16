@@ -224,12 +224,17 @@ def facts(entry: IndexedDocument) -> str:
     return " | ".join(part for part in shown if part)
 
 
+def as_of(entry: IndexedDocument) -> str:
+    """Say the day that a document is as of, its scope's as-of time, else that none is known."""
+    return "as of: unknown" if entry.as_of is None else f"as of {entry.as_of:%Y-%m-%d}"
+
+
 def dated(entry: IndexedDocument, held: str | None) -> str:
-    """Say when a ranked document was updated, what it is, and who holds it.
+    """Say when a ranked document was updated, what day it is as of, what it is, who holds it.
 
     ``held``, unless None, ends it: a person's roles there, as ``roles`` says them.
     """
-    when = f"updated {stamp(entry.front.updated)}"
+    when = f"updated {stamp(entry.front.updated)} | {as_of(entry)}"
     return f"{when} | {facts(entry)}" + (f" | {held}" if held else "")
 
 
@@ -271,7 +276,8 @@ def metadata(entry: IndexedDocument, refs: Mapping[str, str], *, whole: bool) ->
     """Write a document's front matter as one-line ``key: value`` lines.
 
     ``whole`` gives every key that a reader needs, but the source, id, key, version and
-    revision that the ref and the dates stand for; otherwise the title and path alone.
+    revision that the ref and the dates stand for, and the as-of time, its scope's, or
+    ``unknown``; otherwise the title and path alone.
     The parent and each link name another document by its ref, as ``refs`` gives it by
     document id, else by its document id, which a document not mirrored keeps. People
     come by name alone, one line per role in the order of the roles: NAMES names at
@@ -315,6 +321,7 @@ def metadata(entry: IndexedDocument, refs: Mapping[str, str], *, whole: bool) ->
         rows += [
             ("created", stamp(front.created)),
             ("updated", stamp(front.updated)),
+            ("as of", "unknown" if entry.as_of is None else stamp(entry.as_of)),
             ("url", front.url),
         ]
     uncut = {*ROLES, *RELATIONS}
@@ -339,7 +346,7 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) ->
         front = entry.front
         line = (
             f"{'  ' * min(len(ancestors), DEPTH)}- {short(front.title)}"
-            f" ({front.ref}, updated {front.updated:%Y-%m-%d})"
+            f" ({front.ref}, updated {front.updated:%Y-%m-%d}, {as_of(entry)})"
         )
         if missing := ancestors[common:]:
             line = f"{'  ' * min(common, DEPTH)}- [{short(' / '.join(missing))}]\n{line}"
@@ -351,7 +358,8 @@ def tree(pairs: Sequence[tuple[tuple[str, ...], IndexedDocument]], base: int) ->
 def status(state: IndexStatus, docs: Path) -> str:
     """Say what the index holds, and when it was built.
 
-    Its persons on one line: how many, in more than one source, and by name alone; then
+    Each scope with its documents' count and its as-of time, else ``as of: unknown``. Its
+    persons on one line: how many, in more than one source, and by name alone; then
     SHARED at most of the names of several identities, each with the persons holding it,
     and how many more, so that the agent knows which names to ask about by id.
     """
@@ -365,6 +373,12 @@ def status(state: IndexStatus, docs: Path) -> str:
         for name, count in persons.shared[:SHARED]
     )
     rest = len(persons.shared) - SHARED
+    scopes = ", ".join(
+        f"{name} {count} (as of {stamp(state.as_of[name])})"
+        if name in state.as_of
+        else f"{name} {count} (as of: unknown)"
+        for name, count in state.scopes.items()
+    )
 
     lines = [
         f"built: {stamp(state.built_at)}",
@@ -374,7 +388,7 @@ def status(state: IndexStatus, docs: Path) -> str:
             if state.model
             else "search by meaning: off, the index holds no vectors; run kb-mcp embed"
         ),
-        f"scopes: {counts(state.scopes)}",
+        f"scopes: {scopes or 'none'}",
         (
             f"persons: {persons.count}, {persons.across} in more than one source,"
             f" {persons.alone} by name alone"
