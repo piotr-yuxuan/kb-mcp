@@ -193,7 +193,9 @@ def ranking(reader: SearchReader, meaning: Meaning | None, asked: Asked) -> Rank
     planned, filters, by_date = asked.planned, asked.filters, asked.sort != "relevance"
     with TRACER.start_as_current_span("search.lexical"):
         found = [reader.scores(each, filters, every=by_date) for each in planned.expressions]
-        given = identifiers(asked.query, [source for source, _ in reader.values("source")])
+        # A ref holds a colon: a query without one needs no list of the index's sources.
+        held = [source for source, _ in reader.values("source")] if ":" in asked.query else []
+        given = identifiers(asked.query, held)
         named = [*given.refs, *given.keys, *given.ids]
         # Each document that the query names as it is cited: by its ref, else by its key,
         # else its id, alone; each at the place of its first name in the query.

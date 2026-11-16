@@ -169,6 +169,26 @@ def test_a_ref_as_answers_cite_it_comes_first(tmp_path: Path) -> None:
     assert sorted(cited("kafka issue:PROJ-7")[:2]) == ["jira:PROJ-7", "tracker:PROJ-7"]
 
 
+def test_a_query_without_a_colon_reads_no_source(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """A ref holds a colon: only a query that holds one has the index list its sources.
+
+    Its key still pins its document; a query with a ref lists them once.
+    """
+    library = built(tmp_path, [(issue("PROJ-7", "Kafka upgrade"), None)])
+    asked: list[str] = []
+    values = sqlite_index.Reader.values
+
+    def counting(reader: sqlite_index.Reader, name: str) -> list[tuple[str, int]]:
+        asked.append(name)
+        return values(reader, name)
+
+    monkeypatch.setattr(sqlite_index.Reader, "values", counting)
+    assert refs(library.search("kafka PROJ-7"))[0] == "PROJ-7"
+    assert asked == []
+    assert refs(library.search("kafka jira:PROJ-7"))[0] == "PROJ-7"
+    assert asked == ["source"]
+
+
 def test_an_exact_phrase_beats_the_same_words_scattered(tmp_path: Path) -> None:
     """The phrase decides against a newer document first by path, whose sections are shorter."""
     adjacent = f"# Monitoring\n\n## Signals\n\nConsumer lag. {LOREM}\n"
