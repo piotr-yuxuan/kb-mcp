@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.adapters.run_record import RunBusyError, RunRecord
+from kb_mcp.cli.app import resumption
 from kb_mcp.cli.app.units import Planned, run_units
 from kb_mcp.cli.domain.runs import (
     Configuration,
@@ -887,6 +888,55 @@ def test_a_resume_refuses_a_record_that_lacks_what_a_stage_needs_naming_its_file
     assert main(["refresh", "--yes", "--resume", copied, *options]) == ExitStatus.REFUSED
     assert f"run {copied}: runs/{copied}/configuration.json: run: " in capsys.readouterr().err
     assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.OK
+
+
+@pytest.mark.usefixtures("site")
+def test_a_record_changed_once_read_and_before_the_run_is_held_refuses_it(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Another program may change the record while the resume asks: refused, exit 2, by it.
+
+    Once the entry has read the record, it is made to refuse a setting, then removed: the
+    run, once it holds the record, reads it again and refuses it, naming it, no unit run.
+    """
+    options = given(home, endpoint)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "kb_mcp.cli.commands._runs.fill_and_prune",
+            lambda *_: (_ for _ in ()).throw(KeyboardInterrupt),
+        )
+        status, document = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.INTERRUPTED
+    run = document["run"]
+    folder = home / "data" / "runs" / run
+    held = json.loads((folder / "configuration.json").read_text("utf-8"))
+    entries = (folder / "outcomes.json").read_bytes()
+    read = resumption.resumption
+
+    def changing(*arguments: object, **named: object) -> object:
+        found = read(*arguments, **named)  # type: ignore[arg-type]
+        changed = {**held, "settings": {**held["settings"], "data_dir": 5}}
+        (folder / "configuration.json").write_text(json.dumps(changed), "utf-8")
+        return found
+
+    monkeypatch.setattr("kb_mcp.cli.commands._shared.resumption", changing)
+    assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
+    said = f"run {run}: runs/{run}/configuration.json: settings: data_dir: "
+    assert said in capsys.readouterr().err
+    (refused,) = logged_as(home, "run.refused")
+    assert refused["reason"].startswith(said)
+    assert (folder / "outcomes.json").read_bytes() == entries
+
+    def removing(*arguments: object, **named: object) -> object:
+        found = read(*arguments, **named)  # type: ignore[arg-type]
+        (folder / "configuration.json").unlink()
+        return found
+
+    (folder / "configuration.json").write_text(json.dumps(held), "utf-8")
+    monkeypatch.setattr("kb_mcp.cli.commands._shared.resumption", removing)
+    assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
+    assert str(folder / "configuration.json") in capsys.readouterr().err
+    assert (folder / "outcomes.json").read_bytes() == entries
 
 
 def test_a_dry_run_records_nothing(

@@ -20,6 +20,7 @@ from kb_mcp.cli.domain.rows import Ended
 from kb_mcp.cli.domain.runs import Configuration, units_of
 from kb_mcp.config.domain.settings import without_secrets
 from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.search.app.indexing import fill_and_prune, update_index
 
@@ -56,7 +57,9 @@ def recorded(
     written as it ends (``run_units``), this invocation's started at ``started``.
 
     Another invocation holding the run refuses this one, exit 2, an error ``run.busy``; a
-    fetcher or a preparer that does not load refuses it alike, ``fetch.refused`` or
+    record gone or that no longer reads once the run is held, as another program may have
+    changed it since the entry read it, refuses it alike, ``run.refused``, naming the
+    record; and a fetcher or a preparer that does not load, ``fetch.refused`` or
     ``prepare.refused``, without a source. A run recorded whose units did not all last
     end done says, a warning ``run.resumable``, the command that resumes it, even as an
     error that no unit caught passes.
@@ -65,18 +68,17 @@ def recorded(
     record = RunRecord(None if dry else loaded.settings.runs / run)
     try:
         with record.holding():
-            if configuration is not None:
-                record.write_configuration(configuration)
-            fixed = record.read_configuration()
-            settings = record.settings(fixed, loaded.settings)
             try:
-                done = run_units(
-                    planned(fixed, settings),
-                    record.read_outcomes(),
-                    started,
-                    record.write_outcomes,
-                    dry_run=fixed.dry_run,
-                )
+                if configuration is not None:
+                    record.write_configuration(configuration)
+                fixed = record.read_configuration()
+                units = planned(fixed, record.settings(fixed, loaded.settings))
+                last = record.read_outcomes()
+            except (FileNotFoundError, RepresentationError) as error:
+                structlog.get_logger().error("run.refused", reason=f"run {run}: {error}")
+                return ExitStatus.REFUSED, None
+            try:
+                done = run_units(units, last, started, record.write_outcomes, dry_run=fixed.dry_run)
             finally:
                 endings = {each.ending for each in record.read_outcomes()}
                 if record.folder is not None and endings - {"done"}:

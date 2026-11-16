@@ -151,7 +151,7 @@ What any command may log.
 | `run.end` | info | `status`, `seconds` | A run ends: its exit status, how long it took |
 | `run.interrupted` | warning | `seconds` | Ctrl-C stopped the run, which exits 130 |
 | `run.failed` | error | `seconds` | An exception stopped the run, which exits 1; the traceback follows |
-| `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone, after the values that the settings loaded ignored, unless at the level error |
+| `run.refused` | error | `reason` | The command refuses its arguments or the settings, before the run: exit 2. On stderr alone, after the values that the settings loaded ignored, unless at the level error. Or, within a run that resumes another, its record, which changed once the entry read it, as soon as the run holds it: exit 2, no unit run |
 | `run.busy` | error | `hint` | Another invocation holds the run that this one resumes: no unit runs, its record is untouched, exit 2 |
 | `run.resumable` | warning | `resume` | A recorded run ended with a unit not done, as of its last ending: the command that resumes it, `kb-mcp refresh --resume <run id>`. Not of a dry run |
 | `settings.refused` | error | `reason` | The settings break a rule, before the run: exit 2. On stderr alone; when the program's former name left settings, data or variables, the steps to move them follow, as [move to kb-mcp](../../how-to/move-to-kb-mcp.md) says |
