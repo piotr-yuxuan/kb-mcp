@@ -99,7 +99,7 @@ def register(
         help="the sources to refresh, given together; by default each one configured",
     )
     remote = add_embedding_options(parser)
-    parser.add_argument(
+    resume = parser.add_argument(
         "--resume",
         metavar="RUN_ID",
         type=run_id,
@@ -120,7 +120,7 @@ def register(
             ),
             flags=flags,
             scoped=scoped,
-            actions=(*actions, *options, remote, source),
+            actions=(*actions, *options, remote, resume, source),
             writes=True,
             unapplied=fetch.unapplied,
             described=described,

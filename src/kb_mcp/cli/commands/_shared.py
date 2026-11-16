@@ -98,8 +98,13 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         sys.stderr.write(ignored_lines(loaded.ignored if output.level != "error" else ()))
         structlog.get_logger().error("run.refused", reason=refusal)
         return ExitStatus.REFUSED
-    said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())
-    said = resumed.said if resumed is not None and said else said
+    said, then = before(
+        arguments,
+        loaded,
+        output,
+        lambda path: path.expanduser().absolute(),
+        None if resumed is None else resumed.said,
+    )
     # Each unlogged argument is a positional string, given as the last token equal to it.
     hidden = {
         len(given) - 1 - list(reversed(given)).index(getattr(arguments, dest))

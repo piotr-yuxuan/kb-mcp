@@ -96,8 +96,10 @@ class Command:
 
         Those of the sources named (``arguments.source``, as ``fetch`` names them), none
         when none of them declares it; with none named, those of every source that does.
+        None for a resume (``refresh --resume``), which runs the settings that its run
+        recorded.
         """
-        if not self.scoped:
+        if not self.scoped or getattr(arguments, "resume", None):
             return {}
         named = set(arguments.source)
         return {

@@ -107,7 +107,9 @@ an interrupted prepare, and each unit that follows one of those, such as the ind
 source fetched and prepared again. The units done stay as they are. It takes the secrets,
 such as an API token, from its environment again, and the consent to an endpoint off this
 machine, `--allow-remote-embeddings`, from its own command line, when embed runs again. It
-asks again unless given `--yes`, saying the units done and those it runs.
+asks again unless given `--yes`, saying the units done and those it runs in place of the
+settings, then, as any run, whether telemetry is on, the values ignored and the command to
+copy, which resumes it again.
 
 It finds the run under the data directory that its settings, or `--data-dir`, name, so give
 the same `--config` or `--data-dir` as the run did. Anything that would change the

@@ -12,6 +12,7 @@ fixture, the embedding endpoint the tests' tiny model; each test has a scratch h
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import sqlite3
 import time
@@ -44,7 +45,7 @@ from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.prepare.app import preparer as atlassian_preparer
 from kb_mcp.sources.worklog.prepare.app import preparer as worklog_preparer
 from tests.composed import MODEL
-from tests.endpoint import Scripted, serving
+from tests.endpoint import Scripted, nothing_listening, serving
 from tests.test_cli import logged_as
 from tests.test_fetching import SITE, FakeSite
 from tests.test_prepare_worklog import FIXTURE, settle
@@ -681,6 +682,36 @@ def test_a_stage_command_s_run_is_resumed_by_refresh_as_that_stage_alone(
     ]
     assert out.startswith(f"run {run}\nfetch jira: done, in the invocation of ")
     assert "\nfetch worklog: done\n  documents read: " in out
+
+
+def test_a_resume_says_what_it_will_do_and_what_this_invocation_does_of_telemetry(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Q7: telemetry is this invocation's, so its echo says it on, though the settings are not.
+
+    In place of the settings, which are the run's as recorded, it says what the resume
+    will do; then, as any echo, telemetry on and where, and the command to copy, which
+    resumes the run again, without an option that a resume refuses. Nothing listens there.
+    """
+    options = given(home, endpoint)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            "kb_mcp.sources.worklog.fetch.app.fetcher.fetch_worklog",
+            lambda *_, **__: (_ for _ in ()).throw(KeyboardInterrupt),
+        )
+        assert main(["fetch", "--yes", *options, "worklog"]) == ExitStatus.INTERRUPTED
+    run = capsys.readouterr().out.splitlines()[0].removeprefix("run ")
+    with nothing_listening() as url:
+        listening = url.removesuffix("/v1")
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", listening)
+        assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.OK
+    err = capsys.readouterr().err
+    assert f"refresh --resume {run}: the run of fetch, started " in err
+    assert "  to run: fetch worklog (interrupted)\n" in err
+    assert "with these settings" not in err
+    assert f"telemetry: on, to {listening} (OTEL_EXPORTER_OTLP_ENDPOINT)\n" in err
+    copied = shlex.split(err[err.index("kb-mcp refresh") :].replace("\\\n", "").split("\n", 1)[0])
+    assert copied == ["kb-mcp", "refresh", *options, "--resume", run]
 
 
 @pytest.mark.usefixtures("site")
