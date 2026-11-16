@@ -16,14 +16,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kb_mcp.cli.domain.command import PREPARE
+
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Iterable, Mapping
+    from datetime import datetime
 
     from kb_mcp.sources.declaration import Source
-
-# The commands over sources, whose names a run reads.
-FETCH, PREPARE = "fetch", "prepare"
 
 
 def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
@@ -32,6 +32,28 @@ def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, obje
     ``add_source_options`` keeps an option's value under its flag itself.
     """
     return {flag: getattr(arguments, flag) for flag in flags}
+
+
+def fetch_options(arguments: argparse.Namespace, start: datetime) -> dict[str, object]:
+    """Give each option of a fetch that no setting holds, by flag, as its run records it.
+
+    As of the run's ``start`` where its declaration says how, such as --since 7d, a time,
+    and --until not given, that start; else as given, None when not given. An option
+    that replaces a setting, such as --space, is in the settings that the run records.
+    """
+    options = {
+        flag: option
+        for each in arguments.sources
+        if each.connector.fetcher is not None
+        for flag, option in each.connector.flags.items()
+        if option.setting is None
+    }
+    return {
+        flag: getattr(arguments, flag)
+        if option.absolute is None
+        else option.absolute(getattr(arguments, flag), start)
+        for flag, option in sorted(options.items())
+    }
 
 
 def chosen_to_fetch(
@@ -73,8 +95,11 @@ def chosen_to_prepare(
 def chosen(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
-    """Return what the command that the arguments name takes, and why each other is left out."""
-    choose = chosen_to_fetch if arguments.command.name == FETCH else chosen_to_prepare
+    """Return what the command that the arguments name takes, and why each other is left out.
+
+    ``prepare`` takes what a prepare takes; ``fetch`` and ``refresh``, what a fetch takes.
+    """
+    choose = chosen_to_prepare if arguments.command.name == PREPARE else chosen_to_fetch
     return choose(arguments, settings)
 
 
