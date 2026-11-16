@@ -651,7 +651,10 @@ def test_the_help_shows_a_group_per_source_that_has_a_fetcher(
     assert "each space listed whole." in confluence
     assert "--space SPACE" in confluence
     assert "--project" not in confluence
-    assert "each project searched by update time." in jira
+    assert (
+        "each project searched by update time, read whole every 7 days for what it no"
+        " longer holds." in jira
+    )
     assert "--project PROJECT" in jira
     assert "--since" not in jira
     assert all(flag in both for flag in ("--since SINCE", "--until UNTIL", "--max-file-mb"))

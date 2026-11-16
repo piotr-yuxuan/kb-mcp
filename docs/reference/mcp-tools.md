@@ -139,6 +139,12 @@ most, then how many more, such as `transcript: worklog:t-20261027-1`. The parent
 document linked, come by their ref when they are mirrored, else by their document id,
 `<source>:<id>`.
 
+A folder has no body and no section: its read gives its front matter, then its children,
+the documents whose parent it is, as `Children: N` and a line each by title, as `browse`
+writes it, twenty at most, then the `browse(scope=..., parent=...)` call that lists them
+all. No search nor `ask` gives a folder, which has no words to match nor a section to
+show.
+
 - `ref`: a ref as answers cite it, the document's source, a colon, then its key or else
   its id, such as `jira:PRB-12`, `confluence:196845` or `worklog:t-20261027-1`, never
   looked for in another source, whatever surrounds it, such as `(jira:PRB-12).`, and
@@ -153,8 +159,9 @@ document linked, come by their ref when they are mirrored, else by their documen
 
 Lists the documents of a scope in tree order, or those under a parent, each with its
 ref, its update day and the day that it is as of, as a hit says it. A document sits
-under its parent; where the parent is not listed, as a folder is not, under the titles
-of its breadcrumb. Ancestors not listed come as a context line in brackets.
+under its parent, a folder's pages under the folder; where the parent is not listed, as
+a page that its space lists and the mirror lacks is not, under the titles of its
+breadcrumb. Ancestors not listed come as a context line in brackets.
 
 - `scope`: as `status` names it, such as `space:ENG`, or its key alone; refused, with
   the scopes that match, when several do.

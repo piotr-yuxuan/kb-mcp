@@ -453,67 +453,81 @@ def test_a_record_that_no_read_reaches_fails_the_fetch_as_a_damaged_one(
     assert site.asked == []
 
 
-# The record of what answered as gone, damaged, and whole but not as the store writes it.
-RECORDS = (
-    "not json",
-    (
-        '[{"source":"confluence","type":"page","id":"1001","scope":"OPS","first_gone":null,'
-        '"confirmed":false}]'
-    ),
+# A record of what answered as gone, whole but not as the store writes it: a page of
+# another space that the scripted space lists, and one that it does not.
+RECORD = (
+    '[{"source":"confluence","type":"page","id":"1001","scope":"OPS","first_gone":null,'
+    '"confirmed":false},'
+    '{"source":"confluence","type":"page","id":"1009","scope":"OPS","first_gone":null,'
+    '"confirmed":false}]'
 )
 
 
-@pytest.mark.parametrize("record", RECORDS, ids=["damaged", "whole"])
-def test_a_fetch_of_jira_neither_reads_nor_rewrites_what_answered_as_gone(
-    settings: Settings, site: FakeSite, record: str
+def test_a_fetch_of_jira_reads_what_answered_as_gone_and_keeps_confluence_s(
+    settings: Settings, site: FakeSite
 ) -> None:
-    """The record is Confluence's, and the fetch that holds no space leaves it to Confluence's."""
+    """Plan 061: every connector's whole reads start absences, in the one record.
+
+    Jira's fetch keeps each tombstone of Confluence's as it finds it, and asks Confluence
+    nothing. The record damaged fails Jira's fetch alone, by the record's name, before
+    anything is asked: its preflight stops no other source.
+    """
     settings.raw.mkdir(parents=True)
     stones = settings.raw / "tombstones.json"
-    stones.write_text(record, "utf-8")
+    stones.write_text(RECORD, "utf-8")
     run = run_of(JIRA, signed_in(settings), SINCE)
     assert fetcher_of(JIRA).preflight(run) is None
     assert fetcher_of(JIRA).fetch(run).ending == "done"
-    assert stones.read_text("utf-8") == record
+    assert list(RawStore(settings.raw, "jira").tombstones()) == [
+        ("confluence", "page", "1001"),
+        ("confluence", "page", "1009"),
+    ]
     assert any(each.path.startswith("/rest/api/3/") for each in site.asked)
     assert not any(each.path.startswith("/wiki/") for each in site.asked)
+    stones.write_text("not json", "utf-8")
+    asked = len(site.asked)
+    assert fetcher_of(JIRA).preflight(run) is None
+    failed = fetcher_of(JIRA).fetch(run)
+    assert (failed.ending, failed.problems) == (
+        "failed",
+        (Problem(where="jira", reason="tombstones.json: not JSON"),),
+    )
+    assert len(site.asked) == asked
 
 
 def test_a_fetch_of_confluence_keeps_each_tombstone_that_it_finds(
     settings: Settings, site: FakeSite
 ) -> None:
-    """Whole, the record is read, and what it holds of another space is there once it ends."""
+    """Whole, the record is read, and what it holds of another space is there once it ends.
+
+    But for a page that the space's whole read lists, present there, plan 061's.
+    """
     settings.raw.mkdir(parents=True)
-    (settings.raw / "tombstones.json").write_text(RECORDS[1], "utf-8")
+    (settings.raw / "tombstones.json").write_text(RECORD, "utf-8")
     run = run_of(CONFLUENCE, signed_in(settings), SINCE)
     assert fetcher_of(CONFLUENCE).preflight(run) is None
     assert fetcher_of(CONFLUENCE).fetch(run).counts is not None
     assert list(RawStore(settings.raw, "confluence").tombstones()) == [
-        ("confluence", "page", "1001")
+        ("confluence", "page", "1009")
     ]
     assert any(each.path.startswith("/wiki/") for each in site.asked)
 
 
 @pytest.mark.parametrize(
-    ("given", "status"),
-    [
-        (("fetch", "jira", "--yes"), ExitStatus.SIGN_IN_AGAIN),
-        (("fetch", "jira", "--dry-run"), ExitStatus.SIGN_IN_AGAIN),
-        (("prepare", "jira", "--yes"), ExitStatus.OK),
-        (("fetch", "worklog", "--yes"), ExitStatus.OK),
-    ],
-    ids=["a fetch of Jira", "a dry run of Jira", "a prepare of Jira", "a fetch of the work log"],
+    "given",
+    [("prepare", "jira", "--yes"), ("fetch", "worklog", "--yes")],
+    ids=["a prepare of Jira", "a fetch of the work log"],
 )
-def test_a_record_of_confluence_s_stops_no_run_without_confluence(
+def test_a_damaged_record_of_what_answered_as_gone_stops_no_prepare_nor_work_log_fetch(
     home: Path,
     worklog: Path,
     capsys: CaptureFixture[str],
     given: tuple[str, ...],
-    status: ExitStatus,
 ) -> None:
     """Each gives the row of the source that it names, on a damaged record of what is gone.
 
-    With neither token nor session, a fetch's row asks to sign in, found before any request.
+    The record's problem is the prepare of spaces', a warning of Jira's, nothing of the work
+    log's, whose fetch reads its copy store alone.
     """
     data = home / "data"
     (data / "raw").mkdir(parents=True)
@@ -527,7 +541,7 @@ def test_a_record_of_confluence_s_stops_no_run_without_confluence(
         "utf-8",
     )
     arguments = [*given, "--format", "json", "--config", str(config), "--data-dir", str(data)]
-    assert main(arguments) == status
+    assert main(arguments) == ExitStatus.OK
     out, err = capsys.readouterr()
     assert ".refused" not in err
     assert [row["source"] for row in json.loads(out)["sources"]] == [given[1]]

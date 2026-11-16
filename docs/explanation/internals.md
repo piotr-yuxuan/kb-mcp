@@ -91,7 +91,12 @@ site through one port, [`SiteClient`](../../src/kb_mcp/sources/atlassian/fetch/a
 which makes GETs alone, one at a time and paced, signed in by the saved session or an API
 token ([`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py)).
 For each Confluence space, it lists every page, blog post and folder, and stores the
-listings whole; for each Jira project, it searches the issues updated in its fetch window.
+listings whole; for each Jira project, it searches the issues updated in its fetch window,
+and, at its first fetch and a week after its last whole read, first reads it whole, every
+issue's id, which it stores as a space's listing
+([`whole_read_due`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)). What a
+scope's whole read no longer names is probed, by its id
+([`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)).
 Then it fetches each document updated in the fetch window whose revision the raw store
 lacks, and each that joined a space since its stored listing, or joined before and is
 still to fetch, whatever its update time
@@ -138,13 +143,15 @@ document's front matter names its scope, its parent and its links by document id
 its breadcrumb is the titles along its parents, an issue's climbing the parents that
 the raw store holds
 ([`Catalogue.breadcrumb`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py));
-beside the documents, the source's file says the roles that each of its types takes and
-its scopes' as-of times, copied from the coverage
+beside the documents, the source's file says the roles that each of its types takes,
+which of them are containers, and its scopes' as-of times, copied from the coverage
 ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py)). Confluence and Jira are prepared apart, Confluence first,
 each its own document types, and each places every document, since a page links an issue, and an
 issue a page. It places each document in the space whose freshest listing names it,
-leaving out those confirmed gone
-([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); for its own, it turns the site's HTML
+leaving out those confirmed gone, issues as pages
+([`place`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)), and writes each folder
+of the spaces as a document without a body
+([`folder_files`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)); for its own, it turns the site's HTML
 into plain HTML, the one module that knows the site's markup
 ([`normalise`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)); and has
 pandoc write it as Markdown, one process a document
@@ -412,15 +419,16 @@ Jira has a new update time, its revision, and is fetched the same way.
 
 - **Moved** to another space that the run keeps, a page is listed there, and the raw
   store notes when each space was listed.
-- **Deleted**, a page is absent from its space's listing. The run records a
+- **Deleted**, a page is absent from its space's listing, an issue from its project's
+  whole read, a week apart at most. The run records a
   [`Tombstone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py) and
-  probes the page; a second answer of gone, an hour or more after the first, confirms
-  it. When many probes of one space answer that their pages are gone, the run first
-  checks that its session still holds
+  probes the document; a second answer of gone, an hour or more after the first, on a
+  later run, confirms it. When many probes of one scope answer that their documents are
+  gone, the run first checks that its session still holds
   ([`too_many_gone`](../../src/kb_mcp/sources/atlassian/fetch/domain/deletions.py)),
   so that a lost session deletes nothing.
 - **Not yet seen**: a change that makes no new version, such as labels changed or a
-  file attached without an edit, and Jira's deletions; [the data
+  file attached without an edit; [the data
   layout](../reference/data-layout.md#snapshots) lists these limits.
 - **A work-log entry closed** is a new copy: the next `fetch` reads the work log's folder
   whole, finds the entry's text changed, and keeps its new text and revision in the copy

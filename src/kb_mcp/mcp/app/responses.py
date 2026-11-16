@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES
 from kb_mcp.search.domain import people
+from kb_mcp.search.domain.search import tree_key
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -39,6 +40,7 @@ NAMES = 10  # names of one role that a read shows, then how many more
 SHARED = 5  # names of several identities that status shows, then how many more
 SNIPPET = 300
 DEPTH = 10  # levels of indentation, at most
+CHILDREN = 20  # children of a container that its read lists, then the call of browse
 # Estimated tokens kept for an answer's header and the markers of its block.
 RESERVE = 100
 SPACES = re.compile(r"\s+")
@@ -340,8 +342,8 @@ def tree(pairs: Sequence[tuple[Place, IndexedDocument]], base: int) -> list[str]
     """Write each document of a tree as one item, indented by its depth below ``base``.
 
     Ancestors not listed before it, in this list, come first as one context line in
-    brackets, by their titles: folders, documents not mirrored, or, for the first item,
-    documents listed on an earlier page.
+    brackets, by their titles: documents not mirrored, headings that are no document, or,
+    for the first item, documents listed on an earlier page.
     """
     items: list[str] = []
     previous: Place = ()
@@ -359,6 +361,17 @@ def tree(pairs: Sequence[tuple[Place, IndexedDocument]], base: int) -> list[str]
         items.append(line)
         previous = place[base:]
     return items
+
+
+def children(listed: Sequence[IndexedDocument], more: str) -> str:
+    """Write a container's children by title, each as browse writes a document.
+
+    CHILDREN at most, then ``more``, the call that browses them all.
+    """
+    ordered = sorted(listed, key=lambda each: (tree_key((each.front.title,)), each.path))
+    lines = tree([(((each.front.title, each.path),), each) for each in ordered[:CHILDREN]], 0)
+    rest = [f"More: {more}"] if len(ordered) > CHILDREN else []
+    return "\n".join([f"Children: {len(ordered)}", *lines, *rest])
 
 
 def status(state: IndexStatus, docs: Path) -> str:

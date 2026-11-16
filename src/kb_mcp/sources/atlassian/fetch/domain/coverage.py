@@ -167,4 +167,26 @@ def fetch_window(
     return FetchWindow(period=Period(start, end), reason=reason)
 
 
-__all__ = ["EPOCH", "Coverage", "CoverageChange", "FetchWindow", "Scope", "fetch_window"]
+def whole_read_due(coverage: Coverage, scope: Scope, now: datetime) -> bool:
+    """Say whether a run at ``now`` reads a scope whole besides its search by update time.
+
+    It does when its scope type declares how often, and the scope was never read whole,
+    or last read whole at least that long before; a scope type that declares nothing,
+    a space's, listed whole at every run, never needs it.
+    """
+    every = scope.type.whole_read_every
+    if every is None:
+        return False
+    last = coverage.whole_read_at.get(scope)
+    return last is None or now - last >= every
+
+
+__all__ = [
+    "EPOCH",
+    "Coverage",
+    "CoverageChange",
+    "FetchWindow",
+    "Scope",
+    "fetch_window",
+    "whole_read_due",
+]

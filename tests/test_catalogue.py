@@ -51,8 +51,22 @@ def page(page_id: str, title: str, parent: str | None, **changes: object) -> Pag
     return replace(made, **changes)
 
 
+def folder(folder_id: str, title: str, parent: str, parent_type: str = "folder") -> Folder:
+    """Return a folder at version 2 under a page or another folder."""
+    return Folder(
+        id=folder_id,
+        title=title,
+        status="current",
+        created=MOMENT - timedelta(days=1),
+        updated=MOMENT,
+        version=2,
+        parent_id=parent,
+        parent_type=parent_type,
+    )
+
+
 ROOT = page("10", "Root", None)
-FOLDER = Folder(id="20", title="A folder", parent_id="10", parent_type="page")
+FOLDER = folder("20", "A folder", "10", "page")
 LEAF = page("30", "Leaf", "20", parent_type="folder")
 POST = BlogPost(
     id="40",
@@ -147,8 +161,8 @@ def test_a_breadcrumb_stops_at_an_unlisted_parent_or_a_loop() -> None:
         listed={},
         folders={
             "1": (
-                Folder(id="1", title="One", parent_id="2", parent_type="folder"),
-                Folder(id="2", title="Two", parent_id="1", parent_type="folder"),
+                folder("1", "One", "2"),
+                folder("2", "Two", "1"),
             )
         },
     )

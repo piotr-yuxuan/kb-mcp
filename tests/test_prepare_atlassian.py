@@ -9,6 +9,7 @@ plan 030 has it: each places every document, and writes and removes its own file
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import sqlite3
 from contextlib import closing
@@ -31,10 +32,10 @@ from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page, time_revision
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Coverage, Scope
 from kb_mcp.sources.atlassian.fetch.domain.names import PROJECT, SPACE
-from kb_mcp.sources.atlassian.fetch.domain.period import Period
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period
 from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 from kb_mcp.sources.atlassian.prepare.app.preparer import prepare_source
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
@@ -65,14 +66,14 @@ IMAGE = b"\x89PNG an image"
 OTHER_IMAGE = b"\x89PNG another image"
 SPACE_ID = "196613"
 WORDS = "Words of the leaf page."
-# Each source's documents: Home, Leaf and the blog post; the issue.
-DOCUMENTS = {"confluence": 3, "jira": 1}
+# Each source's documents: Home, the folder Plans, Leaf and the blog post; the issue.
+DOCUMENTS = {"confluence": 4, "jira": 1}
 # A conversion for each document's file, and Confluence's for the space's tree.
 CONVERSIONS = {"confluence": 4, "jira": 1}
-# Each source's files: its documents, Confluence's tree, the file that its documents
-# attach, the leaf's image and the blog post's being one, the issue's another, and its
-# source's file.
-FILES = {"confluence": 6, "jira": 3}
+# Each source's files: its documents, the folder's among them, Confluence's tree, the
+# file that its documents attach, the leaf's image and the blog post's being one, the
+# issue's another, and its source's file.
+FILES = {"confluence": 7, "jira": 3}
 
 
 def listing_page(
@@ -267,6 +268,7 @@ def test_the_mirror_writes_exactly_the_layouts_paths(sandbox: Sandbox) -> None:
     assert each(outcomes, lambda outcome: outcome.counts.documents) == DOCUMENTS
     assert set(sandbox.files()) == {
         "confluence/MFS/100-home.md",
+        "confluence/MFS/200-plans.md",
         "confluence/MFS/300-leaf.md",
         "confluence/MFS/blog/600-news.md",
         "confluence/MFS/_tree.md",
@@ -437,15 +439,104 @@ def test_each_body_has_the_layouts_sections(sandbox: Sandbox) -> None:
 
 
 def test_the_tree_nests_pages_and_folders(sandbox: Sandbox) -> None:
-    """Siblings by title; a page without a body is named as not yet mirrored."""
+    """Siblings by title; a page without a body is named as not yet mirrored.
+
+    A folder, a document since plan 061, links its file as a page does.
+    """
     sandbox.run()
     assert sandbox.text("confluence/MFS/_tree.md") == (
         "# A space (MFS)\n\n"
         "- [Home](100-home.md)\n"
         "  - Listed only (not yet mirrored)\n"
-        "  - Plans\n"
+        "  - [Plans](200-plans.md)\n"
         "    - [Leaf](300-leaf.md)\n"
     )
+
+
+def test_each_folder_is_a_document_without_a_body(sandbox: Sandbox) -> None:
+    """Criterion 5: its front matter, a folder of its space under its parent page, then nothing.
+
+    No people nor address; its source's file says that it takes no role.
+    """
+    sandbox.run()
+    folder, body = load(sandbox.text("confluence/MFS/200-plans.md"), "folder")
+    assert (folder, body) == (
+        FrontMatter(
+            source="confluence",
+            type="folder",
+            id="200",
+            key=None,
+            title="Plans",
+            scope="space:MFS",
+            status="current",
+            subtype=None,
+            labels=(),
+            people=(),
+            parent="confluence:100",
+            links=(),
+            created=datetime(2026, 10, 19, 8, tzinfo=UTC),
+            updated=datetime(2026, 10, 20, 8, tzinfo=UTC),
+            version=2,
+            revision="000002",
+            url=None,
+            breadcrumb=("Home",),
+        ),
+        "",
+    )
+    declared = json.loads(sandbox.text("confluence/_source.json"))
+    assert (declared["roles"], declared["containers"]) == (
+        {"page": ["author", "commenter"], "blogpost": ["author", "commenter"], "folder": []},
+        ["folder"],
+    )
+
+
+def test_a_folder_without_its_status_dates_or_version_is_still_a_document(
+    sandbox: Sandbox,
+) -> None:
+    """Review of 061: a folder's response of another shape marks no space damaged.
+
+    Read without its status, its creation time and its version, which the sandbox site
+    never showed, it still has its file: no status, dated at the epoch, which no content
+    of the site precedes, no version, and a revision by that time. Listed again later, its
+    file stays as it was.
+    """
+    bare = {
+        key: value for key, value in FOLDER.items() if key not in {"status", "createdAt", "version"}
+    }
+    path = "confluence/MFS/200-plans.md"
+    files = []
+    for listed in (datetime(2026, 10, 21, 9, tzinfo=UTC), datetime(2026, 10, 22, 9, tzinfo=UTC)):
+        with sandbox.store.writing():
+            sandbox.store.put_space(
+                v2_space(id=SPACE_ID), LISTED, [POST_LISTED], [bare], listed_at=listed
+            )
+        assert sandbox.run()["confluence"].problems == ()
+        files.append(sandbox.text(path))
+    folder, body = load(files[0], "folder")
+    assert (folder.status, folder.created, folder.updated, folder.version, body) == (
+        "",
+        EPOCH,
+        EPOCH,
+        None,
+        "",
+    )
+    assert (folder.revision, files[1]) == (time_revision(EPOCH), files[0])
+
+
+def test_a_source_of_folders_alone_writes_its_source_s_file(tmp_path: Path) -> None:
+    """Review of 061: the file that names a folder a container comes with the folder's file.
+
+    No page of the space is stored, every GET of a page having failed: the folder is the
+    source's one document, and its source's file says that its type is a container.
+    """
+    store = RawStore(tmp_path / "data" / "raw", "confluence")
+    with store.writing():
+        store.put_space(v2_space(id=SPACE_ID), LISTED, [], [FOLDER])
+    docs = tmp_path / "data" / "docs"
+    assert prepared_source(store, docs, SITE, lambda html: html, "confluence").problems == ()
+    assert (docs / "confluence" / "MFS" / "200-plans.md").is_file()
+    declared = json.loads((docs / "confluence" / "_source.json").read_text("utf-8"))
+    assert declared["containers"] == ["folder"]
 
 
 def test_a_second_run_writes_nothing_and_a_rebuild_gives_the_same_bytes(

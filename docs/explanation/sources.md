@@ -312,8 +312,9 @@ package, but each is a source: a row, a report and a set of files of its own.
   ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
   probes, projects and users keep their order across two runs, each with its own sign-in
   check, hold on the raw store and report, `<data>/runs/<time>-<source>.json`. The record of
-  what answered as gone is Confluence's: a fetch of projects neither reads nor rewrites
-  it, so that one damaged stops no run without Confluence.
+  what answered as gone is every source's since plan 061, each fetch keeping the others'
+  entries as it found them; one damaged fails each fetch that reads it, that source's row
+  alone, and stops no prepare.
 - **Each placing both.** A page links an issue, and an issue a page, through one map of
   the mirror's documents
   ([`LinkTargets.documents`](../../src/kb_mcp/sources/atlassian/prepare/adapters/site_html.py)),

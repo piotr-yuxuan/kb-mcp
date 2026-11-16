@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import IDENTIFIER
 from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     Attachment,
@@ -141,6 +142,10 @@ def snapshot(responses: Mapping[str, object]) -> Snapshot:
 
 # What to GET, and how a search and a list of comments go on.
 PAGE_SIZE = "100"
+# A project read whole asks for its issues' keys alone, of which a search gives the most
+# to a page, up to this many.
+LISTING_FIELDS = "key"
+LISTING_SIZE = "5000"
 
 
 def search_request(project: str, start: date, end: date) -> Request:
@@ -158,6 +163,35 @@ def search_request(project: str, start: date, end: date) -> Request:
         path="/rest/api/3/search/jql",
         params={"jql": jql, "fields": ISSUE_FIELDS, "maxResults": PAGE_SIZE},
     )
+
+
+def listing_request(project: str) -> Request:
+    """GET the first page of every issue of a project, by id and key, whatever its update time.
+
+    A search without a date bound reads the project whole, as a listing reads a space;
+    it pages as ``search_page`` reads.
+    """
+    return Request(
+        path="/rest/api/3/search/jql",
+        params={
+            "jql": f'project = "{project}" ORDER BY key',
+            "fields": LISTING_FIELDS,
+            "maxResults": LISTING_SIZE,
+        },
+    )
+
+
+def entry_ids(entries: object) -> set[str]:
+    """Read only the ids of a search's issues, whatever else each holds.
+
+    An entry without a usable id names nothing; entries that are not a list name none.
+    """
+    ids: set[str] = set()
+    for entry in entries if type(entries) is list else []:
+        identifier = entry.get("id") if type(entry) is dict else None
+        if type(identifier) is str and IDENTIFIER.fullmatch(identifier):
+            ids.add(identifier)
+    return ids
 
 
 def search_page(response: Fields, request: Request) -> tuple[list[Fields], Request | None]:
@@ -215,6 +249,19 @@ def comments_page(response: Fields, request: Request) -> tuple[list[Fields], Req
     if comments and start < response.integer("total"):
         following = Request(path=request.path, params={**request.params, "startAt": str(start)})
     return comments, following
+
+
+def probe_request(issue_id: str) -> Request:
+    """GET an issue's project alone, to learn where the issue is, if anywhere."""
+    return Request(path=f"/rest/api/3/issue/{issue_id}", params={"fields": "project"})
+
+
+def whereabouts(fields: Fields) -> tuple[str, str | None]:
+    """Read where a probed issue is: its project's key; an issue has no status of its content.
+
+    Its status is its workflow's, which says nothing of whether it is gone.
+    """
+    return fields.object("fields").object("project").text("key"), None
 
 
 def myself_request() -> Request:

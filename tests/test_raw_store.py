@@ -268,8 +268,39 @@ def test_spaces_listed_on_different_runs_are_all_kept(store: RawStore) -> None:
     assert page.parent_type == "page"
     assert store.listed("196613", BlogPost) == []
     assert store.folders("196613") == [
-        Folder(id="197001", title="A folder", parent_id="196725", parent_type="page")
+        Folder(
+            id="197001",
+            title="A folder",
+            status="current",
+            created=datetime(2026, 10, 19, 8, tzinfo=UTC),
+            updated=datetime(2026, 10, 20, 8, tzinfo=UTC),
+            version=2,
+            parent_id="196725",
+            parent_type="page",
+        )
     ]
+
+
+def test_a_project_read_whole_is_kept_beside_the_spaces_and_read_by_id_alone(
+    tmp_path: Path,
+) -> None:
+    """Plan 061: every issue that it names, as received, under its key; a space's by id.
+
+    An entry that names no id names no issue; one whose other fields changed still does.
+    """
+    store, jira = RawStore(tmp_path, "confluence"), RawStore(tmp_path, "jira")
+    with pytest.raises(RuntimeError, match=r"inside RawStore\.writing"):
+        jira.put_project("PRB", [])
+    with jira.writing():
+        jira.put_project("PRB", [{"id": "10000", "key": "PRB-1"}, {"id": "10001"}, {"key": "X"}])
+    with store.writing():
+        store.put_space(v2_space(), [v2_page()], [], [])
+    assert json.loads((tmp_path / "jira/projects/PRB/issues.json").read_text("utf-8"))[1] == {
+        "id": "10001"
+    }
+    assert jira.listed_ids("PRB", Issue) == {"10000", "10001"}
+    assert (jira.holders(Issue), jira.holders(Page)) == ({"PRB"}, set())
+    assert (store.holders(Page), store.holders(Issue)) == ({"196613"}, set())
 
 
 def test_a_space_listing_is_replaced_whole(store: RawStore) -> None:
@@ -551,6 +582,25 @@ def test_a_pending_record_that_does_not_read_is_refused_by_name(store: RawStore,
     (store.root / "confluence" / "spaces" / "196613" / "pending.json").write_text(text, "utf-8")
     with pytest.raises(RepresentationError, match=r"^confluence/spaces/196613/pending\.json: "):
         store.pending("196613")
+
+
+@pytest.mark.parametrize("text", ['["20001", "20', '{"searched": []}', '["../x"]'])
+def test_a_record_of_searches_that_does_not_read_is_refused_by_name(
+    store: RawStore, text: str
+) -> None:
+    """Review of 061: as a pending record is, so that no issue that it held is missed."""
+    store.put_project("PRB", [])
+    (store.root / "confluence" / "projects" / "PRB" / "searched.json").write_text(text, "utf-8")
+    with pytest.raises(RepresentationError, match=r"^confluence/projects/PRB/searched\.json: "):
+        store.searched("PRB")
+
+
+def test_a_record_of_searches_keeps_its_ids_until_none_removes_it(store: RawStore) -> None:
+    """Review of 061: the ids that searches found read back; none removes the record."""
+    store.put_searched("PRB", {"20003", "20001"})
+    assert store.searched("PRB") == {"20001", "20003"}
+    store.put_searched("PRB", ())
+    assert (store.searched("PRB"), store.listed_ids("PRB", Issue)) == (set(), set())
 
 
 def test_a_tombstone_confirmed_without_a_first_answer_is_refused(store: RawStore) -> None:

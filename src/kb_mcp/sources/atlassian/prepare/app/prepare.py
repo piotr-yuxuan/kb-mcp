@@ -39,6 +39,7 @@ from kb_mcp.mirror.domain.mirror import SourceFile, scope_name
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     COVERAGE,
+    TOMBSTONES,
     UNREADABLE,
     RawStore,
     StoredSnapshot,
@@ -47,6 +48,7 @@ from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     BlogPost,
     ConfluenceDocument,
+    Folder,
     Issue,
     Page,
 )
@@ -58,7 +60,13 @@ from kb_mcp.sources.atlassian.prepare.adapters.site_html import (
     RenderContext,
     normalise,
 )
-from kb_mcp.sources.atlassian.prepare.domain.catalogue import TYPE_ROLES, Catalogue, front_matter
+from kb_mcp.sources.atlassian.prepare.domain.catalogue import (
+    CONTAINERS,
+    TYPE_ROLES,
+    Catalogue,
+    folder_front_matter,
+    front_matter,
+)
 from kb_mcp.sources.atlassian.prepare.domain.layout import (
     asset_path,
     confluence_path,
@@ -74,7 +82,6 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.output import Detail
     from kb_mcp.mirror.adapters.conversions import Conversions
-    from kb_mcp.sources.atlassian.fetch.domain.content import Folder
 
 # The document classes of a source, which a prepare takes whole.
 type Classes = tuple[type[Page | BlogPost | Issue], ...]
@@ -170,10 +177,11 @@ def listed_at(store: RawStore, space_id: str, problems: list[Problem]) -> dateti
 def read_catalogue(
     store: RawStore, problems: list[Problem]
 ) -> tuple[Catalogue, set[str], dict[str, datetime]]:
-    """Read the spaces, site users, listings and the scopes' as-of times.
+    """Read the spaces, site users, listings, the scopes' as-of times and what is gone.
 
     Also return the spaces whose listing failed, and when each space was listed. A record
-    of coverage that cannot be read is a problem, and no as-of time is known.
+    of coverage that cannot be read is a problem, and no as-of time is known; one of
+    tombstones, a problem too, and nothing is known gone.
     """
     spaces = {space.id: space for space in readable(store.spaces(), problems)}
     users = readable(store.users(), problems)
@@ -182,6 +190,11 @@ def read_catalogue(
     except UNREADABLE as error:
         problems.append(Problem(where=COVERAGE, reason=reason(error)))
         as_of = {}
+    try:
+        gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
+    except UNREADABLE as error:
+        problems.append(Problem(where=TOMBSTONES, reason=reason(error)))
+        gone = {}
     times = {space_id: listed_at(store, space_id, problems) for space_id in spaces}
     listed: dict[str, Page | BlogPost] = {}
     folders: dict[str, tuple[Folder, ...]] = {}
@@ -196,7 +209,9 @@ def read_catalogue(
         if len(problems) > before:
             damaged.add(space_id)
     names = {user.account_id: user.display_name for user in users if user.display_name}
-    catalogue = Catalogue(spaces=spaces, names=names, listed=listed, folders=folders, as_of=as_of)
+    catalogue = Catalogue(
+        spaces=spaces, names=names, listed=listed, folders=folders, as_of=as_of, gone=gone
+    )
     return catalogue, damaged, times
 
 
@@ -213,23 +228,15 @@ def place(
     of the store that ``store`` views. A page or a blog post goes to the space whose
     freshest listing names it, before the one its snapshot names, everywhere the mirror
     uses its space; one whose space is not listed has no folder, and is reported. A
-    document confirmed gone is left out, unless a listing taken after it answered gone
-    names it again. Each problem goes to the list of the source it belongs to, by its
-    name, in ``problems``; the tombstones', to the source that lists spaces, if any, as
-    only a space's whole read makes them, else to ``store``'s. Also return the files that
-    must go even when the source reports problems: those of documents gone (to None), and
-    the old file of a document that moved (to its new file).
+    document confirmed gone is left out: a page or a blog post unless a listing taken
+    after it answered gone names it again; an issue that a whole read names again has no
+    tombstone. Each problem goes to the list of the source it belongs to, by its name, in
+    ``problems``. Also return the files that must go even when the source reports
+    problems: those of documents gone (to None), and the old file of a document that
+    moved (to its new file).
     """
     placed: list[Placed] = []
     retired: dict[PurePosixPath, PurePosixPath | None] = {}
-    try:
-        gone = {key: stone for key, stone in store.tombstones().items() if stone.confirmed}
-    except UNREADABLE as error:
-        spaced = (name for name, classes in sources.items() if Page in classes)
-        problems[next(spaced, store.source)].append(
-            Problem(where="tombstones.json", reason=reason(error))
-        )
-        gone = {}
     for source, found in (
         (name, item)
         for name, classes in sources.items()
@@ -237,14 +244,18 @@ def place(
         for item in readable(RawStore(store.root, name).latest(document_class), problems[name])
     ):
         stored, document = found, found.snapshot.document
+        stone = catalogue.gone.get((source, document.document_type.name, document.id))
         if isinstance(document, Issue):
-            placed.append(Placed(source=source, stored=stored, path=issue_path(source, document)))
+            path = issue_path(source, document)
+            if stone is None:
+                placed.append(Placed(source=source, stored=stored, path=path))
+            else:
+                retired[path] = None
             continue
         if not isinstance(document, ConfluenceDocument):
             continue
         before = catalogue.spaces.get(document.space_id)
         listed = catalogue.listed.get(document.id)
-        stone = gone.get((source, document.document_type.name, document.id))
         # Gone, unless a listing taken after its first answer of gone names it again.
         named = times.get(listed.space_id) if listed is not None else None
         is_gone = stone is not None and (named is None or named <= stone.first_gone)
@@ -266,6 +277,33 @@ def place(
         else:
             problems[source].append(Problem(where=where(store, stored), reason="space not listed"))
     return placed, retired
+
+
+def folder_files(
+    source: str, catalogue: Catalogue, times: Mapping[str, datetime], problems: list[Problem]
+) -> dict[str, tuple[PurePosixPath, bytes]]:
+    """Give the file of each folder of the source's spaces by its id: its path and its bytes.
+
+    A folder is a container, its file a front matter without a body. It goes in the space
+    whose freshest listing names it, by ``times``, as a page does. One whose front matter
+    is refused is a problem, by its space's listing of folders.
+    """
+    homes = {
+        folder.id: (space_id, folder)
+        for space_id in sorted(catalogue.folders, key=times.__getitem__)
+        for folder in catalogue.folders[space_id]
+    }
+    files: dict[str, tuple[PurePosixPath, bytes]] = {}
+    for space_id, folder in homes.values():
+        space = catalogue.spaces[space_id]
+        try:
+            matter = folder_front_matter(source, folder, space, catalogue)
+        except RefusedError as error:
+            where = f"{source}/spaces/{space_id}/folders.json"
+            problems.append(Problem(where=where, reason=str(error)))
+            continue
+        files[folder.id] = (confluence_path(source, folder, space.key), dump(matter, "").encode())
+    return files
 
 
 def link_targets(
@@ -379,16 +417,23 @@ def prepare_atlassian(
         assets=len(files),
         problems=len(problems),
     )
-    wanted: dict[PurePosixPath, bytes | Path] = {**files}
-    if own:
-        # The source's file beside its documents: the roles that each of its types takes,
-        # and its scopes' as-of times.
+    # A source of pages writes the folders of their spaces too, each a container.
+    folders = folder_files(source, catalogue, times, problems) if Page in document_classes else {}
+    wanted: dict[PurePosixPath, bytes | Path] = {**files, **dict(folders.values())}
+    if own or folders:
+        # The source's file beside its documents, its folders among them: the roles that
+        # each of its types takes, its containers, a source of pages' folders, and its
+        # scopes' as-of times.
         wanted[PurePosixPath(source, SOURCE_FILE)] = dumped(
             SourceFile(
                 roles={
                     each.document_type.name: TYPE_ROLES[each.document_type.name]
-                    for each in document_classes
+                    for each in (
+                        *document_classes,
+                        *((Folder,) if Page in document_classes else ()),
+                    )
                 },
+                containers=CONTAINERS if Page in document_classes else (),
                 as_of={
                     scope_name(scope.type.name, scope.key): moment.astimezone(UTC)
                     for scope, moment in catalogue.as_of.items()
@@ -420,9 +465,8 @@ def prepare_atlassian(
                     title=each.document.title,
                     seconds=round(seconds, 3),
                 )
-        # Each space's tree is its lister's, built with its pages; Jira has none.
-        spaces = catalogue.spaces.values() if Page in document_classes else ()
-        for space in spaces:
+        # Each space's tree is its lister's, built with its pages and folders; Jira has none.
+        for space in catalogue.spaces.values() if Page in document_classes else ():
             tree = tree_path(source, space.key)
             # Only the files built: a page whose file failed has no file yet.
             links = {
@@ -431,6 +475,10 @@ def prepare_atlassian(
                 if isinstance(each.document, Page)
                 and each.document.space_id == space.id
                 and each.path in wanted
+            } | {
+                folder_id: posixpath.relpath(path, tree.parent)
+                for folder_id, (path, _) in folders.items()
+                if path.parent == tree.parent
             }
             try:
                 if space.id not in damaged:
@@ -470,7 +518,7 @@ def prepare_atlassian(
     )
     return Outcome.of(
         AtlassianCounts(
-            documents=sum(1 for each in own if each.path in wanted),
+            documents=sum(1 for each in own if each.path in wanted) + len(folders),
             converted=conversions.converted,
             reused=conversions.reused,
             changes=changes,

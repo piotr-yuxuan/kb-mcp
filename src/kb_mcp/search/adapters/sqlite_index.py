@@ -80,8 +80,9 @@ WRITER = "another kb-mcp index or kb-mcp embed"
 # people in place of the author and the assignee; 5 from plan 042, with links; 6 from
 # plan 043, with persons; 7 from plan 054, with the tables chunks, by body offsets, and
 # section_words; 8 from plan 058, with identities; 9 from plan 057, with scopes, subtypes,
-# parents, links by document id, and the types' roles and the scopes' as-of times.
-SCHEMA = "9"
+# parents, links by document id, and the types' roles and the scopes' as-of times; 10
+# from plan 061, with documents of no section, containers, which a search never lists.
+SCHEMA = "10"
 COLUMNS = ("title", "labels", "breadcrumb", "heading", "body")
 # Weights of bm25 per full-text column, to score documents, then to find the best
 # section of one, by its own words alone.
@@ -220,13 +221,15 @@ ORDER BY d.path
 """
 RECENT = """
 SELECT d.* FROM typed d
-WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
+WHERE (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
+  AND d.last_section >= d.first_section
 ORDER BY CASE WHEN :by = 'created' THEN d.created ELSE d.updated END DESC, d.updated DESC, d.path
 LIMIT :limit OFFSET :offset
 """
 COUNT = """
 SELECT count(*) FROM documents d
-WHERE :kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept))
+WHERE (:kept IS NULL OR d.rowid IN (SELECT value FROM json_each(:kept)))
+  AND d.last_section >= d.first_section
 """
 LISTING = """
 SELECT d.* FROM typed d
@@ -911,7 +914,7 @@ class Reader:
         """Count the documents that pass the filters, and list a page of them, newest first.
 
         Newest by created date, or else by update; ties go to the newest update, then the
-        path.
+        path. A document of no section, a container, is never one of them.
         """
         kept = self.kept(filters)
         total = self._connection.execute(COUNT, {"kept": kept}).fetchone()[0]
@@ -1017,19 +1020,25 @@ class Reader:
                 sources=None,
                 documents={},
                 skipped={},
+                typed={},
+                containers=frozenset(),
             )
-        documents = self._connection.execute("SELECT path, digest FROM documents").fetchall()
+        documents = self._connection.execute(
+            "SELECT path, digest, source, type, last_section < first_section FROM documents"
+        ).fetchall()
         skipped = self._connection.execute("SELECT path, digest, reason FROM skipped")
         return Held(
             build=meta["build"],
             words=meta["words"],
             aliases=meta["aliases"],
             sources=meta["sources"],
-            documents=dict(documents),
+            documents={path: digest for path, digest, *_ in documents},
             skipped={
                 path: Skipped(path=path, digest=digest, reason=reason)
                 for path, digest, reason in skipped
             },
+            typed={path: (source, kind) for path, _, source, kind, _ in documents},
+            containers=frozenset(path for path, *_, bare in documents if bare),
         )
 
     def documents(self) -> list[IndexedBody]:

@@ -20,7 +20,7 @@ from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.sources.atlassian.fetch.domain.content import ConfluenceDocument, Issue
+    from kb_mcp.sources.atlassian.fetch.domain.content import ConfluenceDocument, Folder, Issue
 
 TREE = "_tree.md"
 EXTENSION = re.compile(r"[a-z0-9]{1,8}")
@@ -29,8 +29,10 @@ ASSET_NAME = re.compile(r"[0-9a-f]{64}(?:\.[a-z0-9]{1,8})?")
 NONE = "<p>None.</p>"
 
 
-def confluence_path(source: str, document: ConfluenceDocument, space: str) -> PurePosixPath:
-    """Return where a source's page or blog post of the space with this key goes in the mirror."""
+def confluence_path(
+    source: str, document: ConfluenceDocument | Folder, space: str
+) -> PurePosixPath:
+    """Return where a source's page, blog post or folder of the space of this key goes."""
     name = "-".join(part for part in (document.id, slug(document.title)) if part)
     folder = PurePosixPath(source, space)
     if isinstance(document, BlogPost):

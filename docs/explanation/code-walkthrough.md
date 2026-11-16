@@ -221,9 +221,9 @@ asks after the documents gone from their listing, and
 names the authors seen. Last, `run_fetch` extends the coverage of each scope listed whole
 ([`Coverage.extended`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)),
 a project's only to its earliest document not stored whole, so that the next run needs
-no `--since` and asks again for what failed, as `fetch.coverage` says; writes it, each
-change of the tombstones having been written where it was made, and a fetch of projects
-rewriting none; writes back the
+no `--since` and asks again for what failed, as `fetch.coverage` says, and records
+when each scope was read whole, a project a week apart; writes it, each change of the
+tombstones having been written where it was made; writes back the
 cookies that the site renewed
 ([`SavedSession.keep`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
 and saves the run's report under `<data>/runs/`, named by its source, even when the run
@@ -337,7 +337,9 @@ document's file:
   on every key, type and quotation.
 
 A document whose conversion fails is reported by its place in the raw store, and the others
-go on. The space's tree, `_tree.md`, is written from the listings
+go on. Each folder of the listings is written as a document without a body
+([`folder_files`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py)), and the
+space's tree, `_tree.md`, from the listings
 ([`Catalogue.tree`](../../src/kb_mcp/sources/atlassian/prepare/domain/catalogue.py)). Last,
 [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py) writes each file
 whose bytes differ, through a hidden file renamed into place. Then, when nothing was

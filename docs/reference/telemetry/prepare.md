@@ -43,7 +43,7 @@ and timed, never a span of its own: a span each would make a run's trace too lar
 |---|---|---|---|
 | `prepare.source` | internal | `kb_mcp.source`, `kb_mcp.ending` | A source's row: its source and how it ended, no ending on one that Ctrl-C stopped |
 | `prepare.read` | internal | | The raw store read: spaces, users, listings, the newest snapshot of each document |
-| `prepare.build` | internal | | Each of the source's documents' files built, through pandoc or the cache, then, for Confluence, each space's tree |
+| `prepare.build` | internal | | Each of the source's documents' files built, through pandoc or the cache, then, for Confluence, each space's tree; its folders' files, with no body and without pandoc, just before this span |
 | `prepare.write` | internal | | The source's files that changed written, those no longer wanted removed, then the source's conversions this run did not use deleted |
 | `worklog.convert` | internal | | Each document's file built from its copy, through pandoc or the cache |
 | `worklog.write` | internal | | The work log's files that changed written, those of documents gone removed, then the source's conversions this run did not use deleted |

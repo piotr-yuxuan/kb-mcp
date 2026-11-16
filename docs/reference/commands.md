@@ -377,7 +377,8 @@ confluence:
 
 jira:
   Jira, on the Atlassian site: the issues of its projects, with their comments and
-  files: each project searched by update time.
+  files: each project searched by update time, read whole every 7 days for what it
+  no longer holds.
 
   --project PROJECT     a project key, in place of the setting's; repeat for more
 
@@ -536,7 +537,8 @@ confluence:
 
 jira:
   Jira, on the Atlassian site: the issues of its projects, with their comments and
-  files: each project searched by update time.
+  files: each project searched by update time, read whole every 7 days for what it
+  no longer holds.
 
 worklog:
   The user's work log: org files read in place, never written: its folder, read

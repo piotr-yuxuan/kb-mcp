@@ -51,7 +51,8 @@ FILLERS = 30
 # What each source's prepare writes beside its documents, as its connector declares it.
 DECLARED = {
     "confluence": SourceFile(
-        roles={name: ATLASSIAN_ROLES[name] for name in ("page", "blogpost")},
+        roles={name: ATLASSIAN_ROLES[name] for name in ("page", "blogpost", "folder")},
+        containers=("folder",),
         as_of={"space:ENG": MOMENT},
     ),
     "jira": SourceFile(roles={"issue": ATLASSIAN_ROLES["issue"]}, as_of={}),

@@ -100,6 +100,8 @@ class Held(Record):
     sources: str | None  # what the sources' files said, as ``sources_digest`` gives it
     documents: dict[str, str]  # each document's path, and its file's digest
     skipped: dict[str, Skipped]  # each file skipped, by path
+    typed: dict[str, tuple[str, str]]  # each document's path, and its source and type
+    containers: frozenset[str]  # the paths of the documents held with no section
 
 
 class Change(Record):
@@ -187,7 +189,7 @@ class WordsReader(Protocol):
         """Count the documents that pass the filters, and list a page of them, newest first.
 
         Newest by created date, or else by update; ties go to the newest update, then the
-        path.
+        path. A document of no section, a container, is never one of them.
         """
 
     def listing(self, filters: Filters) -> list[IndexedDocument]:

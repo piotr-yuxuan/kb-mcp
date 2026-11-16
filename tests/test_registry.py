@@ -28,7 +28,13 @@ from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import TABLE, settings_model
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA, LOGIN, SINCE
-from kb_mcp.sources.atlassian.fetch.domain.content import DOCUMENT_CLASSES, BlogPost, Issue, Page
+from kb_mcp.sources.atlassian.fetch.domain.content import (
+    DOCUMENT_CLASSES,
+    BlogPost,
+    Folder,
+    Issue,
+    Page,
+)
 from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, PAGE, SPACE
 from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, Source
 from kb_mcp.sources.registry import SOURCES, refuse
@@ -69,7 +75,7 @@ def test_the_scope_types_are_the_concepts_and_the_raw_store_s_types() -> None:
     """Each connector's scope types, how each is enumerated, and the document types it holds.
 
     As the concepts name them; Confluence's and Jira's document types are those that the
-    raw store keeps.
+    raw store keeps, a folder in its space's listings, plan 061's container.
     """
     assert {
         each.name: [
@@ -78,15 +84,17 @@ def test_the_scope_types_are_the_concepts_and_the_raw_store_s_types() -> None:
         ]
         for each in SOURCES
     } == {
-        "confluence": [("space", "listed", ["page", "blogpost"])],
+        "confluence": [("space", "listed", ["page", "blogpost", "folder"])],
         "jira": [("project", "searched", ["issue"])],
         "worklog": [("folder", "in place", ["entry", "transcript", "day", "meeting"])],
     }
     assert [*CONFLUENCE.document_types, *JIRA.document_types] == [
         Page.document_type,
         BlogPost.document_type,
+        Folder.document_type,
         Issue.document_type,
     ]
+    assert [each.name for each in CONFLUENCE.document_types if each.container] == ["folder"]
 
 
 @pytest.mark.parametrize("name", ["Worklog", "work-log", "work_log", "2log", "", "assets"])
@@ -119,11 +127,14 @@ def test_a_registry_may_hold_a_second_source_of_one_connector(
 
 
 def test_each_type_that_a_connector_declares_has_a_class_that_its_preparer_builds() -> None:
-    """A type added to a connector reaches its preparer, and the tests' store of each type."""
-    assert [each.document_type for each in DOCUMENT_CLASSES] == [
+    """A type added to a connector reaches its preparer, and the tests' store of each type.
+
+    A folder, a container, is written from its space's listings, not from a snapshot.
+    """
+    assert {each.document_type for each in (*DOCUMENT_CLASSES, Folder)} == {
         *CONFLUENCE.document_types,
         *JIRA.document_types,
-    ]
+    }
 
 
 @pytest.mark.parametrize(

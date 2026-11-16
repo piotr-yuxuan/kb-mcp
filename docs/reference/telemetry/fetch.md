@@ -3,8 +3,8 @@
 What `fetch` records, besides what every command does ([README](README.md)). A run is one
 trace: its root `fetch`, then a span of each source taken, `fetch.source`, in the
 registry's order. Confluence's and Jira's each sign in and hold the raw store for itself:
-a span for each of its spaces or projects listed, for Confluence one for the probes and
-one for the users, and the requests between. A work log's holds its copy store and a span
+a span for each of its spaces or projects listed, one for the probes of what their whole
+reads no longer name, for Confluence one for the users, and the requests between. A work log's holds its copy store and a span
 of its own, `worklog.read`. So a run gives `fetch.store_busy` once per source, naming it,
 and `fetch.sign_in_needed` once per Atlassian source. Each document fetched is a trace of its own, `fetch.document`,
 linked to the span of its space or project: Tempo drops a trace past 5 MB, which a run of
@@ -15,7 +15,7 @@ fetched in the run's trace, in its space's or project's span.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `fetch.listed` | info | `scope`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its fetch window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch` |
+| `fetch.listed` | info | `scope`, `listed`, `in_window`, `stored`, `to_fetch`, `start`, `reason` | A space is listed whole, or a project searched over its fetch window: how many documents it lists, how many are in its window, stored already and to fetch; where the window starts and why: `given` (`--since`), `since the last fetch`, `covered start` or `first fetch`. A project's whole read, every week, says nothing of its own |
 | `fetch.document` | debug | `id`, `kind`, `title` | A document is fetched, and its snapshot read |
 | `session.moved` | info | `host`, `session` | The session kept before sessions were a site's, `<data>/session/cookies.json` and its profile, moved into the site's folder, once, by a fetch that writes and signs in by the session |
 | `session.not_moved` | warning | `host`, `session`, `reason` | That session stays where it is: its cookies are of no site that the settings name, or of several, or the site has a session of its own, said once a run by the first source of their site (none when that source signs in by an API token); or the move failed, said by each source that tried it |
@@ -23,12 +23,12 @@ fetched in the run's trace, in its space's or project's span.
 | `fetch.document_unread` | warning | `kind`, `reason` | A snapshot that its adapter refuses: stored as it came, without its files |
 | `fetch.file_skipped` | info | `id`, `file_name`, `reason` | An attached file is not downloaded, by its media type or its size |
 | `fetch.file_failed` | warning | `id`, `file_name`, `reason` | An attached file cannot be downloaded, or is not the size listed |
-| `fetch.scope_failed` | warning | `scope` | A space or a project named cannot be listed |
+| `fetch.scope_failed` | warning | `scope` | A space or a project named cannot be listed, or a project cannot be read whole: then its search goes on, and its last whole read stays |
 | `fetch.coverage` | info | `scope`, `outcome`, `reason` | A scope finished or skipped: its coverage `extended` to its fetch window's end, joined with it, or, for an inexact entry that the window starts at or before, replaced by it; a project's `capped` at the update time of its earliest document not stored whole; or `held` as it was, `reason` saying why: `entries refused` (a search entry that the adapter refuses), `after --until` (a catch-up that would start after it), `apart from what is covered` |
 | `fetch.start` | info | `sources`, `dry_run` | The sources that the run takes, in their order, and whether it only plans |
 | `fetch.source` | info | `source`, `ending` | A source's row ended: `done`, `failed`, `sign in again` or, in a dry run, `not run` |
 | `fetch.end` | info | `status`, `sources` | The run's exit status, and how each row ended |
-| `fetch.refused` | error | `source`, `reason` | What a fetcher's preflight refuses as its source's row begins, such as a period, a store's record, of what answered as gone for Confluence's fetch alone, or a work log that is not a folder, by its setting, a problem by the source; or such a record damaged once the row began, or a work log's copy store that does not read, by its file and field: that source's row fails alone, naming it, and the next rows go on. Without `source`, a fetcher that does not load, naming the source and the path: the run stops before its first row, exit 2 |
+| `fetch.refused` | error | `source`, `reason` | What a fetcher's preflight refuses as its source's row begins, such as a period, a store's record, of what answered as gone for Confluence's fetch alone, or a work log that is not a folder, by its setting, a problem by the source; or such a record damaged once the row began (Jira's fetch reads it then, not in its preflight), or a work log's copy store that does not read, by its file and field: that source's row fails alone, naming it, and the next rows go on. Without `source`, a fetcher that does not load, naming the source and the path: the run stops before its first row, exit 2 |
 | `fetch.store_busy` | error | `source`, `store`, `hint` | Another run writes the raw store, or the work log's copy store: the source's fetch fails, exit 1 |
 | `worklog.carried` | info | `documents`, `not_read` | A work log's copy store begins: the documents whose created and updated dates are carried over from its files of the mirror, with its source's as-of time, before the first read, and the files that did not read, each a problem of the row by its path, which fails it |
 | `worklog.read` | info | `entries`, `days`, `meetings`, `transcripts`, `html`, `problems` | The work log is read: its entries, days, meetings and transcripts, the HTML transcripts left out, the files not read |
@@ -52,8 +52,8 @@ fetched in the run's trace, in its space's or project's span.
 |---|---|---|---|
 | `fetch.source` | internal | `kb_mcp.source`, `kb_mcp.ending` | A source's row: its source and how it ended, no ending on one that Ctrl-C stopped |
 | `fetch.space` | internal | `kb_mcp.scope` | A space, by its key: listed, stored, its documents fetched; an error when it cannot be listed |
-| `fetch.project` | internal | `kb_mcp.scope` | A project, by its key: searched, its issues fetched; an error when the search cannot be read |
-| `fetch.probes` | internal | | The documents that a space no longer lists, probed |
+| `fetch.project` | internal | `kb_mcp.scope` | A project, by its key: read whole when due, searched, its issues fetched; an error when the search cannot be read |
+| `fetch.probes` | internal | | The documents that the scopes' whole reads no longer name, probed |
 | `fetch.users` | internal | | The authors' names, fetched and merged |
 | `fetch.document` | internal | `kb_mcp.document.id`, `kb_mcp.document.kind`, `kb_mcp.document.title` | A document fetched: the root of a trace of its own, linked to its space's or project's span; an error when the fetch fails |
 | `worklog.read` | internal | | The work log's folder listed, its files read and split into documents |

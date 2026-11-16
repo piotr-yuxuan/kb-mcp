@@ -17,7 +17,7 @@ from pydantic import model_validator
 
 from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
 from kb_mcp.kernel.record import Record
-from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, ISSUE, PAGE
+from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, FOLDER, ISSUE, PAGE
 from kb_mcp.sources.declaration import DocumentType
 
 # A path on the site, never another host's: one slash, no second one, no backslash, no
@@ -60,10 +60,21 @@ class Space(Record):
 
 
 class Folder(Record):
-    """A Confluence folder: a node of the space's tree, with a title and no body."""
+    """A Confluence folder: a container, a node of the space's tree with a title and no body.
+
+    It is versioned as a page is, and its parent is a page or a folder, as a page's is. Its
+    status, its creation and update times and its version are each None when its response
+    gives none.
+    """
+
+    document_type: ClassVar[DocumentType] = FOLDER
 
     id: str
     title: str
+    status: str | None = None
+    created: datetime | None = None
+    updated: datetime | None = None
+    version: int | None = None
     parent_id: str | None = None
     parent_type: str | None = None  # a page or a folder, as for a page
 
@@ -101,7 +112,7 @@ class Comment(Record):
 
 
 class FetchedDocument(Record):
-    """A page, a blog post or an issue: what becomes one file of the mirror.
+    """A page, a blog post or an issue: a document with a body, fetched by its revisions.
 
     ``document_type`` names where its source's view of the raw store keeps it; ``revision``
     names this state of it, and orders states as text.

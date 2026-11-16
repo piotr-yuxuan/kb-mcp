@@ -675,6 +675,7 @@ def test_each_source_s_file_reads_back_by_its_folder_and_a_source_without_one_ha
     """``_source.json`` of each source's folder, by the folder's name; no document is it."""
     declared = SourceFile(
         roles={"issue": ("author", "assignee"), "page": ()},
+        containers=("page",),
         as_of={"project:PRB": datetime(2026, 11, 10, 8, 30, tzinfo=UTC)},
     )
     (tmp_path / "jira").mkdir()
@@ -684,13 +685,26 @@ def test_each_source_s_file_reads_back_by_its_folder_and_a_source_without_one_ha
     assert list(documents(tmp_path)) == []
 
 
+def test_a_source_s_file_of_before_061_names_no_container(tmp_path: Path) -> None:
+    """Review of 061: a file without ``containers`` reads, its types each holding a body."""
+    (tmp_path / "jira").mkdir()
+    (tmp_path / "jira" / SOURCE_FILE).write_text('{"roles": {"issue": []}, "as_of": {}}', "utf-8")
+    assert source_files(tmp_path) == {"jira": SourceFile(roles={"issue": ()}, as_of={})}
+
+
 @pytest.mark.parametrize(
     ("text", "reason"),
     [
         ("{", "not JSON"),
-        ('{"roles": {}}', "keys other than roles, as_of"),
-        ('{"as_of": {}, "roles": {}}', "keys other than roles, as_of"),
-        ('{"roles": {}, "as_of": {}, "fetched": {}}', "keys other than roles, as_of"),
+        ('{"roles": {}}', "keys other than roles, containers, as_of"),
+        ('{"as_of": {}, "roles": {}}', "keys other than roles, containers, as_of"),
+        ('{"roles": {}, "as_of": {}, "fetched": {}}', "keys other than roles, containers, as_of"),
+        (
+            '{"roles": {}, "as_of": {}, "containers": []}',
+            "keys other than roles, containers, as_of",
+        ),
+        ('{"roles": {}, "containers": ["folder"], "as_of": {}}', "containers: not one of"),
+        ('{"roles": {}, "containers": "folder", "as_of": {}}', r"containers: expected a list"),
         ('{"roles": {"issue": ["reviewer"]}, "as_of": {}}', "roles: not of the roles"),
         (
             '{"roles": {"issue": ["assignee", "author"]}, "as_of": {}}',

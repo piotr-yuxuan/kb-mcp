@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     import re
+    from datetime import timedelta
 
 # How a fetch enumerates the documents of a scope: listed whole, searched by update time,
 # or read whole, in place.
@@ -63,10 +64,13 @@ class DocumentType:
     """A type of document that one connector declares: its name, and its name in the plural.
 
     ``name`` is the front matter's ``type``; ``plural`` names its folder of a copy store.
+    A ``container``, such as a folder, has no body: a title, a place in the tree and
+    children.
     """
 
     name: str
     plural: str
+    container: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,7 +81,9 @@ class ScopeType:
     holds documents of ``document_types``. ``option``, if any, replaces for one run the
     list of keys that a source's table holds, which its ``setting`` names. A scope type
     without a key's rule has one scope, the whole source, as a read in place has, keyed
-    by the source's name.
+    by the source's name. ``whole_read_every``, for a scope type searched by update time,
+    which sees no deletion, is how long after a scope's last whole read a fetch reads it
+    whole again, to find what it no longer holds.
     """
 
     name: str
@@ -85,6 +91,7 @@ class ScopeType:
     enumeration: Enumeration
     document_types: tuple[DocumentType, ...]
     option: Option | None = None
+    whole_read_every: timedelta | None = None
 
 
 @dataclass(frozen=True)

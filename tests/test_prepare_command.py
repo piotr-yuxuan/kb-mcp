@@ -528,7 +528,10 @@ def test_the_help_shows_a_group_per_source_with_what_it_reads(
         main(["prepare", "--help"])
     said_of = " ".join(capsys.readouterr().out.split())
     assert "each space listed whole." in said_of
-    assert "each project searched by update time." in said_of
+    assert (
+        "each project searched by update time, read whole every 7 days for what it no"
+        " longer holds." in said_of
+    )
     assert "its folder, read whole, in place." in said_of
     assert "--since" not in said_of
     assert "--space" not in said_of

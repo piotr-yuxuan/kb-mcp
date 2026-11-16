@@ -60,6 +60,9 @@ TOMBSTONES = "tombstones.json"
 # documents that joined the space and are not stored yet.
 LISTED_AT = "listed_at.json"
 PENDING = "pending.json"
+# The store's own record, beside a project's last whole read, of the issues that its
+# searches by update time found since.
+SEARCHED = "searched.json"
 # The site's users, merged, in the folder of the source whose spaces named them: of its
 # site, which one source of spaces lists.
 USERS = "users.json"
@@ -75,6 +78,15 @@ HELD_IN = {
 FORMER_KINDS = {PAGE.plural: PAGE.name, BLOGPOST.plural: BLOGPOST.name}
 # The times that a coverage's entry may hold beside its period, each a field of Coverage.
 COVERAGE_TIMES = ("as_of", "whole_read_at")
+# Where a source's view keeps the scopes' last whole reads of each document type, a
+# folder per scope, a space's named by its id and a project's by its key; and which
+# adapter reads the ids of their entries.
+LISTINGS: dict[type[FetchedDocument], str] = {Page: "spaces", BlogPost: "spaces", Issue: "projects"}
+ENTRY_IDS: dict[type[FetchedDocument], Callable[[object], set[str]]] = {
+    Page: confluence_v2.entry_ids,
+    BlogPost: confluence_v2.entry_ids,
+    Issue: jira_v3.entry_ids,
+}
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -203,8 +215,9 @@ class RawStore:
     the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file per response
     plus the store's record. It is written whole into a hidden folder and renamed into
     place, so it is either complete or absent, and its responses never change. A space's
-    listings are ``<root>/<source>/spaces/<id>/*.json``, each replaced whole, and its
-    site's users ``<root>/<source>/users.json``, merged. A file is
+    listings are ``<root>/<source>/spaces/<id>/*.json``, a project's last whole read
+    ``<root>/<source>/projects/<key>/issues.json``, each replaced whole, and its site's
+    users ``<root>/<source>/users.json``, merged. A file is
     ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
     """
 
@@ -404,22 +417,17 @@ class RawStore:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
             _replace_synced(space_folder / LISTED_AT, _encode(moment))
 
-    def put_pending(self, space_id: str, pending: Collection[str]) -> None:
-        """Keep the ids that joined a space and are not stored yet; none removes the record."""
+    def _put_ids(self, path: Path, ids: Collection[str]) -> None:
+        # A record of ids, sorted; none removes it.
         self._check_writing()
-        path = self._space(space_id) / PENDING
-        if pending:
-            _replace_synced(path, _encode(sorted(pending)))
+        if ids:
+            _replace_synced(path, _encode(sorted(ids)))
         else:
             path.unlink(missing_ok=True)
 
-    def pending(self, space_id: str) -> set[str]:
-        """Give the ids that joined a space and were not stored whole when it was last listed.
-
-        None when the record is missing. A record that cannot be read is refused by name,
-        as the store's other records are, since the ids it held would otherwise be lost.
-        """
-        path = self._space(space_id) / PENDING
+    def _ids(self, path: Path) -> set[str]:
+        # A record of ids, none when missing; one that cannot be read is refused by name,
+        # as the store's other records are, since the ids it held would otherwise be lost.
         if not path.exists():
             return set()
         where = path.relative_to(self.root).as_posix()
@@ -430,6 +438,17 @@ class RawStore:
             message = f"{where}: expected a list of ids"
             raise RepresentationError(message)
         return set(values)
+
+    def put_pending(self, space_id: str, pending: Collection[str]) -> None:
+        """Keep the ids that joined a space and are not stored yet; none removes the record."""
+        self._put_ids(self._space(space_id) / PENDING, pending)
+
+    def pending(self, space_id: str) -> set[str]:
+        """Give the ids that joined a space and were not stored whole when it was last listed.
+
+        None when the record is missing. A record that cannot be read is refused by name.
+        """
+        return self._ids(self._space(space_id) / PENDING)
 
     def was_listed(self, space_id: str) -> bool:
         """Say whether a space's listings are stored, by an earlier run."""
@@ -457,21 +476,55 @@ class RawStore:
         self, space_id: str, document_class: type[Page | BlogPost]
     ) -> list[Page | BlogPost | Problem]:
         """Read the pages, or the blog posts, last listed in a space."""
-        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
+        path = self._listing(space_id, document_class)
         return self._entries(path, partial(confluence_v2.document, document_class=document_class))
 
-    def listed_ids(self, space_id: str, document_class: type[Page | BlogPost]) -> set[str]:
-        """Return the ids that a space's last listing names, read by id alone.
+    def _listing(self, holder: str, document_class: type[FetchedDocument]) -> Path:
+        # A scope's last whole read of a document type: a space's by id, a project's by key.
+        folder = self.root / self.source / LISTINGS[document_class] / _identifier(holder, "scope")
+        return folder / f"{document_class.document_type.plural}.json"
 
-        An entry whose other fields the adapter would refuse still names its document,
-        so that deletions follow every document that a fetch fetched. A listing that
-        cannot be read at all names none.
+    def listed_ids(self, holder: str, document_class: type[FetchedDocument]) -> set[str]:
+        """Return the ids that a scope's last whole read names, read by id alone.
+
+        ``holder`` is the scope as its listings are kept: a space by its id, a project by
+        its key. An entry whose other fields the adapter would refuse still names its
+        document, so that deletions follow every document that a fetch fetched. A listing
+        that cannot be read at all names none.
         """
-        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
+        path = self._listing(holder, document_class)
         try:
-            return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
+            return ENTRY_IDS[document_class](_decode(path)) if path.exists() else set()
         except UNREADABLE:
             return set()
+
+    def holders(self, document_class: type[FetchedDocument]) -> set[str]:
+        """Return the scopes whose last whole read of a document type is kept, as ``listed_ids``."""
+        folder = self.root / self.source / LISTINGS[document_class]
+        plural = f"{document_class.document_type.plural}.json"
+        return {each.name for each in _named(folder, IDENTIFIER) if (each / plural).is_file()}
+
+    def put_project(self, project: str, issues: list[object]) -> None:
+        """Replace a project's last whole read: every issue that it names, as received."""
+        self._check_writing()
+        if type(issues) is not list:
+            message = "issues: expected a list"
+            raise ValueError(message)
+        _replace_synced(self._listing(project, Issue), _encode(issues))
+
+    def put_searched(self, project: str, searched: Collection[str]) -> None:
+        """Keep the ids of the issues that a project's searches found since its last whole read.
+
+        None removes the record, as a whole read does.
+        """
+        self._put_ids(self._listing(project, Issue).with_name(SEARCHED), searched)
+
+    def searched(self, project: str) -> set[str]:
+        """Give the ids of the issues that a project's searches found since its last whole read.
+
+        None when the record is missing. A record that cannot be read is refused by name.
+        """
+        return self._ids(self._listing(project, Issue).with_name(SEARCHED))
 
     def folders(self, space_id: str) -> list[Folder | Problem]:
         """Read the folders last listed in a space."""
@@ -522,7 +575,8 @@ class RawStore:
         Whether it is exact, its as-of time and the time of its last whole read. An entry
         without ``type``, as every entry was before plan 056, is of its connector's one
         scope type; one without ``exact``, as before plan 034, is not exact; one without a
-        time has none.
+        time has none; one without ``start``, a scope read whole and not yet covered, has
+        no period.
         """
         path = self.root / COVERAGE
         if not path.exists():
@@ -539,7 +593,8 @@ class RawStore:
                     raise RefusedError(message)
                 scope = Scope(source=source, type=SCOPE_TYPES[named], key=item.text("key"))
             try:
-                periods[scope] = Period(item.time("start"), item.time("end"))
+                if "start" in item.value:
+                    periods[scope] = Period(item.time("start"), item.time("end"))
             except PeriodError:
                 message = f"{item.path}: a period that ends before it starts"
                 raise RepresentationError(message) from None
@@ -553,18 +608,26 @@ class RawStore:
     def put_coverage(self, coverage: Coverage) -> None:
         """Replace the record of coverage, whole; each entry with what it holds beside its period.
 
-        Its scope type, whether it is exact, and its times. The keys of plan 034's record
-        keep their meaning, so that its versions still read the record.
+        Its scope type, whether it is exact, and its times. A scope read whole and not yet
+        covered, its search having failed, has an entry without a period, which versions
+        before plan 061 refuse. The keys of plan 034's record keep their meaning, so that
+        its versions still read a record of periods alone.
         """
         self._check_writing()
         times = {name: getattr(coverage, name) for name in COVERAGE_TIMES}
+        periods = {
+            scope: {
+                "start": covered.start.astimezone(UTC).isoformat(),
+                "end": covered.end.astimezone(UTC).isoformat(),
+            }
+            for scope, covered in coverage.periods.items()
+        }
         entries = [
             {
                 "source": scope.source,
                 "type": scope.type.name,
                 "key": scope.key,
-                "start": covered.start.astimezone(UTC).isoformat(),
-                "end": covered.end.astimezone(UTC).isoformat(),
+                **periods.get(scope, {}),
                 **({"exact": True} if scope in coverage.exact else {}),
                 **{
                     name: held[scope].astimezone(UTC).isoformat()
@@ -572,9 +635,9 @@ class RawStore:
                     if scope in held
                 },
             }
-            for scope, covered in sorted(
-                coverage.periods.items(),
-                key=lambda item: (item[0].source, item[0].type.name, item[0].key),
+            for scope in sorted(
+                periods.keys() | coverage.whole_read_at.keys(),
+                key=lambda scope: (scope.source, scope.type.name, scope.key),
             )
         ]
         _replace_synced(self.root / COVERAGE, _encode(entries))

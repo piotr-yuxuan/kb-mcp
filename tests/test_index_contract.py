@@ -65,11 +65,12 @@ class FilledChunk(Record):
 
 
 class FilledDocument(Record):
-    """A document to write, with its chunks, if any."""
+    """A document to write, with its chunks, if any; a container's has no section."""
 
     front: FrontMatter
     body: str
     chunks: tuple[FilledChunk, ...] = ()
+    container: bool = False
 
 
 def digest(body: str) -> str:
@@ -83,7 +84,7 @@ def put_of(document: FilledDocument) -> Put:
         path=location(document.front),
         digest=digest(document.body),
         front=document.front,
-        sections=tuple(sections(document.body)),
+        sections=() if document.container else tuple(sections(document.body)),
     )
 
 
@@ -275,6 +276,20 @@ def test_the_documents_are_listed_and_counted(written: Written) -> None:
         assert reader.values("scope") == [("project:PROJ", 1), ("space:ENG", 1)]
         assert reader.values("label") == [("ops", 1)]
         assert reader.values("source") == [("confluence", 1), ("jira", 1)]
+
+
+def test_a_container_has_no_section_and_is_never_listed_by_date(written: Written) -> None:
+    """Plan 061: a container is read back and listed by its scope, never newest first."""
+    folder = page("1002", "Guides", type="folder")
+    path = location(folder)
+    container = FilledDocument(front=folder, body="", container=True)
+    with written((*BOTH, container)).reading() as reader:
+        [held] = reader.indexed_documents(paths=[path])
+        assert (held.front, held.sections, held.length) == (folder, 0, 0)
+        assert reader.bounds(path) == []
+        assert path in [each.path for each in reader.listing(Filters())]
+        total, newest = reader.recent(Filters(), "updated", 0, 10)
+        assert (total, [each.path for each in newest]) == (2, [RUNBOOK_PATH, UPGRADE_PATH])
 
 
 def test_the_summary_says_what_the_index_holds(written: Written) -> None:

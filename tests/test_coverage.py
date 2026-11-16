@@ -15,6 +15,7 @@ from kb_mcp.sources.atlassian.fetch.domain.coverage import (
     FetchWindow,
     Scope,
     fetch_window,
+    whole_read_due,
 )
 from kb_mcp.sources.atlassian.fetch.domain.period import Period, PeriodError
 from kb_mcp.sources.worklog.declared import WORKLOG
@@ -34,6 +35,23 @@ def test_a_scope_type_without_a_key_s_rule_has_one_scope_keyed_by_its_source() -
     assert str(Scope(source="notes", type=folder, key="notes")) == "folder notes"
     with pytest.raises(RefusedError, match=r"^key: not the source's name"):
         Scope(source="notes", type=folder, key="todo")
+
+
+@pytest.mark.parametrize(
+    ("last_read", "due"),
+    [(None, True), (NOW - timedelta(days=6), False), (NOW - timedelta(days=7), True)],
+)
+def test_a_project_is_read_whole_when_never_read_so_or_a_week_after(
+    last_read: datetime | None, *, due: bool
+) -> None:
+    """Plan 061: a search by update time sees no deletion; a whole read a week does."""
+    read = {} if last_read is None else {PROJECT: last_read}
+    assert whole_read_due(Coverage(whole_read_at=read), PROJECT, NOW) is due
+
+
+def test_a_space_listed_whole_at_every_run_needs_no_other_whole_read() -> None:
+    """Its scope type declares no interval, whatever its last whole read."""
+    assert not whole_read_due(Coverage(), SPACE, NOW)
 
 
 def covered() -> Coverage:
