@@ -1941,3 +1941,30 @@ def test_a_folder_stays_a_container_when_its_space_s_pages_first_failed(
     build_index(chosen.docs, tmp_path / "whole.sqlite", FIRST)
     with reading(tmp_path / "whole.sqlite") as reader:
         assert reader.bounds(path) == []
+
+
+def test_an_issue_found_moved_loses_the_tombstone_of_another_project(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: OPS's pending tombstone of 20002 goes once PRB's probe finds it moved.
+
+    OPS, PRB and ZED each read 20002 whole in turn; OPS's next whole read misses it and,
+    with no probe to spare, keeps it pending; PRB's misses it too, and its probe finds it
+    in ZED, whose whole read names it: moved, no tombstone stays.
+    """
+    chosen = settings(tmp_path)
+    for day, key in enumerate(("OPS", "PRB", "ZED")):
+        site = ProjectSite(projects={key: {"20002": in_project("20002", key)}})
+        run(chosen, monkeypatch, site, first_week([], [key]), FIRST + timedelta(days=day))
+    in_zed = ProjectSite(
+        projects={"OPS": {}, "PRB": {}, "ZED": {"20002": in_project("20002", "ZED")}}
+    )
+    cap = fetching.MAX_PROBES
+    monkeypatch.setattr(fetching, "MAX_PROBES", 0)
+    run(chosen, monkeypatch, in_zed, catch_up([], ["OPS"]), FIRST + WEEK)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert (stone.scope.key, stone.first_gone) == ("OPS", None)
+    monkeypatch.setattr(fetching, "MAX_PROBES", cap)
+    run(chosen, monkeypatch, in_zed, catch_up([], ["PRB"]), FIRST + timedelta(days=1) + WEEK)
+    assert "/rest/api/3/issue/20002" in jira_asked(in_zed)
+    assert RawStore(chosen.raw, "jira").tombstones() == {}

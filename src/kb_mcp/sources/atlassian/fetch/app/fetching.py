@@ -506,7 +506,8 @@ class Fetching:
                 if too_many_gone(answers, stored) and not self.reachable(scope.source, *canary):
                     answers = {}  # the site stopped answering: believe none of these answers
                 now = after_probes(known, absent, answers, self.now())
-                others = {k: s for k, s in self.tombstones.items() if s.scope != scope}
+                # Those not acted on: one of another scope probed here goes as answered.
+                others = {k: s for k, s in self.tombstones.items() if k not in known}
                 self.tombstones = {**others, **now}
                 self.store.put_tombstones(self.tombstones.values())
                 probed = f"{self.label('documents')}: probed, absent from their listing"
