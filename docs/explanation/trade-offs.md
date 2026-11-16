@@ -73,8 +73,9 @@ server never fetches from the site.
 A search by update time sees no deletion. So a project is also read whole, every
 issue by its id, at its first fetch and a week after its last whole read
 ([`whole_read_due`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.py)); what
-its last whole read named and this one does not is tracked and probed by its id, as a
-space's absent pages are, at each run until it is confirmed gone
+its last whole read named, or its searches found since, and this one does not is
+tracked and probed by its id, as a space's absent pages are, at each run until it is
+confirmed gone
 ([`Fetching.track_project`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)).
 
 - **Why.** Until plan 061, an issue deleted in Jira stayed in the mirror for ever. Only

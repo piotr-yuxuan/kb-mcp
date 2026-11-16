@@ -60,6 +60,9 @@ TOMBSTONES = "tombstones.json"
 # documents that joined the space and are not stored yet.
 LISTED_AT = "listed_at.json"
 PENDING = "pending.json"
+# The store's own record, beside a project's last whole read, of the issues that its
+# searches by update time found since.
+SEARCHED = "searched.json"
 # The site's users, merged, in the folder of the source whose spaces named them: of its
 # site, which one source of spaces lists.
 USERS = "users.json"
@@ -414,22 +417,17 @@ class RawStore:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
             _replace_synced(space_folder / LISTED_AT, _encode(moment))
 
-    def put_pending(self, space_id: str, pending: Collection[str]) -> None:
-        """Keep the ids that joined a space and are not stored yet; none removes the record."""
+    def _put_ids(self, path: Path, ids: Collection[str]) -> None:
+        # A record of ids, sorted; none removes it.
         self._check_writing()
-        path = self._space(space_id) / PENDING
-        if pending:
-            _replace_synced(path, _encode(sorted(pending)))
+        if ids:
+            _replace_synced(path, _encode(sorted(ids)))
         else:
             path.unlink(missing_ok=True)
 
-    def pending(self, space_id: str) -> set[str]:
-        """Give the ids that joined a space and were not stored whole when it was last listed.
-
-        None when the record is missing. A record that cannot be read is refused by name,
-        as the store's other records are, since the ids it held would otherwise be lost.
-        """
-        path = self._space(space_id) / PENDING
+    def _ids(self, path: Path) -> set[str]:
+        # A record of ids, none when missing; one that cannot be read is refused by name,
+        # as the store's other records are, since the ids it held would otherwise be lost.
         if not path.exists():
             return set()
         where = path.relative_to(self.root).as_posix()
@@ -440,6 +438,17 @@ class RawStore:
             message = f"{where}: expected a list of ids"
             raise RepresentationError(message)
         return set(values)
+
+    def put_pending(self, space_id: str, pending: Collection[str]) -> None:
+        """Keep the ids that joined a space and are not stored yet; none removes the record."""
+        self._put_ids(self._space(space_id) / PENDING, pending)
+
+    def pending(self, space_id: str) -> set[str]:
+        """Give the ids that joined a space and were not stored whole when it was last listed.
+
+        None when the record is missing. A record that cannot be read is refused by name.
+        """
+        return self._ids(self._space(space_id) / PENDING)
 
     def was_listed(self, space_id: str) -> bool:
         """Say whether a space's listings are stored, by an earlier run."""
@@ -502,6 +511,20 @@ class RawStore:
             message = "issues: expected a list"
             raise ValueError(message)
         _replace_synced(self._listing(project, Issue), _encode(issues))
+
+    def put_searched(self, project: str, searched: Collection[str]) -> None:
+        """Keep the ids of the issues that a project's searches found since its last whole read.
+
+        None removes the record, as a whole read does.
+        """
+        self._put_ids(self._listing(project, Issue).with_name(SEARCHED), searched)
+
+    def searched(self, project: str) -> set[str]:
+        """Give the ids of the issues that a project's searches found since its last whole read.
+
+        None when the record is missing. A record that cannot be read is refused by name.
+        """
+        return self._ids(self._listing(project, Issue).with_name(SEARCHED))
 
     def folders(self, space_id: str) -> list[Folder | Problem]:
         """Read the folders last listed in a space."""

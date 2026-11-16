@@ -1522,6 +1522,39 @@ def test_an_issue_missing_from_a_whole_read_is_confirmed_gone_then_leaves_the_mi
     assert mirrored() == ["PRB-20001.md"]
 
 
+def test_an_issue_that_a_search_stored_since_the_last_whole_read_is_found_gone(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    """Review of 061: the whole read is compared with every issue of the project stored.
+
+    The baseline names 20001; a day later the search by update time stores the new 20003,
+    which is then deleted. The next whole read, a week after the baseline, finds it
+    absent and gone; a run past CONFIRM_AFTER confirms it, and prepare removes its file.
+    """
+    chosen = settings(tmp_path)
+    kept = issue_at("20001", FIRST - timedelta(days=1), files=False)
+    project = chosen.docs / "jira" / "PRB"
+
+    def mirrored() -> list[str]:
+        prepared_sources(RawStore(chosen.raw, "confluence"), chosen.docs, SITE, identity)
+        return sorted(path.name for path in project.glob("*.md"))
+
+    run(chosen, monkeypatch, RefreshSite(issues={"20001": kept}), first_week([], ["PRB"]), FIRST)
+    new = issue_at("20003", FIRST + timedelta(hours=12), files=False)
+    both = RefreshSite(issues={"20001": kept, "20003": new})
+    run(chosen, monkeypatch, both, catch_up([], ["PRB"]), FIRST + timedelta(days=1))
+    assert mirrored() == ["PRB-20001.md", "PRB-20003.md"]
+    for moment in (FIRST + WEEK, FIRST + WEEK + CONFIRM_AFTER):
+        run(chosen, monkeypatch, RefreshSite(issues={"20001": kept}), catch_up([], ["PRB"]), moment)
+    [stone] = RawStore(chosen.raw, "jira").tombstones().values()
+    assert (stone.key, stone.first_gone, stone.confirmed) == (
+        ("jira", "issue", "20003"),
+        FIRST + WEEK,
+        True,
+    )
+    assert mirrored() == ["PRB-20001.md"]
+
+
 def test_an_issue_listed_again_by_a_whole_read_loses_its_tombstone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:

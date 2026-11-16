@@ -419,7 +419,8 @@ class Fetching:
 
         ``holder`` is the scope as its listings are kept, a space by its id, a project by
         its key; ``held`` the ids, by document class, that its last whole read names, read
-        by id alone; ``listed`` those that this run's whole read names, None when the run
+        by id alone, and, for a project, those that its searches found since; ``listed``
+        those that this run's whole read names, None when the run
         made none. The absent are the documents held that the store holds, and those
         already tombstoned in the scope; a document that this run's whole read names is
         present, and loses any tombstone, of whichever scope. A whole read of before
@@ -561,8 +562,10 @@ class Fetching:
         """Search a project's issues updated in its window, and fetch what changed.
 
         A run that writes first tracks what the project no longer holds
-        (``track_project``). The task ``listing`` reports the pages of the search read,
-        and ``fetch_listed`` the issues found. Return whether the search was read whole,
+        (``track_project``), and keeps the ids that the search finds before fetching
+        them, so that the next whole read misses none that it stored. The task
+        ``listing`` reports the pages of the search read, and ``fetch_listed`` the
+        issues found. Return whether the search was read whole,
         each of its entries read: an entry that the adapter refuses has no update time
         for the coverage to stop at, so it holds the project's. All is the span
         ``fetch.project``, an error when the search could not be read.
@@ -584,6 +587,9 @@ class Fetching:
                 return False
             if self.plan:
                 self.count_files(entries, window.period)
+            else:
+                found = self.store.searched(key) | jira_v3.entry_ids(entries)
+                self.store.put_searched(key, found)
             issues = self.documents(Issue, entries)
             self.fetch_listed(scope, issues, window)
             if len(issues) < len(entries):
@@ -596,8 +602,9 @@ class Fetching:
 
         A project ``due`` is read whole, every issue by id whatever its update time, and
         that read replaces its last; one that fails is counted, ``fetch.scope_failed``,
-        and the last stays, the search going on. What the last whole read named and this
-        one does not is tracked as absent; a project that this run does not read whole
+        and the last stays, the search going on. What the project held, its last whole
+        read's issues and those that its searches found since, and this one does not
+        name is tracked as absent; a project that this run does not read whole
         keeps its tombstones as they are, so that what is absent already is still probed
         at each run. The task ``listing`` reports the pages of the whole read.
         """
@@ -609,12 +616,13 @@ class Fetching:
                     issues = self.collect(request, jira_v3.search_page, listing.advance)
             except (RepresentationError, SiteError) as error:
                 self.scope_failed(f"{self.label('projects')} read whole", f"project {key}", error)
-        held = {Issue: self.store.listed_ids(key, Issue)}
+        held = {Issue: self.store.listed_ids(key, Issue) | self.store.searched(key)}
         listed = None if issues is None else {Issue: jira_v3.entry_ids(issues)}
         # Tombstones first: a run that stops between keeps the former whole read.
         self.track(scope, key, held, listed)
         if issues is not None:
             self.store.put_project(key, issues)
+            self.store.put_searched(key, ())
             self.read_whole.add(scope)
 
     def fetch_listed(

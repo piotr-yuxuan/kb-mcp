@@ -247,7 +247,8 @@ a run also reads it whole (061), every issue by a search without a date bound th
 for the issues' keys alone (`jira_v3.listing_request`), and replaces its last whole read:
 
 ```
-<data>/raw/<source>/projects/<KEY>/issues.json   every issue of the project, as the search returned it
+<data>/raw/<source>/projects/<KEY>/issues.json     every issue of the project, as the search returned it
+<data>/raw/<source>/projects/<KEY>/searched.json   the ids of the issues that its searches found since
 ```
 
 `put_project(key, issues)` replaces the file whole; `listed_ids(holder, Issue)` reads
@@ -255,7 +256,11 @@ the ids of its entries alone (`jira_v3.entry_ids`), as `listed_ids(space_id, Pag
 BlogPost)` reads a space's listing, and `holders(document_class)` gives the scopes whose
 last whole read of a type is kept: the spaces by id, the projects by key. A whole read
 that fails is counted, `fetch.scope_failed`, and the project's search goes on; its last
-whole read stays.
+whole read stays. Each search by update time adds the ids of its entries to
+`searched.json` before it fetches them (`put_searched(key, ids)`, `searched(key)`, which
+refuses by name a file that does not read, as `pending` does), and a whole read removes
+the file, so that the next whole read is compared with every issue that the project
+held, a new issue deleted within the week among them.
 
 ### Files
 
@@ -317,7 +322,8 @@ Two more of the store's own records, each replaced whole:
   those whose whole reads the sources of the run's site keep (`holders`): another
   site's, whose keys may be the same, never counts. The absent are found from the last
   whole read by id alone (`listed_ids(holder, document_class)`), so that an entry the
-  adapter would refuse is still followed, and the ids that have a snapshot
+  adapter would refuse is still followed, with, for a project, what its searches found
+  since (`searched(key)`), and the ids that have a snapshot
   (`stored_ids(document_class)`); the record is written before the whole read is
   replaced, so that no absent document is lost to a run that stops, and they are probed
   once every scope of the run is read. A whole read of before neither starts nor ends
