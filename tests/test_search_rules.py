@@ -204,10 +204,13 @@ def test_trees_list_depth_first_with_numbers_in_order() -> None:
     ]
 
 
-def tree_refs(*fronts: FrontMatter) -> list[tuple[str, ...]]:
+def tree_refs(
+    *fronts: FrontMatter, elsewhere: dict[str, str | None] | None = None
+) -> list[tuple[str, ...]]:
     """Give each document's place in tree order: a listed node by its ref, others bracketed.
 
-    The documents are listed at the paths of the data layout.
+    The documents are listed at the paths of the data layout; ``elsewhere`` gives the
+    parents mirrored outside them, as ``tree_order`` takes them.
     """
     entries = [
         IndexedDocument(path=location(front), front=front, length=0, sections=1) for front in fronts
@@ -215,7 +218,36 @@ def tree_refs(*fronts: FrontMatter) -> list[tuple[str, ...]]:
     refs = {entry.path: entry.front.ref for entry in entries}
     return [
         tuple(refs.get(path, f"[{title}]") for title, path in place)
-        for place, _ in tree_order(entries)
+        for place, _ in tree_order(entries, elsewhere)
+    ]
+
+
+def test_parents_of_other_scopes_reach_a_listed_one_else_the_top() -> None:
+    """Review round 3: climbed by their ids, never by titles, a loop among them cut.
+
+    A chain that reaches a listed document places the child under it, the titles of the
+    other scopes' parents bracketed, as many as the breadcrumb holds; a loop, or a chain
+    that ends at a document not mirrored, places it at the top, though a listed document
+    has the title above it.
+    """
+    places = tree_refs(
+        issue("PRB-1", "Payments"),
+        issue("PRB-2", "Looped", parent="jira:20001", breadcrumb=("X", "Y")),
+        issue("PRB-3", "Cut", parent="jira:30001", breadcrumb=("Payments", "Z")),
+        issue("PRB-4", "Short", parent="jira:40001", breadcrumb=("Only",)),
+        elsewhere={
+            "jira:20001": "jira:20002",
+            "jira:20002": "jira:20001",
+            "jira:30001": "jira:99999",
+            "jira:40001": "jira:40002",
+            "jira:40002": "jira:10001",
+        },
+    )
+    assert sorted(places) == [
+        ("[Payments]", "[Z]", "jira:PRB-3"),
+        ("[X]", "[Y]", "jira:PRB-2"),
+        ("jira:PRB-1",),
+        ("jira:PRB-1", "[Only]", "jira:PRB-4"),
     ]
 
 
