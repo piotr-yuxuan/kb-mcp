@@ -145,6 +145,15 @@ it ended, its problems and warnings, and its counts, a record whose `text` write
 - **Keep out of `docs/assets/`.** It is Confluence's and Jira's. A source that attaches
   files keeps them under `docs/notes/_assets/`, which the rule of documents leaves out
   ([`documents`](../../src/kb_mcp/mirror/adapters/markdown.py)).
+- **Write the source's file to date the documents.** `docs/notes/_source.json` says the
+  roles of people that each of its document types takes and the
+  [as-of time](../reference/concepts.md#scope) of each of its scopes
+  ([`SourceFile`](../../src/kb_mcp/mirror/domain/mirror.py), written by `dumped` of
+  [`source_files`](../../src/kb_mcp/mirror/adapters/source_files.py), as
+  [the data layout](../reference/data-layout.md#a-sources-file) says). It alone gives
+  the source's documents an as-of time, and `unassigned` to one of a type that takes an
+  assignee and names none: without it, as here, each is served `as of: unknown`. Keep it
+  out of what `owned` finds, as no prepare removes it.
 
 A larger source splits this module by layer, its effects in `prepare/adapters/` and its
 rules in `prepare/domain/`, as the work log's does
