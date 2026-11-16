@@ -56,14 +56,13 @@ NOT_CARRIED = "its created date is not carried over"
 
 
 class Read(Record):
-    """The work log's documents to write, in order, and the HTML transcripts left out.
+    """The work log's documents to keep, in order, and the HTML transcripts left out.
 
-    The documents are those read that draw on no file not read. Problems stop removals
-    but of a written document's old files; warnings, such as two transcripts of one id,
-    do not. A problem's ``where`` is the path from the work log's folder, or a
-    document's file and id, never its content; ``held_back`` gives, by that place, what
-    keeps its last copy for it: for a file not read, as the domain's function
-    ``held_back`` says; for a conversion, the document's id.
+    The documents are those read that draw on no file not read. Problems keep every
+    document's last copy; warnings, such as two transcripts of one id, do not. A
+    problem's ``where`` is the path from the work log's folder, never its content;
+    ``held_back`` gives, by that place, what keeps its last copy for it, as the domain's
+    function ``held_back`` says.
     """
 
     documents: tuple[WorklogDocument, ...]
@@ -108,7 +107,7 @@ def read_worklog(folder: Path, *, archives: bool) -> Read:
     ``transcripts/archive/``, ``meetings/archive/`` and the subtrees tagged ARCHIVE are
     left out. A file not read is a problem, named by its path, with what it holds back,
     as ``held_back`` says; the documents that draw on it are left out, as ``writable``
-    says, so that a run writes none of their files. The span
+    says, so that a fetch takes none of them. The span
     ``worklog.read`` holds the reading; ``worklog.read`` says at INFO what was read.
     ``worklog.unlinked``, a warning, says how many meetings' ``:MEETING:`` link no
     transcript found, and the first by its file, else its id: never a problem, so that it
