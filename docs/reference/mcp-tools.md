@@ -140,8 +140,8 @@ document linked, come by their ref when they are mirrored, else by their documen
 `<source>:<id>`.
 
 - `ref`: a ref as answers cite it, the document's source, a colon, then its key or else
-  its id, such as `jira:PRB-12`, `confluence:196845` or `worklog:t-20261027-1`; its key or
-  id alone, such as `PRB-12`, where no other document has it, else refused with the refs
+  its id, such as `jira:PRB-12`, `confluence:196845` or `worklog:t-20261027-1`, never
+  looked for in another source; its key or id alone, such as `PRB-12`, where no other document has it, else refused with the refs
   of those that have it; a page's or an issue's address; or a path in the mirror; at
   most 300 characters.
 - `section`: a section's number, from 1.

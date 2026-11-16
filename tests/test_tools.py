@@ -250,6 +250,22 @@ def test_a_ref_is_cited_by_its_source_and_read_alone_only_where_unique(tmp_path:
     assert parts(str(refused.value))[1] == "jira:PROJ-7, tracker:PROJ-7"
 
 
+@pytest.mark.parametrize("ref", ["tracker:PAY-9", "confluence:PAY-9", "tracker:10009"])
+def test_a_ref_after_its_source_is_never_found_in_another(tmp_path: Path, ref: str) -> None:
+    """A ref names its source: one that this source lacks is not mirrored.
+
+    Whatever another source holds under that key or id: Jira holds PAY-9, of id 10009.
+    """
+    library = built(
+        tmp_path,
+        [
+            (issue("PAY-9", "Payments"), None),
+            (replace(issue("PAY-1", "Rollout"), source="tracker"), None),
+        ],
+    )
+    assert library.read(ref).startswith("Not mirrored:")
+
+
 def test_a_decomposed_query_is_composed_first(tmp_path: Path) -> None:
     """A query typed in NFD, as macOS often gives text, finds the composed title."""
     library = built(tmp_path, [(page("196845", "Économie générale"), None)])

@@ -26,6 +26,7 @@ from opentelemetry import metrics, trace
 from pydantic import Field
 
 from kb_mcp.config.domain.settings import SearchMode as Mode
+from kb_mcp.kernel.names import DOCUMENT_ID
 from kb_mcp.kernel.record import Record
 from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
 from kb_mcp.mcp.app import responses
@@ -638,14 +639,15 @@ class Library:
     def _find(self, reader: SearchReader, ref: str) -> IndexedDocument | None:
         """Find a document by path, else by ref, else by address; None for none.
 
-        A ref is its key or id, alone or after its source, as ``jira:PRB-12``; an address
-        gives an issue's key or a page's id. Raises UnanswerableError, listing their refs,
-        for a ref or an address that names several documents, as a key or id alone may.
+        A ref is its key or id, alone or after its source, as ``jira:PRB-12``, which is
+        never looked for in another source; an address gives an issue's key or a page's
+        id. Raises UnanswerableError, listing their refs, for a ref or an address that
+        names several documents, as a key or id alone may.
         """
         path = ref.strip()
         found = reader.indexed_documents(paths=[path], refs=[path])
         exact = [entry for entry in found if entry.path == path]
-        if not found:
+        if not found and not DOCUMENT_ID.fullmatch(path):
             named = identifiers(path)
             found = reader.indexed_documents(refs=[*named.keys[:1], *named.ids[:1]])
         if len(found) > 1 and not exact:
