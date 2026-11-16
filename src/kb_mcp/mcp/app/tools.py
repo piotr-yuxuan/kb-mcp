@@ -641,15 +641,21 @@ class Library:
 
         A ref is its key or id, alone or after its source, as ``jira:PRB-12``, which is
         never looked for in another source; an address gives an issue's key or a page's
-        id. Raises UnanswerableError, listing their refs, for a ref or an address that
-        names several documents, as a key or id alone may.
+        id, each naming a document that it cites, so that a page's id names no issue.
+        Raises UnanswerableError, listing their refs, for a ref or an address that names
+        several documents, as a key or id alone may.
         """
         path = ref.strip()
         found = reader.indexed_documents(paths=[path], refs=[path])
         exact = [entry for entry in found if entry.path == path]
         if not found and not DOCUMENT_ID.fullmatch(path):
             named = identifiers(path)
-            found = reader.indexed_documents(refs=[*named.keys[:1], *named.ids[:1]])
+            cited = [*named.keys[:1], *named.ids[:1]]
+            found = [
+                entry
+                for entry in reader.indexed_documents(refs=cited)
+                if (entry.front.key or entry.front.id) in cited
+            ]
         if len(found) > 1 and not exact:
             listed = sorted(entry.front.ref for entry in found)
             message = (

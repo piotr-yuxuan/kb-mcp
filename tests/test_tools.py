@@ -266,6 +266,22 @@ def test_a_ref_after_its_source_is_never_found_in_another(tmp_path: Path, ref: s
     assert library.read(ref).startswith("Not mirrored:")
 
 
+def test_a_page_s_address_names_the_page_not_an_issue_of_its_id(tmp_path: Path) -> None:
+    """An address names its kind: a page's id names no issue, which is cited by its key.
+
+    The id alone, which both hold, is refused with their refs, as read takes it only
+    where it is unique.
+    """
+    library = built(
+        tmp_path, [(page("10007", "Kafka page"), None), (issue("PROJ-7", "Kafka issue"), None)]
+    )
+    address = "https://x.atlassian.net/wiki/spaces/ENG/pages/10007/Kafka+page"
+    assert "\nref: confluence:10007\n" in parts(library.read(address))[1]
+    with pytest.raises(UnanswerableError) as refused:
+        library.read("10007")
+    assert parts(str(refused.value))[1] == "confluence:10007, jira:PROJ-7"
+
+
 def test_a_decomposed_query_is_composed_first(tmp_path: Path) -> None:
     """A query typed in NFD, as macOS often gives text, finds the composed title."""
     library = built(tmp_path, [(page("196845", "Économie générale"), None)])
