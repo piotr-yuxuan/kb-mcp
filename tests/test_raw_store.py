@@ -272,6 +272,28 @@ def test_spaces_listed_on_different_runs_are_all_kept(store: RawStore) -> None:
     ]
 
 
+def test_a_project_read_whole_is_kept_beside_the_spaces_and_read_by_id_alone(
+    tmp_path: Path,
+) -> None:
+    """Plan 061: every issue that it names, as received, under its key; a space's by id.
+
+    An entry that names no id names no issue; one whose other fields changed still does.
+    """
+    store, jira = RawStore(tmp_path, "confluence"), RawStore(tmp_path, "jira")
+    with pytest.raises(RuntimeError, match=r"inside RawStore\.writing"):
+        jira.put_project("PRB", [])
+    with jira.writing():
+        jira.put_project("PRB", [{"id": "10000", "key": "PRB-1"}, {"id": "10001"}, {"key": "X"}])
+    with store.writing():
+        store.put_space(v2_space(), [v2_page()], [], [])
+    assert json.loads((tmp_path / "jira/projects/PRB/issues.json").read_text("utf-8"))[1] == {
+        "id": "10001"
+    }
+    assert jira.listed_ids("PRB", Issue) == {"10000", "10001"}
+    assert (jira.holders(Issue), jira.holders(Page)) == ({"PRB"}, set())
+    assert (store.holders(Page), store.holders(Issue)) == ({"196613"}, set())
+
+
 def test_a_space_listing_is_replaced_whole(store: RawStore) -> None:
     """The newest listing of a space replaces the last."""
     store.put_space(v2_space(), [v2_page(), v2_page(id="196846")], [], [])

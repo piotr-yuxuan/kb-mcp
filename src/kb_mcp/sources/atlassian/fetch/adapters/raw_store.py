@@ -75,6 +75,15 @@ HELD_IN = {
 FORMER_KINDS = {PAGE.plural: PAGE.name, BLOGPOST.plural: BLOGPOST.name}
 # The times that a coverage's entry may hold beside its period, each a field of Coverage.
 COVERAGE_TIMES = ("as_of", "whole_read_at")
+# Where a source's view keeps the scopes' last whole reads of each document type, a
+# folder per scope, a space's named by its id and a project's by its key; and which
+# adapter reads the ids of their entries.
+LISTINGS: dict[type[FetchedDocument], str] = {Page: "spaces", BlogPost: "spaces", Issue: "projects"}
+ENTRY_IDS: dict[type[FetchedDocument], Callable[[object], set[str]]] = {
+    Page: confluence_v2.entry_ids,
+    BlogPost: confluence_v2.entry_ids,
+    Issue: jira_v3.entry_ids,
+}
 # The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -457,21 +466,41 @@ class RawStore:
         self, space_id: str, document_class: type[Page | BlogPost]
     ) -> list[Page | BlogPost | Problem]:
         """Read the pages, or the blog posts, last listed in a space."""
-        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
+        path = self._listing(space_id, document_class)
         return self._entries(path, partial(confluence_v2.document, document_class=document_class))
 
-    def listed_ids(self, space_id: str, document_class: type[Page | BlogPost]) -> set[str]:
-        """Return the ids that a space's last listing names, read by id alone.
+    def _listing(self, holder: str, document_class: type[FetchedDocument]) -> Path:
+        # A scope's last whole read of a document type: a space's by id, a project's by key.
+        folder = self.root / self.source / LISTINGS[document_class] / _identifier(holder, "scope")
+        return folder / f"{document_class.document_type.plural}.json"
 
-        An entry whose other fields the adapter would refuse still names its document,
-        so that deletions follow every document that a fetch fetched. A listing that
-        cannot be read at all names none.
+    def listed_ids(self, holder: str, document_class: type[FetchedDocument]) -> set[str]:
+        """Return the ids that a scope's last whole read names, read by id alone.
+
+        ``holder`` is the scope as its listings are kept: a space by its id, a project by
+        its key. An entry whose other fields the adapter would refuse still names its
+        document, so that deletions follow every document that a fetch fetched. A listing
+        that cannot be read at all names none.
         """
-        path = self._space(space_id) / f"{document_class.document_type.plural}.json"
+        path = self._listing(holder, document_class)
         try:
-            return confluence_v2.entry_ids(_decode(path)) if path.exists() else set()
+            return ENTRY_IDS[document_class](_decode(path)) if path.exists() else set()
         except UNREADABLE:
             return set()
+
+    def holders(self, document_class: type[FetchedDocument]) -> set[str]:
+        """Return the scopes whose last whole read of a document type is kept, as ``listed_ids``."""
+        folder = self.root / self.source / LISTINGS[document_class]
+        plural = f"{document_class.document_type.plural}.json"
+        return {each.name for each in _named(folder, IDENTIFIER) if (each / plural).is_file()}
+
+    def put_project(self, project: str, issues: list[object]) -> None:
+        """Replace a project's last whole read: every issue that it names, as received."""
+        self._check_writing()
+        if type(issues) is not list:
+            message = "issues: expected a list"
+            raise ValueError(message)
+        _replace_synced(self._listing(project, Issue), _encode(issues))
 
     def folders(self, space_id: str) -> list[Folder | Problem]:
         """Read the folders last listed in a space."""

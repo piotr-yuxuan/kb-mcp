@@ -77,6 +77,24 @@ def test_a_search_names_the_project_quoted_and_the_dates() -> None:
     assert request.params["fields"] == jira_v3.ISSUE_FIELDS
 
 
+def test_a_project_read_whole_asks_for_its_keys_alone_without_a_date() -> None:
+    """Plan 061: every issue of the quoted project, whatever its update time, by key."""
+    request = jira_v3.listing_request("PRB")
+    assert request.path == "/rest/api/3/search/jql"
+    assert request.params == {
+        "jql": 'project = "PRB" ORDER BY key',
+        "fields": "key",
+        "maxResults": "5000",
+    }
+
+
+def test_a_whole_read_names_each_issue_by_its_id_alone() -> None:
+    """An entry without a usable id names nothing, and entries not a list name none."""
+    entries = [{"id": "10000", "key": "PRB-1"}, {"id": "../x"}, {"key": "PRB-2"}, "10003"]
+    assert jira_v3.entry_ids(entries) == {"10000"}
+    assert jira_v3.entry_ids({"issues": entries}) == set()
+
+
 def test_a_search_follows_its_page_token_until_the_last_page() -> None:
     """The next page repeats the search with nextPageToken; isLast ends it."""
     request = jira_v3.search_request("PRB", date(2026, 10, 14), date(2026, 10, 23))
