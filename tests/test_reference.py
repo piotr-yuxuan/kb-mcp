@@ -29,6 +29,7 @@ NON_VARIABLES = {
     "ARCHIVE_OLPATH": "a property that org writes when it archives a subtree, the work log reads",
     "EXCLUDE_TAGS": "a setting of an org file, #+EXCLUDE_TAGS:, that the work log reads",
     "SELECT_TAGS": "a setting of an org file, #+SELECT_TAGS:, that the work log reads",
+    "RUN_ID": "what refresh's --resume takes, as its help names it: a run's id",
     "SEQ_TODO": "a setting of an org file, #+SEQ_TODO:, that the work log reads",
     "TYP_TODO": "a setting of an org file, #+TYP_TODO:, that the work log reads",
     FORMER_PREFIX: "the former name's prefix, whose variables stop a run, as"

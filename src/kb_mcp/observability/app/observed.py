@@ -56,7 +56,8 @@ class Invocation(Record):
 
     A run that is not ``traced`` is no trace of its own, such as a server's, each of
     whose requests is one. ``commands`` names those whose log files past 30 days the run
-    removes from its folder: none by default.
+    removes from its folder: none by default. ``run`` is the id of the run that this
+    invocation resumes, None for a new run, whose id ``observed`` makes.
     """
 
     command: str
@@ -64,6 +65,7 @@ class Invocation(Record):
     dry_run: bool = False
     traced: bool = True
     commands: frozenset[str] = frozenset()
+    run: str | None = None
 
 
 class Run(Record):
@@ -115,7 +117,7 @@ def observed(
     root = logging.getLogger()
     log = structlog.get_logger()
     command = invocation.command
-    run = Run(id=secrets.token_hex(8))
+    run = Run(id=invocation.run or secrets.token_hex(8))
     with ExitStack() as stack:
         for handler in [handler for handler in root.handlers if isinstance(handler, ConsoleLines)]:
             root.removeHandler(handler)
