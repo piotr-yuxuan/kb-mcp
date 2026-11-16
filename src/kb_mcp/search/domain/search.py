@@ -178,9 +178,10 @@ STOP_WORDS = frozenset(
 )
 # An issue key in any case, not inside a longer word; the domain's rule then checks it.
 KEY_IN_TEXT = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9_]*-[0-9]+(?![\w-])")
-# What reads as a ref, a source then a key or id, standing alone: not within an address,
-# whose scheme, or host and port, would read alike.
-REF_IN_TEXT = re.compile(rf"(?<![\w/.:-])({DOCUMENT_ID.pattern})(?![\w/])")
+# What reads as a ref, a source then a key or id, standing alone: not after an address's
+# scheme or a dot of its host, which would read alike, and whole, never its key or id cut
+# short before a letter, a digit or a hyphen.
+REF_IN_TEXT = re.compile(rf"(?<![\w/.:-])({DOCUMENT_ID.pattern})(?![\w-])")
 # The id in the address of a page or a blog post, as the site's address bar shows it.
 ID_IN_ADDRESS = re.compile(r"(?:/pages/|[?&]pageId=|/blog/[0-9]{4}/[0-9]{2}/[0-9]{2}/)([0-9]+)")
 HEADING = re.compile(r" {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*")

@@ -109,6 +109,18 @@ def test_refs_as_answers_cite_them_are_found_and_name_nothing_alone() -> None:
     assert (found.keys, found.ids) == (("PAY-9", "OPS-3"), ())
 
 
+@pytest.mark.parametrize(
+    ("text", "refs"), [("jira:PRB-12/x", ("jira:PRB-12",)), ("jira:PRB-12é", ())]
+)
+def test_a_ref_is_never_cut_short(text: str, refs: tuple[str, ...]) -> None:
+    """A ref is found whole, whatever follows it, or not at all: never its key cut short.
+
+    What follows a key within a word, a letter, leaves no ref and no key.
+    """
+    found = identifiers(text, ("jira",))
+    assert (found.refs, found.keys) == (refs, ())
+
+
 def test_a_key_that_breaks_the_rule_is_not_a_key() -> None:
     """A single-letter project or a key inside a longer word is not an issue key."""
     assert identifiers("a-1 xPROJ-1y PROJ-1-2").keys == ()
