@@ -18,16 +18,6 @@ if TYPE_CHECKING:
     from kb_mcp.sources.declaration import Source
 
 
-def pandoc() -> Check:
-    """Say where the pandoc that the mirror needs is on PATH, or that there is none."""
-    found = shutil.which("pandoc")
-    return (
-        Check(name="pandoc", found=found)
-        if found
-        else Check(name="pandoc", found="not found on PATH", state="failed")
-    )
-
-
 def doctor(settings: Settings, sources: Sequence[Source]) -> list[Check]:
     """Check the machine, then the sources by the checks that their connectors name.
 
@@ -37,9 +27,12 @@ def doctor(settings: Settings, sources: Sequence[Source]) -> list[Check]:
     is not: a check of its own, by its name, fails, saying why, after the others
     (``refusals``).
     """
+    found = shutil.which("pandoc")  # The mirror needs it.
     checks = [
         Check(name="python", found=sys.version.split()[0]),
-        pandoc(),
+        Check(name="pandoc", found=found)
+        if found
+        else Check(name="pandoc", found="not found on PATH", state="failed"),
         Check(name="data directory", found=f"{settings.data_dir}: allowed"),
     ]
     refused = refusals(sources, values_of(settings))
