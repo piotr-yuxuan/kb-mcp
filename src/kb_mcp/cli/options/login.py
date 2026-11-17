@@ -20,10 +20,11 @@ FORMER = "atlassian"
 
 
 def signing(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[Source, ...]:
-    """Give the sources that ``login`` signs in: the one named, else each one in use.
+    """Give the sources that ``login`` takes: the one named, else each one in use.
 
     Each of a connector that signs in, in the sources' order; one is in use when its
-    first setting, what it covers, or its location is set.
+    first setting, what it covers, or its location is set. ``to_sign_in`` gives those
+    that it signs in.
     """
     return tuple(
         each
@@ -55,20 +56,37 @@ def in_the_browser(arguments: argparse.Namespace, settings: Mapping[str, object]
     return unused
 
 
-def unlocated(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Give why each source that ``login`` takes cannot be signed in, by its name.
+def to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[Source, ...]:
+    """Give the sources that ``login`` signs in, or would but for their location.
 
-    Its location not set, such as its site, where it would sign in (``Source.unlocated``).
+    Those that ``signing`` takes but, when none is named, each that its connector's login
+    leaves (``Connector.left_by_login``), such as one that signs in by an API token.
+    """
+    return tuple(
+        each
+        for each in signing(arguments, settings)
+        if arguments.source
+        or (left := each.connector.left_by_login) is None
+        or not left(each, settings)
+    )
+
+
+def unlocated(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
+    """Give why each source that ``login`` would sign in cannot be, by its name.
+
+    Its location not set, such as its site, where it would sign in (``Source.unlocated``);
+    one that the login leaves (``to_sign_in``) is not given, as it is not signed in either
+    way.
     """
     return {
         each.name: why
-        for each in signing(arguments, settings)
+        for each in to_sign_in(arguments, settings)
         if (why := each.unlocated(settings)) is not None
     }
 
 
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-    """Say each source that ``login`` takes that it will not sign in, and why (``unlocated``)."""
+    """Say each source that ``login`` would sign in that it will not, and why (``unlocated``)."""
     return tuple(
         f"source {name}: will not be signed in, {why}"
         for name, why in unlocated(arguments, settings).items()

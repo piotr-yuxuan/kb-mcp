@@ -42,6 +42,11 @@ def token_without_email(source: Source, settings: Mapping[str, object]) -> str |
     return f"{source.path(EMAIL)}: not set; an API token signs in with its account's email"
 
 
+def signs_in_by_token(source: Source, settings: Mapping[str, object]) -> bool:
+    """Say that a login that names no source leaves one that signs in by an API token."""
+    return settings[source.path(API_TOKEN)] is not None
+
+
 def email_without_token(
     source: Source, _options: object, settings: Mapping[str, object]
 ) -> dict[str, str]:
@@ -140,6 +145,7 @@ CONFLUENCE = Connector(
     fetcher=FETCHER,
     location=SITE,
     login=LOGIN,
+    left_by_login=signs_in_by_token,
     checks=CHECKS,
     options=PERIOD,
     refused=refused,
@@ -157,6 +163,7 @@ JIRA = Connector(
     fetcher=FETCHER,
     location=SITE,
     login=LOGIN,
+    left_by_login=signs_in_by_token,
     checks=CHECKS,
     options=PERIOD,
     refused=refused,

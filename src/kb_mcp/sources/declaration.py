@@ -35,6 +35,9 @@ type OptionsRefused = Callable[[Mapping[str, object]], str | None]
 type Unapplied = Callable[[Source, Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
 # and the lines that a run's echo says of it.
 type Described = Callable[[Source, Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
+# Of a source and every setting's value, whether a login that names no source leaves it,
+# as a session would serve it nothing.
+type LeftByLogin = Callable[[Source, Mapping[str, object]], bool]
 # An option's value as a run records it, given its value as typed, None when not given,
 # and the run's start: a value relative to that start, or left to it, made absolute.
 type Absolute = Callable[[object, datetime], object]
@@ -121,10 +124,11 @@ class Connector:
 
     A connector whose origin asks to sign in names, by module path as ``table_path``
     does, the run of ``kb-mcp login`` (``login``): a function of the settings, the
-    sources to sign in, the browser's path and, by name, ``extensions`` and ``named``,
-    whether the user named the one source, which gives a record of each place it signed
-    in to, with its ``site``, and whether every sign-in completed, having said why not;
-    and ``doctor``'s
+    sources to sign in, each with its location, the browser's path and, by name,
+    ``extensions``, which gives a record of each place it signed in to, with its
+    ``site``, and whether every sign-in completed, having said why not; which sources a
+    login that names none leaves (``left_by_login``), if any, such as one that signs in
+    otherwise; and ``doctor``'s
     checks (``checks``): a function of the settings and of the sources configured, which
     gives its checks, each a ``Check``. A path that does not load raises as it does, as a
     table's: a programmer's error, as no setting can cause it. ``refused``,
@@ -140,6 +144,7 @@ class Connector:
     fetcher: str | None = None
     location: str | None = None
     login: str | None = None
+    left_by_login: LeftByLogin | None = None
     checks: str | None = None
     options: tuple[Option, ...] = ()
     refused: Refused | None = None

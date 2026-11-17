@@ -242,7 +242,7 @@ def drive_signed_in(
     settings: Settings, sources: tuple[Source, ...], chrome: Path | None, **given: bool
 ) -> tuple[tuple[SignedIn, ...], bool]:
     """Sign each source in: its run, as its connector names it."""
-    assert (chrome, given) == (None, {"extensions": False, "named": True})
+    assert (chrome, given) == (None, {"extensions": False})
     folders = [getattr(settings.sources, each.name).folder for each in sources]
     return tuple(SignedIn(site=str(folder), session=settings.session) for folder in folders), True
 
@@ -340,6 +340,35 @@ def test_a_login_of_two_sites_that_fails_at_the_first_signs_in_the_second(
     assert [row["site"] for row in json.loads(capsys.readouterr().out)] == [CLIENT]
     assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [SITE]
     assert [each["site"] for each in logged_as(tmp_path, "login.signed_in")] == [CLIENT]
+
+
+def test_login_alone_leaves_a_source_by_a_token_without_its_site_as_with_one(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 1: a session would serve it nothing, site or not: exit 0.
+
+    Jira by an API token, with its email and no site, Confluence with its own: Confluence's
+    site is signed in, and Jira is neither signed in nor refused, the echo saying nothing
+    of its site. Named, Jira would sign in in the browser: refused without its site, exit 2.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    signed_in = opened(monkeypatch)
+    for name, value in {
+        "KB_MCP_SOURCES__CONFLUENCE__SITE": SITE,
+        "KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]',
+        "KB_MCP_SOURCES__JIRA__EMAIL": "someone@example.invalid",
+        "KB_MCP_SOURCES__JIRA__API_TOKEN": "token-sentinel-5d1e",
+    }.items():
+        monkeypatch.setenv(name, value)
+    assert main([*login(tmp_path), "--format", "json"]) == 0
+    out, err = capsys.readouterr()
+    assert signed_in == [SITE]
+    assert [row["site"] for row in json.loads(out)] == [SITE]
+    assert "will not be signed in" not in err
+    assert logged_as(tmp_path, "login.refused") == []
+    assert main(login(tmp_path, "jira")) == BAD_ARGUMENTS
+    assert "sources.jira.site: not set; add it to the settings" in capsys.readouterr().err
+    assert signed_in == [SITE]
 
 
 def drive_signed_in_by_default(

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.domain.echo import values_of
-from kb_mcp.cli.options.login import signing, unlocated
+from kb_mcp.cli.options.login import to_sign_in, unlocated
 from kb_mcp.kernel.exit_status import ExitStatus, folded
 
 if TYPE_CHECKING:
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 def run(
     arguments: argparse.Namespace, loaded: Loaded
 ) -> tuple[ExitStatus, tuple[Record, ...] | None]:
-    """Sign in each source that ``signing`` gives; exit as their endings fold: 3, then 1.
+    """Sign in each source that ``to_sign_in`` gives; exit as their endings fold: 3, then 1.
 
     A source whose location is not set (``unlocated``), which the entry refused when it
     is named, is not signed in: an error, ``login.refused``, names it and why, and the
@@ -39,7 +39,7 @@ def run(
     for name, why in refused.items():
         structlog.get_logger().error("login.refused", source=name, reason=why)
     logins: dict[str, list[Source]] = {}
-    for each in (each for each in signing(arguments, values) if each.name not in refused):
+    for each in (each for each in to_sign_in(arguments, values) if each.name not in refused):
         logins.setdefault(str(each.connector.login), []).append(each)
     signed: list[Record] = []
     endings: list[Ending] = ["failed" for _ in refused]
@@ -49,7 +49,6 @@ def run(
             tuple(sources),
             arguments.chrome,
             extensions=arguments.keep_extensions,
-            named=arguments.source is not None,
         )
         signed += done
         endings.append("done" if complete else "sign in again")

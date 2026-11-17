@@ -245,7 +245,8 @@ A source's way to sign in is its connector's, in its own table: Confluence's and
 hold `site`, `email` and `api_token`, the last from the source's variable alone, such as
 `KB_MCP_SOURCES__JIRA__API_TOKEN`. So the core knows no Atlassian setting, and two
 sources of two sites sign in apart. A connector that signs in names its `location`, the
-setting where a source of it is, and its run of `login` and its checks of `doctor`
+setting where a source of it is, its run of `login`, the sources that a `login` naming
+none leaves, such as one that signs in by an API token, and its checks of `doctor`
 ([`Connector`](../../src/kb_mcp/sources/declaration.py)). The places `session/` and
 `runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)),
 which the data guard judges.
