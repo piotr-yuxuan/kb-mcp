@@ -30,12 +30,6 @@ def checked(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tu
     )
 
 
-def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse what a sign-in to check cannot run with, by its source's settings: the first."""
-    faults = (each.refusal(settings) for each in checked(arguments, settings))
-    return next((fault for fault in faults if fault is not None), None)
-
-
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
     """Name what each sign-in does not apply, by its connector's ``unapplied``, and the unchecked.
 
@@ -83,6 +77,5 @@ def register(
             flags=flags,
             actions=actions,
             unapplied=unapplied,
-            refused=refused,
         )
     )

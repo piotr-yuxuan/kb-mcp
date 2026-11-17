@@ -47,6 +47,7 @@ AUTHORISATION = f"Basic {ENCODED}"
 KEY = "KB_MCP_EMBEDDING_API_KEY"
 KEY_SENTINEL = "key-sentinel-9a7e"
 HOST = httpx.URL(SITE).host
+FAILED = 1
 REFUSED = 2
 SIGN_IN_NEEDED = 3
 # What a command that signs in says of a token given without its email.
@@ -195,20 +196,25 @@ def test_the_doctor_refused_by_the_site_exits_3_naming_the_variables(
         assert f"{name}: refused: check {email} and {credential}\n" in out
 
 
-def test_the_doctor_refuses_a_token_without_its_email_and_asks_nothing(
+def test_the_doctor_fails_a_token_without_its_email_and_sends_it_nowhere(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Exit 2 naming the email, as a fetch does, before any request: one error alone."""
+    """Plan 070: Confluence's own check fails, naming the email, as its fetch's unit does.
+
+    Its sign-in is asked nothing; Jira's is checked, and holds: exit 1.
+    """
     monkeypatch.delenv(EMAIL)
+    monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     sent = served(monkeypatch, FakeSite().handle)
     configure_both(monkeypatch)
-    assert main(["doctor", "--config", str(home / "none.toml")]) == REFUSED
+    options = ["doctor", "--config", str(home / "none.toml"), "--format", "json"]
+    assert main(options) == FAILED
     out, err = capsys.readouterr()
-    assert out == ""
-    (line,) = err.splitlines()
-    assert said(line) == [("error", "run.refused")]
-    assert WITHOUT_EMAIL in line
-    assert sent == []
+    checks = {each["name"]: each for each in json.loads(out)}
+    assert checks["confluence"] == {"name": "confluence", "found": WITHOUT_EMAIL, "state": "failed"}
+    assert checks["jira"]["state"] == "well"
+    assert [request.url.path for request in sent] == ["/rest/api/3/myself"]
+    assert SENTINEL not in out + err
 
 
 @pytest.mark.parametrize("email", [ADDRESS, None])

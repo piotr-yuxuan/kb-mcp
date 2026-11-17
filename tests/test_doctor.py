@@ -30,7 +30,6 @@ HOST = "sandbox.example.invalid"
 CLIENT = "https://client.example.invalid"
 CLIENT_JIRA = Source(name="clientjira", connector=JIRA)
 SOME_FAILED = 1
-REFUSED = 2
 NOT_SIGNED_IN = 3
 # Jira's source configured, and its site.
 A_SOURCE = "KB_MCP_SOURCES__JIRA__PROJECTS"
@@ -134,14 +133,34 @@ def test_each_source_of_one_site_is_checked_by_its_own_sign_in(
     assert "jira" not in found
 
 
-def test_a_source_configured_without_its_site_refuses_the_doctor(
+def test_a_source_configured_without_its_site_fails_its_own_check_alone(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """Plan 059: by its connector's light checks, exit 2, naming the setting."""
+    """Plan 070, by the user: "We should be tolerant"; by its connector's light check.
+
+    Jira without its site: a check named after it fails, naming the setting, after the
+    others; Confluence's site and sign-in are checked, which asks to sign in: exit 3.
+    """
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
-    assert main(["doctor", "--config", str(tmp_path / "none.toml")]) == REFUSED
-    assert "sources.jira.site: not set; add it to the settings" in capsys.readouterr().err
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
+    assert main(options) == NOT_SIGNED_IN
+    checks = [(each["name"], each["state"]) for each in json.loads(capsys.readouterr().out)]
+    assert checks[3:] == [
+        (f"tls {HOST}", "well"),
+        ("sign-in confluence", "sign in again"),
+        ("jira", "failed"),
+    ]
+    monkeypatch.delenv("KB_MCP_SOURCES__CONFLUENCE__SITE")
+    assert main(options) == SOME_FAILED
+    (*_, jira) = json.loads(capsys.readouterr().out)
+    assert jira == {
+        "name": "jira",
+        "found": "sources.jira.site: not set; add it to the settings",
+        "state": "failed",
+    }
 
 
 @pytest.mark.parametrize(
@@ -232,10 +251,10 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
     assert f"{A_SOURCE}): not read by doctor" not in capsys.readouterr().err
 
 
-def test_a_token_without_its_email_refuses_only_a_sign_in_that_is_checked(
+def test_a_token_without_its_email_fails_only_a_sign_in_that_is_checked(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
-    """A source not in use: not checked, exit 0. In use, with its site: exit 2."""
+    """A source not in use: not checked, exit 0. In use, with its site: its check fails, 1."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__API_TOKEN", "token-sentinel-7f2b")
     options = ["doctor", "--config", str(tmp_path / "none.toml")]
@@ -243,8 +262,12 @@ def test_a_token_without_its_email_refuses_only_a_sign_in_that_is_checked(
     assert "jira not in use: not checked" in capsys.readouterr().err
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     monkeypatch.setenv(A_SITE, SITE)
-    assert main(options) == REFUSED
-    assert "sources.jira.email: not set" in capsys.readouterr().err
+    assert main(options) == SOME_FAILED
+    out = capsys.readouterr().out
+    assert (
+        "jira: sources.jira.email: not set; an API token signs in with its account's email" in out
+    )
+    assert "token-sentinel-7f2b" not in out
 
 
 def test_a_source_with_its_site_alone_is_checked(

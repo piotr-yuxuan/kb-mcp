@@ -74,8 +74,8 @@ def access(settings: Settings, source: Source) -> list[Check]:
 def checks(settings: Settings, sources: Sequence[Source]) -> list[Check]:
     """Say, once a site, whether it answers; then whether each source's sign-in opens it.
 
-    The sources are configured, and each has a site, as ``doctor``'s light checks refuse
-    one without.
+    The sources are configured, and each has a site: ``doctor`` checks one without by its
+    light check alone.
     """
     by_site: dict[str, list[Source]] = {}
     for each in sources:
