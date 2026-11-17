@@ -71,15 +71,15 @@ def chosen_to_fetch(
     named = set(arguments.source)
     taken: list[Source] = []
     left: dict[str, str] = {}
-    for declared in arguments.sources:
-        if declared.connector.fetcher is None:
-            left[declared.name] = "read in place, it has nothing to fetch"
-        elif named and declared.name not in named:
-            left[declared.name] = "not named"
-        elif not settings[declared.paths[0]]:
-            left[declared.name] = "not configured"
+    for source in arguments.sources:
+        if source.connector.fetcher is None:
+            left[source.name] = "read in place, it has nothing to fetch"
+        elif named and source.name not in named:
+            left[source.name] = "not named"
+        elif not settings[source.paths[0]]:
+            left[source.name] = "not configured"
         else:
-            taken.append(declared)
+            taken.append(source)
     return tuple(taken), left
 
 
@@ -99,13 +99,13 @@ def chosen_to_prepare(
     named = set(arguments.source)
     taken: list[Source] = []
     left: dict[str, str] = {}
-    for declared in arguments.sources:
-        if named and declared.name not in named:
-            left[declared.name] = "not named"
-        elif not declared.prepared_by_default(settings):
-            left[declared.name] = "not configured"
+    for source in arguments.sources:
+        if named and source.name not in named:
+            left[source.name] = "not named"
+        elif not source.prepared_by_default(settings):
+            left[source.name] = "not configured"
         else:
-            taken.append(declared)
+            taken.append(source)
     return tuple(taken), left
 
 
@@ -120,15 +120,15 @@ def chosen(
     return choose(arguments, settings)
 
 
-def source_line(declared: Source, settings: Mapping[str, object]) -> str:
+def source_line(source: Source, settings: Mapping[str, object]) -> str:
     """Say a source taken, with the value of each of its settings that holds one."""
     values = {
         path: ", ".join(value) if isinstance(value := settings[path], tuple) else str(value)
-        for path in declared.paths
+        for path in source.paths
         if settings[path] is not None
     }
     shown = (f"{path.rpartition('.')[2]} {value}" for path, value in values.items())
-    return f"source {declared.name}: {', '.join(shown)}"
+    return f"source {source.name}: {', '.join(shown)}"
 
 
 def fetch_described(
@@ -149,12 +149,12 @@ def fetch_described(
     """
     taken, left = chosen_to_fetch(arguments, settings)
     refused = refusals(taken, settings) if refused is None else refused
-    lines = [source_line(declared, settings) for declared in taken]
+    lines = [source_line(source, settings) for source in taken]
     said: list[str] = []
-    for declared in (each for each in taken if each.name not in refused):
-        connector = declared.connector
+    for source in (each for each in taken if each.name not in refused):
+        connector = source.connector
         options = given(arguments, connector.flags)
-        said += connector.described(declared, options, settings) if connector.described else ()
+        said += connector.described(source, options, settings) if connector.described else ()
     lines += [f"source {name}: will not run, {why}" for name, why in refused.items()]
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
@@ -186,23 +186,23 @@ def prepare_described(
     """
     taken, left = chosen_to_prepare(arguments, settings)
     unset = [
-        declared
-        for declared in taken
-        if declared.name not in unfetched and declared.unlocated(settings) is not None
+        source
+        for source in taken
+        if source.name not in unfetched and source.unlocated(settings) is not None
     ]
     return (
         *(
-            f"source {declared.name}: will not run, as its fetch will not"
-            if declared.name in unfetched
-            else source_line(declared, settings)
-            if declared.connector.fetcher is None
-            else f"source {declared.name}: all that its store holds"
-            for declared in taken
+            f"source {source.name}: will not run, as its fetch will not"
+            if source.name in unfetched
+            else source_line(source, settings)
+            if source.connector.fetcher is None
+            else f"source {source.name}: all that its store holds"
+            for source in taken
         ),
         *(f"source {name}: left out, {why}" for name, why in left.items()),
         *(
-            f"{declared.path(declared.connector.location)}: not set; any documents of"
-            f" {declared.name} get no address there"
-            for declared in unset
+            f"{source.path(source.connector.location)}: not set; any documents of"
+            f" {source.name} get no address there"
+            for source in unset
         ),
     )
