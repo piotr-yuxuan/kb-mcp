@@ -1,6 +1,6 @@
 """What the program's former name, atlassian-offline-mcp, left, and the stop that says so.
 
-Plan 027 renamed the program kb-mcp. A run that finds what the former name left stops
+The program was renamed kb-mcp. A run that finds what the former name left stops
 before acting and prints how to move it; nothing is moved for the user. Only the
 settings the run uses are judged: the settings file that it reads, or the former one in
 its place when the default is missing (rule 1), then the variables and the flags. Rule 1
@@ -50,7 +50,7 @@ FORMER_DATA_DIR = Path("~/atlassian-offline-mcp")
 # such as a clone's under an agent's scratch, names no place of the program's.
 FORMER_NAME = re.compile(r"(?:^|/)atlassian.offline.mcp", re.IGNORECASE)
 # The keys at the top of the former settings that each source's table holds since, so
-# that the stop prints final names: plan 030's, the sign-in's, in each Atlassian source.
+# that the stop prints final names: the sign-in's settings, in each Atlassian source.
 RENAMED = ("site", "email", "api_token")
 # What the program cannot do for the user, as it reads no other program's configuration.
 BY_HAND = (

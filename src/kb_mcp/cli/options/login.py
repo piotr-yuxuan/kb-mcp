@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from kb_mcp.sources.declaration import Source
 
 
-# The sign-in that ``login`` named before plan 059, whose sources it signed in.
+# The sign-in that ``login`` named before each source signed in apart, whose sources it signed in.
 FORMER = "atlassian"
 
 
@@ -92,9 +92,9 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
 def nothing_to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse a sign-in of no source, or of the one named whose location is not set: the first.
 
-    First of all ``atlassian``, the sign-in that ``login`` named before plan 059, unless a
-    source takes that name: refused, naming the sources that sign in. A source taken by
-    default whose location is not set is no refusal: the run signs in the others.
+    First of all ``atlassian``, the sign-in that ``login`` named before each source signed in
+    apart, unless a source takes that name: refused, naming the sources that sign in. A source
+    taken by default whose location is not set is no refusal: the run signs in the others.
     """
     taken = signing(arguments, settings)
     names = [each.name for each in arguments.sources if each.connector.login is not None]

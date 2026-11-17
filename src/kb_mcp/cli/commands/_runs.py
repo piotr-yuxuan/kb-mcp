@@ -52,7 +52,7 @@ def recorded(
     ``configuration``, resolved by the invocation that starts the run at ``started``, is
     recorded first: in memory alone for a dry run, so that it writes nothing, and for a
     run of stages over the whole alone, index or embed, whose data directory does not
-    exist, so that, as before 062, it makes none, having nothing to read; None resumes
+    exist, so that it makes none, having nothing to read; None resumes
     the run recorded. Either way, the configuration is read back from the record, and
     the run's settings built from it, its secrets alone from this invocation's
     ``loaded``; ``planned`` gives its units' work from them, and each unit's entry is

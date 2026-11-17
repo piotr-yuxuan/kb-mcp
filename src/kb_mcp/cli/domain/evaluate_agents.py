@@ -1,8 +1,8 @@
 """``eval-agents``' figures, and what ``prepare`` says before it asks: standard library only.
 
 A run is bounded: CALLS calls of CALL_S seconds each, at most. What a run costs is
-estimated from 006's budget and plan 019's reckoning, to be set once from the pilot's
-results; ``grade`` fails a set of runs that spends past twice its estimate.
+estimated, to be set once from the pilot's results; ``grade`` fails a set of runs that
+spends past twice its estimate.
 """
 
 from __future__ import annotations
