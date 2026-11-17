@@ -196,18 +196,29 @@ def resume_refused(
 
 
 def resume_said(
-    configuration: Configuration, units: Sequence[Unit], last: Mapping[Unit, Ending]
+    configuration: Configuration,
+    units: Sequence[Unit],
+    last: Mapping[Unit, Ending],
+    refused: Mapping[str, str],
 ) -> str:
     """Say what a resume of a run will do: whose run it is, its units done, those it runs.
 
-    Each unit that it runs with its last ending, or ``none yet``.
+    Each unit that it runs with its last ending, or ``none yet``; then each fetch that it
+    runs that will not run, as ``refused`` says why by its source, by the settings that
+    the run recorded.
     """
     chosen = attempted(units, last)
     done = [unit.name for unit in units if unit not in chosen]
     runs = [f"{unit.name} ({last.get(unit, 'none yet')})" for unit in units if unit in chosen]
+    unrun = [
+        f"  {unit.name}: will not run, by the settings that the run recorded:"
+        f" {refused[unit.source]}\n"
+        for unit in units
+        if unit in chosen and unit.stage == FETCH and unit.source in refused
+    ]
     return (
         f"refresh --resume {configuration.run}: the run of {configuration.command}, started"
         f" {configuration.started.isoformat()}\n"
         f"  done: {', '.join(done) or 'none'}\n"
-        f"  to run: {', '.join(runs) or 'none'}\n"
+        f"  to run: {', '.join(runs) or 'none'}\n" + "".join(unrun)
     )

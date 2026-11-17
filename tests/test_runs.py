@@ -482,6 +482,46 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
     assert (home / "data" / "docs" / "worklog").is_dir()
 
 
+@pytest.mark.usefixtures("site")
+def test_a_resume_runs_a_fetch_failed_by_its_settings_by_those_that_the_run_recorded(
+    home: Path, endpoint: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070 on plan 062's run from its record: a fix to the settings file is a new run's.
+
+    A refresh with Jira's site unset, then the site set in the settings file: the resume
+    says before it asks that Jira's fetch will not run, by the settings that the run
+    recorded, and why; it runs that fetch again, which fails again, Jira's prepare not
+    run, then index and embed: exit 1. A new refresh of Jira reads the site and fetches.
+    """
+    options = given(home, endpoint)
+    config = home / "config.toml"
+    sited = config.read_text("utf-8")
+    config.write_text(sited.replace(f'["PRB"]\nsite = "{SITE}"\n', '["PRB"]\n'), "utf-8")
+    reason = "sources.jira.site: not set; add it to the settings"
+    status, first = refreshed(capsys, *options)
+    assert status == ExitStatus.FAILED
+    config.write_text(sited, "utf-8")
+    status = main(["refresh", "--yes", "--format", "json", "--resume", first["run"], *options])
+    out, err = capsys.readouterr()
+    assert status == ExitStatus.FAILED
+    assert f"  fetch jira: will not run, by the settings that the run recorded: {reason}\n" in err
+    units = {(each["stage"], each["source"]): each for each in json.loads(out)["units"]}
+    earlier = {each["invocation"] for each in first["units"]}
+    again = {
+        unit: each["ending"] for unit, each in units.items() if each["invocation"] not in earlier
+    }
+    assert again == {
+        ("fetch", "jira"): "failed",
+        ("prepare", "jira"): "not run",
+        ("index", None): "done",
+        ("embed", None): "done",
+    }
+    assert units["fetch", "jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    status, fresh = refreshed(capsys, *options, "jira")
+    assert status == ExitStatus.OK
+    assert {each["ending"] for each in fresh["units"]} == {"done"}
+
+
 def test_a_resume_after_an_interruption_runs_only_the_units_not_done(
     home: Path,
     site: FakeSite,
