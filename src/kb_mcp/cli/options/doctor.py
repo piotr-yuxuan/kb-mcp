@@ -31,15 +31,8 @@ def checked(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tu
 
 
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse what a sign-in to check cannot run with, by its connector's ``refused``: the first.
-
-    Asked with none of its options given.
-    """
-    faults = (
-        each.connector.refused(each, dict.fromkeys(each.connector.flags), settings)
-        for each in checked(arguments, settings)
-        if each.connector.refused is not None
-    )
+    """Refuse what a sign-in to check cannot run with, by its source's settings: the first."""
+    faults = (each.refusal(settings) for each in checked(arguments, settings))
     return next((fault for fault in faults if fault is not None), None)
 
 

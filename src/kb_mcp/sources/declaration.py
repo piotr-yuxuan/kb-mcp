@@ -4,8 +4,10 @@ Standard library alone, since ``--help`` imports every declaration (contract G),
 classes are dataclasses, as ``Command`` is. A connector names its table by module path,
 ``module:name``, which the entry loads once the arguments are parsed; its fetcher and
 preparers, each a module that the run using it loads, a ``Fetcher`` or a ``Preparer`` of
-``sources.stages``; and its sign-in's run and checks alike. Its light checks, which
-``fetch`` asks before anything is asked of the user, are functions that it holds.
+``sources.stages``; and its sign-in's run and checks alike. Its light checks are
+functions that it holds, asked before anything is asked of the user: of a source's
+settings, which fail that source's unit of a fetch alone, or refuse a run that names it;
+and of its options, which refuse the run.
 """
 
 from __future__ import annotations
@@ -22,11 +24,14 @@ if TYPE_CHECKING:
 # How a fetch enumerates the documents of a scope: listed whole, searched by update time,
 # or read whole, in place.
 type Enumeration = Literal["listed", "searched", "in place"]
-# A connector's light checks, each a pure function of the source that it is asked of, of
-# its options' values, by flag, None when not given, and of every setting's value, by its
-# path joined by dots: why the source's run cannot go on, or None when it can;
-type Refused = Callable[[Source, Mapping[str, object], Mapping[str, object]], str | None]
-# what its run does not apply of the settings given, by setting, and why;
+# A connector's light checks, each a pure function: of the source that it is asked of and
+# of every setting's value, by its path joined by dots, why the source's settings let no
+# run of it go on, or None when they do;
+type Refused = Callable[[Source, Mapping[str, object]], str | None]
+# of its options' values, by flag, None when not given, why no run can go on with them;
+type OptionsRefused = Callable[[Mapping[str, object]], str | None]
+# and of the source, its options' values and every setting's value, what its run does not
+# apply of the settings given, by setting, and why;
 type Unapplied = Callable[[Source, Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
 # and the lines that a run's echo says of it.
 type Described = Callable[[Source, Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
@@ -123,7 +128,7 @@ class Connector:
     checks (``checks``): a function of the settings and of the sources configured, which
     gives its checks, each a ``Check``. A path that does not load raises as it does, as a
     table's: a programmer's error, as no setting can cause it. ``refused``,
-    ``unapplied`` and ``described``, if any, are its light checks.
+    ``options_refused``, ``unapplied`` and ``described``, if any, are its light checks.
     """
 
     name: str
@@ -138,6 +143,7 @@ class Connector:
     checks: str | None = None
     options: tuple[Option, ...] = ()
     refused: Refused | None = None
+    options_refused: OptionsRefused | None = None
     unapplied: Unapplied | None = None
     described: Described | None = None
 
@@ -187,6 +193,14 @@ class Source:
         """
         keyed = any(each.key is not None for each in self.connector.scope_types)
         return self.connector.fetcher is not None and keyed
+
+    def refusal(self, settings: Mapping[str, object]) -> str | None:
+        """Say why its settings let no run of it go on, by its connector's ``refused``, if any.
+
+        ``settings`` holds every setting's value by its path.
+        """
+        refused = self.connector.refused
+        return None if refused is None else refused(self, settings)
 
     def prepared_by_default(self, settings: Mapping[str, object]) -> bool:
         """Say whether it holds documents to prepare: it keeps scopes, or is configured.

@@ -1552,7 +1552,7 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
     err = capsys.readouterr().err
     assert "  jira: a declaration's line\n" in err
     assert "(not applied: a declaration's reason)" in err
-    refusing = replace(JIRA, refused=lambda _source, _options, _settings: "a declaration's refusal")
+    refusing = replace(JIRA, refused=lambda _source, _settings: "a declaration's refusal")
     registry = sourced(CONFLUENCE, refusing, WORKLOG)
     assert main(given, registry) == ExitStatus.REFUSED
     assert "a declaration's refusal" in capsys.readouterr().err

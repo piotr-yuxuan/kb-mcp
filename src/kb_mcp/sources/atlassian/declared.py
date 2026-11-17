@@ -113,20 +113,12 @@ def period_refused(options: Mapping[str, object]) -> str | None:
     return None
 
 
-def refused(
-    source: Source, options: Mapping[str, object], settings: Mapping[str, object]
-) -> str | None:
-    """Refuse what no fetch of a source's site can run with: the first found.
+def refused(source: Source, settings: Mapping[str, object]) -> str | None:
+    """Refuse the settings that no fetch of a source's site runs with: the first found.
 
-    No site; an API token without its email; the period's options, as
-    ``period_refused`` says.
+    No site; an API token without its email.
     """
-    faults = (
-        site_not_set(source, settings),
-        token_without_email(source, settings),
-        period_refused(options),
-    )
-    return next((fault for fault in faults if fault is not None), None)
+    return site_not_set(source, settings) or token_without_email(source, settings)
 
 
 def described(
@@ -158,6 +150,7 @@ CONFLUENCE = Connector(
     checks=CHECKS,
     options=PERIOD,
     refused=refused,
+    options_refused=period_refused,
     unapplied=email_without_token,
     described=described,
 )
@@ -174,6 +167,7 @@ JIRA = Connector(
     checks=CHECKS,
     options=PERIOD,
     refused=refused,
+    options_refused=period_refused,
     unapplied=email_without_token,
     described=described,
 )

@@ -22,8 +22,8 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     An option of a setting of several sources given when the sources named leave more
     than one of them, as ``Command.narrowed`` says, naming them; a source named but not
     configured, or none left; then what each source taken refuses, by its connector's
-    ``refused``, such as an option that does not read, or a site not set: no source's
-    options are read unless it is taken.
+    light checks: of its settings, such as a site not set, then of its options, such as
+    one that does not read. No source's options are read unless it is taken.
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     faults = [
@@ -33,12 +33,11 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
             if len(left) > 1 and getattr(arguments, flag) is not None
         ),
         choice_refused(arguments, settings),
+        *(declared.refusal(settings) for declared in taken),
         *(
-            declared.connector.refused(
-                declared, given(arguments, declared.connector.flags), settings
-            )
+            declared.connector.options_refused(given(arguments, declared.connector.flags))
             for declared in taken
-            if declared.connector.refused is not None
+            if declared.connector.options_refused is not None
         ),
     ]
     return next((fault for fault in faults if fault is not None), None)
