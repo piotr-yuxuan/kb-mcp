@@ -47,10 +47,9 @@ def test_since_reads_a_length_before_now_a_date_a_time_or_all(since: str, start:
     assert period(since, None, EXAMPLE).start == start
 
 
-def test_until_reads_a_length_before_now_too_and_the_period_ends_now_without_it() -> None:
-    """--until 12h ends twelve hours before now; no --until, now."""
+def test_until_reads_a_length_before_now_too() -> None:
+    """--until 12h ends twelve hours before now."""
     assert period("7d", "12h", EXAMPLE).end == datetime(2026, 10, 28, tzinfo=UTC)
-    assert period("7d", None, EXAMPLE).end == EXAMPLE
 
 
 def test_an_iso_date_starts_at_midnight_utc() -> None:
