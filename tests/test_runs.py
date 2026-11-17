@@ -450,7 +450,8 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
     """Plan 070, by the user: "We should be tolerant", for a refresh too.
 
     Jira without its site, Confluence and the work log configured: the echo says that
-    Jira will not be fetched nor prepared, and why; Confluence and the work log are
+    Jira will not be fetched nor prepared, and why, and of Jira's prepare that alone;
+    Confluence and the work log are
     fetched and prepared, then index and embed run; Jira's fetch fails, naming the
     setting, as the record holds it, and its prepare is not run: exit 1. Named, Jira
     refuses the refresh, exit 2, before any run is recorded.
@@ -479,7 +480,11 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
     (jira,) = [each for each in entries if (each["stage"], each["source"]) == ("fetch", "jira")]
     assert jira["problems"] == [{"where": "jira", "reason": reason}]
     assert f"  fetch: source jira: will not run, {reason}\n" in err
-    assert "  prepare: source jira: will not run, as its fetch will not\n" in err
+    assert [line for line in err.splitlines() if line.startswith("  prepare: ")] == [
+        "  prepare: source confluence: all that its store holds",
+        "  prepare: source jira: will not run, as its fetch will not",
+        "  prepare: source worklog: all that its store holds",
+    ]
     assert (home / "data" / "docs" / "worklog").is_dir()
     runs = sorted((home / "data" / "runs").iterdir())
     assert main(["refresh", "--yes", *options, "jira"]) == ExitStatus.REFUSED

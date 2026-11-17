@@ -62,16 +62,14 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work.
 
-    A source whose fetch will not run, as ``fetch_described`` says, is not prepared either.
+    A source whose fetch will not run, as ``fetch_described`` says, is not prepared either,
+    and its prepare's line says that alone.
     """
     taken, _ = chosen_to_fetch(arguments, settings)
+    unfetched = refusals(taken, settings)
     return (
         *(f"fetch: {line}" for line in fetch_described(arguments, settings)),
-        *(f"prepare: {line}" for line in prepare_described(arguments, settings)),
-        *(
-            f"prepare: source {name}: will not run, as its fetch will not"
-            for name in refusals(taken, settings)
-        ),
+        *(f"prepare: {line}" for line in prepare_described(arguments, settings, unfetched)),
         "index: the words of the mirror's files that changed, whichever source wrote them",
         "embed: the vectors of the chunks that the index lacks, then the vector cache pruned",
     )

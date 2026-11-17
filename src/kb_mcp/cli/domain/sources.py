@@ -21,7 +21,7 @@ from kb_mcp.cli.domain.command import PREPARE
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Collection, Iterable, Mapping
     from datetime import datetime
 
     from kb_mcp.sources.declaration import Option, Source
@@ -169,19 +169,29 @@ def fetch_described(
 
 
 def prepare_described(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
+    arguments: argparse.Namespace,
+    settings: Mapping[str, object],
+    unfetched: Collection[str] = (),
 ) -> tuple[str, ...]:
     """Say each source taken, each left out and why, and each one's location not set.
 
     A source read in place is said by its settings; one that keeps a store gives all that
     its store holds, whatever its settings cover. Without its location, such as its site
     (``Source.unlocated``), a prepare still runs, its documents without an address there.
+    A source ``unfetched``, whose fetch will not run before, as in a refresh, is said
+    alone not to run.
     """
     taken, left = chosen_to_prepare(arguments, settings)
-    unset = [declared for declared in taken if declared.unlocated(settings) is not None]
+    unset = [
+        declared
+        for declared in taken
+        if declared.name not in unfetched and declared.unlocated(settings) is not None
+    ]
     return (
         *(
-            source_line(declared, settings)
+            f"source {declared.name}: will not run, as its fetch will not"
+            if declared.name in unfetched
+            else source_line(declared, settings)
             if declared.connector.fetcher is None
             else f"source {declared.name}: all that its store holds"
             for declared in taken
