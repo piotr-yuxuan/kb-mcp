@@ -77,7 +77,7 @@ def moment(text: str, now: datetime, option: str) -> datetime:
 
 
 def period_rule(*, since: bool) -> str:
-    """Say in words where a run's windows start, with --since given or not.
+    """Say in words where a fetch's windows start, with --since given or not.
 
     Said before a run, which reads no store yet: the rule, not each scope's window.
     """

@@ -362,7 +362,7 @@ class Fetching:
         the adapter refuses among them. The listing is stored once its documents are
         fetched, with the joined that this fetch did not store whole, which the next takes. An
         entry that the adapter refuses has no update time: it leaves the space's coverage
-        inexact, so that the next run asks for its whole period again. The task
+        inexact, so that the next fetch asks for its whole period again. The task
         ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
         documents. Return whether the space was listed whole. All is the span
         ``fetch.space``, an error when the space could not be listed.
@@ -641,7 +641,7 @@ class Fetching:
         read's issues and those that its searches found since, and this one does not
         name is tracked as absent; a project that this fetch does not read whole
         keeps its tombstones as they are, so that what is absent already is still probed
-        at each run. The task ``listing`` reports the pages of the whole read.
+        at each fetch. The task ``listing`` reports the pages of the whole read.
         """
         key, issues = scope.key, None
         if scope in self.due:
@@ -784,7 +784,7 @@ class Fetching:
         """Download a snapshot's files, then store it with their digests; say if it is whole.
 
         A snapshot that its adapter refuses is stored all the same, without files: raw
-        first, so that a fixed adapter reads it, and a later run downloads its files.
+        first, so that a fixed adapter reads it, and a later fetch downloads its files.
         Read, its document's title goes on the current span, and in ``fetch.document``
         at DEBUG; refused, it is a warning, without the id that it would have given. It is
         whole when read, with every file it keeps.
@@ -988,7 +988,7 @@ def plan_fetch(
     except SignInNeededError:
         return Outcome(ending="sign in again", counts=counts)
     with client:
-        run = Fetching(
+        fetching = Fetching(
             SiteClient(client, sleep=sleep),
             store,
             purview.max_file_bytes,
@@ -998,13 +998,13 @@ def plan_fetch(
             plan=True,
         )
         try:
-            run.run(purview.scopes)
+            fetching.run(purview.scopes)
         except SignInNeededError:
-            return Outcome(ending="sign in again", counts=counts, problems=tuple(run.problems))
+            return Outcome(ending="sign in again", counts=counts, problems=tuple(fetching.problems))
         except TooManyFailuresError:
             counts.add("runs: stopped, too many failures in a row")
-            return Outcome(ending="failed", counts=counts, problems=tuple(run.problems))
-    return Outcome.of(counts, run.problems, otherwise="not run")
+            return Outcome(ending="failed", counts=counts, problems=tuple(fetching.problems))
+    return Outcome.of(counts, fetching.problems, otherwise="not run")
 
 
 def run_fetch(
@@ -1039,7 +1039,7 @@ def run_fetch(
     with store.writing():
         try:
             with signing.client() as client:
-                run = Fetching(
+                fetching = Fetching(
                     SiteClient(client, sleep=sleep),
                     store,
                     purview.max_file_bytes,
@@ -1056,9 +1056,9 @@ def run_fetch(
                         if site == signing.site and name != store.source
                     ),
                 )
-                problems = run.problems
+                problems = fetching.problems
                 try:
-                    run.run(purview.scopes)
+                    fetching.run(purview.scopes)
                     found: Ending = "failed" if problems else "done"
                 except SignInNeededError:
                     found = "sign in again"
@@ -1068,15 +1068,15 @@ def run_fetch(
                 finally:
                     signing.keep(client)
                     log = structlog.get_logger()
-                    for scope, fetched in run.covered.items():
-                        failed = run.first_failed.get(scope)
+                    for scope, fetched in fetching.covered.items():
+                        failed = fetching.first_failed.get(scope)
                         coverage, outcome = coverage.extended(scope, fetched, failed)
                         extensions[scope] = outcome
                         reason = (
                             {"reason": "apart from what is covered"} if outcome == "held" else {}
                         )
                         log.info("fetch.coverage", scope=str(scope), outcome=outcome, **reason)
-                    for scope, why in run.held.items():
+                    for scope, why in fetching.held.items():
                         extensions[scope] = "held"
                         log.info("fetch.coverage", scope=str(scope), outcome="held", reason=why)
                     # Each scope read whole was read whole as the fetch started.
@@ -1084,7 +1084,7 @@ def run_fetch(
                         replace(
                             coverage,
                             whole_read_at=coverage.whole_read_at
-                            | dict.fromkeys(run.read_whole, started),
+                            | dict.fromkeys(fetching.read_whole, started),
                         )
                     )
                 ending = found  # once the coverage is stored, else an error stopped it
