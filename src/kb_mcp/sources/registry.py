@@ -1,11 +1,7 @@
-"""The registry: every connector that the program knows, its sources, and their rules.
+"""The registry: every connector, a source of each, and the rules of any registry.
 
-A new connector is its package and one line here; each gives one source, of its own
-name, which always exists. The entry, ``kb_mcp.cli.main.main``, takes ``SOURCES`` unless
-a test gives it a registry of its own, adds the sources that the settings name
-(``configured``), and ``refuse`` judges them; ``tables`` loads the tables that their
-connectors name, once the arguments are parsed. Standard library alone, as the
-declarations are: ``--help`` imports it, and imports no table.
+A new connector is its package and one line here; the source that each gives, of its own
+name, always exists. Standard library alone: ``--help`` imports it, and imports no table.
 """
 
 from __future__ import annotations

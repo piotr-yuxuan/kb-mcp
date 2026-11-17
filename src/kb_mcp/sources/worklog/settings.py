@@ -1,7 +1,4 @@
-"""The work log's table of settings, ``[sources.worklog]``.
-
-Its declaration names it; the entry composes it into the settings' model.
-"""
+"""The work log's table of settings, ``[sources.worklog]``."""
 
 from __future__ import annotations
 
