@@ -71,8 +71,8 @@ def recorded(
     passes: as of the entries last handed to its record, those read before its units when
     none was, whether or not their write succeeded, so that no record read hides the
     error in flight; unless a resume could do no more than a new run (``resumable``), as
-    each unit not done is one that its settings refuse (``Planned.refused``), or after
-    one.
+    each unit not done is one that its settings refuse whatever the secrets
+    (``Planned.refused``), or after one.
     """
     unrecorded = configuration is not None and (
         configuration.dry_run

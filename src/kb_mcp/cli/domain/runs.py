@@ -167,8 +167,9 @@ def resumable(entries: Iterable[Recorded], settled: Collection[Unit]) -> bool:
     """Say whether a resume of a run could do what a new run would not, by its last entries.
 
     So when some unit last ended other than done, but each that the settings recorded
-    refuse (``settled``), which a resume, run by them, refuses again, and each not run
-    as it follows one of those.
+    refuse whatever the secrets (``settled``), which a resume, run by them with the
+    secrets of its own environment, refuses again, and each not run as it follows one of
+    those.
     """
     found = keyed(entries)
     units = tuple(found)

@@ -115,10 +115,11 @@ A resume runs by the settings that the run recorded, not by the settings file: a
 such as a site set for a source whose fetch failed without it, is seen by a new run alone,
 such as `kb-mcp refresh jira`. A resume of a source still refused by the settings recorded
 says so before it asks, `fetch jira: will not run, by the settings that the run recorded`,
-and why, then `prepare jira: will not run, as its fetch will not`; only a secret, such as
-an API token, which it takes from its environment again, can change that. So a run whose
-units not done are only those that its settings refused, and those after them, offers no
-resume.
+and why, then `prepare jira: will not run, as its fetch will not`. Only a secret, which it
+takes from its environment again, can change that: Jira with an API token and no email is
+refused, and a resume without the token signs in by the browser's session. So a run offers
+no resume when its units not done are only those that its settings refuse whatever the
+secrets, such as a site not set, and those after them.
 
 It finds the run under the data directory that its settings, or `--data-dir`, name, so give
 the same `--config` or `--data-dir` as the run did. Anything that would change the

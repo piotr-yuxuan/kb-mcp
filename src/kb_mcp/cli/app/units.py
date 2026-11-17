@@ -55,10 +55,11 @@ class SourcesRefusedError(ValueError):
 class Planned(Record):
     """A unit as an invocation runs it: the unit, its work, its refusal and preflight, if any.
 
-    ``refused`` is what the run's settings, as recorded, refuse of the unit, such as a
-    site not set, which every invocation of the run would refuse alike; ``preflight``
-    says what the unit cannot go on with, read from disk, before its work. Either fails
-    the unit alone.
+    ``refused`` is what the run's settings, as recorded, refuse of the unit whatever the
+    secrets, such as a site not set, which every invocation of the run would refuse
+    alike, as each takes its secrets from its own environment; ``preflight`` says what
+    the unit cannot go on with in this invocation, before its work, such as what its
+    secrets refuse or what it reads from disk. Either fails the unit alone.
     """
 
     unit: Unit

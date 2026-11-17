@@ -44,6 +44,7 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.prepare.app import preparer as atlassian_preparer
@@ -536,6 +537,36 @@ def test_a_refresh_refused_a_source_by_its_settings_offers_a_resume_for_the_othe
     assert (endings["fetch", "confluence"], endings["fetch", "jira"]) == ("failed", "failed")
     (resumable,) = logged_as(home, "run.resumable")
     assert resumable["resume"] == f"kb-mcp refresh --resume {document['run']}"
+
+
+@pytest.mark.usefixtures("site")
+def test_a_refresh_refused_a_source_by_a_secret_alone_offers_a_resume_that_runs_it(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 2: a refusal that a secret alone makes is not settled.
+
+    Jira with an API token and no email: its fetch fails, naming the email setting, exit 1.
+    A resume takes its secrets from its own environment, so it is offered; run without
+    the token, it signs Jira in by the browser's session and fetches it: exit 0. A site
+    not set, which no secret lifts, is offered none (as
+    test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone checks).
+    """
+    monkeypatch.delenv("KB_MCP_SOURCES__JIRA__EMAIL")
+    options = given(home, endpoint)
+    reason = "sources.jira.email: not set; an API token signs in with its account's email"
+    status, first = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.FAILED
+    units = {(each["stage"], each["source"]): each for each in first["units"]}
+    assert units["fetch", "jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    (resumable,) = logged_as(home, "run.resumable")
+    assert resumable["resume"] == f"kb-mcp refresh --resume {first['run']}"
+    monkeypatch.delenv("KB_MCP_SOURCES__JIRA__API_TOKEN")
+    session = folder_of((home / "data").resolve() / "session", SITE) / COOKIES
+    write_cookies(session, [{"name": "s", "value": "v", "domain": "x"}])
+    status = main(["refresh", "--yes", "--format", "json", "--resume", first["run"], *options])
+    resumed = json.loads(capsys.readouterr().out)
+    assert status == ExitStatus.OK
+    assert {each["ending"] for each in resumed["units"]} == {"done"}
 
 
 @pytest.mark.usefixtures("site")

@@ -283,7 +283,8 @@ past a sign-in that does not complete.
   the period, is fetched; a period option that does not read is still refused before
   the run, as no resume could fix an option that its run recorded. A source refused by
   its settings fails again on a resume, which runs by the settings recorded: a fix to the
-  settings file is a new run's. A value of a source's setting that does not load, such
+  settings file is a new run's; only a secret, which a resume takes from its environment
+  again, can lift such a refusal, as for an API token without its email. A value of a source's setting that does not load, such
   as a site over http, still refuses every command, as the settings load whole.
 - **Rejected.** Plan 030's refusal of the whole run before its first row, whichever
   source is at fault, which wrote nothing when one source could not start.
