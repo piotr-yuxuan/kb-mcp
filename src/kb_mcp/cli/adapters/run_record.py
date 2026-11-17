@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from kb_mcp.cli.domain.runs import Configuration, Outcomes, Recorded
 from kb_mcp.config.domain.settings import SettingsError, with_secrets
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import refused_fields
 
 if TYPE_CHECKING:
@@ -92,6 +93,19 @@ class RunRecord:
             return with_secrets(configuration.settings, secrets)
         except SettingsError as error:
             message = f"{self.where(CONFIGURATION)}: settings: {error}"
+            raise RepresentationError(message) from None
+
+    @contextmanager
+    def checking(self) -> Iterator[None]:
+        """Name its configuration's file in what a check of it refuses within.
+
+        A RefusedError raised within, naming a field of the configuration, such as a source
+        no longer configured, is raised as RepresentationError naming the file and field.
+        """
+        try:
+            yield
+        except RefusedError as error:
+            message = f"{self.where(CONFIGURATION)}: {error}"
             raise RepresentationError(message) from None
 
     def where(self, name: str) -> str:

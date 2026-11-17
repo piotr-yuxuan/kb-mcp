@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.adapters.run_record import CONFIGURATION, RunRecord
+from kb_mcp.cli.adapters.run_record import RunRecord
 from kb_mcp.cli.domain.command import FETCH
 from kb_mcp.cli.domain.runs import keyed, resume_refused, resume_said, units_of
 from kb_mcp.cli.domain.sources import fetch_flags
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
+    from kb_mcp.cli.domain.runs import Configuration
     from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.sources.declaration import Source
 
@@ -25,42 +27,51 @@ class Resumption(Record):
     said: str = ""
 
 
-def resumption(
-    run: str, loaded: Loaded, sources: Sequence[Source], *, remote_allowed: bool
-) -> Resumption:
-    """Read a run's record, under the data directory that ``loaded`` names, to resume it.
+def require_configured(configuration: Configuration, configured: Mapping[str, Source]) -> None:
+    """Refuse a run's configuration that the sources ``configured`` no longer run, by its field.
 
-    It may not be resumed when no record of it is there, its record does not read, a
-    source of its units is no longer among ``sources``, its fetch lacks an option that a
-    source of it declares, its settings no longer build with the secrets that ``loaded``
-    holds, or ``resume_refused`` says so; each refusal names the run, and the file at
-    fault. Else the resume says what it will do, as ``resume_said`` gives it.
+    Raises RefusedError for a source of its units no longer among them, by its name, and
+    for an option that a source of its fetch declares, which no setting holds, missing
+    from its fetch's options, which its fetch would read as not given.
     """
-    runs = loaded.settings.runs
-    record = RunRecord(runs / run)
-    try:
-        configuration = record.read_configuration()
-        last = keyed(record.read_outcomes())
-    except FileNotFoundError:
-        return Resumption(refusal=f"run {run}: no record under {runs}")
-    except RepresentationError as error:
-        return Resumption(refusal=f"run {run}: {error}")
-    configured = {each.name: each for each in sources}
     gone = [
         name for names in configuration.sources.values() for name in names if name not in configured
     ]
     if gone:
-        return Resumption(refusal=f"run {run}: source {gone[0]}: no longer configured")
+        message = f"source {gone[0]}: no longer configured"
+        raise RefusedError(message)
     fetched = configuration.options.get(FETCH, {})
     declared = fetch_flags(configured[name] for name in configuration.sources.get(FETCH, ()))
     missing = [
         flag for flag, option in declared.items() if option.setting is None and flag not in fetched
     ]
     if missing:
-        where = record.where(CONFIGURATION)
-        return Resumption(refusal=f"run {run}: {where}: options.fetch.{missing[0]}: missing")
+        message = f"options.fetch.{missing[0]}: missing"
+        raise RefusedError(message)
+
+
+def resumption(
+    run: str, loaded: Loaded, sources: Sequence[Source], *, remote_allowed: bool
+) -> Resumption:
+    """Read a run's record, under the data directory that ``loaded`` names, to resume it.
+
+    It may not be resumed when no record of it is there, its record does not read, its
+    configuration is one that ``sources`` no longer run (``require_configured``), its
+    settings no longer build with the secrets that ``loaded`` holds, or
+    ``resume_refused`` says so; each refusal names the run, and the file at fault. Else
+    the resume says what it will do, as ``resume_said`` gives it.
+    """
+    runs = loaded.settings.runs
+    record = RunRecord(runs / run)
+    configured = {each.name: each for each in sources}
     try:
+        configuration = record.read_configuration()
+        last = keyed(record.read_outcomes())
+        with record.checking():
+            require_configured(configuration, configured)
         settings = record.settings(configuration, loaded.settings)
+    except FileNotFoundError:
+        return Resumption(refusal=f"run {run}: no record under {runs}")
     except RepresentationError as error:
         return Resumption(refusal=f"run {run}: {error}")
     units = units_of(

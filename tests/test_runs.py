@@ -869,7 +869,8 @@ def test_a_resume_is_refused_for_no_record_another_data_directory_or_no_consent(
     held["sources"]["fetch"] = ["clientjira", "worklog"]
     configured.write_text(json.dumps(held), "utf-8")
     assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
-    assert f"run {run}: source clientjira: no longer configured" in capsys.readouterr().err
+    said = f"run {run}: runs/{run}/configuration.json: source clientjira: no longer configured"
+    assert said in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -947,8 +948,9 @@ def test_a_record_changed_once_read_and_before_the_run_is_held_refuses_it(
 ) -> None:
     """Another program may change the record while the resume asks: refused, exit 2, by it.
 
-    Once the entry has read the record, it is made to refuse a setting, then removed: the
-    run, once it holds the record, reads it again and refuses it, naming it, no unit run.
+    Once the entry has read the record, it is made to refuse a setting, to name a source
+    no longer configured, or to lack an option of the fetch, then removed: the run, once
+    it holds the record, reads it again and refuses it, naming it, no unit run.
     """
     options = given(home, endpoint)
     with monkeypatch.context() as patch:
@@ -964,26 +966,40 @@ def test_a_record_changed_once_read_and_before_the_run_is_held_refuses_it(
     entries = (folder / "outcomes.json").read_bytes()
     read = resumption.resumption
 
-    def changing(*arguments: object, **named: object) -> object:
-        found = read(*arguments, **named)  # type: ignore[arg-type]
-        changed = {**held, "settings": {**held["settings"], "data_dir": 5}}
-        (folder / "configuration.json").write_text(json.dumps(changed), "utf-8")
-        return found
+    def changing(changed: dict[str, object]) -> Callable[..., object]:
+        def resumed(*arguments: object, **named: object) -> object:
+            found = read(*arguments, **named)  # type: ignore[arg-type]
+            (folder / "configuration.json").write_text(json.dumps(changed), "utf-8")
+            return found
 
-    monkeypatch.setattr("kb_mcp.cli.commands._shared.resumption", changing)
-    assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
-    said = f"run {run}: runs/{run}/configuration.json: settings: data_dir: "
-    assert said in capsys.readouterr().err
-    (refused,) = logged_as(home, "run.refused")
-    assert refused["reason"].startswith(said)
-    assert (folder / "outcomes.json").read_bytes() == entries
+        return resumed
+
+    fetched = {flag: value for flag, value in held["options"]["fetch"].items() if flag != "--until"}
+    for changed, said in [
+        ({**held, "settings": {**held["settings"], "data_dir": 5}}, "settings: data_dir: "),
+        (
+            {**held, "sources": {**held["sources"], "fetch": ["clientjira", "worklog"]}},
+            "source clientjira: no longer configured",
+        ),
+        (
+            {**held, "options": {**held["options"], "fetch": fetched}},
+            "options.fetch.--until: missing",
+        ),
+    ]:
+        monkeypatch.setattr("kb_mcp.cli.commands._shared.resumption", changing(changed))
+        assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
+        whole = f"run {run}: runs/{run}/configuration.json: {said}"
+        assert whole in capsys.readouterr().err
+        assert logged_as(home, "run.refused")[-1]["reason"].startswith(whole)
+        assert (folder / "outcomes.json").read_bytes() == entries
+        (folder / "configuration.json").write_text(json.dumps(held), "utf-8")
+    assert logged_as(home, "run.failed") == []
 
     def removing(*arguments: object, **named: object) -> object:
         found = read(*arguments, **named)  # type: ignore[arg-type]
         (folder / "configuration.json").unlink()
         return found
 
-    (folder / "configuration.json").write_text(json.dumps(held), "utf-8")
     monkeypatch.setattr("kb_mcp.cli.commands._shared.resumption", removing)
     assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.REFUSED
     assert str(folder / "configuration.json") in capsys.readouterr().err

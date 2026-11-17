@@ -10,6 +10,7 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from kb_mcp.cli.app.resumption import require_configured
 from kb_mcp.cli.app.sources import source_planned
 from kb_mcp.cli.commands._runs import whole_planned
 from kb_mcp.cli.domain.command import FETCH
@@ -32,9 +33,12 @@ def planned(
     A unit per source is a run of its source, of those that the settings configure, with
     its table, its options as the configuration records them, by flag, in a fetch, and
     the configuration's dry run; a unit over the whole, as ``whole_planned`` says. Raises
-    ``SourcesRefusedError`` for a fetcher or a preparer that does not load.
+    RefusedError, as ``require_configured`` does, for a configuration that the sources
+    configured no longer run, and ``SourcesRefusedError`` for a fetcher or a preparer
+    that does not load.
     """
     by_name = {each.name: each for each in arguments.sources}
+    require_configured(configuration, by_name)
     parts = {name: len(each.connector.preparers) for name, each in by_name.items()}
     options = configuration.options.get(FETCH, {})
     units: list[Planned] = []

@@ -59,11 +59,13 @@ def recorded(
     written as it ends (``run_units``), this invocation's started at ``started``.
 
     Another invocation holding the run refuses this one, exit 2, an error ``run.busy``; a
-    record gone or that no longer reads once the run is held, as another program may have
-    changed it since the entry read it, refuses it alike, ``run.refused``, naming the
-    record; and a fetcher or a preparer that does not load, ``fetch.refused`` or
-    ``prepare.refused``, without a source: before a new run's record is written, as
-    ``planned`` is first asked of the configuration resolved, then of the one read back.
+    record gone, that no longer reads, or whose configuration ``planned`` refuses
+    (RefusedError, by its field, such as a source no longer configured) once the run is
+    held, as another program may have changed it since the entry read it, refuses it
+    alike, ``run.refused``, naming the record; and a fetcher or a preparer that does not
+    load, ``fetch.refused`` or ``prepare.refused``, without a source: before a new run's
+    record is written, as ``planned`` is first asked of the configuration resolved, then
+    of the one read back.
     A run recorded whose units did not all last end done says, a warning
     ``run.resumable``, the command that resumes it, even as an error that no unit caught
     passes: as of the entries last handed to its record, those read before its units when
@@ -83,7 +85,8 @@ def recorded(
                 if configuration is not None:
                     record.write_configuration(configuration)
                 fixed = record.read_configuration()
-                units = planned(fixed, record.settings(fixed, loaded.settings))
+                with record.checking():
+                    units = planned(fixed, record.settings(fixed, loaded.settings))
                 last = record.read_outcomes()
             except (FileNotFoundError, RepresentationError) as error:
                 structlog.get_logger().error("run.refused", reason=f"run {run}: {error}")
