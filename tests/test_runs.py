@@ -799,8 +799,9 @@ def test_a_resume_says_what_it_will_do_and_what_this_invocation_does_of_telemetr
     """Q7: telemetry is this invocation's, so its echo says it on, though the settings are not.
 
     In place of the settings, which are the run's as recorded, it says what the resume
-    will do; then, as any echo, telemetry on and where, and the command to copy, which
-    resumes the run again, without an option that a resume refuses. Nothing listens there.
+    will do; then, as any echo, telemetry on and where, each value ignored, such as a
+    variable that names no setting, and the command to copy, which resumes the run again,
+    without an option that a resume refuses. Nothing listens there.
     """
     options = given(home, endpoint)
     with monkeypatch.context() as patch:
@@ -813,12 +814,14 @@ def test_a_resume_says_what_it_will_do_and_what_this_invocation_does_of_telemetr
     with nothing_listening() as url:
         listening = url.removesuffix("/v1")
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", listening)
+        monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJETS", '["X"]')
         assert main(["refresh", "--yes", "--resume", run, *options]) == ExitStatus.OK
     err = capsys.readouterr().err
     assert f"refresh --resume {run}: the run of fetch, started " in err
     assert "  to run: fetch worklog (interrupted)\n" in err
     assert "with these settings" not in err
     assert f"telemetry: on, to {listening} (OTEL_EXPORTER_OTLP_ENDPOINT)\n" in err
+    assert "ignored: KB_MCP_SOURCES__JIRA__PROJETS: names no setting\n" in err
     copied = shlex.split(err[err.index("kb-mcp refresh") :].replace("\\\n", "").split("\n", 1)[0])
     assert copied == ["kb-mcp", "refresh", *options, "--resume", run]
 
