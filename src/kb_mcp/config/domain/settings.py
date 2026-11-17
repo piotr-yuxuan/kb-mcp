@@ -387,7 +387,10 @@ class Settings(BaseSettings):
 
     @property
     def runs(self) -> Path:
-        """The reports of each source's fetch, which hold counts and paths, never content."""
+        """A folder per recorded run: its configuration, its units' last entries, its lock.
+
+        The configuration names the sources, their scopes and their site, as the settings do.
+        """
         return self.data_dir / "runs"
 
     @property
