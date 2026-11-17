@@ -38,7 +38,7 @@ from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Fetching, P
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import FetchWindow, Scope
-from kb_mcp.sources.atlassian.fetch.domain.period import Period, period
+from kb_mcp.sources.atlassian.fetch.domain.period import Period
 from tests.composed import MODEL
 from tests.samples import (
     v1_user,
@@ -49,6 +49,7 @@ from tests.samples import (
     v3_comment,
     v3_issue,
 )
+from tests.test_period import period
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

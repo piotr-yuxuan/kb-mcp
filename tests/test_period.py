@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, PeriodError, period
+from kb_mcp.sources.atlassian.fetch.domain import period as rules
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -17,6 +18,15 @@ PERIOD = "kb_mcp.sources.atlassian.fetch.domain.period"
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 # The moment of plan 034's examples.
 EXAMPLE = datetime(2026, 10, 28, 12, tzinfo=UTC)
+
+
+def period(since: str, until: str | None, now: datetime) -> Period:
+    """Read ``--since`` and ``--until``; without ``--until`` the period ends now.
+
+    The flags are looked up in their module at each call, since a test renames them.
+    """
+    end = now if until is None else rules.moment(until, now, rules.UNTIL_FLAG)
+    return Period(rules.moment(since, now, rules.SINCE_FLAG), end)
 
 
 @pytest.mark.parametrize(
