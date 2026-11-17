@@ -34,8 +34,6 @@ from kb_mcp.observability.adapters.logs import default_log_folder
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-__all__ = ["UnsafeDataDirError", "load_settings"]
-
 
 class UnsafeDataDirError(SettingsError):
     """A data directory, or a log folder, where company data could leave the machine."""

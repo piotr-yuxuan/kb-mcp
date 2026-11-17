@@ -179,14 +179,3 @@ def whole_read_due(coverage: Coverage, scope: Scope, now: datetime) -> bool:
         return False
     last = coverage.whole_read_at.get(scope)
     return last is None or now - last >= every
-
-
-__all__ = [
-    "EPOCH",
-    "Coverage",
-    "CoverageChange",
-    "FetchWindow",
-    "Scope",
-    "fetch_window",
-    "whole_read_due",
-]
