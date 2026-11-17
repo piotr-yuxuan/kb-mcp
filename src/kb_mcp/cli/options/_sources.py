@@ -33,26 +33,26 @@ def source_groups(
     registry's rules do.
     """
     unknown = [
-        f"source {declared.name!r}: scope type {each.name!r}: enumerated {each.enumeration!r}:"
+        f"source {source.name!r}: scope type {each.name!r}: enumerated {each.enumeration!r}:"
         f" not one of {', '.join(READ)}"
-        for declared in sources
-        for each in declared.connector.scope_types
+        for source in sources
+        for each in source.connector.scope_types
         if each.enumeration not in READ
     ]
     if unknown:
         raise ValueError(unknown[0])
     return {
-        declared.name: parser.add_argument_group(
-            declared.name,
-            f"{declared.connector.help}: "
+        source.name: parser.add_argument_group(
+            source.name,
+            f"{source.connector.help}: "
             + "; ".join(
                 READ[each.enumeration].format(each.name)
                 + ("" if each.whole_read_every is None else WHOLE.format(each.whole_read_every))
-                for each in declared.connector.scope_types
+                for each in source.connector.scope_types
             )
             + ".",
         )
-        for declared in sources
+        for source in sources
     }
 
 
@@ -72,7 +72,7 @@ def add_source_options(
     """
     groups = source_groups(parser, sources)
     options = {
-        flag: option for declared in sources for flag, option in declared.connector.flags.items()
+        flag: option for source in sources for flag, option in source.connector.flags.items()
     }
     declaring = {
         flag: [each for each in sources if flag in each.connector.flags] for flag in options
@@ -113,9 +113,9 @@ def choice_refused(arguments: argparse.Namespace, settings: Mapping[str, object]
     """Refuse a source named but not configured, or a run left with none: the first found."""
     taken, left = chosen(arguments, settings)
     faults = [
-        f"{declared.name}: not configured; set {declared.paths[0]}"
-        for declared in arguments.sources
-        if declared.name in arguments.source and left.get(declared.name) == "not configured"
+        f"{source.name}: not configured; set {source.paths[0]}"
+        for source in arguments.sources
+        if source.name in arguments.source and left.get(source.name) == "not configured"
     ]
     stage = arguments.command.name
     faults.append(None if taken else f"nothing to {stage}: none of its sources is configured")
@@ -131,9 +131,9 @@ def left_unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]
     _, left = chosen(arguments, settings)
     reads = arguments.command.reads
     return {
-        path: f"{declared.name} {left[declared.name]}"
-        for declared in arguments.sources
-        if declared.name in left
-        for path in declared.paths
-        if path in reads and (left[declared.name] != "not configured" or path != declared.paths[0])
+        path: f"{source.name} {left[source.name]}"
+        for source in arguments.sources
+        if source.name in left
+        for path in source.paths
+        if path in reads and (left[source.name] != "not configured" or path != source.paths[0])
     }

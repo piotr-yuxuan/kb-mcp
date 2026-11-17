@@ -46,14 +46,14 @@ def planned(
         if unit.source is None:
             units.append(whole_planned(arguments, unit, configuration, settings))
             continue
-        declared = by_name[unit.source]
+        source = by_name[unit.source]
         run = SourceRun(
-            source=declared,
+            source=source,
             sources=arguments.sources,
             settings=settings,
-            source_table=getattr(settings.sources, declared.name),
+            source_table=getattr(settings.sources, source.name),
             options=(
-                {flag: options.get(flag) for flag in declared.connector.flags}
+                {flag: options.get(flag) for flag in source.connector.flags}
                 if unit.stage == FETCH
                 else {}
             ),

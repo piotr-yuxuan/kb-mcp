@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from kb_mcp.sources.stages import SourceRun
 
 
-def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[R]) -> R:
+def loaded[R: (Fetcher, Preparer)](source: Source, path: str, interface: type[R]) -> R:
     """Load a fetcher or a preparer by the module path that its source's connector names.
 
     Raises ``SourcesRefusedError``, naming the source and the path, for a path that does
@@ -33,10 +33,10 @@ def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[
     try:
         found = pkgutil.resolve_name(path)
     except Exception as error:
-        message = f"source {declared.name!r}: {path}: does not load: {error}"
+        message = f"source {source.name!r}: {path}: does not load: {error}"
         raise SourcesRefusedError(message, stage) from error
     if not isinstance(found, interface):
-        message = f"source {declared.name!r}: {path}: not a {interface.__name__}"
+        message = f"source {source.name!r}: {path}: not a {interface.__name__}"
         raise SourcesRefusedError(message, stage)
     return found
 

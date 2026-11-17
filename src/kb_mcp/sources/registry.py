@@ -64,40 +64,39 @@ def refuse(sources: Iterable[Source]) -> None:
     """
     seen: set[str] = set()
     options: dict[str, tuple[str, Option]] = {}
-    for declared in sources:
-        connector = declared.connector
-        if not SOURCE_NAME.fullmatch(declared.name) or declared.name in RESERVED:
+    for source in sources:
+        connector = source.connector
+        if not SOURCE_NAME.fullmatch(source.name) or source.name in RESERVED:
             message = (
-                f"source {declared.name!r}: a source's name matches {SOURCE_NAME.pattern},"
+                f"source {source.name!r}: a source's name matches {SOURCE_NAME.pattern},"
                 f" and is none of {', '.join(RESERVED)}"
             )
             raise ValueError(message)
-        if declared.name in seen:
-            message = f"source {declared.name!r}: declared twice"
+        if source.name in seen:
+            message = f"source {source.name!r}: declared twice"
             raise ValueError(message)
-        seen.add(declared.name)
+        seen.add(source.name)
         if not connector.settings:
-            message = f"source {declared.name!r}: names no setting"
+            message = f"source {source.name!r}: names no setting"
             raise ValueError(message)
         if connector.fetcher is None and not connector.preparers:
-            message = f"source {declared.name!r}: names neither fetcher nor preparer"
+            message = f"source {source.name!r}: names neither fetcher nor preparer"
             raise ValueError(message)
         if connector.location not in (None, *connector.settings) or (
             connector.login is not None and connector.location is None
         ):
-            message = f"source {declared.name!r}: a location that is none of its settings"
+            message = f"source {source.name!r}: a location that is none of its settings"
             raise ValueError(message)
         for option in connector.flags.values():
             if not FLAG.fullmatch(option.flag):
                 message = (
-                    f"source {declared.name!r}: option {option.flag!r}: a flag is {FLAG.pattern}"
+                    f"source {source.name!r}: option {option.flag!r}: a flag is {FLAG.pattern}"
                 )
                 raise ValueError(message)
-            first, known = options.setdefault(option.flag, (declared.name, option))
+            first, known = options.setdefault(option.flag, (source.name, option))
             if known != option:
                 message = (
-                    f"source {declared.name!r}: option {option.flag} declared otherwise"
-                    f" by {first!r}"
+                    f"source {source.name!r}: option {option.flag} declared otherwise by {first!r}"
                 )
                 raise ValueError(message)
 

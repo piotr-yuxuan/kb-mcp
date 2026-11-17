@@ -37,9 +37,9 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
         choice_refused(arguments, settings),
         *(why for name, why in refusals(taken, settings).items() if name in arguments.source),
         *(
-            declared.connector.options_refused(given(arguments, declared.connector.flags))
-            for declared in taken
-            if declared.connector.options_refused is not None
+            source.connector.options_refused(given(arguments, source.connector.flags))
+            for source in taken
+            if source.connector.options_refused is not None
         ),
     ]
     return next((fault for fault in faults if fault is not None), None)
@@ -54,10 +54,10 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     unused = left_unapplied(arguments, settings)
-    for declared in taken:
-        connector = declared.connector
+    for source in taken:
+        connector = source.connector
         options = given(arguments, connector.flags)
-        unused |= connector.unapplied(declared, options, settings) if connector.unapplied else {}
+        unused |= connector.unapplied(source, options, settings) if connector.unapplied else {}
     return unused
 
 
@@ -71,7 +71,7 @@ def register(
     comes with the others, after the options or before them: its ``dest`` is ``source``,
     as ``sources`` holds the sources.
     """
-    fetched = [declared for declared in sources if declared.connector.fetcher is not None]
+    fetched = [each for each in sources if each.connector.fetcher is not None]
     parser = subparsers.add_parser(
         "fetch",
         help="bring what changed in each source into its store",
@@ -99,7 +99,7 @@ def register(
     source = parser.add_argument(
         "source",
         nargs="*",
-        choices=[declared.name for declared in fetched],
+        choices=[each.name for each in fetched],
         help="the sources to fetch, given together; by default each one configured",
     )
     parser.add_argument(
@@ -110,7 +110,7 @@ def register(
         command=Command(
             FETCH,
             "kb_mcp.cli.commands.sources",
-            reads=("data_dir", *(path for declared in fetched for path in declared.paths)),
+            reads=("data_dir", *(path for each in fetched for path in each.paths)),
             flags=flags,
             scoped=scoped,
             actions=(*actions, *options, source),
