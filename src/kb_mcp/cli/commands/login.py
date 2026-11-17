@@ -26,15 +26,16 @@ def run(
     The sources of one connector's login are signed in by the run that it names, loaded by
     that path, so that this module imports neither the browser's adapter nor Playwright,
     in the order of their first source; the run says why a sign-in did not complete, and
-    none after it is tried. The result holds the places signed in before, if any.
+    the next is tried. The result holds the places signed in, if any.
     """
     taken = signing(arguments, values_of(loaded.settings))
     logins: dict[str, list[Source]] = {}
     for each in taken:
         logins.setdefault(str(each.connector.login), []).append(each)
     signed: list[Record] = []
+    complete = True
     for path, sources in logins.items():
-        done, complete = pkgutil.resolve_name(path)(
+        done, completed = pkgutil.resolve_name(path)(
             loaded.settings,
             tuple(sources),
             arguments.chrome,
@@ -42,8 +43,9 @@ def run(
             named=arguments.source is not None,
         )
         signed += done
-        if not complete:
-            return ExitStatus.SIGN_IN_AGAIN, tuple(signed) or None
+        complete = complete and completed
+    if not complete:
+        return ExitStatus.SIGN_IN_AGAIN, tuple(signed) or None
     return ExitStatus.OK, tuple(signed)
 
 

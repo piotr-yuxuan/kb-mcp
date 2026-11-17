@@ -317,3 +317,54 @@ def test_a_login_of_two_sites_that_fails_at_the_second_says_the_first_signed_in(
     assert [row["site"] for row in json.loads(capsys.readouterr().out)] == [SITE]
     assert [each["site"] for each in logged_as(tmp_path, "login.signed_in")] == [SITE]
     assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [CLIENT]
+
+
+def test_a_login_of_two_sites_that_fails_at_the_first_signs_in_the_second(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, criterion 3: the next site is tried; exit 3, the second in the result."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    tried: list[str] = []
+
+    def second_alone(_: object, site: str, *__: object, **___: object) -> None:
+        tried.append(site)
+        if site == SITE:
+            message = "the sign-in window was closed"
+            raise SignInFailedError(message)
+
+    monkeypatch.setattr(login_module, "save_session", second_alone)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", CLIENT)
+    assert main([*login(tmp_path), "--format", "json"]) == SIGN_IN_AGAIN
+    assert tried == [SITE, CLIENT]
+    assert [row["site"] for row in json.loads(capsys.readouterr().out)] == [CLIENT]
+    assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [SITE]
+    assert [each["site"] for each in logged_as(tmp_path, "login.signed_in")] == [CLIENT]
+
+
+def drive_signed_in_by_default(
+    settings: Settings, sources: tuple[Source, ...], _chrome: Path | None, **_given: bool
+) -> tuple[tuple[SignedIn, ...], bool]:
+    """Sign each source in, unnamed: its run, as its connector names it."""
+    folders = [getattr(settings.sources, each.name).folder for each in sources]
+    return tuple(SignedIn(site=str(folder), session=settings.session) for folder in folders), True
+
+
+def test_a_connector_s_login_that_does_not_complete_stops_no_other_connector_s(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070: Atlassian's sign-in does not complete; the drive's, run after it, signs in."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    def closed(*_: object, **__: object) -> None:
+        message = "the sign-in window was closed"
+        raise SignInFailedError(message)
+
+    monkeypatch.setattr(login_module, "save_session", closed)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__DRIVE__FOLDER", "/made/up")
+    drive = replace(DRIVE, login=f"{__name__}:drive_signed_in_by_default")
+    registry = (*SOURCES, Source(name="drive", connector=drive))
+    assert main([*login(tmp_path), "--format", "json"], registry) == SIGN_IN_AGAIN
+    assert [row["site"] for row in json.loads(capsys.readouterr().out)] == ["/made/up"]
+    assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [SITE]
