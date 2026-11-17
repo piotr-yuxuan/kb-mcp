@@ -38,7 +38,7 @@ from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Fetching, P
 from kb_mcp.sources.atlassian.fetch.domain import names
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost, Issue, Page
 from kb_mcp.sources.atlassian.fetch.domain.coverage import FetchWindow, Scope
-from kb_mcp.sources.atlassian.fetch.domain.period import Period
+from kb_mcp.sources.atlassian.fetch.domain.period import SINCE_FLAG, UNTIL_FLAG, Period, moment
 from tests.composed import MODEL
 from tests.samples import (
     v1_user,
@@ -49,7 +49,6 @@ from tests.samples import (
     v3_comment,
     v3_issue,
 )
-from tests.test_period import period
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -312,7 +311,7 @@ def given(span: Period, spaces: list[str], projects: list[str]) -> dict[Scope, F
 
 def week(spaces: list[str], projects: list[str]) -> dict[Scope, FetchWindow | None]:
     """Give each space and project the week before ``NOW``, as --since 7d does."""
-    return given(period("7d", None, NOW), spaces, projects)
+    return given(Period(moment("7d", NOW, SINCE_FLAG), NOW), spaces, projects)
 
 
 def run(store: RawStore, fake: FakeSite) -> Fetching:
@@ -430,7 +429,7 @@ def test_the_search_covers_the_period_in_every_time_zone_of_jira(
     """
     fake = FakeSite()
     store = RawStore(tmp_path / "raw", "confluence")
-    span = period(since, until, NOW)
+    span = Period(moment(since, NOW, SINCE_FLAG), moment(until, NOW, UNTIL_FLAG))
     with fake.client() as client, store.writing():
         windows = given(span, [], ["PRB"])
         Fetching(SiteClient(client, sleep=no_sleep), store, CAP, lambda: NOW, windows=windows).run(
@@ -497,7 +496,7 @@ def settings(tmp_path: Path) -> Settings:
 def purview(spaces: list[str], projects: list[str]) -> Purview:
     """Return the purview of a run over the last week, with the test's cap."""
     return Purview(
-        scopes=scopes(spaces, projects), max_file_bytes=CAP, since=period("7d", None, NOW).start
+        scopes=scopes(spaces, projects), max_file_bytes=CAP, since=moment("7d", NOW, SINCE_FLAG)
     )
 
 
