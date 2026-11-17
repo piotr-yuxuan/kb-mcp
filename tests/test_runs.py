@@ -34,6 +34,7 @@ from kb_mcp.cli.domain.runs import (
     Unit,
     attempted,
     followed,
+    resume_said,
     units_of,
 )
 from kb_mcp.cli.main import main
@@ -135,6 +136,28 @@ def test_a_resume_runs_each_unit_not_done_and_each_that_follows_one() -> None:
     again = attempted(units, {**done, units[0]: "sign in again"})
     assert {unit.name for unit in again} == {"fetch jira", "prepare jira", "index", "embed"}
     assert attempted(units, {}) == frozenset(units)
+
+
+def test_a_resume_says_a_unit_will_not_run_only_after_a_fetch_that_it_runs_refused() -> None:
+    """Plan 070, review round 2: the echo says what the resume then does.
+
+    Jira refused by the settings, its fetch done and its prepare failed: the resume runs
+    that prepare, its fetch being done, and says nothing will not run. Its fetch failed:
+    the resume runs that fetch, refused, so says it will not run, and why, nor its prepare.
+    """
+    units = units_of(configuration(), {"jira": 1, "worklog": 1})
+    fetch_jira, _, prepare_jira, *_ = units
+    done = dict.fromkeys(units, "done")
+    refused = {"jira": "sources.jira.email: not set"}
+    said = resume_said(configuration(), units, {**done, prepare_jira: "failed"}, refused)
+    assert "  to run: prepare jira (failed), index (done), embed (done)\n" in said
+    assert "will not run" not in said
+    said = resume_said(configuration(), units, {**done, fetch_jira: "failed"}, refused)
+    assert said.endswith(
+        "  fetch jira: will not run, by the settings that the run recorded:"
+        " sources.jira.email: not set\n"
+        "  prepare jira: will not run, as its fetch will not\n"
+    )
 
 
 @pytest.mark.parametrize(
