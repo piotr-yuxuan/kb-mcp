@@ -96,8 +96,9 @@ place where it would outlive a run:
   `sops exec-env` decrypts in memory into the environment of the one command it runs;
   the program itself never writes it
   ([`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py)).
-- **With its email, as one header.** A token without its email is refused before the
-  run begins, with exit status 2
+- **With its email, as one header.** A token without its email refuses a run that names
+  its source before it begins, with exit status 2, and fails that source's fetch alone in
+  a run that takes it without its name, exit 1
   ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)).
   With it, it becomes the header of Basic auth, held by
   [`ApiToken`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py),

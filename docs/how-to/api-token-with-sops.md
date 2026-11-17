@@ -20,8 +20,11 @@ machine where Chrome cannot open, or a test site with an account of its own.
   leads to. Nothing under `<data>/session/` is read or written. The echo before a
   fetch says `source jira: signs in by an API token`; `check` says
   `sources.jira.api_token: set`, never the value.
-- A token without its email is refused before anything is asked (exit 2); a token that
-  the site refuses ends that source's row (exit 3), naming the two variables to check.
+- A token without its email refuses a run that names its source, such as `fetch jira`,
+  before anything is asked (exit 2); a run that takes the source without its name fails
+  its row alone, naming `sources.jira.email`, and fetches the others (exit 1). A token
+  that the site refuses ends that source's row (exit 3), naming the two variables to
+  check.
   `login jira` always signs in in the browser, and reports a token and an email as
   ignored; `login` alone leaves a source that signs in by a token.
 - Generic names such as `ATLASSIAN_API_TOKEN` are never read, so that a token exported
