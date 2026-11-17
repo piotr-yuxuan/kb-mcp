@@ -246,6 +246,28 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
     assert not [line for line in fetch_described(alone, CONFIGURED) if "ignored" in line]
 
 
+def test_a_refresh_says_a_source_refused_by_its_fetch_and_its_prepare_of_one_light_check() -> None:
+    """Plan 070, review round 2: the lines of both stages come from one asking of the check.
+
+    Jira without its site: its fetch's line and its prepare's say that it will not run,
+    its light check asked once.
+    """
+    asked: list[str] = []
+
+    def counting(source: Source, settings: Mapping[str, object]) -> str | None:
+        asked.append(source.name)
+        assert JIRA.refused is not None
+        return JIRA.refused(source, settings)
+
+    registry = sourced(CONFLUENCE, replace(JIRA, refused=counting), WORKLOG)
+    given = parser(sources=registry).parse_args(["refresh"])
+    lines = given.command.described(given, CONFIGURED | {"sources.jira.site": None})
+    reason = "sources.jira.site: not set; add it to the settings"
+    assert f"fetch: source jira: will not run, {reason}" in lines
+    assert "prepare: source jira: will not run, as its fetch will not" in lines
+    assert asked == ["jira"]
+
+
 def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
     """A source's options are its fetch's: the parser offers none, and the summary reads none."""
     noted = replace(WORKLOG, options=(Option(flag="--tag", help="a tag"),), fetcher=None)

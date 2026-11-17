@@ -132,20 +132,23 @@ def source_line(declared: Source, settings: Mapping[str, object]) -> str:
 
 
 def fetch_described(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
+    arguments: argparse.Namespace,
+    settings: Mapping[str, object],
+    refused: Mapping[str, str] | None = None,
 ) -> tuple[str, ...]:
     """Say each source taken, with its settings, each that will not run or is left out and why.
 
     A source taken that will not run is one whose settings its light check refuses
-    (``refusals``): its unit fails, and the others run. The lines that each other source
-    taken says follow, each once, as its connector's ``described`` gives them; then the
-    options ignored. An option that no setting holds, given, is ignored by each source
-    taken whose connector does not declare it, as is one that replaces a setting of no
-    source named (``Command.narrowed``); another that replaces a setting is said by
-    ``unapplied``, as for any setting.
+    (``refusals``), as ``refused`` gives it when the caller asked it already, such as a
+    refresh, whose prepare says those too: its unit fails, and the others run. The lines
+    that each other source taken says follow, each once, as its connector's
+    ``described`` gives them; then the options ignored. An option that no setting holds,
+    given, is ignored by each source taken whose connector does not declare it, as is one
+    that replaces a setting of no source named (``Command.narrowed``); another that
+    replaces a setting is said by ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
-    refused = refusals(taken, settings)
+    refused = refusals(taken, settings) if refused is None else refused
     lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
     for declared in (each for each in taken if each.name not in refused):
