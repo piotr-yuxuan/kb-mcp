@@ -83,14 +83,13 @@ def chosen_to_fetch(
     return tuple(taken), left
 
 
-def refusals(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Give why each source that a fetch takes cannot run, by its settings, by its name.
+def refusals(sources: Iterable[Source], settings: Mapping[str, object]) -> dict[str, str]:
+    """Give why each of ``sources`` cannot run, by its settings, by its name.
 
     As its connector's light check of its settings says (``Source.refusal``), such as a
     site not set; a source that it lets run is not given.
     """
-    taken, _ = chosen_to_fetch(arguments, settings)
-    return {each.name: why for each in taken if (why := each.refusal(settings)) is not None}
+    return {each.name: why for each in sources if (why := each.refusal(settings)) is not None}
 
 
 def chosen_to_prepare(
@@ -146,7 +145,7 @@ def fetch_described(
     ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
-    refused = refusals(arguments, settings)
+    refused = refusals(taken, settings)
     lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
     for declared in (each for each in taken if each.name not in refused):

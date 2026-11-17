@@ -10,7 +10,7 @@ from kb_mcp.cli.options._common import add_output_options, add_settings_options,
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from kb_mcp.sources.declaration import Source
 
@@ -71,25 +71,21 @@ def to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, object]) ->
     )
 
 
-def unlocated(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Give why each source that ``login`` would sign in cannot be, by its name.
+def unlocated(sources: Iterable[Source], settings: Mapping[str, object]) -> dict[str, str]:
+    """Give why each of ``sources`` cannot be signed in, by its name.
 
-    Its location not set, such as its site, where it would sign in (``Source.unlocated``);
-    one that the login leaves (``to_sign_in``) is not given, as it is not signed in either
-    way.
+    Its location not set, such as its site, where it would sign in (``Source.unlocated``).
+    Asked of those that ``login`` would sign in (``to_sign_in``), not of one that it
+    leaves, as that one is not signed in either way.
     """
-    return {
-        each.name: why
-        for each in to_sign_in(arguments, settings)
-        if (why := each.unlocated(settings)) is not None
-    }
+    return {each.name: why for each in sources if (why := each.unlocated(settings)) is not None}
 
 
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say each source that ``login`` would sign in that it will not, and why (``unlocated``)."""
     return tuple(
         f"source {name}: will not be signed in, {why}"
-        for name, why in unlocated(arguments, settings).items()
+        for name, why in unlocated(to_sign_in(arguments, settings), settings).items()
     )
 
 
@@ -107,7 +103,7 @@ def nothing_to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, obj
         f"{FORMER}: gone; name a source, login {' or login '.join(names)}, or none"
         if gone
         else None,
-        *(unlocated(arguments, settings).values() if arguments.source else ()),
+        *(unlocated(taken, settings).values() if arguments.source else ()),
     ]
     faults.append(
         None

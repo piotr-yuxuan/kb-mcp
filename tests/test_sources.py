@@ -31,7 +31,7 @@ from kb_mcp.cli.app.sources import source_planned
 from kb_mcp.cli.app.units import run_units
 from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.runs import Unit
-from kb_mcp.cli.domain.sources import chosen, fetch_described, given
+from kb_mcp.cli.domain.sources import chosen, fetch_described, given, refusals
 from kb_mcp.cli.main import main, parser
 from kb_mcp.kernel.exit_status import Ending, ExitStatus
 from kb_mcp.kernel.outcome import Outcome, Problem
@@ -1607,6 +1607,21 @@ def test_a_location_not_set_is_one_rule_that_names_the_setting_never_its_value()
         "sources.drive.folder: not set; add it to the settings"
     )
     assert worklog.unlocated({}) is None
+
+
+def test_the_refusals_are_those_of_the_sources_that_the_caller_chose_alone() -> None:
+    """Plan 070, review round 1: fetch, refresh, doctor and a resume each give their own.
+
+    Confluence and Jira both without their sites: of Jira alone, Jira's refusal; of none,
+    none, whatever the settings would let a fetch take.
+    """
+    confluence, jira = sourced(CONFLUENCE, JIRA)
+    settings: dict[str, object] = dict.fromkeys((*confluence.paths, *jira.paths))
+    settings |= {confluence.paths[0]: ("MFS",), jira.paths[0]: ("PRB",)}
+    assert refusals((jira,), settings) == {
+        "jira": "sources.jira.site: not set; add it to the settings"
+    }
+    assert refusals((), settings) == {}
 
 
 def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(

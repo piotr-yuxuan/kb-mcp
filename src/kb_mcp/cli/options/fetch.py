@@ -35,7 +35,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
             if len(left) > 1 and getattr(arguments, flag) is not None
         ),
         choice_refused(arguments, settings),
-        *(why for name, why in refusals(arguments, settings).items() if name in arguments.source),
+        *(why for name, why in refusals(taken, settings).items() if name in arguments.source),
         *(
             declared.connector.options_refused(given(arguments, declared.connector.flags))
             for declared in taken

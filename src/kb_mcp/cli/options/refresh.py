@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import STAGES, Command
 from kb_mcp.cli.domain.sources import (
+    chosen_to_fetch,
     fetch_described,
     fetch_flags,
     given,
@@ -63,12 +64,13 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
 
     A source whose fetch will not run, as ``fetch_described`` says, is not prepared either.
     """
+    taken, _ = chosen_to_fetch(arguments, settings)
     return (
         *(f"fetch: {line}" for line in fetch_described(arguments, settings)),
         *(f"prepare: {line}" for line in prepare_described(arguments, settings)),
         *(
             f"prepare: source {name}: will not run, as its fetch will not"
-            for name in refusals(arguments, settings)
+            for name in refusals(taken, settings)
         ),
         "index: the words of the mirror's files that changed, whichever source wrote them",
         "embed: the vectors of the chunks that the index lacks, then the vector cache pruned",

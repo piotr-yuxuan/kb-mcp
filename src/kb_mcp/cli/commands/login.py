@@ -35,11 +35,12 @@ def run(
     the places signed in: none when the run exits 1 or 3 having signed in none.
     """
     values = values_of(loaded.settings)
-    refused = unlocated(arguments, values)
+    taken = to_sign_in(arguments, values)
+    refused = unlocated(taken, values)
     for name, why in refused.items():
         structlog.get_logger().error("login.refused", source=name, reason=why)
     logins: dict[str, list[Source]] = {}
-    for each in (each for each in to_sign_in(arguments, values) if each.name not in refused):
+    for each in (each for each in taken if each.name not in refused):
         logins.setdefault(str(each.connector.login), []).append(each)
     signed: list[Record] = []
     endings: list[Ending] = ["failed" for _ in refused]
