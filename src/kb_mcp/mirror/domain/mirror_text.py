@@ -1,8 +1,4 @@
-"""The Markdown mirror's rules of text.
-
-``visible`` and ``one_line`` keep a text to what shows, for every source's front matter
-and layout; each source's paths are in its own ``layout``.
-"""
+"""The Markdown mirror's rules of text: what shows, on one line."""
 
 from __future__ import annotations
 

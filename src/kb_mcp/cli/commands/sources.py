@@ -8,11 +8,10 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.commands._runs import recorded
 from kb_mcp.cli.commands._stages import planned
 from kb_mcp.cli.domain.command import FETCH
-from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.runs import Configuration
 from kb_mcp.cli.domain.sources import chosen, fetch_options
-from kb_mcp.config.domain.settings import without_secrets
+from kb_mcp.config.domain.settings import values_of, without_secrets
 
 if TYPE_CHECKING:
     import argparse

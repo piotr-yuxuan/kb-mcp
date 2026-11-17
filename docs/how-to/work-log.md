@@ -150,7 +150,7 @@ kb-mcp index
 
 `fetch` reads the folder whole and keeps each document's text and what its front matter
 says in the copy store; `prepare` converts from there, and needs no folder. A folder not
-there, such as one not mounted yet, fails the work log's row of `fetch`, by its setting,
+there, such as one not mounted yet, fails the work log's unit of `fetch`, by its setting,
 exit 1, and the other sources are fetched all the same. The files go
 to `<data>/docs/worklog/`: `entries/` and `transcripts/` as `<id>-<title>.md`, `days/`
 and `meetings/` as `<id>.md`. Each holds the usual front
@@ -197,7 +197,7 @@ converting nothing. Before, the file of a document that no read has taken yet, b
 in no store: deleting the mirror loses it, and the others' links to it, until its org
 file reads. Deleting `<data>/copies/worklog/` costs one read: the next `fetch` reads the
 folder whole and takes the dates from the mirror again, as below. A `prepare` that finds
-no copy store fails the work log's row, exit 1, naming `kb-mcp fetch worklog`, and
+no copy store fails the work log's unit, exit 1, naming `kb-mcp fetch worklog`, and
 prepares the other sources.
 
 ### After an upgrade from a version without the copy store

@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, PeriodError, period
+from kb_mcp.sources.atlassian.fetch.domain import period as rules
+from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, Period, PeriodError
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -17,6 +18,15 @@ PERIOD = "kb_mcp.sources.atlassian.fetch.domain.period"
 NOW = datetime(2026, 10, 22, 9, 30, tzinfo=UTC)
 # The moment of plan 034's examples.
 EXAMPLE = datetime(2026, 10, 28, 12, tzinfo=UTC)
+
+
+def period(since: str, until: str | None, now: datetime) -> Period:
+    """Read ``--since`` and ``--until``; without ``--until`` the period ends now.
+
+    The flags are looked up in their module at each call, since a test renames them.
+    """
+    end = now if until is None else rules.moment(until, now, rules.UNTIL_FLAG)
+    return Period(rules.moment(since, now, rules.SINCE_FLAG), end)
 
 
 @pytest.mark.parametrize(
@@ -37,10 +47,9 @@ def test_since_reads_a_length_before_now_a_date_a_time_or_all(since: str, start:
     assert period(since, None, EXAMPLE).start == start
 
 
-def test_until_reads_a_length_before_now_too_and_the_period_ends_now_without_it() -> None:
-    """--until 12h ends twelve hours before now; no --until, now."""
+def test_until_reads_a_length_before_now_too() -> None:
+    """--until 12h ends twelve hours before now."""
     assert period("7d", "12h", EXAMPLE).end == datetime(2026, 10, 28, tzinfo=UTC)
-    assert period("7d", None, EXAMPLE).end == EXAMPLE
 
 
 def test_an_iso_date_starts_at_midnight_utc() -> None:

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.kernel.output import Level
 
-# What took the place of --site, which plan 059 removed.
+# What took the place of --site, which is gone.
 SITE_GONE = (
     "gone; each source's site is its setting, sources.<name>.site in the settings file, or"
     " KB_MCP_SOURCES__<NAME>__SITE, as docs/how-to/move-to-kb-mcp.md says"
@@ -122,8 +122,7 @@ def add_settings_options(
 ) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
     """Add --config and --data-dir; return their actions, and each flag's setting.
 
-    And --site, hidden, which plan 059 removed: refused, naming the settings that took its
-    place.
+    And --site, hidden and gone: refused, naming the settings that took its place.
     """
     config = parser.add_argument(
         "--config", type=Path, default=SETTINGS_PATH, help="the settings file"

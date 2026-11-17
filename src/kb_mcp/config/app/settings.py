@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from copy import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,8 +34,6 @@ from kb_mcp.observability.adapters.logs import default_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-__all__ = ["UnsafeDataDirError", "load_settings"]
 
 
 class UnsafeDataDirError(SettingsError):
@@ -93,7 +92,7 @@ def load_settings(
     except OSError as error:
         message = f"{read}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
-    judged = found.model_copy(update={"keys_read": frozenset(values)})
+    judged = replace(found, keys_read=frozenset(values))
     environment, unread = environment_entries(os.environ, EnvSettingsSource(model), model)
     below, above, unshared = shared_entries(os.environ)
     kept = {name: value for name, value in values.items() if name not in judged.renamed_keys}

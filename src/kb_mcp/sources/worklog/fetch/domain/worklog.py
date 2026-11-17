@@ -2,9 +2,9 @@
 
 The journal of ``todo.org`` and ``todo.org_archive`` makes a document of each day and of
 each meeting, and the other top-level headings are entries; a transcript is an org file
-under ``transcripts/`` or ``meetings/``. The rules are those of plan 017's "Documents and
-their identity" and "Front matter and conversion", and plan 042's "Days and meetings:
-the rule", "Ids", "Participants" and "Links"; org's syntax is read by ``org``.
+under ``transcripts/`` or ``meetings/``. The rules are those of docs/reference/data-layout.md,
+"The work log", and docs/how-to/work-log.md, "The journal: days and meetings"; org's syntax
+is read by ``org``.
 """
 
 from __future__ import annotations

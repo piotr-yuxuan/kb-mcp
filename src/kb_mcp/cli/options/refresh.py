@@ -85,7 +85,7 @@ def register(
     others, after the options or before them: its ``dest`` is ``source``, as ``sources``
     holds the sources.
     """
-    fetched = [declared for declared in sources if declared.connector.fetcher is not None]
+    fetched = [each for each in sources if each.connector.fetcher is not None]
     parser = subparsers.add_parser(
         "refresh",
         help="bring each source, the mirror, the index and its vectors up to date: one run",
@@ -108,7 +108,7 @@ def register(
     source = parser.add_argument(
         "source",
         nargs="*",
-        choices=[declared.name for declared in fetched],
+        choices=[each.name for each in fetched],
         help="the sources to refresh, given together; by default each one configured",
     )
     remote = add_embedding_options(parser)
@@ -125,7 +125,7 @@ def register(
             "kb_mcp.cli.commands.refresh",
             reads=(
                 "data_dir",
-                *(path for declared in sources for path in declared.paths),
+                *(path for each in sources for path in each.paths),
                 "model",
                 "chunking",
                 "embedding_url",

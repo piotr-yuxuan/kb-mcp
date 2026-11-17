@@ -87,9 +87,9 @@ class AtlassianFrontMatter(FrontMatter):
             if given != held and not (name == "version" and self.type in CONTAINERS):
                 message = f"{name}: only and always in a {scope_type.name}"
                 raise RefusedError(message)
-        kind, key = self.scope.split(":", 1)
+        type_name, key = self.scope.split(":", 1)
         scope_type = SPACE if self.type in {each.name for each in SPACE.document_types} else PROJECT
-        if kind != scope_type.name or scope_type.key is None:
+        if type_name != scope_type.name or scope_type.key is None:
             message = "scope: not of its type's scope type"
             raise RefusedError(message)
         require(scope_type.key, key, "scope")

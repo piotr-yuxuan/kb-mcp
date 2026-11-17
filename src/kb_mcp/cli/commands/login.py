@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.options.login import to_sign_in, unlocated
+from kb_mcp.config.domain.settings import values_of
 from kb_mcp.kernel.exit_status import ExitStatus, folded
 
 if TYPE_CHECKING:

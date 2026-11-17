@@ -184,7 +184,7 @@ def carried_over(docs: Path, source: str) -> tuple[Copies, list[Problem]]:
 
     By its id, the path, created and updated dates of each document of the files of
     ``source``'s folders of ``docs`` that ``worklog_globs`` finds, those that its prepare
-    writes, in today's front matter or plan 058's, so that each document keeps its dates,
+    writes, in today's front matter or the former one, so that each document keeps its dates,
     and its file until a read takes it; and the as-of time of its one scope that its
     source's file holds, the moment of the former version's last read without a problem,
     so that a fetch with a problem leaves it. A file that does not read, or holds no

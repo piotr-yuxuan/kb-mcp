@@ -1,7 +1,7 @@
 """The work log's preparer: what its fetch kept in its copy store, written into the mirror.
 
 The work log's declaration names this module, a ``Preparer``: ``preflight`` refuses
-nothing, as a store missing or that does not read fails the source's row alone; and
+nothing, as a store missing or that does not read fails the source's unit alone; and
 ``prepare`` reads the store, finds pandoc, then writes the mirror through the source's
 rows of the cache of conversions, or in a dry run counts what that would do, and says the
 problems, as the work log's events do.
@@ -26,14 +26,14 @@ if TYPE_CHECKING:
 
 
 def preflight(_run: SourceRun) -> str | None:
-    """Refuse nothing: a copy store missing or that does not read fails the row alone."""
+    """Refuse nothing: a copy store missing or that does not read fails the unit alone."""
     return None
 
 
 def prepare(run: SourceRun) -> Outcome[WorklogCounts | WorklogPlanned]:
     """Mirror the work log's copy store, or count what a dry run would, with the pandoc found now.
 
-    A store that no fetch wrote fails the row, writing nothing, a problem by the copy store
+    A store that no fetch wrote fails the unit, writing nothing, a problem by the copy store
     that names ``kb-mcp fetch`` and the source; so does one that does not read, naming its
     file and field; either is an error, ``worklog.store_unread``. Pandoc gone from PATH
     since the run began, or giving no version, fails it too, writing nothing: a problem by

@@ -125,7 +125,7 @@ NOTES = Connector(
 ## 5. Write its preparer
 
 A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/stages.py)): `preflight`,
-what it cannot go on with, read as its row begins, which fails that row alone, naming the
+what it cannot go on with, read as its unit begins, which fails that unit alone, naming the
 source, and `prepare`, which writes the
 documents through the mirror and gives an [`Outcome`](../../src/kb_mcp/kernel/outcome.py): how
 it ended, its problems and warnings, and its counts, a record whose `text` writes them. Mind what the writer and the front matter ask:
@@ -164,7 +164,7 @@ rules in `prepare/domain/`, as the work log's does
 """The notes source's preparer: a folder's text files, as the mirror's documents.
 
 The notes source's declaration names this module, a ``Preparer``: ``preflight`` refuses a
-folder that is not one, which fails its row alone, and ``prepare`` writes each ``*.txt``
+folder that is not one, which fails its unit alone, and ``prepare`` writes each ``*.txt``
 file as ``docs/notes/<id>.md`` through the mirror's writer, which leaves a file that has
 not changed and removes those of notes gone, under ``docs/notes/`` alone. A note's times
 are its file's, so that a run that finds it unchanged writes the same bytes; its id is a

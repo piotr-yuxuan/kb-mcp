@@ -1,7 +1,7 @@
 """The work log's fetcher: its folder, read in place, into its source's copy store.
 
 The work log's declaration names this module, a ``Fetcher``: ``preflight`` refuses a work
-log that is not a folder, which fails its row alone, and ``fetch`` reads it into its copy
+log that is not a folder, which fails its unit alone, and ``fetch`` reads it into its copy
 store, or in a dry run says what that would change, and says the problems, as the work
 log's events do.
 """

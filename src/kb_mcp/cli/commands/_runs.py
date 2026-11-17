@@ -52,7 +52,7 @@ def recorded(
     ``configuration``, resolved by the invocation that starts the run at ``started``, is
     recorded first: in memory alone for a dry run, so that it writes nothing, and for a
     run of stages over the whole alone, index or embed, whose data directory does not
-    exist, so that, as before 062, it makes none, having nothing to read; None resumes
+    exist, so that it makes none, having nothing to read; None resumes
     the run recorded. Either way, the configuration is read back from the record, and
     the run's settings built from it, its secrets alone from this invocation's
     ``loaded``; ``planned`` gives its units' work from them, and each unit's entry is
@@ -94,17 +94,18 @@ def recorded(
                 structlog.get_logger().error("run.refused", reason=f"run {run}: {error}")
                 return ExitStatus.REFUSED, None
             # The entries last handed to the record, written or not.
-            handed = [last]
+            handed = last
 
             def write(entries: tuple[Recorded, ...]) -> None:
-                handed[0] = entries
+                nonlocal handed
+                handed = entries
                 record.write_outcomes(entries)
 
             try:
                 done = run_units(units, last, started, write, dry_run=fixed.dry_run)
             finally:
                 settled = {each.unit for each in units if each.refused is not None}
-                if record.folder is not None and resumable(handed[0], settled):
+                if record.folder is not None and resumable(handed, settled):
                     resume = f"{PROGRAM} refresh --resume {run}"
                     structlog.get_logger().warning("run.resumable", resume=resume)
     except RunBusyError:

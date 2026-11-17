@@ -80,9 +80,9 @@ what its echo says.
   ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
-  one row's name, `git`, told apart by their order alone: that plan names them.
+  one unit's name, `git`, told apart by their order alone.
 - **A source keeps a store when it has a fetcher**, so no field says so.
-- **Later plans add their fields**: 032 its flag rows; 033 a description and examples.
+- **Fields not declared yet**: its flag rows, a description and examples.
 
 ## The stages' interfaces
 
@@ -96,13 +96,13 @@ it against the runtime-checkable protocol. It may use the interfaces, the mirror
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
 - **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk as
-  its row begins, so that this row fails alone, naming why, and the other sources run: an
+  its unit begins, so that this unit fails alone, naming why, and the other sources run: an
   `--until` before `--since`
   ([the fetcher's](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), or a work
   log that is not a folder
   ([its fetcher's](../../src/kb_mcp/sources/worklog/fetch/app/fetcher.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). The work
+  ([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)). The work
   log's reads its folder in place into its copy store
   ([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)).
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
@@ -117,7 +117,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 - **Pandoc is the preparers' own.** `SourceRun` holds no tool that one of them alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`
-  once the run began fails those rows alone; the run then exits as its rows rank, 1. The
+  once the run began fails those units alone; the run then exits as its units rank, 1. The
   entry still refuses a `prepare` without pandoc on `PATH` before anything is asked,
   whichever sources it takes
   ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)).
@@ -183,7 +183,7 @@ names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model alr
 such as `json`, or that cannot be built by default
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py)). These are a programmer's
 errors, raised, not exits. A name is a table, a folder of the mirror, a command argument
-from plan 031 on and the front matter's `source`, so each source is configured once: two
+and the front matter's `source`, so each source is configured once: two
 Confluence sites or two work logs cannot be configured, and allowing them later (named
 instances, `docs/<instance>/`) moves an existing source's files once. A run that cannot
 load a fetcher or a preparer, whatever its import raises, exits 2, naming the declaration and the path
@@ -314,10 +314,10 @@ set of files of its own.
 
 - **Fetched apart.** Each fetch takes its own source's scopes
   ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
-  probes, projects and users keep their order across two runs, each with its own sign-in
+  probes, projects and users keep their order across two fetches, each with its own sign-in
   check, hold on the raw store and entry in the run's record. The record of
-  what answered as gone is every source's since plan 061, each fetch keeping the others'
-  entries as it found them; one damaged fails each fetch that reads it, that source's row
+  what answered as gone is every source's, each fetch keeping the others'
+  entries as it found them; one damaged fails each fetch that reads it, that source's unit
   alone, and stops no prepare.
 - **Each placing both.** A page links an issue, and an issue a page, through one map of
   the mirror's documents
@@ -342,7 +342,7 @@ set of files of its own.
   problems stop its own removals alone. So an issue that pandoc fails on keeps its file, and
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
-  it says so, by that source, under a row that stays done
+  it says so, by that source, under a unit that stays done
   ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and
@@ -409,7 +409,7 @@ through the entry, with no line of `src/` naming it.
 - **Links across sources**, a later plan: a preparer over every document, listed in the
   registry apart from any source and run after the sources' own, writes links that one
   serving tool follows. Persons are `index`'s join, built already.
-- **Plans 021 and 024, re-planned on the stages**: one package for the clones, its fetcher
+- **Git, re-planned on the stages**: one package for the clones, its fetcher
   reading them in place or refreshing them, its preparers code and history; whether a code
   graph is served beside this program is the re-plan's question.
 - **The identity that a document was synced as, whether a source's terms allow keeping
@@ -580,7 +580,7 @@ stand-up's "Sam Sample", but "Rob" to no "Robin Example"; else it is a person by
 alone, one for every name of its key. A key leaves out case, accents, runs of spaces
 and a trailing part in brackets
 ([`name_key`](../../src/kb_mcp/search/domain/people.py)), so that
-`Kim (not in the header)` is `Kim`, which plan 042 left to this join; but where two
+`Kim (not in the header)`, which the work log keeps as a meeting writes it, is `Kim`; but where two
 such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps them
 ([`Joining.compared_key`](../../src/kb_mcp/search/domain/people.py)), as the
 user or the site wrote them apart. It cannot tell such a part from a note, so that two

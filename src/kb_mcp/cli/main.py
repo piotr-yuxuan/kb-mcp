@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 ENTRY_MODULE = "kb_mcp.cli.commands._shared"
 # What observes a run: its logs, from the start on stderr, never on stdout.
 OBSERVED = "kb_mcp.observability.app.observed"
-# The commands that plan 031 removed, whose log files, which hold titles and queries, a
-# run still removes once past their 30 days.
+# The former commands, whose log files, which hold titles and queries, a run still
+# removes once past their 30 days.
 RETIRED = ("download", "mirror", "sync")
 
 

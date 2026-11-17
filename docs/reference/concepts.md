@@ -1,7 +1,8 @@
 # Concepts
 
-The code is being conformed to these concepts; where a sentence here and the code differ, the code is what runs, under the names of
-each entry's "In the code" paragraph.
+Each entry's "In the code" paragraph names the code that implements it; where a sentence
+here and the code differ, the code is what runs, and the difference is a defect of one or
+the other, unless the entry says that it is kept on purpose, under "Where the code differs".
 
 [The entity-relationship views](concepts-er.html) draw the core concepts with their
 relationships and cardinalities.

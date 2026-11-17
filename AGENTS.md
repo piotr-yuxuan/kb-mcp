@@ -19,9 +19,8 @@ Follow the `workflow:plans` skill with these parameters:
   - `uv run pytest -n auto`, on every core by pytest-xdist;
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
-- The words, each defined once, in [the concepts](docs/reference/concepts.md); until the
-  code is conformed to them, new code takes the names of each entry's "In the code"
-  paragraph.
+- The words, each defined once, in [the concepts](docs/reference/concepts.md); new code
+  takes them, and the names of each entry's "In the code" paragraph.
 - The design: why each decision was taken and what it costs, in
   [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
   [the internals](docs/explanation/internals.md); the formats that the stages share, in

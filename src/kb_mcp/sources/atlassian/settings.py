@@ -1,8 +1,7 @@
 """Confluence's and Jira's tables of settings, ``[sources.<name>]`` of each source.
 
-Their declarations name them; the entry composes them into the settings' model. Each
-source holds its site and its way to sign in, so that two sources of two sites are two
-sources of one connector.
+Each source holds its site and its way to sign in, so that two sources of two sites are
+two sources of one connector.
 """
 
 from __future__ import annotations

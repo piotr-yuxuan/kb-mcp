@@ -57,7 +57,7 @@ def register(
     source = parser.add_argument(
         "source",
         nargs="*",
-        choices=[declared.name for declared in sources],
+        choices=[each.name for each in sources],
         help="the sources to prepare, given together; by default those that keep a store, and"
         " each one read in place that is configured",
     )

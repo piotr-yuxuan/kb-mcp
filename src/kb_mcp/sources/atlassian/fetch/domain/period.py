@@ -76,14 +76,8 @@ def moment(text: str, now: datetime, option: str) -> datetime:
         raise PeriodError(message) from None
 
 
-def period(since: str, until: str | None, now: datetime) -> Period:
-    """Read ``--since`` and ``--until``; without ``--until`` the period ends now."""
-    end = now if until is None else moment(until, now, UNTIL_FLAG)
-    return Period(moment(since, now, SINCE_FLAG), end)
-
-
 def period_rule(*, since: bool) -> str:
-    """Say in words where a run's windows start, with --since given or not.
+    """Say in words where a fetch's windows start, with --since given or not.
 
     Said before a run, which reads no store yet: the rule, not each scope's window.
     """

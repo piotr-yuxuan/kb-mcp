@@ -63,7 +63,7 @@ class Fetcher(Protocol):
     """A source's fetcher: it brings a system's changes into the store that it owns."""
 
     def preflight(self, run: SourceRun, /) -> str | None:
-        """Say what the fetch cannot go on with, read from disk: its row then fails alone."""
+        """Say what the fetch cannot go on with, read from disk: its unit then fails alone."""
 
     def fetch(self, run: SourceRun, /) -> Outcome:
         """Fetch what changed, or in a dry run say what it would fetch; say how it ended."""
@@ -74,7 +74,7 @@ class Preparer(Protocol):
     """A source's preparer: it writes the source's documents through the mirror."""
 
     def preflight(self, run: SourceRun, /) -> str | None:
-        """Say what the preparer cannot go on with, read from disk: its row then fails alone."""
+        """Say what the preparer cannot go on with, read from disk: its unit then fails alone."""
 
     def prepare(self, run: SourceRun, /) -> Outcome:
         """Write the source's documents, or count what a dry run would; say how it ended."""
