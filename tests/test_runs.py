@@ -563,6 +563,50 @@ def test_a_resume_runs_again_a_unit_done_before_that_an_error_stopped_and_those_
     assert len(site.asked) == asked
 
 
+@pytest.mark.usefixtures("site")
+def test_a_run_that_an_error_stops_says_it_resumable_whatever_its_record_then_does(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """The error passes as raised, exit 1, and run.resumable is said, its units not all done.
+
+    Every write of its entries fails, as on a full disk: none is on disk, yet a resume has
+    every unit to run. Or the index raises, and the record no longer reads once written,
+    as on a volume gone: the error that passes, which run.failed logs, is the index's.
+    """
+    options = given(home, endpoint)
+
+    def full(*_: object) -> None:
+        message = "no space left"
+        raise OSError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(RunRecord, "write_outcomes", full)
+        assert main(["refresh", "--yes", *options, *SINCE]) == ExitStatus.FAILED
+    assert len(logged_as(home, "run.resumable")) == 1
+    read = RunRecord.read_outcomes
+
+    def gone(record: RunRecord) -> tuple[Recorded, ...]:
+        if record.folder is not None and (record.folder / "outcomes.json").exists():
+            message = "outcomes.json: not read: OSError"
+            raise RepresentationError(message)
+        return read(record)
+
+    def broken(*_: object, **__: object) -> None:
+        message = "value-sentinel-062"
+        raise OSError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(RunRecord, "read_outcomes", gone)
+        patch.setattr("kb_mcp.cli.commands._runs.update_index", broken)
+        assert main(["refresh", "--yes", *options, *SINCE]) == ExitStatus.FAILED
+    capsys.readouterr()
+    # The traceback's first exception is the one that passed; those it was raised from follow.
+    _, failed = logged_as(home, "run.failed")
+    raised = failed["exception"][0]
+    assert (raised["exc_type"], raised["exc_value"]) == ("OSError", "value-sentinel-062")
+    assert len(logged_as(home, "run.resumable")) == len(["full", "gone"])
+
+
 def test_since_7d_is_recorded_as_a_time_which_the_first_attempt_and_the_resume_use(
     home: Path,
     endpoint: str,

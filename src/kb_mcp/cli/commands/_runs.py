@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from kb_mcp.cli.app.units import Done
-    from kb_mcp.cli.domain.runs import Unit
+    from kb_mcp.cli.domain.runs import Recorded, Unit
     from kb_mcp.config.domain.settings import Loaded, Settings
     from kb_mcp.kernel.output import Detail
 
@@ -66,7 +66,9 @@ def recorded(
     ``planned`` is first asked of the configuration resolved, then of the one read back.
     A run recorded whose units did not all last end done says, a warning
     ``run.resumable``, the command that resumes it, even as an error that no unit caught
-    passes.
+    passes: as of the entries last handed to its record, those read before its units when
+    none was, whether or not their write succeeded, so that no record read hides the
+    error in flight.
     """
     unrecorded = configuration is not None and (
         configuration.dry_run
@@ -86,11 +88,17 @@ def recorded(
             except (FileNotFoundError, RepresentationError) as error:
                 structlog.get_logger().error("run.refused", reason=f"run {run}: {error}")
                 return ExitStatus.REFUSED, None
+            # The entries last handed to the record, written or not.
+            handed = [last]
+
+            def write(entries: tuple[Recorded, ...]) -> None:
+                handed[0] = entries
+                record.write_outcomes(entries)
+
             try:
-                done = run_units(units, last, started, record.write_outcomes, dry_run=fixed.dry_run)
+                done = run_units(units, last, started, write, dry_run=fixed.dry_run)
             finally:
-                endings = {each.ending for each in record.read_outcomes()}
-                if record.folder is not None and endings - {"done"}:
+                if record.folder is not None and {each.ending for each in handed[0]} - {"done"}:
                     resume = f"{PROGRAM} refresh --resume {run}"
                     structlog.get_logger().warning("run.resumable", resume=resume)
     except RunBusyError:
