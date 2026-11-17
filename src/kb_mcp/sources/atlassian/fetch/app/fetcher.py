@@ -115,7 +115,7 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
         outcome = act(run.settings, purview, run.now, run.sleep)
     except StoreBusyError:
         structlog.get_logger().error(
-            "fetch.store_busy", source=source, store=str(run.settings.raw), hint=BUSY
+            "fetch.store_busy", source=run.source.name, store=str(run.settings.raw), hint=BUSY
         )
         return Outcome.of(problems=(Problem(where="raw store", reason=BUSY),))
     except (PeriodError, RepresentationError) as error:
