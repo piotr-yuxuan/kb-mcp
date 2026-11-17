@@ -35,13 +35,6 @@ if TYPE_CHECKING:
 SITE, EMAIL, API_TOKEN = SIGN_IN = ("site", "email", "api_token")
 
 
-def site_not_set(source: Source, settings: Mapping[str, object]) -> str | None:
-    """Refuse a run of a source that reaches its site when none is set."""
-    if settings[source.path(SITE)] is not None:
-        return None
-    return f"{source.path(SITE)}: not set; add it to the settings"
-
-
 def token_without_email(source: Source, settings: Mapping[str, object]) -> str | None:
     """Refuse an API token without the email of its account, with which it signs in."""
     if settings[source.path(API_TOKEN)] is None or settings[source.path(EMAIL)] is not None:
@@ -116,9 +109,9 @@ def period_refused(options: Mapping[str, object]) -> str | None:
 def refused(source: Source, settings: Mapping[str, object]) -> str | None:
     """Refuse the settings that no fetch of a source's site runs with: the first found.
 
-    No site; an API token without its email.
+    No site, its location (``Source.unlocated``); an API token without its email.
     """
-    return site_not_set(source, settings) or token_without_email(source, settings)
+    return source.unlocated(settings) or token_without_email(source, settings)
 
 
 def described(

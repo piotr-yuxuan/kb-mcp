@@ -58,13 +58,12 @@ def in_the_browser(arguments: argparse.Namespace, settings: Mapping[str, object]
 def unlocated(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
     """Give why each source that ``login`` takes cannot be signed in, by its name.
 
-    Its location not set, such as its site, where it would sign in.
+    Its location not set, such as its site, where it would sign in (``Source.unlocated``).
     """
     return {
-        each.name: f"{each.path(location)}: not set; add it to the settings"
+        each.name: why
         for each in signing(arguments, settings)
-        if (location := each.connector.location) is not None
-        and settings[each.path(location)] is None
+        if (why := each.unlocated(settings)) is not None
     }
 
 

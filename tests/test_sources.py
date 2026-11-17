@@ -1590,6 +1590,25 @@ def test_a_fetch_whose_every_source_its_settings_refuse_fails_each_unit_and_exit
     ]
 
 
+def test_a_location_not_set_is_one_rule_that_names_the_setting_never_its_value() -> None:
+    """Plan 070, review round 1: login, a fetch's light check and prepare say it alike.
+
+    Jira's site, its location, not set: said by its path, as its fetch's light check
+    refuses it; set, nothing. A connector of its own, by its own location's setting; the
+    work log, which names no location, never.
+    """
+    drive = replace(WORKLOG, name="drive", settings=("folder",), location="folder")
+    jira, worklog, own = sourced(JIRA, WORKLOG, drive)
+    unset = {"sources.jira.site": None, "sources.jira.api_token": None}
+    reason = "sources.jira.site: not set; add it to the settings"
+    assert (jira.unlocated(unset), jira.refusal(unset)) == (reason, reason)
+    assert jira.unlocated({"sources.jira.site": SITE}) is None
+    assert own.unlocated({"sources.drive.folder": None}) == (
+        "sources.drive.folder: not set; add it to the settings"
+    )
+    assert worklog.unlocated({}) is None
+
+
 def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:

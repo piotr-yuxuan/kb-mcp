@@ -202,6 +202,18 @@ class Source:
         refused = self.connector.refused
         return None if refused is None else refused(self, settings)
 
+    def unlocated(self, settings: Mapping[str, object]) -> str | None:
+        """Say that its location, such as its site, is not set, naming that setting: else None.
+
+        Without it, it is neither reached nor signed in to, nor its documents given an
+        address there; one whose connector names no location is never said so.
+        ``settings`` holds every setting's value by its path.
+        """
+        location = self.connector.location
+        if location is None or settings[self.path(location)] is not None:
+            return None
+        return f"{self.path(location)}: not set; add it to the settings"
+
     def prepared_by_default(self, settings: Mapping[str, object]) -> bool:
         """Say whether it holds documents to prepare: it keeps scopes, or is configured.
 

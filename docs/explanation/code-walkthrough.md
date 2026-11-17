@@ -89,7 +89,7 @@ Then what fetch cannot run with. Its
 these that it finds: a source named that the settings do not configure;
 nothing to fetch, no source being configured; what the settings of a source named refuse
 by its declaration, with Confluence or Jira a site not set
-([`site_not_set`](../../src/kb_mcp/sources/atlassian/declared.py)) or an API token
+([`Source.unlocated`](../../src/kb_mcp/sources/declaration.py)) or an API token
 without its email
 ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), which for a
 source taken without its name fails its row instead (part 3); and an option of the period

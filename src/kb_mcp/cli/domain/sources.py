@@ -175,16 +175,11 @@ def prepare_described(
     """Say each source taken, each left out and why, and each one's location not set.
 
     A source read in place is said by its settings; one that keeps a store gives all that
-    its store holds, whatever its settings cover. Without its location, such as its site,
-    a prepare still runs, its documents without an address there.
+    its store holds, whatever its settings cover. Without its location, such as its site
+    (``Source.unlocated``), a prepare still runs, its documents without an address there.
     """
     taken, left = chosen_to_prepare(arguments, settings)
-    unset = [
-        (path, declared.name)
-        for declared in taken
-        if declared.connector.location is not None
-        and settings[path := declared.path(declared.connector.location)] is None
-    ]
+    unset = [declared for declared in taken if declared.unlocated(settings) is not None]
     return (
         *(
             source_line(declared, settings)
@@ -194,7 +189,8 @@ def prepare_described(
         ),
         *(f"source {name}: left out, {why}" for name, why in left.items()),
         *(
-            f"{path}: not set; any documents of {names} get no address there"
-            for path, names in unset
+            f"{declared.path(declared.connector.location)}: not set; any documents of"
+            f" {declared.name} get no address there"
+            for declared in unset
         ),
     )
