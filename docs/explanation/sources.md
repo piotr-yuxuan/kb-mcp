@@ -80,7 +80,7 @@ what its echo says.
   ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
-  one row's name, `git`, told apart by their order alone.
+  one unit's name, `git`, told apart by their order alone.
 - **A source keeps a store when it has a fetcher**, so no field says so.
 - **Fields not declared yet**: its flag rows, a description and examples.
 
