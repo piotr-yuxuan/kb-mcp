@@ -3,8 +3,7 @@
 Both connectors name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
 scope types of the connector of the source that a run is for, and fetch that source's
 scopes alone, each of its table's keys of each scope type, over the period that its
-options give. ``fetch_purview`` fetches them, or plans their fetch, and says what went
-wrong.
+options give.
 """
 
 from __future__ import annotations
@@ -32,10 +31,6 @@ from kb_mcp.sources.atlassian.fetch.domain.period import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from datetime import datetime
-
-    from kb_mcp.config.domain.settings import Settings
     from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
     from kb_mcp.sources.stages import SourceRun
 
@@ -94,33 +89,16 @@ def preflight(run: SourceRun) -> str | None:
 
 
 def fetch(run: SourceRun) -> Outcome[FetchCounts]:
-    """Fetch what changed of the run's source, or in a dry run plan it, by ``fetch_purview``.
+    """Fetch what changed of the run's source, or in a dry run plan it; say what went wrong.
+
+    A fetch, not its plan, first takes the session kept before sessions were a site's, as
+    ``SignIn.adopt_former`` says.
 
     What ``preflight`` refuses may still come once the run began: a period read at a
     later fetch's start, a record damaged since, or one that ``preflight`` leaves to the
     run. It fails this fetch alone, a problem
     by the source and an error, ``fetch.refused``, naming the source, and the run's next
     rows go on.
-    """
-    try:
-        return fetch_purview(run.settings, purview_of(run), run.now, run.sleep, dry_run=run.dry_run)
-    except (PeriodError, RepresentationError) as error:
-        structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
-        return Outcome.of(problems=(Problem(where=run.source.name, reason=str(error)),))
-
-
-def fetch_purview(
-    settings: Settings,
-    purview: Purview,
-    now: Callable[[], datetime],
-    sleep: Callable[[float], None],
-    *,
-    dry_run: bool,
-) -> Outcome[FetchCounts]:
-    """Fetch these scopes, one source's, or plan their fetch; say what went wrong.
-
-    A fetch, not its plan, first takes the session kept before sessions were a site's, as
-    ``SignIn.adopt_former`` says.
 
     Another run writing the raw store fails the fetch before it starts, a problem by the
     raw store and an error, ``fetch.store_busy``; each scope that failed is a warning,
@@ -128,19 +106,23 @@ def fetch_purview(
     ``fetch.sign_in_needed``, saying how to sign in again; both errors name the source,
     since each source's fetch can give them.
     """
-    act = plan_fetch if dry_run else run_fetch
-    source = purview.source
-    if not dry_run:
-        choose_sign_in(settings, source).adopt_former()
     try:
-        outcome = act(settings, purview, now, sleep)
+        purview = purview_of(run)
+        source = purview.source
+        if not run.dry_run:
+            choose_sign_in(run.settings, source).adopt_former()
+        act = plan_fetch if run.dry_run else run_fetch
+        outcome = act(run.settings, purview, run.now, run.sleep)
     except StoreBusyError:
         structlog.get_logger().error(
-            "fetch.store_busy", source=source, store=str(settings.raw), hint=BUSY
+            "fetch.store_busy", source=source, store=str(run.settings.raw), hint=BUSY
         )
         return Outcome.of(problems=(Problem(where="raw store", reason=BUSY),))
+    except (PeriodError, RepresentationError) as error:
+        structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
+        return Outcome.of(problems=(Problem(where=run.source.name, reason=str(error)),))
     if outcome.ending == "sign in again":
         structlog.get_logger().error(
-            "fetch.sign_in_needed", source=source, hint=choose_sign_in(settings, source).again
+            "fetch.sign_in_needed", source=source, hint=choose_sign_in(run.settings, source).again
         )
     return outcome

@@ -102,7 +102,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   log that is not a folder
   ([its fetcher's](../../src/kb_mcp/sources/worklog/fetch/app/fetcher.py)).
 - **`fetch`** brings a system's changes into the store that it owns, raw first
-  ([`fetch_purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)). The work
+  ([`run_fetch`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py)). The work
   log's reads its folder in place into its copy store
   ([`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)).
 - **`prepare`** writes the source's documents through the mirror. In a dry run the
