@@ -652,7 +652,7 @@ def test_the_command_to_copy_gives_each_option_it_carries_the_run_s_value(
     [(first_arguments, first)] = runs
     copied = command_line(
         first_arguments,
-        values_of(first),
+        values_of(first.settings),
         first.layers,
         first.replaced,
         lambda path: path.expanduser().absolute(),

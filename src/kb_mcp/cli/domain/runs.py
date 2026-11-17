@@ -24,7 +24,7 @@ from kb_mcp.kernel.outcome import OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Collection, Iterable, Sequence
     from pathlib import Path
 
     from kb_mcp.config.domain.settings import Settings
@@ -163,6 +163,24 @@ def attempted(units: Sequence[Unit], last: Mapping[Unit, Ending]) -> frozenset[U
     return frozenset(chosen)
 
 
+def resumable(entries: Iterable[Recorded], settled: Collection[Unit]) -> bool:
+    """Say whether a resume of a run could do what a new run would not, by its last entries.
+
+    So when some unit last ended other than done, but each that the settings recorded
+    refuse whatever the secrets (``settled``), which a resume, run by them with the
+    secrets of its own environment, refuses again, and each not run as it follows one of
+    those.
+    """
+    found = keyed(entries)
+    units = tuple(found)
+    return any(
+        entry.ending != "done"
+        and unit not in settled
+        and not (entry.ending == "not run" and set(followed(unit, units)) & set(settled))
+        for unit, entry in found.items()
+    )
+
+
 def keyed(entries: Iterable[Recorded]) -> dict[Unit, Recorded]:
     """Give each entry by its unit: its stage, its source and its position among theirs."""
     seen: Counter[tuple[Stage, str | None]] = Counter()
@@ -196,18 +214,33 @@ def resume_refused(
 
 
 def resume_said(
-    configuration: Configuration, units: Sequence[Unit], last: Mapping[Unit, Ending]
+    configuration: Configuration,
+    units: Sequence[Unit],
+    last: Mapping[Unit, Ending],
+    refused: Mapping[str, str],
 ) -> str:
     """Say what a resume of a run will do: whose run it is, its units done, those it runs.
 
-    Each unit that it runs with its last ending, or ``none yet``.
+    Each unit that it runs with its last ending, or ``none yet``; then each fetch that it
+    runs that will not run, as ``refused`` says why by its source, by the settings that
+    the run recorded, and each unit after one of those, which will not run either. A
+    unit after a fetch done runs, whatever ``refused`` says of its source.
     """
     chosen = attempted(units, last)
     done = [unit.name for unit in units if unit not in chosen]
     runs = [f"{unit.name} ({last.get(unit, 'none yet')})" for unit in units if unit in chosen]
+    refusing = {unit for unit in chosen if unit.stage == FETCH and unit.source in refused}
+    unrun = [
+        f"  {unit.name}: will not run, by the settings that the run recorded:"
+        f" {refused[unit.source]}\n"
+        if unit in refusing
+        else f"  {unit.name}: will not run, as its fetch will not\n"
+        for unit in units
+        if unit in refusing or refusing & set(followed(unit, units))
+    ]
     return (
         f"refresh --resume {configuration.run}: the run of {configuration.command}, started"
         f" {configuration.started.isoformat()}\n"
         f"  done: {', '.join(done) or 'none'}\n"
-        f"  to run: {', '.join(runs) or 'none'}\n"
+        f"  to run: {', '.join(runs) or 'none'}\n" + "".join(dict.fromkeys(unrun))
     )

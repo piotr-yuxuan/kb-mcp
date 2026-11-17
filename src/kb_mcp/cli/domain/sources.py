@@ -7,9 +7,10 @@ a fetcher and is configured, or those named. ``prepare`` takes every source whos
 keeps scopes by key, whatever the store holds, and each other when it is configured, as
 ``Source.prepared_by_default`` says, or those named. Each is taken once, in the sources'
 order, whatever the order typed. A source's options and light checks are its connector's
-fetch's: each source taken says what the echo says of it, by its connector; an option
-that no setting holds, given, is said ignored by each source taken whose connector does
-not declare it.
+fetch's: each source taken says what the echo says of it, by its connector, and one whose
+settings its light check refuses, that it will not run, and why; an option that no
+setting holds, given, is said ignored by each source taken whose connector does not
+declare it.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from kb_mcp.cli.domain.command import PREPARE
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Collection, Iterable, Mapping
     from datetime import datetime
 
     from kb_mcp.sources.declaration import Option, Source
@@ -82,6 +83,15 @@ def chosen_to_fetch(
     return tuple(taken), left
 
 
+def refusals(sources: Iterable[Source], settings: Mapping[str, object]) -> dict[str, str]:
+    """Give why each of ``sources`` cannot run, by its settings, by its name.
+
+    As its connector's light check of its settings says (``Source.refusal``), such as a
+    site not set; a source that it lets run is not given.
+    """
+    return {each.name: why for each in sources if (why := each.refusal(settings)) is not None}
+
+
 def chosen_to_prepare(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
@@ -122,23 +132,30 @@ def source_line(declared: Source, settings: Mapping[str, object]) -> str:
 
 
 def fetch_described(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
+    arguments: argparse.Namespace,
+    settings: Mapping[str, object],
+    refused: Mapping[str, str] | None = None,
 ) -> tuple[str, ...]:
-    """Say each source taken, with its settings, each left out and why, and the options ignored.
+    """Say each source taken, with its settings, each that will not run or is left out and why.
 
-    The lines that a source taken says follow, each once, as its connector's
-    ``described`` gives them. An option that no setting holds, given, is ignored by each
-    source taken whose connector does not declare it, as is one that replaces a setting of
-    no source named (``Command.narrowed``); another that replaces a setting is said by
-    ``unapplied``, as for any setting.
+    A source taken that will not run is one whose settings its light check refuses
+    (``refusals``), as ``refused`` gives it when the caller asked it already, such as a
+    refresh, whose prepare says those too: its unit fails, and the others run. The lines
+    that each other source taken says follow, each once, as its connector's
+    ``described`` gives them; then the options ignored. An option that no setting holds,
+    given, is ignored by each source taken whose connector does not declare it, as is one
+    that replaces a setting of no source named (``Command.narrowed``); another that
+    replaces a setting is said by ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
+    refused = refusals(taken, settings) if refused is None else refused
     lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
-    for declared in taken:
+    for declared in (each for each in taken if each.name not in refused):
         connector = declared.connector
         options = given(arguments, connector.flags)
         said += connector.described(declared, options, settings) if connector.described else ()
+    lines += [f"source {name}: will not run, {why}" for name, why in refused.items()]
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
     unbound = {flag for flag, left in arguments.command.narrowed(arguments).items() if not left}
@@ -155,31 +172,37 @@ def fetch_described(
 
 
 def prepare_described(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
+    arguments: argparse.Namespace,
+    settings: Mapping[str, object],
+    unfetched: Collection[str] = (),
 ) -> tuple[str, ...]:
     """Say each source taken, each left out and why, and each one's location not set.
 
     A source read in place is said by its settings; one that keeps a store gives all that
-    its store holds, whatever its settings cover. Without its location, such as its site,
-    a prepare still runs, its documents without an address there.
+    its store holds, whatever its settings cover. Without its location, such as its site
+    (``Source.unlocated``), a prepare still runs, its documents without an address there.
+    A source ``unfetched``, whose fetch will not run before, as in a refresh, is said
+    alone not to run.
     """
     taken, left = chosen_to_prepare(arguments, settings)
     unset = [
-        (path, declared.name)
+        declared
         for declared in taken
-        if declared.connector.location is not None
-        and settings[path := declared.path(declared.connector.location)] is None
+        if declared.name not in unfetched and declared.unlocated(settings) is not None
     ]
     return (
         *(
-            source_line(declared, settings)
+            f"source {declared.name}: will not run, as its fetch will not"
+            if declared.name in unfetched
+            else source_line(declared, settings)
             if declared.connector.fetcher is None
             else f"source {declared.name}: all that its store holds"
             for declared in taken
         ),
         *(f"source {name}: left out, {why}" for name, why in left.items()),
         *(
-            f"{path}: not set; any documents of {names} get no address there"
-            for path, names in unset
+            f"{declared.path(declared.connector.location)}: not set; any documents of"
+            f" {declared.name} get no address there"
+            for declared in unset
         ),
     )

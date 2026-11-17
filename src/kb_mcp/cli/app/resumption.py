@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.adapters.run_record import RunRecord
 from kb_mcp.cli.domain.command import FETCH
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.runs import keyed, resume_refused, resume_said, units_of
-from kb_mcp.cli.domain.sources import fetch_flags
+from kb_mcp.cli.domain.sources import fetch_flags, refusals
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record
@@ -59,7 +60,9 @@ def resumption(
     configuration is one that ``sources`` no longer run (``require_configured``), its
     settings no longer build with the secrets that ``loaded`` holds, or
     ``resume_refused`` says so; each refusal names the run, and the file at fault. Else
-    the resume says what it will do, as ``resume_said`` gives it.
+    the resume says what it will do, as ``resume_said`` gives it, and which source's
+    fetch will not run, by the light check of the settings that the run recorded, which
+    are those it runs by (``refusals``).
     """
     runs = loaded.settings.runs
     record = RunRecord(runs / run)
@@ -85,7 +88,9 @@ def resumption(
         data_dir=loaded.settings.data_dir,
         remote_allowed=remote_allowed,
     )
+    fetched = [configured[name] for name in configuration.sources.get(FETCH, ())]
+    refused = refusals(fetched, values_of(settings))
     return Resumption(
         refusal=refusal and f"run {run}: {refusal}",
-        said=resume_said(configuration, units, endings),
+        said=resume_said(configuration, units, endings, refused),
     )

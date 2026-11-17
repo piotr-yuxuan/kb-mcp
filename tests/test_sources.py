@@ -31,7 +31,7 @@ from kb_mcp.cli.app.sources import source_planned
 from kb_mcp.cli.app.units import run_units
 from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.runs import Unit
-from kb_mcp.cli.domain.sources import chosen, fetch_described, given
+from kb_mcp.cli.domain.sources import chosen, fetch_described, given, refusals
 from kb_mcp.cli.main import main, parser
 from kb_mcp.kernel.exit_status import Ending, ExitStatus
 from kb_mcp.kernel.outcome import Outcome, Problem
@@ -63,6 +63,7 @@ from tests.test_confirmation import QUESTION, Terminal
 from tests.test_fetching import FOLDERS, PAGES, SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     import argparse
@@ -243,6 +244,28 @@ def test_an_option_that_no_setting_holds_is_said_ignored_by_a_source_that_declar
     assert "--since: ignored by jira, worklog" in fetch_described(given, CONFIGURED)
     alone = parser(sources=registry).parse_args(["fetch", "--since", "7d", "confluence"])
     assert not [line for line in fetch_described(alone, CONFIGURED) if "ignored" in line]
+
+
+def test_a_refresh_says_a_source_refused_by_its_fetch_and_its_prepare_of_one_light_check() -> None:
+    """Plan 070, review round 2: the lines of both stages come from one asking of the check.
+
+    Jira without its site: its fetch's line and its prepare's say that it will not run,
+    its light check asked once.
+    """
+    asked: list[str] = []
+
+    def counting(source: Source, settings: Mapping[str, object]) -> str | None:
+        asked.append(source.name)
+        assert JIRA.refused is not None
+        return JIRA.refused(source, settings)
+
+    registry = sourced(CONFLUENCE, replace(JIRA, refused=counting), WORKLOG)
+    given = parser(sources=registry).parse_args(["refresh"])
+    lines = given.command.described(given, CONFIGURED | {"sources.jira.site": None})
+    reason = "sources.jira.site: not set; add it to the settings"
+    assert f"fetch: source jira: will not run, {reason}" in lines
+    assert "prepare: source jira: will not run, as its fetch will not" in lines
+    assert asked == ["jira"]
 
 
 def test_an_option_of_a_source_without_a_fetcher_is_no_flag_and_said_of_none() -> None:
@@ -1489,9 +1512,9 @@ def test_a_source_that_its_preflight_refuses_fails_its_row_alone(
 @pytest.mark.parametrize(
     "case",
     [
-        ((), {}, "sources.jira.site: not set; add it to the settings"),
+        (("jira",), {}, "sources.jira.site: not set; add it to the settings"),
         (
-            (),
+            ("jira",),
             {**JIRA_SITE, "KB_MCP_SOURCES__JIRA__API_TOKEN": "token-sentinel-7f2b"},
             "sources.jira.email: not set; an API token signs in with its account's email",
         ),
@@ -1499,17 +1522,18 @@ def test_a_source_that_its_preflight_refuses_fails_its_row_alone(
         (("--until", "soon"), JIRA_SITE, "--until: a length before now"),
     ],
 )
-def test_the_site_s_light_checks_refuse_a_fetch_and_never_a_prepare(
+def test_the_site_s_light_checks_refuse_a_fetch_that_names_it_and_never_a_prepare(
     home: Path,
     worklog: Path,
     monkeypatch: MonkeyPatch,
     capsys: CaptureFixture[str],
     case: tuple[tuple[str, ...], dict[str, str], str],
 ) -> None:
-    """Plan 031: a source's light checks are its fetch's.
+    """Plan 031: a source's light checks are its fetch's; plan 070: refused when named.
 
-    No site, an API token without its email, or an option of the period that does not
-    read, exit 2 before anything is asked; a prepare, without a site too, is asked none.
+    No site, or an API token without its email, of the source named; or an option of the
+    period that does not read, the command line's, whichever sources are taken: exit 2
+    before anything is asked. A prepare, without a site too, is asked none.
     """
     given, variables, named = case
     for name, value in variables.items():
@@ -1524,13 +1548,145 @@ def test_the_site_s_light_checks_refuse_a_fetch_and_never_a_prepare(
     assert named not in capsys.readouterr().err
 
 
+def test_a_source_taken_by_default_that_its_settings_refuse_fails_its_unit_alone(
+    home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, criteria 1 and 2, by the user: "We should be tolerant"; "refuse when named".
+
+    Confluence and Jira configured, Jira without its site: the echo says that Jira will
+    not run, and why; Confluence's fetch runs, done; Jira's unit fails, a problem by its
+    source naming the setting, never a value, as the run's record holds it, and an error,
+    fetch.refused; Jira's site is asked nothing; exit 1. Named, Jira refuses the run, exit
+    2, before any run is recorded.
+    """
+    config = home / "config.toml"
+    config.write_text(
+        f'[sources.confluence]\nspaces = ["MFS"]\nsite = "{SITE}"\n'
+        '[sources.jira]\nprojects = ["PRB"]\n',
+        "utf-8",
+    )
+    reason = "sources.jira.site: not set; add it to the settings"
+    status = main(command(home, config, "fetch", "--yes", "--format", "json"))
+    assert status == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    document = json.loads(out)
+    rows = {row["source"]: row for row in document["sources"]}
+    assert {source: row["ending"] for source, row in rows.items()} == {
+        "confluence": "done",
+        "jira": "failed",
+    }
+    assert rows["jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    assert f"  source jira: will not run, {reason}\n" in err
+    assert err.index("will not run") < err.index("fetch.refused")
+    outcomes = home / "data" / "runs" / document["run"] / "outcomes.json"
+    entries = json.loads(outcomes.read_text("utf-8"))["units"]
+    assert [(each["source"], each["ending"], each["problems"]) for each in entries] == [
+        ("confluence", "done", []),
+        ("jira", "failed", [{"where": "jira", "reason": reason}]),
+    ]
+    assert signed_in.asked
+    assert not [url for url in signed_in.asked if url.path.startswith("/rest/api/3/")]
+    runs = sorted((home / "data" / "runs").iterdir())
+    assert main(command(home, config, "fetch", "--yes", "jira")) == ExitStatus.REFUSED
+    assert reason in capsys.readouterr().err
+    assert sorted((home / "data" / "runs").iterdir()) == runs
+
+
+def test_a_token_without_its_email_of_a_source_taken_by_default_fails_it_never_said(
+    home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 1: never a value, of a source taken by default either.
+
+    Confluence and Jira configured, Jira with its site and an API token but no email:
+    Jira's unit fails, naming its email setting, and Confluence's fetch runs, done: exit
+    1, Jira's API asked nothing. The token is in neither the run's record, its
+    configuration, a log, stdout nor stderr, nor any other file under the home.
+    """
+    sentinel = "token-sentinel-070e"
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__API_TOKEN", sentinel)
+    config = settings_file(home, None, atlassian=True)
+    reason = "sources.jira.email: not set; an API token signs in with its account's email"
+    status = main(command(home, config, "fetch", "--yes", "--format", "json"))
+    out, err = capsys.readouterr()
+    assert status == ExitStatus.FAILED
+    rows = {row["source"]: row for row in json.loads(out)["sources"]}
+    assert (rows["confluence"]["ending"], rows["jira"]["ending"]) == ("done", "failed")
+    assert rows["jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    assert f"  source jira: will not run, {reason}\n" in err
+    assert not [url for url in signed_in.asked if url.path.startswith("/rest/api/3/")]
+    run = home / "data" / "runs" / json.loads(out)["run"]
+    logs = list(user_log_folder(home.resolve()).iterdir())
+    read = [run / "outcomes.json", run / "configuration.json", *logs]
+    assert all(path.is_file() for path in read)
+    assert logs
+    written = {path for path in home.rglob("*") if path.is_file()}
+    assert [path for path in {*read, *written} if sentinel.encode() in path.read_bytes()] == []
+    assert sentinel not in out + err
+
+
+def test_a_fetch_whose_every_source_its_settings_refuse_fails_each_unit_and_exits_1(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070: a source's settings fail its unit, whatever else the run takes, or none.
+
+    Jira alone, without its site, made configured by --project, which does not name it:
+    its unit fails, naming the setting, exit 1, as when another source runs.
+    """
+    config = settings_file(home, None)
+    given = command(home, config, "fetch", "--yes", "--format", "json", "--project", "PRB")
+    assert main(given) == ExitStatus.FAILED
+    rows = json.loads(capsys.readouterr().out)["sources"]
+    assert [(row["source"], row["ending"], row["problems"]) for row in rows] == [
+        (
+            "jira",
+            "failed",
+            [{"where": "jira", "reason": "sources.jira.site: not set; add it to the settings"}],
+        )
+    ]
+
+
+def test_a_location_not_set_is_one_rule_that_names_the_setting_never_its_value() -> None:
+    """Plan 070, review round 1: login, a fetch's light check and prepare say it alike.
+
+    Jira's site, its location, not set: said by its path, as its fetch's light check
+    refuses it; set, nothing. A connector of its own, by its own location's setting; the
+    work log, which names no location, never.
+    """
+    drive = replace(WORKLOG, name="drive", settings=("folder",), location="folder")
+    jira, worklog, own = sourced(JIRA, WORKLOG, drive)
+    unset = {"sources.jira.site": None, "sources.jira.api_token": None}
+    reason = "sources.jira.site: not set; add it to the settings"
+    assert (jira.unlocated(unset), jira.refusal(unset)) == (reason, reason)
+    assert jira.unlocated({"sources.jira.site": SITE}) is None
+    assert own.unlocated({"sources.drive.folder": None}) == (
+        "sources.drive.folder: not set; add it to the settings"
+    )
+    assert worklog.unlocated({}) is None
+
+
+def test_the_refusals_are_those_of_the_sources_that_the_caller_chose_alone() -> None:
+    """Plan 070, review round 1: fetch, refresh, doctor and a resume each give their own.
+
+    Confluence and Jira both without their sites: of Jira alone, Jira's refusal; of none,
+    none, whatever the settings would let a fetch take.
+    """
+    confluence, jira = sourced(CONFLUENCE, JIRA)
+    settings: dict[str, object] = dict.fromkeys((*confluence.paths, *jira.paths))
+    settings |= {confluence.paths[0]: ("MFS",), jira.paths[0]: ("PRB",)}
+    assert refusals((jira,), settings) == {
+        "jira": "sources.jira.site: not set; add it to the settings"
+    }
+    assert refusals((), settings) == {}
+
+
 def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 030: a fetch asks each source taken what it refuses, says and does not apply.
 
     By its declaration's functions, given its options and the settings: here Jira's, in a
-    registry of the test's own.
+    registry of the test's own. Plan 070: what its settings refuse fails its unit alone,
+    the run exit 1, unless it is named, exit 2; what its options refuse, the run, exit 2.
     """
     config = settings_file(home, None, atlassian=True)
 
@@ -1552,12 +1708,20 @@ def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
     err = capsys.readouterr().err
     assert "  jira: a declaration's line\n" in err
     assert "(not applied: a declaration's reason)" in err
-    refusing = replace(JIRA, refused=lambda _source, _options, _settings: "a declaration's refusal")
+    refusing = replace(JIRA, refused=lambda _source, _settings: "a declaration's refusal")
     registry = sourced(CONFLUENCE, refusing, WORKLOG)
-    assert main(given, registry) == ExitStatus.REFUSED
+    assert main([*given, "--format", "json"], registry) == ExitStatus.FAILED
+    out, err = capsys.readouterr()
+    rows = {row["source"]: row for row in json.loads(out)["sources"]}
+    assert rows["jira"]["problems"] == [{"where": "jira", "reason": "a declaration's refusal"}]
+    assert "  source jira: will not run, a declaration's refusal\n" in err
+    assert main([*given, "jira"], registry) == ExitStatus.REFUSED
     assert "a declaration's refusal" in capsys.readouterr().err
     assert main([*given, "confluence"], registry) == ExitStatus.OK
     assert "a declaration's refusal" not in capsys.readouterr().err
+    optioned = replace(JIRA, options_refused=lambda _options: "an option's refusal")
+    assert main(given, sourced(CONFLUENCE, optioned, WORKLOG)) == ExitStatus.REFUSED
+    assert "an option's refusal" in capsys.readouterr().err
     assert signed_in.asked
 
 

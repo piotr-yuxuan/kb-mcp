@@ -87,13 +87,14 @@ Then what fetch cannot run with. Its
 [`chosen`](../../src/kb_mcp/cli/domain/sources.py), from the registry's declarations,
 [`SOURCES`](../../src/kb_mcp/sources/registry.py), and refuses the first of
 these that it finds: a source named that the settings do not configure;
-nothing to fetch, no source being configured; and what each source taken refuses by its
-declaration, with Confluence or Jira a site not set
-([`site_not_set`](../../src/kb_mcp/sources/atlassian/declared.py)), an API token
+nothing to fetch, no source being configured; what the settings of a source named refuse
+by its declaration, with Confluence or Jira a site not set
+([`Source.unlocated`](../../src/kb_mcp/sources/declaration.py)) or an API token
 without its email
-([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)) or an
-option of the period that does not read
-([`period_refused`](../../src/kb_mcp/sources/atlassian/declared.py)). For `prepare`, `enter`
+([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), which for a
+source taken without its name fails its row instead (part 3); and an option of the period
+that does not read ([`period_refused`](../../src/kb_mcp/sources/atlassian/declared.py)).
+For `prepare`, `enter`
 adds pandoc missing from `PATH`, and for `embed` its
 [`endpoint_elsewhere`](../../src/kb_mcp/cli/options/_common.py) refuses an embedding endpoint
 off this machine without `--allow-remote-embeddings`, or over plain http even with it. Each
@@ -134,6 +135,7 @@ and the pause, which tests replace. No work log is configured, so no unit is of 
 a source's declaration names ([`loaded`](../../src/kb_mcp/cli/app/sources.py)), refusing the
 run for one that does not load; [`run_units`](../../src/kb_mcp/cli/app/units.py) then runs
 each unit, writing its entry in the run's record as it ends, each of a source begun by its
+light check of the run's settings, such as a site not set, then by its fetcher's
 [`preflight`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py): here it
 finds an `--until` before `--since` from the
 [`Purview`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) of the

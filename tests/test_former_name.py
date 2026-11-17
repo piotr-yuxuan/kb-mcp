@@ -258,31 +258,41 @@ def test_plan_027_s_names_of_the_sign_in_name_no_setting_and_are_said(
 
 
 @pytest.mark.parametrize(
-    "command",
-    [("fetch", "--space", "MFS", "--since", "7d"), ("fetch",)],
-    ids=["a flag", "its setting"],
+    "case",
+    [
+        (("fetch", "--space", "MFS", "--since", "7d"), ExitStatus.FAILED, "fetch.refused"),
+        (("fetch",), ExitStatus.FAILED, "fetch.refused"),
+        (("fetch", "confluence", "--space", "MFS"), ExitStatus.REFUSED, "run.refused"),
+        (("fetch", "jira"), ExitStatus.REFUSED, "run.refused"),
+    ],
+    ids=["a flag", "its setting", "a flag, the source named", "its setting, the source named"],
 )
-def test_a_run_refused_for_want_of_the_site_says_plan_027_s_names_that_it_ignored(
-    home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], command: tuple[str, ...]
+def test_a_run_told_its_site_is_not_set_says_plan_027_s_names_that_it_ignored(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: CaptureFixture[str],
+    case: tuple[tuple[str, ...], ExitStatus, str],
 ) -> None:
     """The page's own case: a sops command sets ``KB_MCP_SITE``, and is told the site is not set.
 
-    The run says what it ignored before it refuses, naming the variable and never its value;
-    -q leaves that out, as for a run, and keeps the refusal, an error.
+    The run says what it ignored before it says so, naming the variable and never its
+    value: by the error of the source's unit, which fails, or, the source named, by the
+    run's refusal (plan 070). -q leaves that out, as for a run, and keeps the error.
     """
+    command, status, error = case
     monkeypatch.setenv("KB_MCP_SITE", SITE)
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
     given = [*command, "--yes", "--config", str(home / "none.toml")]
-    assert main(given) == ExitStatus.REFUSED
+    assert main(given) == status
     err = capsys.readouterr().err
     said = err.index("ignored: KB_MCP_SITE: names no setting\n")
-    assert said < err.index("run.refused")
+    assert said < err.index(error)
     assert re.search(r"sources\.(confluence|jira)\.site: not set", err)
     assert SITE not in err
-    assert main([*given, "-q"]) == ExitStatus.REFUSED
+    assert main([*given, "-q"]) == status
     err = capsys.readouterr().err
     assert "ignored:" not in err
-    assert "run.refused" in err
+    assert error in err
 
 
 @pytest.mark.parametrize("target", [Path("nowhere"), FORMER_DATA])

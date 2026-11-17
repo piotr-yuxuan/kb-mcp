@@ -620,7 +620,10 @@ def test_doctor_records_as_documented(
 def test_login_records_as_documented(
     telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Signed in, then a window closed: the browser is a stand-in, which signs in nowhere."""
+    """Signed in, a window closed, then Jira in use without its site, beside: a stand-in.
+
+    The browser is a stand-in, which signs in nowhere.
+    """
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
     arguments = ["login", "confluence", "--yes", "--config", str(tmp_path / "none.toml")]
     emitted = Emitted()
@@ -635,6 +638,10 @@ def test_login_records_as_documented(
     monkeypatch.setattr(login_module, "save_session", closed)
     with emitted.gathering(telemetry, "login"):
         assert main(arguments) == ExitStatus.SIGN_IN_AGAIN
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    with emitted.gathering(telemetry, "login"):
+        alone = ["login", "--yes", "--config", str(tmp_path / "none.toml")]
+        assert main(alone) == ExitStatus.SIGN_IN_AGAIN
     assert undocumented("login", emitted) == []
 
 

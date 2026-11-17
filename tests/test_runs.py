@@ -34,6 +34,7 @@ from kb_mcp.cli.domain.runs import (
     Unit,
     attempted,
     followed,
+    resume_said,
     units_of,
 )
 from kb_mcp.cli.main import main
@@ -43,6 +44,7 @@ from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts
 from kb_mcp.sources.atlassian.prepare.app import preparer as atlassian_preparer
@@ -135,6 +137,28 @@ def test_a_resume_runs_each_unit_not_done_and_each_that_follows_one() -> None:
     again = attempted(units, {**done, units[0]: "sign in again"})
     assert {unit.name for unit in again} == {"fetch jira", "prepare jira", "index", "embed"}
     assert attempted(units, {}) == frozenset(units)
+
+
+def test_a_resume_says_a_unit_will_not_run_only_after_a_fetch_that_it_runs_refused() -> None:
+    """Plan 070, review round 2: the echo says what the resume then does.
+
+    Jira refused by the settings, its fetch done and its prepare failed: the resume runs
+    that prepare, its fetch being done, and says nothing will not run. Its fetch failed:
+    the resume runs that fetch, refused, so says it will not run, and why, nor its prepare.
+    """
+    units = units_of(configuration(), {"jira": 1, "worklog": 1})
+    fetch_jira, _, prepare_jira, *_ = units
+    done = dict.fromkeys(units, "done")
+    refused = {"jira": "sources.jira.email: not set"}
+    said = resume_said(configuration(), units, {**done, prepare_jira: "failed"}, refused)
+    assert "  to run: prepare jira (failed), index (done), embed (done)\n" in said
+    assert "will not run" not in said
+    said = resume_said(configuration(), units, {**done, fetch_jira: "failed"}, refused)
+    assert said.endswith(
+        "  fetch jira: will not run, by the settings that the run recorded:"
+        " sources.jira.email: not set\n"
+        "  prepare jira: will not run, as its fetch will not\n"
+    )
 
 
 @pytest.mark.parametrize(
@@ -441,6 +465,150 @@ def test_a_refresh_whose_fetch_of_one_source_fails_prepares_the_others_then_the_
     assert not (home / "data" / "docs" / "confluence").exists()
     (resumable,) = logged_as(home, "run.resumable")
     assert resumable["resume"] == f"kb-mcp refresh --resume {document['run']}"
+
+
+@pytest.mark.usefixtures("site")
+def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
+    home: Path, endpoint: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, by the user: "We should be tolerant", for a refresh too.
+
+    Jira without its site, Confluence and the work log configured: the echo says that
+    Jira will not be fetched nor prepared, and why, and of Jira's prepare that alone;
+    Confluence and the work log are
+    fetched and prepared, then index and embed run; Jira's fetch fails, naming the
+    setting, as the record holds it, and its prepare is not run: exit 1. No resume is
+    offered, which would fail it again by the settings recorded. Named, Jira refuses the
+    refresh, exit 2, before any run is recorded.
+    """
+    options = given(home, endpoint, confluence=True)
+    config = home / "config.toml"
+    unsited = config.read_text("utf-8").replace(f'["PRB"]\nsite = "{SITE}"\n', '["PRB"]\n')
+    config.write_text(unsited, "utf-8")
+    reason = "sources.jira.site: not set; add it to the settings"
+    status = main(["refresh", "--yes", "--format", "json", *options])
+    out, err = capsys.readouterr()
+    document = json.loads(out)
+    assert status == ExitStatus.FAILED
+    endings = {(each["stage"], each["source"]): each["ending"] for each in document["units"]}
+    assert endings == {
+        ("fetch", "confluence"): "done",
+        ("fetch", "jira"): "failed",
+        ("fetch", "worklog"): "done",
+        ("prepare", "confluence"): "done",
+        ("prepare", "jira"): "not run",
+        ("prepare", "worklog"): "done",
+        ("index", None): "done",
+        ("embed", None): "done",
+    }
+    _, entries = record_of(home, document["run"])
+    (jira,) = [each for each in entries if (each["stage"], each["source"]) == ("fetch", "jira")]
+    assert jira["problems"] == [{"where": "jira", "reason": reason}]
+    assert f"  fetch: source jira: will not run, {reason}\n" in err
+    assert [line for line in err.splitlines() if line.startswith("  prepare: ")] == [
+        "  prepare: source confluence: all that its store holds",
+        "  prepare: source jira: will not run, as its fetch will not",
+        "  prepare: source worklog: all that its store holds",
+    ]
+    assert (home / "data" / "docs" / "worklog").is_dir()
+    assert logged_as(home, "run.resumable") == []
+    runs = sorted((home / "data" / "runs").iterdir())
+    assert main(["refresh", "--yes", *options, "jira"]) == ExitStatus.REFUSED
+    assert reason in capsys.readouterr().err
+    assert sorted((home / "data" / "runs").iterdir()) == runs
+
+
+@pytest.mark.usefixtures("site")
+def test_a_refresh_refused_a_source_by_its_settings_offers_a_resume_for_the_others(
+    home: Path, endpoint: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 1: a resume is offered when it could do more than fail again.
+
+    Jira without its site, and Confluence's fetch failing, a file of a page answering 404:
+    a resume could fetch Confluence again, so it is offered, exit 1.
+    """
+    options = given(home, endpoint, confluence=True)
+    config = home / "config.toml"
+    unsited = config.read_text("utf-8").replace(f'["PRB"]\nsite = "{SITE}"\n', '["PRB"]\n')
+    config.write_text(unsited, "utf-8")
+    status, document = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.FAILED
+    endings = {(each["stage"], each["source"]): each["ending"] for each in document["units"]}
+    assert (endings["fetch", "confluence"], endings["fetch", "jira"]) == ("failed", "failed")
+    (resumable,) = logged_as(home, "run.resumable")
+    assert resumable["resume"] == f"kb-mcp refresh --resume {document['run']}"
+
+
+@pytest.mark.usefixtures("site")
+def test_a_refresh_refused_a_source_by_a_secret_alone_offers_a_resume_that_runs_it(
+    home: Path, endpoint: str, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 2: a refusal that a secret alone makes is not settled.
+
+    Jira with an API token and no email: its fetch fails, naming the email setting, exit 1.
+    A resume takes its secrets from its own environment, so it is offered; run without
+    the token, it signs Jira in by the browser's session and fetches it: exit 0. A site
+    not set, which no secret lifts, is offered none (as
+    test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone checks).
+    """
+    monkeypatch.delenv("KB_MCP_SOURCES__JIRA__EMAIL")
+    options = given(home, endpoint)
+    reason = "sources.jira.email: not set; an API token signs in with its account's email"
+    status, first = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.FAILED
+    units = {(each["stage"], each["source"]): each for each in first["units"]}
+    assert units["fetch", "jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    (resumable,) = logged_as(home, "run.resumable")
+    assert resumable["resume"] == f"kb-mcp refresh --resume {first['run']}"
+    monkeypatch.delenv("KB_MCP_SOURCES__JIRA__API_TOKEN")
+    session = folder_of((home / "data").resolve() / "session", SITE) / COOKIES
+    write_cookies(session, [{"name": "s", "value": "v", "domain": "x"}])
+    status = main(["refresh", "--yes", "--format", "json", "--resume", first["run"], *options])
+    resumed = json.loads(capsys.readouterr().out)
+    assert status == ExitStatus.OK
+    assert {each["ending"] for each in resumed["units"]} == {"done"}
+
+
+@pytest.mark.usefixtures("site")
+def test_a_resume_runs_a_fetch_failed_by_its_settings_by_those_that_the_run_recorded(
+    home: Path, endpoint: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070 on plan 062's run from its record: a fix to the settings file is a new run's.
+
+    A refresh with Jira's site unset, then the site set in the settings file: the resume
+    says before it asks that Jira's fetch will not run, by the settings that the run
+    recorded, and why, nor Jira's prepare, as its fetch will not; it runs that fetch
+    again, which fails again, Jira's prepare not run, then index and embed: exit 1. A new
+    refresh of Jira reads the site and fetches.
+    """
+    options = given(home, endpoint)
+    config = home / "config.toml"
+    sited = config.read_text("utf-8")
+    config.write_text(sited.replace(f'["PRB"]\nsite = "{SITE}"\n', '["PRB"]\n'), "utf-8")
+    reason = "sources.jira.site: not set; add it to the settings"
+    status, first = refreshed(capsys, *options)
+    assert status == ExitStatus.FAILED
+    config.write_text(sited, "utf-8")
+    status = main(["refresh", "--yes", "--format", "json", "--resume", first["run"], *options])
+    out, err = capsys.readouterr()
+    assert status == ExitStatus.FAILED
+    assert f"  fetch jira: will not run, by the settings that the run recorded: {reason}\n" in err
+    assert err.count("  prepare jira: will not run, as its fetch will not\n") == 1
+    units = {(each["stage"], each["source"]): each for each in json.loads(out)["units"]}
+    earlier = {each["invocation"] for each in first["units"]}
+    again = {
+        unit: each["ending"] for unit, each in units.items() if each["invocation"] not in earlier
+    }
+    assert again == {
+        ("fetch", "jira"): "failed",
+        ("prepare", "jira"): "not run",
+        ("index", None): "done",
+        ("embed", None): "done",
+    }
+    assert units["fetch", "jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    status, fresh = refreshed(capsys, *options, "jira")
+    assert status == ExitStatus.OK
+    assert {each["ending"] for each in fresh["units"]} == {"done"}
 
 
 def test_a_resume_after_an_interruption_runs_only_the_units_not_done(

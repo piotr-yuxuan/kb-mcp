@@ -74,7 +74,7 @@ WITHOUT_EMAIL = {
 # What plan 015 refuses without the network, before anything is asked: a command that
 # writes and its arguments, the variables set, and what the refusal names.
 REFUSED_FIRST = [
-    (["fetch", "--space", "MFS"], NO_SITE, "sources.confluence.site: not set"),
+    (["fetch", "confluence", "--space", "MFS"], NO_SITE, "sources.confluence.site: not set"),
     (["fetch"], {WORKLOG_PATH: None}, "nothing to fetch"),
     (["fetch", *WRITING["fetch"][0], "--max-file-mb", "0"], {}, "--max-file-mb"),
     (["fetch", *WRITING["fetch"][0], "--since", "yesterday"], {}, "--since"),
@@ -83,9 +83,13 @@ REFUSED_FIRST = [
     (["fetch", *WRITING["fetch"][0], "--since", "0d"], {}, "--since"),
     (["fetch", *WRITING["fetch"][0], "--since", "0h"], {}, "--since"),
     (["fetch", *WRITING["fetch"][0], "--until", "all"], {}, "--until"),
-    (["fetch", *WRITING["fetch"][0]], WITHOUT_EMAIL, "sources.confluence.email: not set"),
     (
-        ["fetch", *WRITING["fetch"][0], "--dry-run"],
+        ["fetch", "confluence", *WRITING["fetch"][0]],
+        WITHOUT_EMAIL,
+        "sources.confluence.email: not set",
+    ),
+    (
+        ["fetch", "confluence", *WRITING["fetch"][0], "--dry-run"],
         WITHOUT_EMAIL,
         "sources.confluence.email: not set",
     ),
@@ -97,9 +101,9 @@ REFUSED_FIRST = [
     (["eval", str(Path(__file__).parent)], {}, f"{Path(__file__).parent}: not a file"),
     (["prepare"], {"PATH": ""}, "pandoc: not found on PATH"),
     (["fetch", "jira"], {}, "jira: not configured"),
-    (["fetch"], PROJECTS | NO_SITE, "sources.jira.site: not set"),
+    (["fetch", "jira"], PROJECTS | NO_SITE, "sources.jira.site: not set"),
     (["fetch", "--since", "yesterday"], PROJECTS, "--since"),
-    (["fetch"], PROJECTS | WITHOUT_EMAIL, "sources.jira.email: not set"),
+    (["fetch", "jira"], PROJECTS | WITHOUT_EMAIL, "sources.jira.email: not set"),
 ]
 
 
@@ -182,6 +186,30 @@ def test_on_terminals_yes_lets_the_run_go_on(
     assert said.startswith("prepare, with these settings:\n")
     assert said.endswith(QUESTION)
     assert f"kb-mcp prepare \\\n  --config {home / 'none.toml'}" in said
+
+
+def test_on_terminals_a_fetch_says_each_source_that_will_not_run_then_asks(
+    home: Path,
+    monkeypatch: MonkeyPatch,
+    runs: list[tuple[argparse.Namespace, Loaded]],
+) -> None:
+    """Plan 070: Jira taken by default without its site refuses no run; its unit will fail.
+
+    The summary says so, and why, before the question; yes lets the run go on.
+    """
+    for variable, value in {**PROJECTS, **NO_SITE}.items():
+        if value is None:
+            monkeypatch.delenv(variable)
+        else:
+            monkeypatch.setenv(variable, value)
+    stderr = Terminal()
+    given(monkeypatch, Terminal("y\n"), stderr)
+    assert main(["fetch", "--config", str(home / "none.toml")]) == 0
+    assert len(runs) == 1
+    said = stderr.getvalue()
+    line = "  source jira: will not run, sources.jira.site: not set; add it to the settings\n"
+    assert said.index(line) < said.index(QUESTION)
+    assert said.endswith(QUESTION)
 
 
 @pytest.mark.parametrize("answer", ["n\n", "\n", "yess\n", ""])

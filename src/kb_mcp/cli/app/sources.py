@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.app.units import Planned, SourcesRefusedError
 from kb_mcp.cli.domain.command import FETCH, PREPARE
+from kb_mcp.cli.domain.echo import values_of
+from kb_mcp.config.domain.settings import without_secrets
 from kb_mcp.sources.stages import Fetcher, Preparer
 
 if TYPE_CHECKING:
@@ -43,13 +45,23 @@ def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[
 def source_planned(unit: Unit, run: SourceRun) -> Planned:
     """Give a unit per source as its source's fetcher, or its preparer of the unit's part, does it.
 
-    Raises ``SourcesRefusedError`` as ``loaded`` does.
+    A fetch is refused by its source's light check of the run's settings
+    (``Source.refusal``), else by its fetcher's preflight: either fails the unit alone.
+    What the check refuses of the settings without their secrets, such as a site not set,
+    is the unit's ``refused``, as every invocation of the run would refuse it; what it
+    refuses only with this invocation's secrets, such as an API token without its email,
+    begins its preflight, as a resume takes its secrets from its own environment. Raises
+    ``SourcesRefusedError`` as ``loaded`` does.
     """
     connector = run.source.connector
     if unit.stage == FETCH:
         fetcher = loaded(run.source, str(connector.fetcher), Fetcher)
+        secretless = type(run.settings).model_validate(without_secrets(run.settings))
         return Planned(
-            unit=unit, act=partial(fetcher.fetch, run), preflight=partial(fetcher.preflight, run)
+            unit=unit,
+            act=partial(fetcher.fetch, run),
+            refused=run.source.refusal(values_of(secretless)),
+            preflight=lambda: run.source.refusal(values_of(run.settings)) or fetcher.preflight(run),
         )
     preparer = loaded(run.source, connector.preparers[unit.part], Preparer)
     return Planned(

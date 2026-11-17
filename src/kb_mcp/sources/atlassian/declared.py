@@ -35,18 +35,16 @@ if TYPE_CHECKING:
 SITE, EMAIL, API_TOKEN = SIGN_IN = ("site", "email", "api_token")
 
 
-def site_not_set(source: Source, settings: Mapping[str, object]) -> str | None:
-    """Refuse a run of a source that reaches its site when none is set."""
-    if settings[source.path(SITE)] is not None:
-        return None
-    return f"{source.path(SITE)}: not set; add it to the settings"
-
-
 def token_without_email(source: Source, settings: Mapping[str, object]) -> str | None:
     """Refuse an API token without the email of its account, with which it signs in."""
     if settings[source.path(API_TOKEN)] is None or settings[source.path(EMAIL)] is not None:
         return None
     return f"{source.path(EMAIL)}: not set; an API token signs in with its account's email"
+
+
+def signs_in_by_token(source: Source, settings: Mapping[str, object]) -> bool:
+    """Say that a login that names no source leaves one that signs in by an API token."""
+    return settings[source.path(API_TOKEN)] is not None
 
 
 def email_without_token(
@@ -113,20 +111,12 @@ def period_refused(options: Mapping[str, object]) -> str | None:
     return None
 
 
-def refused(
-    source: Source, options: Mapping[str, object], settings: Mapping[str, object]
-) -> str | None:
-    """Refuse what no fetch of a source's site can run with: the first found.
+def refused(source: Source, settings: Mapping[str, object]) -> str | None:
+    """Refuse the settings that no fetch of a source's site runs with: the first found.
 
-    No site; an API token without its email; the period's options, as
-    ``period_refused`` says.
+    No site, its location (``Source.unlocated``); an API token without its email.
     """
-    faults = (
-        site_not_set(source, settings),
-        token_without_email(source, settings),
-        period_refused(options),
-    )
-    return next((fault for fault in faults if fault is not None), None)
+    return source.unlocated(settings) or token_without_email(source, settings)
 
 
 def described(
@@ -155,9 +145,11 @@ CONFLUENCE = Connector(
     fetcher=FETCHER,
     location=SITE,
     login=LOGIN,
+    left_by_login=signs_in_by_token,
     checks=CHECKS,
     options=PERIOD,
     refused=refused,
+    options_refused=period_refused,
     unapplied=email_without_token,
     described=described,
 )
@@ -171,9 +163,11 @@ JIRA = Connector(
     fetcher=FETCHER,
     location=SITE,
     login=LOGIN,
+    left_by_login=signs_in_by_token,
     checks=CHECKS,
     options=PERIOD,
     refused=refused,
+    options_refused=period_refused,
     unapplied=email_without_token,
     described=described,
 )

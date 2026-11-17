@@ -6,7 +6,14 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import STAGES, Command
-from kb_mcp.cli.domain.sources import fetch_described, fetch_flags, given, prepare_described
+from kb_mcp.cli.domain.sources import (
+    chosen_to_fetch,
+    fetch_described,
+    fetch_flags,
+    given,
+    prepare_described,
+    refusals,
+)
 from kb_mcp.cli.options import fetch
 from kb_mcp.cli.options._common import (
     add_embedding_options,
@@ -53,10 +60,16 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
 
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-    """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work."""
+    """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work.
+
+    A source whose fetch will not run, by its light check (``refusals``), asked once for
+    both stages' lines, is not prepared either, and its prepare's line says that alone.
+    """
+    taken, _ = chosen_to_fetch(arguments, settings)
+    unfetched = refusals(taken, settings)
     return (
-        *(f"fetch: {line}" for line in fetch_described(arguments, settings)),
-        *(f"prepare: {line}" for line in prepare_described(arguments, settings)),
+        *(f"fetch: {line}" for line in fetch_described(arguments, settings, unfetched)),
+        *(f"prepare: {line}" for line in prepare_described(arguments, settings, unfetched)),
         "index: the words of the mirror's files that changed, whichever source wrote them",
         "embed: the vectors of the chunks that the index lacks, then the vector cache pruned",
     )

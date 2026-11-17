@@ -89,8 +89,8 @@ preparers by module path. Each scope type says how a fetch enumerates its docume
 which document types it holds ([`ScopeType`](../../src/kb_mcp/sources/declaration.py),
 [`DocumentType`](../../src/kb_mcp/sources/declaration.py)); one read in place has one
 scope, the whole source, and no key. A connector that signs in also names its `account`,
-and one with a fetcher its `fetcher`; a light check that `fetch` asks before anything else
-goes in `refused`, as Confluence's does
+and one with a fetcher its `fetcher`; a light check of a source's settings goes in
+`refused`, and one of its fetch's options in `options_refused`, as Confluence's do
 ([`CONFLUENCE`](../../src/kb_mcp/sources/atlassian/declared.py)). Create
 `src/kb_mcp/sources/notes/declared.py`:
 

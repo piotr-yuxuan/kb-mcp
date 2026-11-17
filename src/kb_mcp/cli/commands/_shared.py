@@ -74,7 +74,7 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         structlog.get_logger().error("settings.refused", reason=str(error))
         sys.stderr.write(error.advice)
         return ExitStatus.REFUSED
-    refusal = command.refused(arguments, values_of(loaded)) if command.refused else None
+    refusal = command.refused(arguments, values_of(loaded.settings)) if command.refused else None
     refusal = refusal or next(
         (f"{name}: not found on PATH" for name in command.programs if not shutil.which(name)),
         None,

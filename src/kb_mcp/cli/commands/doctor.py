@@ -23,7 +23,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, list
     A machine that configures no source that signs in, as ``checked`` judges, gets the
     machine's alone.
     """
-    checks = doctor(loaded.settings, checked(arguments, values_of(loaded)))
+    checks = doctor(loaded.settings, checked(arguments, values_of(loaded.settings)))
     return folded("done" if each.state == "well" else each.state for each in checks), checks
 
 

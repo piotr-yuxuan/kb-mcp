@@ -111,6 +111,16 @@ asks again unless given `--yes`, saying the units done and those it runs in plac
 settings, then, as any run, whether telemetry is on, the values ignored and the command to
 copy, which resumes it again.
 
+A resume runs by the settings that the run recorded, not by the settings file: a fix there,
+such as a site set for a source whose fetch failed without it, is seen by a new run alone,
+such as `kb-mcp refresh jira`. A resume of a source still refused by the settings recorded
+says so before it asks, `fetch jira: will not run, by the settings that the run recorded`,
+and why, then `prepare jira: will not run, as its fetch will not`. Only a secret, which it
+takes from its environment again, can change that: Jira with an API token and no email is
+refused, and a resume without the token signs in by the browser's session. So a run offers
+no resume when its units not done are only those that its settings refuse whatever the
+secrets, such as a site not set, and those after them.
+
 It finds the run under the data directory that its settings, or `--data-dir`, name, so give
 the same `--config` or `--data-dir` as the run did. Anything that would change the
 configuration is refused, exit 2: a source named, `--since`, `--until`, `--max-file-mb`,
@@ -130,8 +140,9 @@ them alone, then indexes and embeds the whole mirror. It takes those that `fetch
 `confluence`, `jira` and `worklog`. Without a name, it fetches every one configured, and
 prepares every one that keeps a store of spaces or projects, and the work log when
 configured. A source named but not configured is refused, naming its setting, as is a run
-left with none. A flag of a source not taken, such as `--project` with `refresh
-confluence`, is said not applied.
+left with none, and so is a source named whose settings it cannot run with, such as Jira
+without its site, before anything is asked. A flag of a source not taken, such as
+`--project` with `refresh confluence`, is said not applied.
 
 Preparing Confluence alone leaves Jira's files whose links depend on Confluence's pages
 as they are until Jira is prepared, and what they attach stays until then. `index` digests
@@ -175,7 +186,7 @@ A run's exit status folds how its units last ended, the most severe first:
 | Status | Means | Then |
 |---|---|---|
 | 0 | every unit done | nothing to do |
-| 1 | a unit failed, or its source's check refused it, the others ran; or the run stopped, with no unit written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | read why, fix it, and resume the run |
+| 1 | a unit failed, or its source's check refused it, the others ran; or the run stopped, with no unit written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | read why, fix it, and resume the run; a source that its settings refused, fix them and run it again, such as `kb-mcp refresh jira` |
 | 2 | refused before any unit | nothing ran, and it is yours to fix |
 | 3 | to sign in again | sign in, then resume the run |
 | 130 | stopped by Ctrl-C | resume the run |
@@ -183,6 +194,15 @@ A run's exit status folds how its units last ended, the most severe first:
 A source's fetch that fails stops none of the others: their prepares run, then index and
 embed, and the run exits 1. Resuming it, once you have fixed what failed, fetches and
 prepares that source alone, then indexes and embeds again.
+
+So does a source that the run takes without its name but whose settings it cannot run with,
+such as Jira without its site, or with an API token and no email: the summary before the
+question says `source jira: will not run`, and why, naming the setting; its fetch's unit
+fails with that problem, `fetch.refused`, its prepare is not run, the other sources run, and
+the run exits 1. Fix the setting, then run again, `kb-mcp refresh jira`: a resume would run
+by the settings recorded, as section 3 says. Named before the fix, such a source refuses
+the run, exit 2, before anything is asked. An option that does not read, such as
+`--since yesterday`, refuses the run whichever sources it takes: it is the command line's.
 
 ## 7. Look before running
 

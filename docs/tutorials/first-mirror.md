@@ -108,7 +108,9 @@ sources.confluence.site: https://<your-site>.atlassian.net
 ```
 
 Every other setting keeps its default. The data, the mirror included, go to
-`~/kb-mcp`.
+`~/kb-mcp`. Without `site`, each command that reaches the site says so, naming
+`sources.confluence.site`: `login` and `fetch` fail Confluence alone and go on with any
+other source, then exit 1; `kb-mcp fetch confluence`, naming it, stops at once, exit 2.
 
 ## 4. Sign in
 

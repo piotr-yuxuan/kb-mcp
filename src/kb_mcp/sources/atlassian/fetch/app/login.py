@@ -65,24 +65,23 @@ def login(
     chrome: Path | None,
     *,
     extensions: bool,
-    named: bool,
 ) -> tuple[tuple[SignedIn, ...], bool]:
     """Sign in to the site of each source, once a site, one after another; say if all did.
 
-    A source not ``named`` that signs in by an API token is left: a session would serve it
-    nothing. Each site signed in is said at INFO, ``login.signed_in``; one whose sign-in
-    does not complete is an error, ``login.not_signed_in``, and no site after it is tried.
-    Give the sites signed in, then whether none failed.
+    Each source has its site, and none is left: a login that names no source leaves one
+    that signs in by an API token before (``signs_in_by_token``). Each site signed in is
+    said at INFO, ``login.signed_in``; one whose sign-in does not complete is an error,
+    ``login.not_signed_in``, and the next site is tried. Give the sites signed in, then
+    whether none failed.
     """
-    tables = [getattr(settings.sources, each.name) for each in sources]
-    sites = dict.fromkeys(str(each.site) for each in tables if named or each.api_token is None)
+    sites = dict.fromkeys(str(getattr(settings.sources, each.name).site) for each in sources)
     signed: list[SignedIn] = []
     for site in sites:
         try:
             save_session(settings, site, chrome, extensions=extensions)
         except SignInFailedError as error:
             structlog.get_logger().error("login.not_signed_in", site=site, reason=str(error))
-            return tuple(signed), False
+            continue
         signed.append(SignedIn(site=site, session=folder_of(settings.session, site)))
         structlog.get_logger().info("login.signed_in", site=site)
-    return tuple(signed), True
+    return tuple(signed), len(signed) == len(sites)

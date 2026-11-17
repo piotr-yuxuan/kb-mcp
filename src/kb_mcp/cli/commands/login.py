@@ -5,14 +5,17 @@ from __future__ import annotations
 import pkgutil
 from typing import TYPE_CHECKING
 
+import structlog
+
 from kb_mcp.cli.domain.echo import values_of
-from kb_mcp.cli.options.login import signing
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.cli.options.login import to_sign_in, unlocated
+from kb_mcp.kernel.exit_status import ExitStatus, folded
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.kernel.exit_status import Ending
     from kb_mcp.kernel.output import Detail
     from kb_mcp.kernel.record import Record
     from kb_mcp.sources.declaration import Source
@@ -21,30 +24,37 @@ if TYPE_CHECKING:
 def run(
     arguments: argparse.Namespace, loaded: Loaded
 ) -> tuple[ExitStatus, tuple[Record, ...] | None]:
-    """Sign in each source that ``signing`` gives; exit 3 when a sign-in does not complete.
+    """Sign in each source that ``to_sign_in`` gives; exit as their endings fold: 3, then 1.
 
-    The sources of one connector's login are signed in by the run that it names, loaded by
-    that path, so that this module imports neither the browser's adapter nor Playwright,
-    in the order of their first source; the run says why a sign-in did not complete, and
-    none after it is tried. The result holds the places signed in before, if any.
+    A source whose location is not set (``unlocated``), which the entry refused when it
+    is named, is not signed in: an error, ``login.refused``, names it and why, and the
+    run exits 1 at least. The sources of one connector's login are signed in by the run
+    that it names, loaded by that path, so that this module imports neither the browser's
+    adapter nor Playwright, in the order of their first source; the run says why a
+    sign-in did not complete, the next is tried, and the run exits 3. The result holds
+    the places signed in: none when the run exits 1 or 3 having signed in none.
     """
-    taken = signing(arguments, values_of(loaded))
+    values = values_of(loaded.settings)
+    taken = to_sign_in(arguments, values)
+    refused = unlocated(taken, values)
+    for name, why in refused.items():
+        structlog.get_logger().error("login.refused", source=name, reason=why)
     logins: dict[str, list[Source]] = {}
-    for each in taken:
+    for each in (each for each in taken if each.name not in refused):
         logins.setdefault(str(each.connector.login), []).append(each)
     signed: list[Record] = []
+    endings: list[Ending] = ["failed" for _ in refused]
     for path, sources in logins.items():
         done, complete = pkgutil.resolve_name(path)(
             loaded.settings,
             tuple(sources),
             arguments.chrome,
             extensions=arguments.keep_extensions,
-            named=arguments.source is not None,
         )
         signed += done
-        if not complete:
-            return ExitStatus.SIGN_IN_AGAIN, tuple(signed) or None
-    return ExitStatus.OK, tuple(signed)
+        endings.append("done" if complete else "sign in again")
+    status = folded(endings)
+    return status, tuple(signed) if status == ExitStatus.OK else (tuple(signed) or None)
 
 
 def text(signed: tuple[Record, ...], _detail: Detail) -> str:

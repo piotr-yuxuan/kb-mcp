@@ -242,7 +242,7 @@ def drive_signed_in(
     settings: Settings, sources: tuple[Source, ...], chrome: Path | None, **given: bool
 ) -> tuple[tuple[SignedIn, ...], bool]:
     """Sign each source in: its run, as its connector names it."""
-    assert (chrome, given) == (None, {"extensions": False, "named": True})
+    assert (chrome, given) == (None, {"extensions": False})
     folders = [getattr(settings.sources, each.name).folder for each in sources]
     return tuple(SignedIn(site=str(folder), session=settings.session) for folder in folders), True
 
@@ -317,3 +317,109 @@ def test_a_login_of_two_sites_that_fails_at_the_second_says_the_first_signed_in(
     assert [row["site"] for row in json.loads(capsys.readouterr().out)] == [SITE]
     assert [each["site"] for each in logged_as(tmp_path, "login.signed_in")] == [SITE]
     assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [CLIENT]
+
+
+def test_a_login_of_two_sites_that_fails_at_the_first_signs_in_the_second(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, criterion 3: the next site is tried; exit 3, the second in the result."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    tried: list[str] = []
+
+    def second_alone(_: object, site: str, *__: object, **___: object) -> None:
+        tried.append(site)
+        if site == SITE:
+            message = "the sign-in window was closed"
+            raise SignInFailedError(message)
+
+    monkeypatch.setattr(login_module, "save_session", second_alone)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", CLIENT)
+    assert main([*login(tmp_path), "--format", "json"]) == SIGN_IN_AGAIN
+    assert tried == [SITE, CLIENT]
+    assert [row["site"] for row in json.loads(capsys.readouterr().out)] == [CLIENT]
+    assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [SITE]
+    assert [each["site"] for each in logged_as(tmp_path, "login.signed_in")] == [CLIENT]
+
+
+def test_login_alone_leaves_a_source_by_a_token_without_its_site_as_with_one(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 1: a session would serve it nothing, site or not: exit 0.
+
+    Jira by an API token, with its email and no site, Confluence with its own: Confluence's
+    site is signed in, and Jira is neither signed in nor refused, the echo saying nothing
+    of its site. Named, Jira would sign in in the browser: refused without its site, exit 2.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    signed_in = opened(monkeypatch)
+    for name, value in {
+        "KB_MCP_SOURCES__CONFLUENCE__SITE": SITE,
+        "KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]',
+        "KB_MCP_SOURCES__JIRA__EMAIL": "someone@example.invalid",
+        "KB_MCP_SOURCES__JIRA__API_TOKEN": "token-sentinel-5d1e",
+    }.items():
+        monkeypatch.setenv(name, value)
+    assert main([*login(tmp_path), "--format", "json"]) == 0
+    out, err = capsys.readouterr()
+    assert signed_in == [SITE]
+    assert [row["site"] for row in json.loads(out)] == [SITE]
+    assert "will not be signed in" not in err
+    assert logged_as(tmp_path, "login.refused") == []
+    assert main(login(tmp_path, "jira")) == BAD_ARGUMENTS
+    assert "sources.jira.site: not set; add it to the settings" in capsys.readouterr().err
+    assert signed_in == [SITE]
+
+
+def drive_signed_in_by_default(
+    settings: Settings, sources: tuple[Source, ...], _chrome: Path | None, **_given: bool
+) -> tuple[tuple[SignedIn, ...], bool]:
+    """Sign each source in, unnamed: its run, as its connector names it."""
+    folders = [getattr(settings.sources, each.name).folder for each in sources]
+    return tuple(SignedIn(site=str(folder), session=settings.session) for folder in folders), True
+
+
+def test_a_connector_s_login_that_does_not_complete_stops_no_other_connector_s(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070: Atlassian's sign-in does not complete; the drive's, run after it, signs in."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    def closed(*_: object, **__: object) -> None:
+        message = "the sign-in window was closed"
+        raise SignInFailedError(message)
+
+    monkeypatch.setattr(login_module, "save_session", closed)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__DRIVE__FOLDER", "/made/up")
+    drive = replace(DRIVE, login=f"{__name__}:drive_signed_in_by_default")
+    registry = (*SOURCES, Source(name="drive", connector=drive))
+    assert main([*login(tmp_path), "--format", "json"], registry) == SIGN_IN_AGAIN
+    assert [row["site"] for row in json.loads(capsys.readouterr().out)] == ["/made/up"]
+    assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [SITE]
+
+
+def test_login_alone_signs_in_the_others_past_a_source_without_its_site(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, by the user: "We should be tolerant"; "refuse when named".
+
+    Jira in use without its site, Confluence with its own: the echo says that Jira will
+    not be signed in, and why; Confluence's site is signed in, and an error, login.refused,
+    names Jira and the setting: exit 1. Named, Jira refuses the run, exit 2.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    signed_in = opened(monkeypatch)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    reason = "sources.jira.site: not set; add it to the settings"
+    assert main([*login(tmp_path), "--format", "json"]) == 1
+    out, err = capsys.readouterr()
+    assert signed_in == [SITE]
+    assert [row["site"] for row in json.loads(out)] == [SITE]
+    assert f"  source jira: will not be signed in, {reason}\n" in err
+    (refused,) = logged_as(tmp_path, "login.refused")
+    assert (refused["level"], refused["source"], refused["reason"]) == ("error", "jira", reason)
+    assert main(login(tmp_path, "jira")) == BAD_ARGUMENTS
+    assert reason in capsys.readouterr().err
+    assert signed_in == [SITE]

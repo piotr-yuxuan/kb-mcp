@@ -18,7 +18,7 @@ from kb_mcp.cli.app.units import REFUSED, Planned, SourcesRefusedError, run_unit
 from kb_mcp.cli.commands._embedding import indexing_of, open_endpoint
 from kb_mcp.cli.domain.command import INDEX, WHOLE
 from kb_mcp.cli.domain.rows import Ended
-from kb_mcp.cli.domain.runs import Configuration, units_of
+from kb_mcp.cli.domain.runs import Configuration, resumable, units_of
 from kb_mcp.config.domain.settings import without_secrets
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
@@ -70,7 +70,9 @@ def recorded(
     ``run.resumable``, the command that resumes it, even as an error that no unit caught
     passes: as of the entries last handed to its record, those read before its units when
     none was, whether or not their write succeeded, so that no record read hides the
-    error in flight.
+    error in flight; unless a resume could do no more than a new run (``resumable``), as
+    each unit not done is one that its settings refuse whatever the secrets
+    (``Planned.refused``), or after one.
     """
     unrecorded = configuration is not None and (
         configuration.dry_run
@@ -101,7 +103,8 @@ def recorded(
             try:
                 done = run_units(units, last, started, write, dry_run=fixed.dry_run)
             finally:
-                if record.folder is not None and {each.ending for each in handed[0]} - {"done"}:
+                settled = {each.unit for each in units if each.refused is not None}
+                if record.folder is not None and resumable(handed[0], settled):
                     resume = f"{PROGRAM} refresh --resume {run}"
                     structlog.get_logger().warning("run.resumable", resume=resume)
     except RunBusyError:
