@@ -63,6 +63,7 @@ from tests.test_confirmation import QUESTION, Terminal
 from tests.test_fetching import FOLDERS, PAGES, SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, SECOND, WEEK, RefreshSite, stored_pages
 from tests.test_prepare_worklog import FIXTURE, Counting, settle, snapshot
+from tests.test_settings import user_log_folder
 
 if TYPE_CHECKING:
     import argparse
@@ -1567,6 +1568,38 @@ def test_a_source_taken_by_default_that_its_settings_refuse_fails_its_unit_alone
     assert main(command(home, config, "fetch", "--yes", "jira")) == ExitStatus.REFUSED
     assert reason in capsys.readouterr().err
     assert sorted((home / "data" / "runs").iterdir()) == runs
+
+
+def test_a_token_without_its_email_of_a_source_taken_by_default_fails_it_never_said(
+    home: Path, signed_in: FakeSite, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 1: never a value, of a source taken by default either.
+
+    Confluence and Jira configured, Jira with its site and an API token but no email:
+    Jira's unit fails, naming its email setting, and Confluence's fetch runs, done: exit
+    1, Jira's API asked nothing. The token is in neither the run's record, its
+    configuration, a log, stdout nor stderr, nor any other file under the home.
+    """
+    sentinel = "token-sentinel-070e"
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__API_TOKEN", sentinel)
+    config = settings_file(home, None, atlassian=True)
+    reason = "sources.jira.email: not set; an API token signs in with its account's email"
+    status = main(command(home, config, "fetch", "--yes", "--format", "json"))
+    out, err = capsys.readouterr()
+    assert status == ExitStatus.FAILED
+    rows = {row["source"]: row for row in json.loads(out)["sources"]}
+    assert (rows["confluence"]["ending"], rows["jira"]["ending"]) == ("done", "failed")
+    assert rows["jira"]["problems"] == [{"where": "jira", "reason": reason}]
+    assert f"  source jira: will not run, {reason}\n" in err
+    assert not [url for url in signed_in.asked if url.path.startswith("/rest/api/3/")]
+    run = home / "data" / "runs" / json.loads(out)["run"]
+    logs = list(user_log_folder(home.resolve()).iterdir())
+    read = [run / "outcomes.json", run / "configuration.json", *logs]
+    assert all(path.is_file() for path in read)
+    assert logs
+    written = {path for path in home.rglob("*") if path.is_file()}
+    assert [path for path in {*read, *written} if sentinel.encode() in path.read_bytes()] == []
+    assert sentinel not in out + err
 
 
 def test_a_fetch_whose_every_source_its_settings_refuse_fails_each_unit_and_exits_1(
