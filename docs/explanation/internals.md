@@ -249,7 +249,7 @@ stored created date ([`fetched`](../../src/kb_mcp/sources/worklog/fetch/domain/c
 read without a problem finds each document gone at once that it no longer reads, and its
 moment is the store's as-of time. A store's first fetch first takes the paths of the
 mirror's files and the created and updated dates that they hold, of today's front
-matter or plan 058's
+matter or the former one
 ([`carried_over`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py)), and writes
 them before it reads: a document that its first read takes keeps them as its stored
 dates, its text read then taken as theirs.
@@ -520,7 +520,7 @@ sections, persons are joined again over every document, and the file is renamed 
 place under the index's lock
 ([`SqliteIndex.update`](../../src/kb_mcp/search/adapters/sqlite_index.py)). So nothing
 stale is left in the index, and a run that fails leaves the old one whole. An index that
-cannot be updated, written before plan 035 or by another version of `WORDS`, damaged,
+cannot be updated, one that records no `WORDS` or another version of it, damaged,
 or on `index --rebuild`, is rebuilt whole, with no chunks.
 
 Until `embed` runs, the edited page has no vectors: search finds its new text by words,
@@ -603,9 +603,10 @@ deleted pages, of texts since edited, and of chunkings and models that no index 
 go. It takes the vector cache's lock exclusive, or waits for the next `embed` while a build
 holds it, so that no build loses what it embedded; and it deletes nothing while the
 index lacks a file of the mirror or holds no document, or while an index there cannot
-say what it reads. A store made from plan 023 on gives the space freed back to the file
-system ([`VectorCache.prune`](../../src/kb_mcp/search/adapters/vector_cache.py));
-one made before is converted at its first prune, by one `VACUUM`. A vector of the
+say what it reads. A store whose auto-vacuum is incremental, as a new one's is, gives
+the space freed back to the file system
+([`VectorCache.prune`](../../src/kb_mcp/search/adapters/vector_cache.py));
+any other is converted at its first prune, by one `VACUUM`. A vector of the
 default model takes about 4.7 KB on disk. Deleting `<data>/vectors.sqlite` costs
 nothing at the next `embed`, as the index holds its own copy of each vector, but one
 embedding of the mirror, by the model, once a whole rebuild of the index has dropped its

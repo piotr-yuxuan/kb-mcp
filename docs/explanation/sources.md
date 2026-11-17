@@ -80,9 +80,9 @@ what its echo says.
   ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
   Git, once re-planned, will name one fetcher and two preparers, which is why a
   declaration's preparers are a tuple. Until then no source names two, and two would share
-  one row's name, `git`, told apart by their order alone: that plan names them.
+  one row's name, `git`, told apart by their order alone.
 - **A source keeps a store when it has a fetcher**, so no field says so.
-- **Later plans add their fields**: 032 its flag rows; 033 a description and examples.
+- **Fields not declared yet**: its flag rows, a description and examples.
 
 ## The stages' interfaces
 
@@ -183,7 +183,7 @@ names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model alr
 such as `json`, or that cannot be built by default
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py)). These are a programmer's
 errors, raised, not exits. A name is a table, a folder of the mirror, a command argument
-from plan 031 on and the front matter's `source`, so each source is configured once: two
+and the front matter's `source`, so each source is configured once: two
 Confluence sites or two work logs cannot be configured, and allowing them later (named
 instances, `docs/<instance>/`) moves an existing source's files once. A run that cannot
 load a fetcher or a preparer, whatever its import raises, exits 2, naming the declaration and the path
@@ -316,7 +316,7 @@ set of files of its own.
   ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
   probes, projects and users keep their order across two fetches, each with its own sign-in
   check, hold on the raw store and entry in the run's record. The record of
-  what answered as gone is every source's since plan 061, each fetch keeping the others'
+  what answered as gone is every source's, each fetch keeping the others'
   entries as it found them; one damaged fails each fetch that reads it, that source's unit
   alone, and stops no prepare.
 - **Each placing both.** A page links an issue, and an issue a page, through one map of
@@ -409,7 +409,7 @@ through the entry, with no line of `src/` naming it.
 - **Links across sources**, a later plan: a preparer over every document, listed in the
   registry apart from any source and run after the sources' own, writes links that one
   serving tool follows. Persons are `index`'s join, built already.
-- **Plans 021 and 024, re-planned on the stages**: one package for the clones, its fetcher
+- **Git, re-planned on the stages**: one package for the clones, its fetcher
   reading them in place or refreshing them, its preparers code and history; whether a code
   graph is served beside this program is the re-plan's question.
 - **The identity that a document was synced as, whether a source's terms allow keeping
@@ -580,7 +580,7 @@ stand-up's "Sam Sample", but "Rob" to no "Robin Example"; else it is a person by
 alone, one for every name of its key. A key leaves out case, accents, runs of spaces
 and a trailing part in brackets
 ([`name_key`](../../src/kb_mcp/search/domain/people.py)), so that
-`Kim (not in the header)` is `Kim`, which plan 042 left to this join; but where two
+`Kim (not in the header)`, which the work log keeps as a meeting writes it, is `Kim`; but where two
 such parts tell names apart, `Alex (Ops)` and `Alex (Sales)`, the join keeps them
 ([`Joining.compared_key`](../../src/kb_mcp/search/domain/people.py)), as the
 user or the site wrote them apart. It cannot tell such a part from a note, so that two

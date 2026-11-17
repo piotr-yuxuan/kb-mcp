@@ -606,7 +606,7 @@ sends the text to the agent.
 
 ## Where the spans open
 
-Plan 016's telemetry opens each span in the code that does the work, so that a trace
+The telemetry opens each span in the code that does the work, so that a trace
 reads in the order of this page. With a telemetry endpoint set ([observe runs with
 Grafana](../how-to/observe-with-grafana.md)), each command of the chain is one trace, apart
 from each document fetched, and a call of a tool is one trace:
