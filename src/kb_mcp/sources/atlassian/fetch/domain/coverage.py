@@ -25,7 +25,7 @@ from kb_mcp.sources.declaration import ScopeType
 # or left as it was.
 type CoverageChange = Literal["extended", "capped", "held"]
 # Why a window starts where it does: at --since, a day before an exact covered end, at the
-# covered start (a space, or a project's entry from before plan 034), or a week back.
+# covered start (a space, or a project's entry without ``exact``), or a week back.
 type Reason = Literal["given", "since the last fetch", "covered start", "first fetch"]
 # How far before its covered end an exact scope's catch-up starts: a search index can lag
 # behind an edit, the window ends at this machine's clock while documents carry the
@@ -73,8 +73,8 @@ class Scope(Record):
 class Coverage(Record):
     """Each scope's covered period, over which every change was asked for.
 
-    Such a period is ``exact`` when every change in it is known stored; one written before
-    plan 034 is not, and its end may hide a failure. A space is listed whole: a failure
+    Such a period is ``exact`` when every change in it is known stored; one recorded without
+    ``exact`` is not, and its end may hide a failure. A space is listed whole: a failure
     within its period (a document whose fetch failed, an entry the adapter refuses) leaves
     it inexact, so that a run without --since starts at its covered start, and asks for
     the whole period again. A project is searched by update time: its period ends at its

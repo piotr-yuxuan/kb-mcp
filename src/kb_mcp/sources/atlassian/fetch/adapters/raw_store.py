@@ -66,12 +66,12 @@ SEARCHED = "searched.json"
 # The site's users, merged, in the folder of the source whose spaces named them: of its
 # site, which one source of spaces lists.
 USERS = "users.json"
-# The scope types of the coverage's entries, by name; an entry written before plan 056
-# names none, and its source, then always its connector's name, gives it.
+# The scope types of the coverage's entries, by name; an entry without ``type``, of a
+# former format, takes it from its source, always its connector's name in that format.
 SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
 FORMER_TYPES = {CONFLUENCE: SPACE.name, JIRA: PROJECT.name}
 # The scope type of each document type that a tombstone may name, by name; and the
-# document type of a tombstone written before plan 056, by the plural it named as ``kind``.
+# document type of a tombstone that names the plural of its type as ``kind``, by that plural.
 HELD_IN = {
     each.name: scope_type for scope_type in (SPACE, PROJECT) for each in scope_type.document_types
 }
@@ -573,10 +573,10 @@ class RawStore:
         """Read each scope's coverage, none when never written: its period, and more if given.
 
         Whether it is exact, its as-of time and the time of its last whole read. An entry
-        without ``type``, as every entry was before plan 056, is of its connector's one
-        scope type; one without ``exact``, as before plan 034, is not exact; one without a
-        time has none; one without ``start``, a scope read whole and not yet covered, has
-        no period.
+        without ``type`` is of its connector's one scope type; one without ``exact`` is not
+        exact; one without a time has none; one without ``start``, a scope read whole and
+        not yet covered, has no period. docs/reference/data-layout.md, "Coverage and
+        tombstones", tells the former formats.
         """
         path = self.root / COVERAGE
         if not path.exists():
@@ -609,9 +609,9 @@ class RawStore:
         """Replace the record of coverage, whole; each entry with what it holds beside its period.
 
         Its scope type, whether it is exact, and its times. A scope read whole and not yet
-        covered, its search having failed, has an entry without a period, which versions
-        before plan 061 refuse. The keys of plan 034's record keep their meaning, so that
-        its versions still read a record of periods alone.
+        covered, its search having failed, has an entry without a period, which former
+        versions refuse. The keys of a record of periods alone keep their meaning, so that
+        the versions that knew no more still read it.
         """
         self._check_writing()
         times = {name: getattr(coverage, name) for name in COVERAGE_TIMES}
@@ -645,8 +645,8 @@ class RawStore:
     def tombstones(self) -> dict[DocumentKey, Tombstone]:
         """Read the documents that answered as gone, by source, document type and id.
 
-        An entry written before plan 056 names the plural of its type as ``kind``, and
-        its space by id as ``space``: it is Confluence's, and of the space that Confluence's
+        An entry of the former format names the plural of its type as ``kind``, and its
+        space by id as ``space``: it is Confluence's, and of the space that Confluence's
         view of the store lists under that id, whichever view reads it. One whose space no
         stored listing names keeps the id as its scope's key, until a whole read of that
         space finds it, and ``raw.spaces_unresolved`` says so once a read.
