@@ -96,7 +96,7 @@ it against the runtime-checkable protocol. It may use the interfaces, the mirror
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
 - **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk as
-  its row begins, so that this row fails alone, naming why, and the other sources run: an
+  its unit begins, so that this unit fails alone, naming why, and the other sources run: an
   `--until` before `--since`
   ([the fetcher's](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), or a work
   log that is not a folder
@@ -117,7 +117,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 - **Pandoc is the preparers' own.** `SourceRun` holds no tool that one of them alone needs, so each
   preparer that converts finds it
   ([`Pandoc.find`](../../src/kb_mcp/mirror/adapters/pandoc.py)). Pandoc gone from `PATH`
-  once the run began fails those rows alone; the run then exits as its rows rank, 1. The
+  once the run began fails those units alone; the run then exits as its units rank, 1. The
   entry still refuses a `prepare` without pandoc on `PATH` before anything is asked,
   whichever sources it takes
   ([`enter`](../../src/kb_mcp/cli/commands/_shared.py)).
@@ -314,10 +314,10 @@ set of files of its own.
 
 - **Fetched apart.** Each fetch takes its own source's scopes
   ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
-  probes, projects and users keep their order across two runs, each with its own sign-in
+  probes, projects and users keep their order across two fetches, each with its own sign-in
   check, hold on the raw store and entry in the run's record. The record of
   what answered as gone is every source's since plan 061, each fetch keeping the others'
-  entries as it found them; one damaged fails each fetch that reads it, that source's row
+  entries as it found them; one damaged fails each fetch that reads it, that source's unit
   alone, and stops no prepare.
 - **Each placing both.** A page links an issue, and an issue a page, through one map of
   the mirror's documents
@@ -342,7 +342,7 @@ set of files of its own.
   problems stop its own removals alone. So an issue that pandoc fails on keeps its file, and
   Confluence's stale pages still go. What a prepare could not read of the other source
   fails nothing of its own, yet its files may then link the document's address on the site:
-  it says so, by that source, under a row that stays done
+  it says so, by that source, under a unit that stays done
   ([`prepare_source`](../../src/kb_mcp/sources/atlassian/prepare/app/preparer.py)).
 - **The conversion cache.** Each prepare looks up and prunes its own rows
   ([`Conversions`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by source and

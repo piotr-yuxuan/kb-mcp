@@ -246,7 +246,7 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
   which of them they run for from the declaration, each prepare placing every document:
   0.41 s more per prepare of both on a store of 1,474 documents. Two sign-in checks, holds
   on the store and reports per fetch of both. A preparer that converts finds pandoc for
-  itself, so pandoc gone mid-run fails its row where it used to stop the run. And the
+  itself, so pandoc gone mid-run fails its unit where it used to stop the run. And the
   server's words for sources stay Atlassian-shaped until a fourth source needs otherwise,
   its instructions naming Confluence, Jira and the work log; a new source's documents are
   cited and read by their refs as any other's, since plan 057.
@@ -259,12 +259,12 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
 
 ## A source refused alone
 
-What a source's `preflight` refuses, read as its row begins, fails that row alone, a
+What a source's `preflight` refuses, read as its unit begins, fails that unit alone, a
 problem by its source naming why, and the other sources run; the run exits 1
 ([`run_units`](../../src/kb_mcp/cli/app/units.py)). So does what its light check of its
 settings refuses, such as a site not set, when the run takes it without its name, as the
 echo says before the question ([`source_planned`](../../src/kb_mcp/cli/app/sources.py)).
-Only what no row can run with refuses the run, exit 2: the command's options, a source
+Only what no unit can run with refuses the run, exit 2: the command's options, a source
 named that cannot run, the settings that do not load, which the entry checks before it
 asks, the data directory, and a fetcher or a preparer that does not load. `doctor` gives
 such a source a failed check of its own, and `login` signs in the others, each going on
@@ -276,17 +276,17 @@ past a sign-in that does not complete.
   preflight leaves Confluence and the work log fetched, as does a Jira without its site;
   a source named on the command line still refuses the run, as the user ruled: "Yes,
   refuse when named", a typo being better told at once.
-- **Cost.** A run with a refused source exits 1, as one whose row failed: a script tells
+- **Cost.** A run with a refused source exits 1, as one whose unit failed: a script tells
   a refusal from a failure by the row's problem, not by the status. A period that ends
   before it starts, which the Atlassian fetcher's preflight finds against the clock,
-  fails each Atlassian row instead of refusing the run, and the work log, which ignores
+  fails each Atlassian unit instead of refusing the run, and the work log, which ignores
   the period, is fetched; a period option that does not read is still refused before
   the run, as no resume could fix an option that its run recorded. A source refused by
   its settings fails again on a resume, which runs by the settings recorded: a fix to the
   settings file is a new run's; only a secret, which a resume takes from its environment
   again, can lift such a refusal, as for an API token without its email. A value of a source's setting that does not load, such
   as a site over http, still refuses every command, as the settings load whole.
-- **Rejected.** Plan 030's refusal of the whole run before its first row, whichever
+- **Rejected.** Plan 030's refusal of the whole run before its first unit, whichever
   source is at fault, which wrote nothing when one source could not start.
 - **Settled** by the user, in plans 060 and 070.
 
@@ -535,7 +535,7 @@ Its prepare reads that store alone and converts through the cache of conversions
 - **Cost.** A copy of the work log's text on disk, about its size, and the whole file
   written again at each fetch, as its as-of time moves. One more command to refresh the
   work log alone, `fetch worklog` before `prepare worklog`, and a `prepare` without the
-  copy store fails the work log's row, naming the fetch. One migration, at the first
+  copy store fails the work log's unit, naming the fetch. One migration, at the first
   fetch of a store: the path of each file of the mirror and its created and updated
   dates are carried over before the read, and until a read without a problem takes them
   all, `prepare` removes no file; a file of the mirror that does not read then fails
@@ -718,7 +718,7 @@ under another title's path.
   meeting that links one is written without the link, `worklog.unlinked` counting it;
   but a file elsewhere of the same id takes that id for the run, its copy replacing the
   hidden file's last one, and the meeting links it. Past the bound, each meeting that
-  links a file past it loses its link, but for the same, and the row fails at each run.
+  links a file past it loses its link, but for the same, and the unit fails at each run.
 - **Rejected.** Leaving out every link to a transcript not read: both ways always, but
   `read` of the meeting loses its record for as long as the file stays unread, which
   past the bound is for good. Keeping a meeting's links from its last copy: a file

@@ -1,7 +1,7 @@
 """The memo source's preparer: a folder's text files, as the mirror's documents.
 
 The memo source's declaration names this module, a ``Preparer``: ``preflight`` refuses a
-folder that is not one, which fails its row alone, and ``prepare`` writes each ``*.txt``
+folder that is not one, which fails its unit alone, and ``prepare`` writes each ``*.txt``
 file as ``docs/memo/<id>.md`` through the mirror's writer, which leaves a file that has
 not changed and removes those of notes gone, under ``docs/memo/`` alone. A note's times
 are its file's, so that a run that finds it unchanged writes the same bytes; its id is a

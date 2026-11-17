@@ -92,7 +92,7 @@ by its declaration, with Confluence or Jira a site not set
 ([`Source.unlocated`](../../src/kb_mcp/sources/declaration.py)) or an API token
 without its email
 ([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), which for a
-source taken without its name fails its row instead (part 3); and an option of the period
+source taken without its name fails its unit instead (part 3); and an option of the period
 that does not read ([`period_refused`](../../src/kb_mcp/sources/atlassian/declared.py)).
 For `prepare`, `enter`
 adds pandoc missing from `PATH`, and for `embed` its
@@ -118,7 +118,7 @@ command, and logs `run.start`; `enter` then imports `cli.commands.sources`, whic
 [`run`](../../src/kb_mcp/cli/commands/sources.py) with the arguments and the
 settings loaded.
 
-### 3. A row per source
+### 3. A unit per source
 
 [`run`](../../src/kb_mcp/cli/commands/sources.py) resolves the run's
 [`Configuration`](../../src/kb_mcp/cli/domain/runs.py): its stage, the sources taken, its
@@ -145,9 +145,9 @@ asks [`fetch_window`](../../src/kb_mcp/sources/atlassian/fetch/domain/coverage.p
 from the coverage that the raw store holds, for each scope's fetch window and why it
 starts there, here `given`; a `--since` that does not come before the fetch windows' end raises
 [`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py),
-which fails that row alone, naming both options. Each row runs in turn, each source's fetcher or preparers within a span
-`fetch.source`, or `prepare.source` once the next command runs. A row runs even when the
-one before it failed, as it reads what is on disk. The exit status folds the rows'
+which fails that unit alone, naming both options. Each unit runs in turn, each source's fetcher or preparers within a span
+`fetch.source`, or `prepare.source` once the next command runs. A unit runs even when the
+one before it failed, as it reads what is on disk. The exit status folds the units'
 endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/exit_status.py)):
 interrupted, then sign in again, then failed; else 0.
 
@@ -160,7 +160,7 @@ under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
 a second run stops at once with
 [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
-and its row fails while the next one runs.
+and its unit fails while the next one runs.
 
 The sign-in comes from
 [`choose_sign_in`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py): an
@@ -614,7 +614,7 @@ from each document fetched, and a call of a tool is one trace:
 | Span | Opened by |
 |---|---|
 | `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
-| `fetch.source`, `prepare.source`, one a row | [`run_sources`](../../src/kb_mcp/cli/app/units.py) |
+| `fetch.source`, `prepare.source`, one a unit | [`run_sources`](../../src/kb_mcp/cli/app/units.py) |
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |

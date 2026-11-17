@@ -260,7 +260,7 @@ that fails is counted, `fetch.scope_failed`, and the project's search goes on; i
 whole read stays. Each search by update time adds the ids of its entries to
 `searched.json` before it fetches them (`put_searched(key, ids)`, `searched(key)`, which
 refuses by name a file that does not read, as `pending` does, when the fetch reaches its
-project: one damaged fails the source's row once the projects before it are fetched),
+project: one damaged fails the source's unit once the projects before it are fetched),
 and a whole read removes the file, so that the next whole read is compared with every issue that the project
 held, a new issue deleted within the week among them.
 
@@ -772,13 +772,13 @@ may fail at once, seldom, as SQLite's switch of a new file to WAL mode does not 
 
 ### The work log
 
-Owned by the work log's row of `prepare` (017, 060), in
+Owned by the work log's unit of `prepare` (017, 060), in
 `sources.worklog.prepare.app.prepare`: `<data>/docs/worklog/`, from the work log's copy
-store alone ([above](#the-work-logs-copy-store)), which its row of `fetch`
+store alone ([above](#the-work-logs-copy-store)), which its unit of `fetch`
 (`sources.worklog.fetch.app.fetching`) fills from the folder that `sources.worklog.path`
 names, read in place and never written. `sources.atlassian.prepare.adapters.owned.owned`
 and `sources.worklog.prepare.adapters.owned.worklog_owned` tell each owner's files
-apart, so that Confluence's and Jira's rows and the work log's never remove each
+apart, so that Confluence's and Jira's units and the work log's never remove each
 other's.
 
 The fetch keeps each document read, as the rules below give it, its properties and its
@@ -818,7 +818,7 @@ of documents written begin, alone or before a dash (`retired`). A name that the 
 a document of the store not written, or carried over, also begins stays, such as
 `e-<digest>-2-notes.md`, which `e-<digest>` titled `2 notes` would take as well as
 `e-<digest>-2` titled `Notes`. A prepare that finds no copy store is a problem naming
-`kb-mcp fetch worklog`, its row failed and the others going on.
+`kb-mcp fetch worklog`, its unit failed and the others going on.
 
 - The **journal** (042) is a top-level heading of `todo.org` or `todo.org_archive` with
   a day among its children, whatever its title. A **day** is a heading at level 1, or 2

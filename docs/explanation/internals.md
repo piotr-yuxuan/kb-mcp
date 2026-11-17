@@ -45,7 +45,7 @@ flowchart LR
 | `fetch` | the site, GET only | `<data>/raw/` | a lock, and each snapshot renamed into place | the document is counted and skipped; the run goes on |
 | `prepare` | the raw store | `<data>/docs/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is reported, its last good file kept; a damaged cache is replaced |
 | `fetch`, of the work log | its folder, in place; the mirror's dates, once, when its copy store begins | `<data>/copies/worklog/` | a lock, and the store's file renamed into place | the file is named by its path, its documents keep their last copies; none is found gone |
-| `prepare`, of the work log | its copy store | `<data>/docs/worklog/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is named by its file and id, and no file is removed; without a copy store, the row fails, naming `fetch` |
+| `prepare`, of the work log | its copy store | `<data>/docs/worklog/`, `<data>/conversions.sqlite` | each file renamed into place, each conversion committed as it is made | the document is named by its file and id, and no file is removed; without a copy store, the unit fails, naming `fetch` |
 | `index` | the index; the mirror, each file digested and those changed read; the user's alias file, if any | `<data>/index.sqlite`, only when something changed | the index built aside, what did not change copied from the old, then renamed into place under the index's lock | the file is skipped and named; a name that could be several persons is the person by name of its key, and named; with an alias file refused, the old index stays |
 | `embed` | the index; the mirror's digests alone; the endpoint, for new texts | `<data>/index.sqlite`, only when its chunks or model changed, `<data>/vectors.sqlite` | as `index`, the index copied whole aside; the vector cache pruned under its own lock, its deletions one transaction | a chunk refused is named and asked again; without the endpoint, or with an index of another cut, the old index stays; a prune it cannot trust deletes nothing |
 | `serve` | the index; the endpoint, for queries; the reranking server, when on | nothing | the index opened read-only for each call | without meaning, the search ranks by words and says why; without the reranker, it keeps its order and says why |
@@ -230,7 +230,7 @@ trade-offs](trade-offs.md#pandocs-conversions-kept-by-their-input) give the cost
 ## The work log: from org files to its copy store, then to Markdown
 
 [`fetch_worklog`](../../src/kb_mcp/sources/worklog/fetch/app/fetching.py), the work log's
-row of `fetch`, reads its folder in place and never writes there, following a link only
+unit of `fetch`, reads its folder in place and never writes there, following a link only
 inside it ([`listed`](../../src/kb_mcp/sources/worklog/fetch/adapters/files.py)). Its
 files become documents, one per day of the journal, one per meeting of a day, one per
 other top-level entry of `todo.org` and of its archive
@@ -255,7 +255,7 @@ them before it reads: a document that its first read takes keeps them as its sto
 dates, its text read then taken as theirs.
 
 [`prepare_worklog`](../../src/kb_mcp/sources/worklog/prepare/app/prepare.py), the work
-log's row of `prepare`, reads that store alone. It converts each document's text
+log's unit of `prepare`, reads that store alone. It converts each document's text
 through the source's rows of the cache of conversions
 ([`Conversions.markdown`](../../src/kb_mcp/mirror/adapters/conversions.py)), keyed by
 pandoc's version and arguments
@@ -286,8 +286,8 @@ that no read has taken yet, and its source's file says the store's as-of time.
   that prepare removes no file but the old one of a document written again under
   another path, at no document's path and of a name that only the ids of documents
   written begin ([`retired`](../../src/kb_mcp/sources/worklog/prepare/domain/layout.py)).
-  A prepare whose store no fetch wrote fails its row,
-  naming `kb-mcp fetch` and the source, and the other rows go on.
+  A prepare whose store no fetch wrote fails its unit,
+  naming `kb-mcp fetch` and the source, and the other units go on.
 - **Offline**, everything: the work log is on this machine.
 
 ## Index and embed: from Markdown to words and vectors
@@ -487,7 +487,7 @@ conversion is deleted once the files are written, with those of documents gone, 
 the run reported a problem
 ([`Conversions.drop_unused`](../../src/kb_mcp/mirror/adapters/conversions.py)).
 
-The work log's row does the same from its copy store. Closing an entry turns its
+The work log's unit of `prepare` does the same from its copy store. Closing an entry turns its
 keyword to `DONE`, or another that means done, and adds a `CLOSED:` line under its
 heading. Its id is taken from its `:ID:`, else its title and `:CREATED:`, else its
 title, never from its keyword or planning lines
