@@ -58,34 +58,27 @@ if TYPE_CHECKING:
     from pydantic_settings import PydanticBaseSettingsSource
 
 DEFAULT_DATA_DIR = "~/kb-mcp"
-# The embedding model that indexes by meaning, as the endpoint names it. Chosen by plan
-# 018 from published retrieval scores: the best in English, French not needed for now.
+# The embedding model, as the endpoint names it: docs/how-to/embeddings.md says why.
 DEFAULT_MODEL = "qwen3-embedding:0.6b"
 # The OpenAI-compatible API that embeds: Ollama on this machine, where it listens.
 DEFAULT_EMBEDDING_URL = "http://127.0.0.1:11434/v1"
 # How search ranks: by words, by meaning, or by both fused.
 type SearchMode = Literal["lexical", "semantic", "hybrid"]
-# Plan 018's bar kept words. With plan 019's windows, hybrid met two of its three counts,
-# beating words significantly and holding identifiers, but its 95th percentile query
-# time missed 200 ms. Plan 025: the user chose hybrid, ranking mattering more than speed.
+# The default search mode: docs/explanation/chunking.md says why.
 DEFAULT_SEARCH_MODE: SearchMode = "hybrid"
-# How index cuts documents into the chunks it embeds. Plan 019's rule kept sections, as
-# no chunking beat them on the evidence quoted; windows ranked significantly better, and
-# by plan 025 the user chose them.
+# How index cuts documents into the chunks it embeds: docs/explanation/chunking.md says why.
 DEFAULT_CHUNKING: Chunking = "windows"
 # The reranking server: llama.cpp's llama-server on this machine, where the how-to page starts it.
 DEFAULT_RERANK_URL = "http://127.0.0.1:9931/v1"
-# The reranker, as the server names it: Qwen3-Reranker-0.6B, chosen by plan 022 from
-# published reranking results, under the alias that the how-to page gives it.
+# The reranker, Qwen3-Reranker-0.6B, under the alias that the how-to page gives it:
+# docs/explanation/reranking.md says why.
 DEFAULT_RERANKER = "qwen3-reranker-0.6b"
-# The documents reranked after those named, until plan 022's run on the user's machine decides:
-# about 30 fit within its bound of 5 seconds, by estimate.
+# The documents reranked after those named: docs/explanation/reranking.md says why about 30.
 DEFAULT_RERANK_DEPTH = 30
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
-# Where the settings file and the environment held settings before plans 015, 030 and
-# 059: at the top, and in each account's table, ``[accounts.<name>]``. A key there is now
-# the key of each source's table that holds it, such as ``sources.jira.site``.
+# The table that held each account's settings, ``[accounts.<name>]``, before they moved
+# into each source's table, such as ``sources.jira.site``.
 MOVED = "accounts"
 # The depth of a setting in an account's table, accounts.<name>.<key>, as a path.
 ACCOUNT_DEPTH = 3
