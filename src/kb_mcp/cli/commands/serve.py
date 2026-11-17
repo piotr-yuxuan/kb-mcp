@@ -25,7 +25,7 @@ from mcp_types import INVALID_PARAMS, ToolAnnotations
 from opentelemetry import metrics
 
 from kb_mcp.cli.commands._embedding import open_endpoint
-from kb_mcp.cli.domain.echo import values_of
+from kb_mcp.config.domain.settings import values_of
 from kb_mcp.kernel.endpoint import RERANKING
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.names import PROGRAM

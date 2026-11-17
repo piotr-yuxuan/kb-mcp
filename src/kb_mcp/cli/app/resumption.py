@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.adapters.run_record import RunRecord
 from kb_mcp.cli.domain.command import FETCH
-from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.runs import keyed, resume_refused, resume_said, units_of
 from kb_mcp.cli.domain.sources import fetch_flags, refusals
+from kb_mcp.config.domain.settings import values_of
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.record import Record

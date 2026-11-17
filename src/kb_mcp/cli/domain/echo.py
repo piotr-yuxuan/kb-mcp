@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.cli.domain.command import OBSERVING
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.config.domain.settings import Ignored, setting_paths
+from kb_mcp.config.domain.settings import Ignored, values_of
 from kb_mcp.kernel.names import CONNECTOR
 
 if TYPE_CHECKING:
@@ -21,21 +21,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.cli.domain.command import Command
-    from kb_mcp.config.domain.settings import Loaded, Settings
+    from kb_mcp.config.domain.settings import Loaded
     from kb_mcp.kernel.output import Output
 
 # What follows what a run says before it acts: the run, a question first, or a refusal,
 # since no one could answer one.
 type Then = Literal["run", "ask", "refuse"]
-
-
-def values_of(settings: Settings) -> dict[str, object]:
-    """Give every setting's value by its path joined by dots, as a command's functions take them."""
-    return {
-        ".".join(path): reduce(getattr, path, settings)
-        for path, kind in setting_paths(type(settings)).items()
-        if kind != "table"
-    }
 
 
 def setting_line(loaded: Loaded, setting: str, *, detailed: bool) -> str:

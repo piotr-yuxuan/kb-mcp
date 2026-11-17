@@ -7,8 +7,8 @@ import shutil
 import sys
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.cli.domain.sources import refusals
+from kb_mcp.config.domain.settings import values_of
 from kb_mcp.sources.stages import Check
 
 if TYPE_CHECKING:

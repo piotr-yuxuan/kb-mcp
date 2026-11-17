@@ -552,6 +552,15 @@ def defaults(model: type[Settings]) -> dict[tuple[str, ...], object]:
     }
 
 
+def values_of(settings: Settings) -> dict[str, object]:
+    """Give every setting's value by its path joined by dots, as a command's functions take them."""
+    return {
+        ".".join(path): reduce(getattr, path, settings)
+        for path, kind in setting_paths(type(settings)).items()
+        if kind != "table"
+    }
+
+
 def variable(path: tuple[str, ...]) -> str:
     """Name the environment variable of the setting at a path."""
     return f"{PREFIX}{NESTING.join(path).upper()}"
