@@ -7,9 +7,10 @@ a fetcher and is configured, or those named. ``prepare`` takes every source whos
 keeps scopes by key, whatever the store holds, and each other when it is configured, as
 ``Source.prepared_by_default`` says, or those named. Each is taken once, in the sources'
 order, whatever the order typed. A source's options and light checks are its connector's
-fetch's: each source taken says what the echo says of it, by its connector; an option
-that no setting holds, given, is said ignored by each source taken whose connector does
-not declare it.
+fetch's: each source taken says what the echo says of it, by its connector, and one whose
+settings its light check refuses, that it will not run, and why; an option that no
+setting holds, given, is said ignored by each source taken whose connector does not
+declare it.
 """
 
 from __future__ import annotations
@@ -82,6 +83,16 @@ def chosen_to_fetch(
     return tuple(taken), left
 
 
+def refusals(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
+    """Give why each source that a fetch takes cannot run, by its settings, by its name.
+
+    As its connector's light check of its settings says (``Source.refusal``), such as a
+    site not set; a source that it lets run is not given.
+    """
+    taken, _ = chosen_to_fetch(arguments, settings)
+    return {each.name: why for each in taken if (why := each.refusal(settings)) is not None}
+
+
 def chosen_to_prepare(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
@@ -124,21 +135,25 @@ def source_line(declared: Source, settings: Mapping[str, object]) -> str:
 def fetch_described(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[str, ...]:
-    """Say each source taken, with its settings, each left out and why, and the options ignored.
+    """Say each source taken, with its settings, each that will not run or is left out and why.
 
-    The lines that a source taken says follow, each once, as its connector's
-    ``described`` gives them. An option that no setting holds, given, is ignored by each
-    source taken whose connector does not declare it, as is one that replaces a setting of
-    no source named (``Command.narrowed``); another that replaces a setting is said by
+    A source taken that will not run is one whose settings its light check refuses
+    (``refusals``): its unit fails, and the others run. The lines that each other source
+    taken says follow, each once, as its connector's ``described`` gives them; then the
+    options ignored. An option that no setting holds, given, is ignored by each source
+    taken whose connector does not declare it, as is one that replaces a setting of no
+    source named (``Command.narrowed``); another that replaces a setting is said by
     ``unapplied``, as for any setting.
     """
     taken, left = chosen_to_fetch(arguments, settings)
+    refused = refusals(arguments, settings)
     lines = [source_line(declared, settings) for declared in taken]
     said: list[str] = []
-    for declared in taken:
+    for declared in (each for each in taken if each.name not in refused):
         connector = declared.connector
         options = given(arguments, connector.flags)
         said += connector.described(declared, options, settings) if connector.described else ()
+    lines += [f"source {name}: will not run, {why}" for name, why in refused.items()]
     lines += [f"source {name}: left out, {why}" for name, why in left.items()]
     lines += said
     unbound = {flag for flag, left in arguments.command.narrowed(arguments).items() if not left}

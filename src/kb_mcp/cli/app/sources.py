@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.app.units import Planned, SourcesRefusedError
 from kb_mcp.cli.domain.command import FETCH, PREPARE
+from kb_mcp.cli.domain.echo import values_of
 from kb_mcp.sources.stages import Fetcher, Preparer
 
 if TYPE_CHECKING:
@@ -43,13 +44,18 @@ def loaded[R: (Fetcher, Preparer)](declared: Source, path: str, interface: type[
 def source_planned(unit: Unit, run: SourceRun) -> Planned:
     """Give a unit per source as its source's fetcher, or its preparer of the unit's part, does it.
 
-    Raises ``SourcesRefusedError`` as ``loaded`` does.
+    A fetch's preflight is first its source's light check of the run's settings
+    (``Source.refusal``), such as a site not set, then its fetcher's: either fails the
+    unit alone. Raises ``SourcesRefusedError`` as ``loaded`` does.
     """
     connector = run.source.connector
     if unit.stage == FETCH:
         fetcher = loaded(run.source, str(connector.fetcher), Fetcher)
+        refusal = run.source.refusal(values_of(run.settings))
         return Planned(
-            unit=unit, act=partial(fetcher.fetch, run), preflight=partial(fetcher.preflight, run)
+            unit=unit,
+            act=partial(fetcher.fetch, run),
+            preflight=lambda: refusal or fetcher.preflight(run),
         )
     preparer = loaded(run.source, connector.preparers[unit.part], Preparer)
     return Planned(

@@ -6,7 +6,13 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import STAGES, Command
-from kb_mcp.cli.domain.sources import fetch_described, fetch_flags, given, prepare_described
+from kb_mcp.cli.domain.sources import (
+    fetch_described,
+    fetch_flags,
+    given,
+    prepare_described,
+    refusals,
+)
 from kb_mcp.cli.options import fetch
 from kb_mcp.cli.options._common import (
     add_embedding_options,
@@ -53,10 +59,17 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
 
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
-    """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work."""
+    """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work.
+
+    A source whose fetch will not run, as ``fetch_described`` says, is not prepared either.
+    """
     return (
         *(f"fetch: {line}" for line in fetch_described(arguments, settings)),
         *(f"prepare: {line}" for line in prepare_described(arguments, settings)),
+        *(
+            f"prepare: source {name}: will not run, as its fetch will not"
+            for name in refusals(arguments, settings)
+        ),
         "index: the words of the mirror's files that changed, whichever source wrote them",
         "embed: the vectors of the chunks that the index lacks, then the vector cache pruned",
     )

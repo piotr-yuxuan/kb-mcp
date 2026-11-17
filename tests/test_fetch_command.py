@@ -286,12 +286,12 @@ def test_a_fetch_gives_its_counts_failed_keys_and_status_as_json(
     assert [each["dry_run"] for each in (confluence, jira)] == [False, False]
 
 
-def test_a_fetch_without_a_site_is_refused_by_name(
+def test_a_fetch_of_a_source_named_without_its_site_is_refused_by_name(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """The source's site is named as the missing setting, by the error run.refused."""
     monkeypatch.delenv("KB_MCP_SOURCES__CONFLUENCE__SITE")
-    assert main(command(home, "--space", "MFS", "--since", "7d")) == REFUSED
+    assert main(command(home, "confluence", "--space", "MFS", "--since", "7d")) == REFUSED
     err = capsys.readouterr().err
     assert said(err) == [("error", "run.refused")]
     assert "sources.confluence.site: not set" in err

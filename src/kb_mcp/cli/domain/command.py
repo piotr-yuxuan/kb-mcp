@@ -58,7 +58,7 @@ class Command:
     why, such as the model of an index built by words alone, or the API token that
     ``login`` never reads, so that it is said once; ``described``, if any, gives the
     lines that the echo ends with; ``refused``, if any, says why the run cannot go
-    on, such as a fetch without a site, which exits 2 before the echo. Each lives
+    on, such as a source named without its site, which exits 2 before the echo. Each lives
     in the command's own declaration and names no type of ``config``, so that declaring
     the command stays light. ``programs`` names those that the run needs on PATH, such
     as pandoc, without which it is refused alike; ``files`` names, by their ``dest``,

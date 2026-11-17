@@ -55,8 +55,8 @@ class SourcesRefusedError(ValueError):
 class Planned(Record):
     """A unit as an invocation runs it: the unit, its work, and its preflight, if any.
 
-    ``preflight`` says what the unit cannot go on with, read from disk, before its work:
-    the unit then fails alone.
+    ``preflight`` says what the unit cannot go on with, read from its settings or from
+    disk, before its work: the unit then fails alone.
     """
 
     unit: Unit

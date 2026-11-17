@@ -443,6 +443,45 @@ def test_a_refresh_whose_fetch_of_one_source_fails_prepares_the_others_then_the_
     assert resumable["resume"] == f"kb-mcp refresh --resume {document['run']}"
 
 
+@pytest.mark.usefixtures("site")
+def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
+    home: Path, endpoint: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, by the user: "We should be tolerant", for a refresh too.
+
+    Jira without its site, Confluence and the work log configured: the echo says that
+    Jira will not be fetched nor prepared, and why; Confluence and the work log are
+    fetched and prepared, then index and embed run; Jira's fetch fails, naming the
+    setting, as the record holds it, and its prepare is not run: exit 1.
+    """
+    options = given(home, endpoint, confluence=True)
+    config = home / "config.toml"
+    unsited = config.read_text("utf-8").replace(f'["PRB"]\nsite = "{SITE}"\n', '["PRB"]\n')
+    config.write_text(unsited, "utf-8")
+    reason = "sources.jira.site: not set; add it to the settings"
+    status = main(["refresh", "--yes", "--format", "json", *options])
+    out, err = capsys.readouterr()
+    document = json.loads(out)
+    assert status == ExitStatus.FAILED
+    endings = {(each["stage"], each["source"]): each["ending"] for each in document["units"]}
+    assert endings == {
+        ("fetch", "confluence"): "done",
+        ("fetch", "jira"): "failed",
+        ("fetch", "worklog"): "done",
+        ("prepare", "confluence"): "done",
+        ("prepare", "jira"): "not run",
+        ("prepare", "worklog"): "done",
+        ("index", None): "done",
+        ("embed", None): "done",
+    }
+    _, entries = record_of(home, document["run"])
+    (jira,) = [each for each in entries if (each["stage"], each["source"]) == ("fetch", "jira")]
+    assert jira["problems"] == [{"where": "jira", "reason": reason}]
+    assert f"  fetch: source jira: will not run, {reason}\n" in err
+    assert "  prepare: source jira: will not run, as its fetch will not\n" in err
+    assert (home / "data" / "docs" / "worklog").is_dir()
+
+
 def test_a_resume_after_an_interruption_runs_only_the_units_not_done(
     home: Path,
     site: FakeSite,

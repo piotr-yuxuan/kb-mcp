@@ -31,9 +31,10 @@ def run(
     The entry refused what it could before asking. The configuration resolved as of the
     run's start, ``started``, the sources taken in their order and, in a fetch, its
     options as of then, is recorded, then run from its record (``recorded``), exit 2 when
-    refused. What a ``preflight`` refuses, such as an --until before --since, or a work
-    log that is not a folder, fails its unit alone. Each unit's problems are said as it
-    runs, by place and reason, never content.
+    refused. What a ``preflight`` refuses, such as a site not set of a source taken by
+    default, an --until before --since, or a work log that is not a folder, fails its
+    unit alone. Each unit's problems are said as it runs, by place and reason, never
+    content.
     """
     stage = arguments.command.name
     taken, _ = chosen(arguments, values_of(loaded.settings))

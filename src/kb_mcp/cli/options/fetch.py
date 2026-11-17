@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import FETCH, Command
-from kb_mcp.cli.domain.sources import chosen_to_fetch, fetch_described, given
+from kb_mcp.cli.domain.sources import chosen_to_fetch, fetch_described, given, refusals
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 from kb_mcp.cli.options._sources import add_source_options, choice_refused, left_unapplied
 
@@ -21,9 +21,11 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
     An option of a setting of several sources given when the sources named leave more
     than one of them, as ``Command.narrowed`` says, naming them; a source named but not
-    configured, or none left; then what each source taken refuses, by its connector's
-    light checks: of its settings, such as a site not set, then of its options, such as
-    one that does not read. No source's options are read unless it is taken.
+    configured, or none left; then what the settings of each source named refuse, by its
+    connector's light check (``refusals``), such as a site not set: one taken by default
+    fails its unit instead, as the echo says; then what each source taken refuses of its
+    options, such as one that does not read. No source's options are read unless it is
+    taken.
     """
     taken, _ = chosen_to_fetch(arguments, settings)
     faults = [
@@ -33,7 +35,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
             if len(left) > 1 and getattr(arguments, flag) is not None
         ),
         choice_refused(arguments, settings),
-        *(declared.refusal(settings) for declared in taken),
+        *(why for name, why in refusals(arguments, settings).items() if name in arguments.source),
         *(
             declared.connector.options_refused(given(arguments, declared.connector.flags))
             for declared in taken
