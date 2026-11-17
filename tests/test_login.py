@@ -368,3 +368,29 @@ def test_a_connector_s_login_that_does_not_complete_stops_no_other_connector_s(
     assert main([*login(tmp_path), "--format", "json"], registry) == SIGN_IN_AGAIN
     assert [row["site"] for row in json.loads(capsys.readouterr().out)] == ["/made/up"]
     assert [each["site"] for each in logged_as(tmp_path, "login.not_signed_in")] == [SITE]
+
+
+def test_login_alone_signs_in_the_others_past_a_source_without_its_site(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, by the user: "We should be tolerant"; "refuse when named".
+
+    Jira in use without its site, Confluence with its own: the echo says that Jira will
+    not be signed in, and why; Confluence's site is signed in, and an error, login.refused,
+    names Jira and the setting: exit 1. Named, Jira refuses the run, exit 2.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    signed_in = opened(monkeypatch)
+    monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
+    monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
+    reason = "sources.jira.site: not set; add it to the settings"
+    assert main([*login(tmp_path), "--format", "json"]) == 1
+    out, err = capsys.readouterr()
+    assert signed_in == [SITE]
+    assert [row["site"] for row in json.loads(out)] == [SITE]
+    assert f"  source jira: will not be signed in, {reason}\n" in err
+    (refused,) = logged_as(tmp_path, "login.refused")
+    assert (refused["level"], refused["source"], refused["reason"]) == ("error", "jira", reason)
+    assert main(login(tmp_path, "jira")) == BAD_ARGUMENTS
+    assert reason in capsys.readouterr().err
+    assert signed_in == [SITE]

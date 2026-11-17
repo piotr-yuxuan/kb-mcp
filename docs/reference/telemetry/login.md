@@ -11,6 +11,7 @@ as [fetch](fetch.md) records it: `session.moved` and `session.not_moved`.
 | Event | Level | Fields | When |
 |---|---|---|---|
 | `login.signed_in` | info | `site` | A site is signed in, its session saved |
+| `login.refused` | error | `source`, `reason` | A source in use, not named, whose location, such as its site, is not set: it is not signed in, the others are, and the run exits 1 at least; named, the source refuses the run before it starts, `run.refused`, exit 2 |
 | `login.not_signed_in` | error | `site`, `reason` | A site's sign-in did not complete, such as the window closed: the next site is tried, and the run exits 3 |
 
 ## Spans

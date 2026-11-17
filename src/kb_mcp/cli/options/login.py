@@ -55,11 +55,33 @@ def in_the_browser(arguments: argparse.Namespace, settings: Mapping[str, object]
     return unused
 
 
+def unlocated(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
+    """Give why each source that ``login`` takes cannot be signed in, by its name.
+
+    Its location not set, such as its site, where it would sign in.
+    """
+    return {
+        each.name: f"{each.path(location)}: not set; add it to the settings"
+        for each in signing(arguments, settings)
+        if (location := each.connector.location) is not None
+        and settings[each.path(location)] is None
+    }
+
+
+def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
+    """Say each source that ``login`` takes that it will not sign in, and why (``unlocated``)."""
+    return tuple(
+        f"source {name}: will not be signed in, {why}"
+        for name, why in unlocated(arguments, settings).items()
+    )
+
+
 def nothing_to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
-    """Refuse a sign-in of no source, or of one whose location is not set: the first found.
+    """Refuse a sign-in of no source, or of the one named whose location is not set: the first.
 
     First of all ``atlassian``, the sign-in that ``login`` named before plan 059, unless a
-    source takes that name: refused, naming the sources that sign in.
+    source takes that name: refused, naming the sources that sign in. A source taken by
+    default whose location is not set is no refusal: the run signs in the others.
     """
     taken = signing(arguments, settings)
     names = [each.name for each in arguments.sources if each.connector.login is not None]
@@ -68,12 +90,7 @@ def nothing_to_sign_in(arguments: argparse.Namespace, settings: Mapping[str, obj
         f"{FORMER}: gone; name a source, login {' or login '.join(names)}, or none"
         if gone
         else None,
-        *(
-            f"{each.path(location)}: not set; add it to the settings"
-            for each in taken
-            if (location := each.connector.location) is not None
-            and settings[each.path(location)] is None
-        ),
+        *(unlocated(arguments, settings).values() if arguments.source else ()),
     ]
     faults.append(
         None
@@ -144,6 +161,7 @@ def register(
             actions=(*actions, chrome, extensions, source),
             writes=True,
             unapplied=in_the_browser,
+            described=described,
             refused=nothing_to_sign_in,
         )
     )
