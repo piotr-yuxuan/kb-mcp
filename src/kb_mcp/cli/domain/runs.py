@@ -24,7 +24,7 @@ from kb_mcp.kernel.outcome import OutcomeWarning, Problem
 from kb_mcp.kernel.record import Record
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Collection, Iterable, Sequence
     from pathlib import Path
 
     from kb_mcp.config.domain.settings import Settings
@@ -161,6 +161,23 @@ def attempted(units: Sequence[Unit], last: Mapping[Unit, Ending]) -> frozenset[U
         if last.get(unit) != "done" or any(each in chosen for each in followed(unit, units)):
             chosen.add(unit)
     return frozenset(chosen)
+
+
+def resumable(entries: Iterable[Recorded], settled: Collection[Unit]) -> bool:
+    """Say whether a resume of a run could do what a new run would not, by its last entries.
+
+    So when some unit last ended other than done, but each that the settings recorded
+    refuse (``settled``), which a resume, run by them, refuses again, and each not run
+    as it follows one of those.
+    """
+    found = keyed(entries)
+    units = tuple(found)
+    return any(
+        entry.ending != "done"
+        and unit not in settled
+        and not (entry.ending == "not run" and set(followed(unit, units)) & set(settled))
+        for unit, entry in found.items()
+    )
 
 
 def keyed(entries: Iterable[Recorded]) -> dict[Unit, Recorded]:

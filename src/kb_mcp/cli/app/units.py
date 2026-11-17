@@ -53,14 +53,17 @@ class SourcesRefusedError(ValueError):
 
 
 class Planned(Record):
-    """A unit as an invocation runs it: the unit, its work, and its preflight, if any.
+    """A unit as an invocation runs it: the unit, its work, its refusal and preflight, if any.
 
-    ``preflight`` says what the unit cannot go on with, read from its settings or from
-    disk, before its work: the unit then fails alone.
+    ``refused`` is what the run's settings, as recorded, refuse of the unit, such as a
+    site not set, which every invocation of the run would refuse alike; ``preflight``
+    says what the unit cannot go on with, read from disk, before its work. Either fails
+    the unit alone.
     """
 
     unit: Unit
     act: Callable[[], InstanceOf[Outcome]]
+    refused: str | None = None
     preflight: Callable[[], str | None] | None = None
 
 
@@ -166,8 +169,9 @@ def run_sources(
     """Run the units of a stage per source that an invocation takes, in their order.
 
     A unit whose source's unit before it did not last end done ends not run, and does
-    nothing; what a ``preflight`` refuses fails its unit alone, a problem by its source and
-    an error, ``fetch.refused`` or ``prepare.refused``, naming the source; a unit that
+    nothing; what its settings or a ``preflight`` refuse (``Planned``) fails its unit
+    alone, a problem by its source and an error, ``fetch.refused`` or ``prepare.refused``,
+    naming the source; a unit that
     failed stops no other. The stage says at INFO its ``start``, the sources taken and
     whether a dry run, its ``source`` as each unit ends, and its ``end``, the status that
     its units' endings fold and how each ended; Ctrl-C, its ``interrupted``, a warning
@@ -185,7 +189,7 @@ def run_sources(
                 progress.acting = each.unit
                 if not progress.ready(each.unit):
                     outcome = Outcome(ending="not run")
-                elif said := each.preflight and each.preflight():
+                elif said := each.refused or (each.preflight and each.preflight()):
                     log.error(REFUSED[stage], source=source, reason=said)
                     outcome = Outcome.of(problems=(Problem(where=str(source), reason=said),))
                 else:

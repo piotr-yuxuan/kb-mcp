@@ -453,8 +453,9 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
     Jira will not be fetched nor prepared, and why, and of Jira's prepare that alone;
     Confluence and the work log are
     fetched and prepared, then index and embed run; Jira's fetch fails, naming the
-    setting, as the record holds it, and its prepare is not run: exit 1. Named, Jira
-    refuses the refresh, exit 2, before any run is recorded.
+    setting, as the record holds it, and its prepare is not run: exit 1. No resume is
+    offered, which would fail it again by the settings recorded. Named, Jira refuses the
+    refresh, exit 2, before any run is recorded.
     """
     options = given(home, endpoint, confluence=True)
     config = home / "config.toml"
@@ -486,10 +487,32 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
         "  prepare: source worklog: all that its store holds",
     ]
     assert (home / "data" / "docs" / "worklog").is_dir()
+    assert logged_as(home, "run.resumable") == []
     runs = sorted((home / "data" / "runs").iterdir())
     assert main(["refresh", "--yes", *options, "jira"]) == ExitStatus.REFUSED
     assert reason in capsys.readouterr().err
     assert sorted((home / "data" / "runs").iterdir()) == runs
+
+
+@pytest.mark.usefixtures("site")
+def test_a_refresh_refused_a_source_by_its_settings_offers_a_resume_for_the_others(
+    home: Path, endpoint: str, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070, review round 1: a resume is offered when it could do more than fail again.
+
+    Jira without its site, and Confluence's fetch failing, a file of a page answering 404:
+    a resume could fetch Confluence again, so it is offered, exit 1.
+    """
+    options = given(home, endpoint, confluence=True)
+    config = home / "config.toml"
+    unsited = config.read_text("utf-8").replace(f'["PRB"]\nsite = "{SITE}"\n', '["PRB"]\n')
+    config.write_text(unsited, "utf-8")
+    status, document = refreshed(capsys, *options, *SINCE)
+    assert status == ExitStatus.FAILED
+    endings = {(each["stage"], each["source"]): each["ending"] for each in document["units"]}
+    assert (endings["fetch", "confluence"], endings["fetch", "jira"]) == ("failed", "failed")
+    (resumable,) = logged_as(home, "run.resumable")
+    assert resumable["resume"] == f"kb-mcp refresh --resume {document['run']}"
 
 
 @pytest.mark.usefixtures("site")

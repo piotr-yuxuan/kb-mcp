@@ -116,7 +116,9 @@ such as a site set for a source whose fetch failed without it, is seen by a new 
 such as `kb-mcp refresh jira`. A resume of a source still refused by the settings recorded
 says so before it asks, `fetch jira: will not run, by the settings that the run recorded`,
 and why, then `prepare jira: will not run, as its fetch will not`; only a secret, such as
-an API token, which it takes from its environment again, can change that.
+an API token, which it takes from its environment again, can change that. So a run whose
+units not done are only those that its settings refused, and those after them, offers no
+resume.
 
 It finds the run under the data directory that its settings, or `--data-dir`, name, so give
 the same `--config` or `--data-dir` as the run did. Anything that would change the
@@ -183,7 +185,7 @@ A run's exit status folds how its units last ended, the most severe first:
 | Status | Means | Then |
 |---|---|---|
 | 0 | every unit done | nothing to do |
-| 1 | a unit failed, or its source's check refused it, the others ran; or the run stopped, with no unit written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | read why, fix it, and resume the run |
+| 1 | a unit failed, or its source's check refused it, the others ran; or the run stopped, with no unit written, on a cache of conversions that it could not use, or on a `<data>/docs` or `<data>/raw` that is no folder; or you answered no | read why, fix it, and resume the run; a source that its settings refused, fix them and run it again, such as `kb-mcp refresh jira` |
 | 2 | refused before any unit | nothing ran, and it is yours to fix |
 | 3 | to sign in again | sign in, then resume the run |
 | 130 | stopped by Ctrl-C | resume the run |
