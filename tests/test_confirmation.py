@@ -24,6 +24,7 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.composed import MODEL
 from tests.endpoint import Scripted, serving
+from tests.recorded import unrun
 from tests.test_fetching import SITE, FakeSite
 from tests.test_observed import said as said_on
 
@@ -139,7 +140,7 @@ def runs(monkeypatch: MonkeyPatch) -> list[tuple[argparse.Namespace, Loaded]]:
     """Make each command that writes record what its run was given, and do nothing."""
     recorded: list[tuple[argparse.Namespace, Loaded]] = []
 
-    def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[int, None]:
+    def run(arguments: argparse.Namespace, loaded: Loaded, *_: str) -> tuple[int, None]:
         recorded.append((arguments, loaded))
         return 0, None
 
@@ -485,5 +486,5 @@ def test_on_a_pseudo_terminal_no_leaves_the_data_then_yes_builds_the_index(home:
     assert b"Nothing done." in asked
     assert (declined, nothing, unchanged) == (DECLINED, b"", ["docs"])
     assert built == 0
-    assert counts.startswith(b"documents: 0\nsections: 0\n")
+    assert unrun(counts.decode()).startswith("documents: 0\nsections: 0\n")
     assert "index.sqlite" in grown

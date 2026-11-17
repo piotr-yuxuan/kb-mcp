@@ -128,6 +128,7 @@ WRITING = {
     "index",
     "login",
     "prepare",
+    "refresh",
 }
 # The subcommands that take --dry-run, by plans 015 and 017.
 DRY_RUN = {"fetch", "prepare"}

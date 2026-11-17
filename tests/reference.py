@@ -80,14 +80,25 @@ class Documented:
     instruments: dict[str, tuple[str, str, frozenset[str]]]
 
 
-def documented(page: str) -> Documented:
-    """Read the tables of a page of the reference, by its name without ``.md``."""
-    text = (PAGES / f"{page}.md").read_text("utf-8")
+def documented(*pages: str) -> Documented:
+    """Read the tables of pages of the reference, by their names without ``.md``, together.
+
+    An event listed by several has the fields that any of them lists.
+    """
+    texts = [(PAGES / f"{page}.md").read_text("utf-8") for page in pages]
+    events: defaultdict[str, frozenset[str]] = defaultdict(frozenset)
+    for row in (row for text in texts for row in rows(text, "Events")):
+        events[ticked(row[0])[0]] |= frozenset(ticked(row[2]))
     return Documented(
-        {ticked(row[0])[0]: frozenset(ticked(row[2])) for row in rows(text, "Events")},
-        {ticked(row[0])[0]: (row[1], frozenset(ticked(row[2]))) for row in rows(text, "Spans")},
+        dict(events),
+        {
+            ticked(row[0])[0]: (row[1], frozenset(ticked(row[2])))
+            for text in texts
+            for row in rows(text, "Spans")
+        },
         {
             ticked(row[0])[0]: (row[1], ticked(row[2])[0], frozenset(ticked(row[3])))
+            for text in texts
             for row in rows(text, "Instruments")
         },
     )
@@ -250,17 +261,18 @@ class Gathering(logging.Handler):
             self.emitted.log(record.msg, record.levelno, (context.trace_id, context.span_id))
 
 
-def undocumented(command: str, emitted: Emitted) -> list[str]:
+def undocumented(command: str, emitted: Emitted, besides: Iterable[str] = ()) -> list[str]:
     """Say how what runs of ``command`` recorded differs from its page and the README.
 
-    Each event, span and instrument recorded must be listed, on the command's page or
-    the README, with the fields, kind, attributes and unit recorded, or more; each that
-    the command's page lists must have been recorded. Each event logged from INFO must
-    have been exported, a record whose body is the event, with the ids of the span it
-    was logged in and the event's fields as its attributes. Nothing differs when the
-    list is empty.
+    Each event, span and instrument recorded must be listed, on the command's page, the
+    README, or the page of a command of ``besides``, whose runs ``command`` holds, as
+    ``refresh`` holds the stages', with the fields, kind, attributes and unit recorded,
+    or more; each that the command's page lists must have been recorded. Each event
+    logged from INFO must have been exported, a record whose body is the event, with the
+    ids of the span it was logged in and the event's fields as its attributes. Nothing
+    differs when the list is empty.
     """
-    own, every = documented(command), documented(README)
+    own, every = documented(command), documented(README, *besides)
     events = every.events | own.events
     differences = [
         f"event not listed: {name}" for name in sorted(set(emitted.events) - set(events))

@@ -26,6 +26,7 @@ from kb_mcp.sources.declaration import Connector, Option
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from kb_mcp.sources.declaration import Source
 
@@ -57,13 +58,28 @@ def email_without_token(
     return {source.path(EMAIL): "without an API token, the browser's session signs in"}
 
 
+def since_at(text: object, start: datetime) -> str | None:
+    """Give --since as a time as of a run's start; not given, it stays a rule: none."""
+    return None if text is None else moment(str(text), start, SINCE_FLAG).isoformat()
+
+
+def until_at(text: object, start: datetime) -> str:
+    """Give --until as a time as of a run's start; not given, the period ends at that start."""
+    return (start if text is None else moment(str(text), start, UNTIL_FLAG)).isoformat()
+
+
 # The options of a fetch's period: from when, until when, and the largest file kept.
 SINCE, UNTIL, MAX_FILE_MB = PERIOD = (
     Option(
         flag=SINCE_FLAG,
         help="12h, 7d, 6mo, an ISO date or time, or all; by default, each scope's last fetch",
+        absolute=since_at,
     ),
-    Option(flag=UNTIL_FLAG, help="12h, 7d, or an ISO date or time, excluded; by default, now"),
+    Option(
+        flag=UNTIL_FLAG,
+        help="12h, 7d, or an ISO date or time, excluded; by default, now",
+        absolute=until_at,
+    ),
     Option(
         flag=MAX_FILE_MB_FLAG,
         help=f"the largest file kept, in MiB; {DEFAULT_MAX_FILE_MB} by default",

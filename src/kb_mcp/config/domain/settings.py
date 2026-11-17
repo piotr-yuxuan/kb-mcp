@@ -13,6 +13,7 @@ resolved the data directory.
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Mapping
 from functools import reduce
@@ -47,7 +48,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
 from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
 from kb_mcp.kernel.names import CONNECTOR, MODEL_NAME, NESTING, PREFIX, RESERVED, SOURCE_NAME
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.record import Record, refused_fields
 from kb_mcp.kernel.reranking import DEPTHS
 
 if TYPE_CHECKING:
@@ -386,7 +387,10 @@ class Settings(BaseSettings):
 
     @property
     def runs(self) -> Path:
-        """The reports of each source's fetch, which hold counts and paths, never content."""
+        """A folder per recorded run: its configuration, its units' last entries, its lock.
+
+        The configuration names the sources, their scopes and their site, as the settings do.
+        """
         return self.data_dir / "runs"
 
     @property
@@ -971,6 +975,34 @@ def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]
         ),
         replaced=frozenset(setting for setting, _, _ in said),
     )
+
+
+def without_secrets(settings: Settings) -> dict[str, object]:
+    """Give the settings' values as JSON, each table nested, every secret left out."""
+    values = settings.model_dump(mode="json")
+    for path, kind in setting_paths(type(settings)).items():
+        if kind == "secret":
+            reduce(getitem, path[:-1], values).pop(path[-1])
+    return values
+
+
+def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
+    """Build settings of the model of ``secrets`` from values without secrets, and its secrets.
+
+    ``values`` are as ``without_secrets`` gives them; each secret is the one that
+    ``secrets`` holds. Raises SettingsError naming each setting refused, never its value,
+    such as the table of a source that the model no longer holds.
+    """
+    model = type(secrets)
+    tree = copy.deepcopy(dict(values))
+    for path, kind in setting_paths(model).items():
+        if kind == "secret":
+            table = reduce(lambda inner, name: inner.setdefault(name, {}), path[:-1], tree)
+            table[path[-1]] = reduce(getattr, path, secrets)
+    try:
+        return model.model_validate(tree)
+    except ValidationError as error:
+        raise SettingsError(refused_fields(error)) from None
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:

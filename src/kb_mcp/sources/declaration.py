@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     import re
-    from datetime import timedelta
+    from datetime import datetime, timedelta
 
 # How a fetch enumerates the documents of a scope: listed whole, searched by update time,
 # or read whole, in place.
@@ -30,6 +30,9 @@ type Refused = Callable[[Source, Mapping[str, object], Mapping[str, object]], st
 type Unapplied = Callable[[Source, Mapping[str, object], Mapping[str, object]], Mapping[str, str]]
 # and the lines that a run's echo says of it.
 type Described = Callable[[Source, Mapping[str, object], Mapping[str, object]], tuple[str, ...]]
+# An option's value as a run records it, given its value as typed, None when not given,
+# and the run's start: a value relative to that start, or left to it, made absolute.
+type Absolute = Callable[[object, datetime], object]
 
 
 def key_of(name: str, rule: re.Pattern[str]) -> Callable[[str], str]:
@@ -50,13 +53,15 @@ class Option:
 
     ``parse`` reads the value as typed, as argparse's ``type`` does. ``setting``, the name
     of a list of its source's table that the flag replaces for one run, makes it repeat;
-    without one, no setting holds the option.
+    without one, no setting holds the option. ``absolute``, if any, gives the value that a
+    run records, as of its start, such as a time for ``7d``; without it, the value given.
     """
 
     flag: str
     help: str
     parse: Callable[[str], object] = str
     setting: str | None = None
+    absolute: Absolute | None = None
 
 
 @dataclass(frozen=True)

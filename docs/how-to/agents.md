@@ -12,19 +12,19 @@ read-only, for agents that prefer files.
   ([bring every source up to date](refresh.md)):
 
   ```bash
-  kb-mcp fetch && kb-mcp prepare && kb-mcp index && kb-mcp embed
+  kb-mcp refresh
   ```
 
-  With the work log alone, the chain is the same: its `fetch` reads its folder.
+  With the work log alone, the run is the same: its `fetch` reads its folder.
 
-  `embed` gives the index's chunks vectors by a model that Ollama serves, so set that up
-  first, as [embeddings](embeddings.md) says, or stop after `index` and set
-  `search_mode = "lexical"` to search by words alone. Run `index`, then `embed`, after
-  each `prepare`, never `embed` alone, which leaves the index as the last `index` wrote
-  it; a running server reads the new index from its next call on. `status` tells
-  when the index was built. `fetch`, `prepare`, `index`, `embed` and `eval` write under
-  the data directory, so each first says what it will do and asks `Proceed? [y/N]`;
-  `--yes` runs it without the question, as a script needs.
+  Its `embed` gives the index's chunks vectors by a model that Ollama serves, so set that
+  up first, as [embeddings](embeddings.md) says, or run `fetch`, `prepare` and `index`
+  alone and set `search_mode = "lexical"` to search by words alone. Run `index`, then
+  `embed`, after each `prepare`, never `embed` alone, which leaves the index as the last
+  `index` wrote it; a running server reads the new index from its next call on. `status`
+  tells when the index was built. `refresh`, `fetch`, `prepare`, `index`, `embed` and
+  `eval` write under the data directory, so each first says what it will do and asks
+  `Proceed? [y/N]`; `--yes` runs it without the question, as a script needs.
 - The server is the command with no arguments. It speaks MCP over stdio, reads only
   `<data>/index.sqlite` and the mirror, and writes nothing; its network connections are
   to the embedding endpoint, when it searches by meaning, and to the reranking server,

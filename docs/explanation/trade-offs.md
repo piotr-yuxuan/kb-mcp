@@ -24,9 +24,9 @@ and the server's tools are read-only too.
 
 ## Refresh by hand
 
-The mirror changes only when someone runs the commands that write it: `fetch`, `prepare`,
-`index` and `embed`, which the user composes
-([`run_each`](../../src/kb_mcp/cli/app/sources.py)). Nothing runs on a schedule, and the
+The mirror changes only when someone runs the commands that write it: `refresh`, one run
+of `fetch`, `prepare`, `index` and `embed`, or each of these alone
+([`run_units`](../../src/kb_mcp/cli/app/units.py)). Nothing runs on a schedule, and the
 server never fetches from the site.
 
 - **Why.** The user chooses when the site is read, and is there when a session has
@@ -38,8 +38,8 @@ server never fetches from the site.
   covered end, which stops at its first document not stored whole, so that what failed
   is asked for again; a space's listing is read whole anyway, so it is checked by
   version over its whole covered period, at no request, which finds a page moved in or
-  restored with an older version. A line of `&&`, or a shell function, makes the refresh
-  one thing to remember, while each stage still runs alone, to redo one after a fix.
+  restored with an older version. `refresh` makes the refresh one thing to remember, and
+  one run to resume once a fix is made, while each stage still runs alone.
 - **Cost.** The mirror is as old as its last run. Each answer gives every document's
   as-of time, its scope's, the last moment that the scope is known complete, or
   `as of: unknown`, and `status` each scope's, so that an
@@ -53,8 +53,9 @@ server never fetches from the site.
   project's coverage ends in the future, its catch-up is skipped, said after `--until`,
   until the clock comes within a day of that end, and then starts after the edits made
   meanwhile, which only a `--since` fetches.
-- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. A command
-  that runs the others, as `sync` did until plan 031: composing them is the user's. For
+- **Rejected.** A schedule (cron, launchd) or a server that refreshes itself. The chain
+  that the user composed, `fetch && prepare && index && embed`, the one way to refresh
+  from plan 031 to plan 062, which nothing could resume part-way. For
   `fetch`, a catch-up from the last run's time whatever failed in it, which would leave a
   lasting hole. A window from the last fetch for a space, which would miss what moved in
   and save no request. A refresh started from an MCP tool, after the user's approval, is
@@ -66,7 +67,40 @@ server never fetches from the site.
   the `sync` of plan 017; the
   catch-up from the last fetch, a project's end exact, by
   plan 034; a space's coverage
-  exact after a whole read without failure by plan 056.
+  exact after a whole read without failure by plan 056; `refresh`, one recorded run, by
+  plan 062.
+
+## A run from its record
+
+A run resolves its configuration as it starts, without reading any store: the stages, the
+sources that each takes, the period, `--since 7d` made the time 7 days before its start
+and an end left to now made that start, and every setting. It records it under
+`<data>/runs/<run id>/`, secrets left out, then runs from what it reads back, its first
+invocation as each that resumes it ([`recorded`](../../src/kb_mcp/cli/commands/_runs.py)).
+Each unit's entry is written as it ends; `refresh --resume <run id>` runs each unit that did
+not end done, and each that follows one of those
+([`attempted`](../../src/kb_mcp/cli/domain/runs.py)).
+
+- **Why.** One path: what the first attempt runs is what a resume runs, a date and not
+  `7d`, so that a run stopped part-way, by Ctrl-C, a sign-in that no longer holds or an
+  endpoint away, is finished as it was meant, days later, without retyping it; the user's
+  words: "conceptually pure". A unit done is not done again, and an index or vectors made
+  before a source was fetched again are made again after it.
+- **Cost.** A resume uses the settings recorded: a fix to the settings file, other than a
+  secret, is seen by a new run alone. A period left to now ends at the run's first start,
+  so a resume days later fetches no later than that, and the next run catches up. Each run
+  writes a folder of two small files, kept until the user deletes it, and each file names
+  the site, the scopes, the account's email and where each problem lay, never a secret or
+  content. A resume takes neither a source named nor an option of the period or the
+  scopes: it refuses them, exit 2. A dry run is not recorded, so it cannot be resumed.
+- **Rejected.** A first attempt run from the values resolved in memory, beside a resume
+  run from the record: two paths, which could differ. Recording the options as typed,
+  which would make `7d` another period at each resume. A record of each fetch alone, as
+  the former `<time>-<source>.json` reports, which no resume could read. A way to give
+  every setting on the command line, held for its own plan. A resume that takes only the
+  units not done, which would leave the index of a source fetched again stale.
+- **Settled** by plan 062, its questions settled with the user, who added that the run reads
+  its record back at its first attempt too.
 
 ## A project read whole each week
 
@@ -227,7 +261,7 @@ whichever source wrote them; [sources](sources.md#three-stages-not-a-bundle) say
 
 What a source's `preflight` refuses, read as its row begins, fails that row alone, a
 problem by its source naming why, and the other sources run; the run exits 1
-([`run_each`](../../src/kb_mcp/cli/app/sources.py)). Only what no row can run with
+([`run_units`](../../src/kb_mcp/cli/app/units.py)). Only what no row can run with
 refuses the run, exit 2: the command's options and the settings, which the entry checks
 before it asks, the data directory, and a fetcher or a preparer that does not load.
 

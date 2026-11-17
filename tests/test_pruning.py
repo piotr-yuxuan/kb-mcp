@@ -20,7 +20,6 @@ import pytest
 from pydantic_core import to_json
 from structlog.testing import capture_logs
 
-from kb_mcp.cli.commands import embed as embed_command
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate
@@ -533,8 +532,8 @@ def test_a_prune_keeps_what_the_indexes_read_and_nothing_else(
     [size] = measured["kb_mcp.vectors.bytes"].data.data_points
     assert size.value == done.bytes_after
     assert json.loads(to_json(indexed))["counts"]["pruned"] == done.model_dump()
-    assert f"vectors pruned: {deleted}\nvector cache: " in embed_command.text(indexed, "short")
-    detailed = embed_command.text(indexed, "detailed")
+    assert f"vectors pruned: {deleted}\nvector cache: " in indexed.text("short")
+    detailed = indexed.text("detailed")
     assert f"kept {len(stored(fresh))} vectors ({len(alone)} for the evaluation alone)" in detailed
     assert f", pruned {deleted}; the vector cache from " in detailed
 
@@ -708,8 +707,8 @@ def test_a_prune_during_a_build_is_deferred_and_done_by_the_next(data: Path) -> 
     deferred = pruned(indexed)
     assert (deferred.outcome, deferred.deleted, deferred.reason) == ("deferred", 0, DEFERRED)
     assert indexed is not None
-    assert embed_command.text(indexed, "short").endswith("vectors pruned: none, deferred\n")
-    said_fully = embed_command.text(indexed, "detailed")
+    assert indexed.text("short").endswith("vectors pruned: none, deferred\n")
+    said_fully = indexed.text("detailed")
     assert said_fully.endswith(f"vector cache not pruned, deferred: {DEFERRED}\n")
     assert other in stored(data / "vectors.sqlite")
     done = pruned(index_then_embed(indexing(data)))
@@ -910,7 +909,7 @@ def test_a_store_made_before_023_is_converted_and_said_so_once(data: Path) -> No
         True,
     )
     assert indexed is not None
-    assert embed_command.text(indexed, "detailed").endswith(f"{pruning.CONVERTED}\n")
+    assert indexed.text("detailed").endswith(f"{pruning.CONVERTED}\n")
     assert not pruned(index_then_embed(indexing(data))).converted
 
 
@@ -930,7 +929,7 @@ def test_a_store_not_yet_converted_is_said_so_with_the_reason(
     monkeypatch.setattr(vector_cache.VectorCache, "prune", lambda *_: swept)
     indexed = index_then_embed(indexing(data))
     assert indexed is not None
-    said_fully = embed_command.text(indexed, "detailed")
+    said_fully = indexed.text("detailed")
     assert said_fully.endswith(f"{pruning.SHRINKS_NOT.format('disk is full')}\n")
 
 
@@ -950,7 +949,7 @@ def test_a_vacuum_that_fails_is_said_with_its_reason(data: Path, monkeypatch: Mo
     done = pruned(indexed)
     assert (done.outcome, done.reclaimed, done.reason) == ("pruned", False, "disk is full")
     assert indexed is not None
-    assert "; space not reclaimed: disk is full\n" in embed_command.text(indexed, "detailed")
+    assert "; space not reclaimed: disk is full\n" in indexed.text("detailed")
 
 
 def test_chunks_that_the_endpoint_refused_do_not_hold_the_prune_back(data: Path) -> None:

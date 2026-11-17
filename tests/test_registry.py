@@ -554,6 +554,32 @@ def test_a_fetcher_or_preparer_that_does_not_load_refuses_the_run_of_its_source(
 
 
 @pytest.mark.parametrize(
+    ("field", "path"), [("fetcher", "kb_absent.fetcher"), ("preparers", "kb_absent.preparer")]
+)
+def test_a_fetcher_or_preparer_that_does_not_load_refuses_a_run_before_its_record(
+    tmp_path: Path, capsys: CaptureFixture[str], field: str, path: str
+) -> None:
+    """Plan 062: a run refused so is refused before it writes its record, as a dry run is.
+
+    So no run is left recorded without a unit, which nothing would say to resume.
+    """
+    named = path if field == "fetcher" else (path,)
+    registry = sourced(replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
+        "utf-8",
+    )
+    data = tmp_path / "data"
+    data.mkdir()
+    stage = "fetch" if field == "fetcher" else "prepare"
+    given = [stage, "--yes", "--config", str(config), "--data-dir", str(data), "confluence"]
+    assert main(given, registry) == ExitStatus.REFUSED
+    assert f"source 'confluence': {path}: does not load" in capsys.readouterr().err
+    assert list(data.iterdir()) == []
+
+
+@pytest.mark.parametrize(
     ("body", "said"),
     [
         ("def broken(:\n", "invalid syntax"),

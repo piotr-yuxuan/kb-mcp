@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable, Mapping
 
+# The stages of the pipeline, in its order: fetch and prepare per source, index and embed
+# over the whole.
+type Stage = Literal["fetch", "prepare", "index", "embed"]
+STAGES: tuple[Stage, ...] = ("fetch", "prepare", "index", "embed")
+FETCH, PREPARE, INDEX, EMBED = STAGES
+WHOLE: frozenset[Stage] = frozenset({INDEX, EMBED})
 # The settings that the entry reads for every command that it observes, by path, to
 # observe its run: where its log file goes and where its telemetry goes.
 OBSERVING = ("logs.dir", "telemetry.endpoint")
@@ -62,6 +68,9 @@ class Command:
     of type ``str`` whose values the run's ``run.start`` does not name, each at the last
     token of the command line equal to it, such as the answer that ``eval-agents answer``
     keeps, which quotes the mirror.
+
+    ``stages`` are those that its run enables, in pipeline order: a command that enables
+    any is recorded under ``runs/<run id>/``, and its run is given its run id.
     """
 
     name: str
@@ -80,14 +89,17 @@ class Command:
     programs: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
     unlogged: tuple[str, ...] = ()
+    stages: tuple[Stage, ...] = ()
 
     def narrowed(self, arguments: argparse.Namespace) -> dict[str, dict[str, str]]:
         """Give each flag of ``scoped`` the settings that it may override, by source.
 
         Those of the sources named (``arguments.source``, as ``fetch`` names them), none
         when none of them declares it; with none named, those of every source that does.
+        None for a resume (``refresh --resume``), which runs the settings that its run
+        recorded.
         """
-        if not self.scoped:
+        if not self.scoped or getattr(arguments, "resume", None):
             return {}
         named = set(arguments.source)
         return {

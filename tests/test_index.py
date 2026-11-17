@@ -57,6 +57,7 @@ from tests.mirrors import (
     worklog_document,
     write,
 )
+from tests.recorded import runless, unrun
 from tests.test_cli import logged_as
 from tests.test_confirmation import read_until
 from tests.test_observed import CONTROL, said
@@ -111,7 +112,7 @@ def index(
     config.write_text(settings, encoding="utf-8")
     status = main(["index", "--yes", "--config", str(config), "--data-dir", str(data), *options])
     out, err = capsys.readouterr()
-    return status, out, err
+    return status, (unrun(out) if out.startswith("run ") else out), err
 
 
 def test_every_document_is_indexed_and_reads_back(data: Path, capsys: CaptureFixture[str]) -> None:
@@ -163,7 +164,7 @@ def test_by_words_alone_the_command_shows_documents_and_sections(
     config.write_text('search_mode = "lexical"\n', encoding="utf-8")
     options = ["--config", str(config), "--data-dir", str(data), "--detail", detail]
     assert main(["index", "--yes", *options]) == 0
-    assert capsys.readouterr().out == shown.format(index=(data / "index.sqlite").resolve())
+    assert unrun(capsys.readouterr().out) == shown.format(index=(data / "index.sqlite").resolve())
 
 
 def test_the_command_gives_its_report_index_and_model_as_json(
@@ -285,20 +286,21 @@ def test_a_failed_build_keeps_the_old_index(data: Path, monkeypatch: MonkeyPatch
 def test_a_build_leaves_no_temporary_file(data: Path, capsys: CaptureFixture[str]) -> None:
     """Built, then updated, the data directory holds the mirror, one index and its lock.
 
-    No journal, no write-ahead log, no build file.
+    No journal, no write-ahead log, no build file; the runs' records, by plan 062.
     """
     write(data / "docs", page("196845", "Kafka"))
     assert index(data, capsys)[0] == 0
     write(data / "docs", page("196846", "Another"))
     assert index(data, capsys)[0] == 0
-    names = ["docs", "index.sqlite", "index.sqlite.lock"]
+    names = ["docs", "index.sqlite", "index.sqlite.lock", "runs"]
     assert sorted(path.name for path in data.iterdir()) == names
 
 
 def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None:
     """Without <data>/docs, nothing is built and the command exits 1, by index.not_built.
 
-    The run's log file holds the error and its reason, with no hint of words alone.
+    The run's log file holds the error and its reason, with no hint of words alone; the
+    data directory, the run's record alone.
     """
     (data / "docs").rmdir()
     status, _, err = index(data, capsys)
@@ -309,7 +311,7 @@ def test_no_mirror_is_a_failure(data: Path, capsys: CaptureFixture[str]) -> None
     assert failed["level"] == "error"
     assert str(failed["reason"]).startswith("no mirror at")
     assert "hint" not in failed
-    assert list(data.iterdir()) == []
+    assert [path.name for path in data.iterdir()] == ["runs"]
 
 
 def test_a_database_error_is_a_failure_and_keeps_the_old_index(
@@ -1142,7 +1144,7 @@ def test_progress_is_bars_on_a_terminal_events_in_the_file_piped_and_nothing_qui
     os.close(controller)
     assert child.returncode == 0
     assert "━" not in shown
-    assert piped.stdout == out == quiet
+    assert runless(piped.stdout) == runless(out) == runless(quiet)
     assert json.loads(out)["counts"]["types"] == {"page": FILLERS}
 
 
@@ -2026,7 +2028,7 @@ def test_an_update_that_fails_before_its_rename_leaves_the_index_as_it_was(
         with pytest.raises(RuntimeError):
             update_index(indexing, MOMENT)
     assert (data / "index.sqlite").read_bytes() == before
-    names = ["docs", "index.sqlite", "index.sqlite.lock"]
+    names = ["docs", "index.sqlite", "index.sqlite.lock", "runs"]
     assert sorted(path.name for path in data.iterdir()) == names
     assert index(data, capsys)[0] == 0
 

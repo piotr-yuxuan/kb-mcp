@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.domain.command import EMBED, Command
 from kb_mcp.cli.options._common import (
     add_embedding_options,
     add_output_options,
@@ -39,8 +39,11 @@ def register(
         "embed",
         help="give the index's chunks their vectors, then prune the vector cache",
         epilog=(
-            "With --format json: `ending` (done, failed); `counts`, null when nothing was"
-            " filled: `index`, its path; `model`, the one that embedded; `chunks`, those that"
+            "With --format json: `run`, the run's id, which refresh --resume takes, but"
+            " for a run whose data directory does not exist, which records nothing, as its"
+            " text says after the id;"
+            " `ending` (done, failed, interrupted); `counts`, null when nothing was filled:"
+            " `index`, its path; `model`, the one that embedded; `chunks`, those that"
             " the index holds; `documents`, its documents; `skipped`, how many files it"
             " lacks; `added` and `removed`, the chunks; `embedded`, the texts embedded now;"
             " `found`, those that the vector cache held; `unchanged`, whether nothing was"
@@ -56,7 +59,7 @@ def register(
     remote = add_embedding_options(parser)
     parser.set_defaults(
         command=Command(
-            "embed",
+            EMBED,
             "kb_mcp.cli.commands.embed",
             reads=("data_dir", "model", "chunking", "embedding_url", "embedding_api_key"),
             flags=flags,
@@ -64,5 +67,6 @@ def register(
             writes=True,
             refused=endpoint_elsewhere,
             described=pruning_said,
+            stages=(EMBED,),
         )
     )

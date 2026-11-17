@@ -45,10 +45,16 @@ Some choices are not obvious:
 - **`site_html.py` is in `sources/atlassian/prepare/adapters/`**, in the package it
   serves, beside its only user, the prepare of Confluence and Jira. It is still an
   adapter: a fix for the real site's HTML goes there.
-- **`fetch`'s and `prepare`'s rows are `cli/app/sources.py`**, a use case of `cli`: it runs
-  each source's fetcher or preparers, a row each, by the path that its declaration names. What they choose
-  and say is pure, in `cli/domain/sources.py`, so that their declarations stay light, and
-  reads the registry that the entry is given, so that it names no source.
+- **A run's units are `cli/app/units.py`**, a use case of `cli`: one runner for every
+  stage, each unit's entry written as it ends, through `cli/adapters/run_record.py`, the one
+  module that knows the run's record, `runs/<run id>/`. `cli/app/sources.py` makes a
+  source's unit of its fetcher or preparers, by the path that its declaration names;
+  `cli/commands/_runs.py` the units over the whole, and runs a configuration from its
+  record, knowing no source, so that `index` and `embed` hold contract E; `_stages.py`,
+  which `fetch`, `prepare` and `refresh` share, both. What they choose and say is pure, in
+  `cli/domain/sources.py`, so that their declarations stay light, and reads the registry
+  that the entry is given, so that it names no source; a run's configuration, its units
+  and what each needs before it runs are pure too, in `cli/domain/runs.py`.
 - **The index is two interfaces**, declared as protocols in `search/domain/indexes.py`:
   `WordsIndex`, the documents by their words, and `VectorIndex`, their chunks by their
   vectors, each opening one use by `reading()` and changing all or nothing, by `update`
@@ -101,7 +107,7 @@ Beside the packages, directly under `sources/`:
 |---|---|---|
 | `sources/declaration.py` | What a connector declares: `Connector`, `ScopeType`, `DocumentType`, `Option`; and `Source`, one instance of a connector; as dataclasses, since `--help` imports them | every declaration |
 | `sources/registry.py` | `CONNECTORS`, one line per connector, `SOURCES`, a source of each, and `refuse`, the rules of any registry | `cli`, whose entry takes the sources as a parameter |
-| `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun`, and what an account's checks give, `Check` | each fetcher and preparer, each account's checks, and `cli`'s `run_each` and `doctor` |
+| `sources/stages.py` | The stages' interfaces, `Fetcher` and `Preparer`, what they take and give, `SourceRun`, and what an account's checks give, `Check` | each fetcher and preparer, each account's checks, and `cli`'s units and `doctor` |
 
 The first two stay light for `--help`, and all three are pure, by contracts G and C, which
 name them. Each source's package holds:

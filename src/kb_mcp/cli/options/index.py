@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import Command
+from kb_mcp.cli.domain.command import INDEX, Command
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 
 if TYPE_CHECKING:
@@ -30,8 +30,11 @@ def register(
         "index",
         help="update the search index of the mirror's words to what changed",
         epilog=(
-            "With --format json: `ending` (done, failed); `counts`, null when nothing was"
-            " built: `types`, the documents held by type, `sections`, `persons`, the join's"
+            "With --format json: `run`, the run's id, which refresh --resume takes, but"
+            " for a run whose data directory does not exist, which records nothing, as its"
+            " text says after the id;"
+            " `ending` (done, failed, interrupted); `counts`, null when nothing was built:"
+            " `types`, the documents held by type, `sections`, `persons`, the join's"
             " `count`, the names `ambiguous` and the aliases `unused`, the documents"
             " `copied`, `added`, `replaced` and `removed`,"
             " `awaiting`, those awaiting vectors, null when the index names no model,"
@@ -49,12 +52,13 @@ def register(
     )
     parser.set_defaults(
         command=Command(
-            "index",
+            INDEX,
             "kb_mcp.cli.commands.index",
             reads=("data_dir",),
             flags=flags,
             actions=(*actions, rebuild),
             writes=True,
             described=meaning_waits,
+            stages=(INDEX,),
         )
     )

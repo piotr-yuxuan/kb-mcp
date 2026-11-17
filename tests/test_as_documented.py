@@ -29,6 +29,7 @@ import httpx
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 
+from kb_mcp.cli.adapters.run_record import RunRecord
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc
@@ -437,6 +438,36 @@ def test_embed_records_as_documented(
         assert main(["embed", "--yes", *by_meaning(data, url)]) == ExitStatus.OK
     assert undocumented("embed", emitted) == []
     assert emitted.events["embed.mirror_changed"] == {"changed", "added", "removed", "hint"}
+
+
+def test_refresh_records_as_documented(
+    telemetry: InMemory, monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Its stages' runs, as their pages list them; then its resume, held, then run.
+
+    A space whose file answers 404, which fails its fetch and leaves its prepare not run,
+    a project and the work log, fetched, prepared, indexed and embedded; the run resumed
+    while another invocation holds it, then resumed.
+    """
+    data = tmp_path / "data"
+    signed_in(monkeypatch, FakeSite().handle, data)
+    worklog = tmp_path / "todo"
+    shutil.copytree(WORKLOG_FIXTURE, worklog)
+    monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(worklog))
+    emitted = Emitted()
+    with serving(Scripted()) as url:
+        options = ["refresh", "--yes", *by_meaning(data, url)]
+        scopes = ("--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
+        with emitted.gathering(telemetry, "refresh"):
+            assert main([*options, *scopes, "--format", "json"]) == ExitStatus.FAILED
+        (run,) = [path.name for path in (data / "runs").iterdir()]
+        resume = [*options, "--resume", run]
+        with RunRecord(data / "runs" / run).holding(), emitted.gathering(telemetry, "refresh"):
+            assert main(resume) == ExitStatus.REFUSED
+        with emitted.gathering(telemetry, "refresh"):
+            assert main(resume) == ExitStatus.FAILED
+    assert undocumented("refresh", emitted, ("fetch", "prepare", "index", "embed")) == []
+    assert {"run.resumable", "run.busy", "fetch.source", "embed.filled"} <= set(emitted.events)
 
 
 def test_serve_records_as_documented(tmp_path: Path) -> None:

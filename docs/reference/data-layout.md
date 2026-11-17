@@ -33,7 +33,7 @@ no location and is not for commands.
 | `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011) | `eval`, `eval-rerank` (011); its indexes, `embed` (023) |
 | `<data>/session/` | `session` | `login`, a `fetch` whose site renews its cookies (004) | a run signed in by the saved session (004, 015) |
 | `<data>/session/.lock` | `session`, by `adopt_former_session` | `login`, a `fetch` that moves the former session (059) | the same, which leaves the move to a run holding it (059) |
-| `<data>/runs/` | `runs` | `fetch` (004) | the user |
+| `<data>/runs/` | `runs` | each run of `fetch`, `prepare`, `index`, `embed` and `refresh` but a dry run (062); `fetch` before (004) | `refresh --resume` (062), [below](#runs) |
 
 No code builds these paths otherwise.
 
@@ -384,17 +384,90 @@ gives the store as a `Copies`, or None for one never written, and raises
 missing, of another type, a document off the work log's rules or an id given twice, naming
 the file, `<source>/copies.json`, and the field, never its value.
 
-## Run reports
+## Runs
 
-Owned by the fetch of Confluence and Jira, which `fetch` runs (004):
-`<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, one for each source fetched,
-`confluence` or `jira`, since two fetches can start within a second (030), in the format
-004's plan defines: `ending`, how the fetch ended (`done`, `failed`, `sign in again`, or
-`interrupted` by Ctrl-C), and `counts`, each count by its name; reports written before
-held `status`, the exit status, in place of `ending`. A run report holds counts and
-refused fields' paths, never content, and names no scope. No code reads one back. Its counts of documents depend on whether
-`--since` was given (034): with it, `<source> <plural>: in the period` and `<source> <plural>: already
-stored`; without, `<source> <plural>: new or changed since the last fetch`; `listed` and `fetched` either way.
+Owned by `cli.adapters.run_record.RunRecord`; nothing else reads or writes under
+`<data>/runs/`. Each run of `fetch`, `prepare`, `index`, `embed` and `refresh` records
+itself in a folder of its own, `<data>/runs/<run id>/`, its id 16 lower-case hex digits, as
+its result names it (062); but a dry run, which writes nothing, and an `index` or an
+`embed` whose data directory does not exist, which has nothing to read and makes none: the
+text of each says `, not recorded` after its id.
+
+| File | What it holds | Written |
+|---|---|---|
+| `configuration.json` | the run's configuration, resolved as it starts | once, before any unit acts |
+| `outcomes.json` | each unit's last entry, in the order in which the units run | whole, as each unit ends |
+| `.lock` | nothing: the lock of the invocation that holds the run | at each invocation |
+
+Each file is replaced through a hidden file renamed into place, so that a reader finds the
+last write whole or the one before it. One invocation at a time holds a run, the first
+writing its configuration and every later one resuming it (`kb-mcp refresh --resume <run
+id>`); a second is refused, exit 2, by the event `run.busy`. The run reads its
+configuration back before any unit acts, its first invocation as each that resumes it,
+and its units run from what it read: the period, the scopes and every other setting, all
+but the secrets, which each invocation takes from its environment.
+
+```json
+{
+ "run": "3f2a9c1d0b7e4a65",
+ "command": "refresh",
+ "started": "2026-11-16T10:00:00.250000Z",
+ "stages": ["fetch", "prepare", "index", "embed"],
+ "dry_run": false,
+ "sources": {"fetch": ["jira", "worklog"], "prepare": ["confluence", "jira", "worklog"]},
+ "options": {
+  "fetch": {"--max-file-mb": null, "--since": "2026-11-09T10:00:00.250000+00:00",
+            "--until": "2026-11-16T10:00:00.250000+00:00"},
+  "index": {"--rebuild": false}
+ },
+ "settings": {"data_dir": "/Users/someone/kb-mcp", "model": "qwen3-embedding:0.6b",
+              "sources": {"jira": {"projects": ["PLAT"], "site": "https://x.atlassian.net",
+                                   "email": null, "connector": "jira"}}}
+}
+```
+
+| Key | Value |
+|---|---|
+| `run` | the run's id |
+| `command` | the command that started the run: `fetch`, `prepare`, `index`, `embed` or `refresh` |
+| `started` | when the run started, the moment against which each relative value was made absolute |
+| `stages` | the stages that the run enables, in pipeline order |
+| `dry_run` | whether it plans alone; always false, as a dry run is not recorded |
+| `sources` | the sources that each stage per source takes, in their order, by stage |
+| `options` | the options of `fetch` and `index`, each when enabled, by flag: each of a fetch's sources' that no setting holds, `--since` as the time it named, or null for each scope's coverage, `--until` as a time, the run's start when none was given; `index`'s `--rebuild`, whether it rebuilds whole |
+| `settings` | every setting as the run resolved it, each table nested, its paths made absolute, but each secret, which is absent: the API tokens and the embedding endpoint's key |
+
+```json
+{
+ "units": [
+  {"stage": "fetch", "source": "jira", "ending": "done",
+   "counts": {"jira issues: fetched": 3, "windows": [], "dry_run": false},
+   "problems": [], "warnings": [], "invocation": "2026-11-16T10:00:00.250000Z"},
+  {"stage": "index", "source": null, "ending": "not run", "counts": null,
+   "problems": [], "warnings": [], "invocation": "2026-11-16T10:00:00.250000Z"}
+ ]
+}
+```
+
+Each unit's entry holds its `stage`, its `source`, null for `index` and `embed`, its
+`ending`, its `counts` as its stage's command writes them in JSON, its `problems` and
+`warnings`, by place and reason, never content, and the start of the `invocation` that
+gave it, which names that invocation's log file. A unit of a prepare is a source's
+preparer: a source of several has an entry for each, in their order, by which a resume
+matches them. Ctrl-C ends the unit at work `interrupted`, and an error that nothing catches
+ends it `failed`, its problem naming the error's type alone, before the run fails; either
+way each later unit that the invocation takes is `not run`, so that a resume runs them. A
+unit that no invocation reached has no entry yet. A run that a fetcher or a preparer that
+does not load refuses, exit 2, writes nothing, as it is refused before its record is
+written. A file that does not read, or that holds a field missing, of another type or
+refused, is refused by its path from the data directory and the field, never the value,
+and a resume of it with it.
+
+What a run records names its sources and scopes, as its settings do, and the places and
+reasons of its problems, as its result does: like the log files, it stays on this
+machine. The records of fetches before plan 062,
+`<data>/runs/<UTC time as %Y%m%dT%H%M%SZ>-<source>.json`, each a fetch's `ending` and
+`counts`, stay where they are: no code reads or writes them since.
 
 ## The Markdown mirror
 

@@ -12,6 +12,7 @@ import structlog
 from pydantic_core import to_json, to_jsonable_python
 
 from kb_mcp.cli.adapters.confirmation import ask
+from kb_mcp.cli.app.resumption import resumption
 from kb_mcp.cli.domain.echo import before, ignored_lines, values_of
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model
@@ -41,14 +42,17 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     that it reads missing or a folder, ``run.refused``, after the values that the settings
     ignored: each on stderr alone, as such a run has no log file. A command that writes
     then says its echo and asks, unless given --yes: declined, the run ends 1; with no
-    terminal to ask on, refused, 2.
+    terminal to ask on, refused, 2. A run resumed by --resume, ``refresh``'s, is refused
+    alike for what its record refuses (``resumption``), and its echo says what the resume
+    will do in place of the settings, which are the run's as recorded.
 
     The run is then ``observed``, its start naming the arguments ``given``, each of the
     command's ``unlogged`` ones as ``[not logged]``, the settings, secrets masked, and the
-    layer of telemetry's endpoint. The module's ``run`` gives its status and its result,
-    None when it has none to write, such as ``serve``'s: the result goes to stdout as one
-    JSON document, secrets masked, or as the module's ``text`` writes it, unless -q. An
-    exception or Ctrl-C ends the run as ``observed`` says.
+    layer of telemetry's endpoint; a run resumed keeps its id. The module's ``run``,
+    given the run's id and start too when its command enables a stage, gives its status
+    and its result, None when it has none to write, such as ``serve``'s: the result goes
+    to stdout as one JSON document, secrets masked, or as the module's ``text`` writes
+    it, unless -q. An exception or Ctrl-C ends the run as ``observed`` says.
     """
     command: Command = arguments.command
     output = Output(
@@ -83,11 +87,24 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         ),
         None,
     )
+    resume = getattr(arguments, "resume", None)
+    resumed = (
+        resumption(resume, loaded, sources, remote_allowed=arguments.allow_remote_embeddings)
+        if refusal is None and resume
+        else None
+    )
+    refusal = refusal or (resumed and resumed.refusal)
     if refusal is not None:
         sys.stderr.write(ignored_lines(loaded.ignored if output.level != "error" else ()))
         structlog.get_logger().error("run.refused", reason=refusal)
         return ExitStatus.REFUSED
-    said, then = before(arguments, loaded, output, lambda path: path.expanduser().absolute())
+    said, then = before(
+        arguments,
+        loaded,
+        output,
+        lambda path: path.expanduser().absolute(),
+        None if resumed is None else resumed.said,
+    )
     # Each unlogged argument is a positional string, given as the last token equal to it.
     hidden = {
         len(given) - 1 - list(reversed(given)).index(getattr(arguments, dest))
@@ -113,10 +130,15 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
             dry_run=command.dry_run and arguments.dry_run,
             traced=command.traced,
             commands=arguments.commands,
+            run=resume,
         ),
     ) as run:
         module = importlib.import_module(command.run)
-        status, result = module.run(arguments, loaded)
+        status, result = (
+            module.run(arguments, loaded, run.id, run.started)
+            if command.stages
+            else module.run(arguments, loaded)
+        )
         if result is not None and output.format == "json":
             sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
         elif result is not None and not output.quiet:

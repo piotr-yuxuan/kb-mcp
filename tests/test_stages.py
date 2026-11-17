@@ -48,6 +48,7 @@ from kb_mcp.sources.stages import Fetcher, Preparer, SourceRun
 from kb_mcp.sources.worklog.declared import WORKLOG
 from kb_mcp.sources.worklog.prepare.app.prepare import WorklogCounts, WorklogPlanned
 from tests.composed import MODEL, sourced
+from tests.recorded import unrun
 from tests.samples import v2_space
 from tests.test_fetching import SITE, FakeSite
 from tests.test_incremental_fetch import FIRST, WEEK
@@ -627,7 +628,7 @@ def test_the_fetch_s_text_is_what_download_writes(
     capsys.readouterr()  # what the fetch logged, outside a run, which has no log file
     assert main(given) == ExitStatus.FAILED
     indented = "".join(f"  {line}\n" for line in fetched.text("short").splitlines())
-    assert capsys.readouterr().out == f"confluence: failed\n{indented}"
+    assert unrun(capsys.readouterr().out) == f"confluence: failed\n{indented}"
 
 
 def test_the_atlassian_preparer_mirrors_the_kinds_of_the_source_that_it_runs_for(
@@ -665,7 +666,7 @@ def test_the_atlassian_preparer_writes_and_says_what_prepare_does(
     for source in ("CONFLUENCE", "JIRA"):
         monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
     assert main([*command, "--data-dir", str(other)]) == ExitStatus.OK
-    assert capsys.readouterr().out == said
+    assert unrun(capsys.readouterr().out) == said
     assert files(stored.docs) == files(other / "docs")
 
 
@@ -767,5 +768,5 @@ def test_the_work_log_s_text_is_what_prepare_writes_under_its_row(
     given = ["prepare", *options, "--detail", "detailed"]
     capsys.readouterr()  # what the prepare logged, outside a run, which has no log file
     assert main(given) == ExitStatus.OK
-    out = capsys.readouterr().out
+    out = unrun(capsys.readouterr().out)
     assert out.startswith(row_text("worklog", result.ending, result.text("detailed")))

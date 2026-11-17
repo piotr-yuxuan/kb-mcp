@@ -9,12 +9,11 @@ What is fetched, failed or skipped is counted and logged, as
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from collections.abc import Sequence
 from copy import replace
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from itertools import batched
 from typing import TYPE_CHECKING, Literal
@@ -1013,11 +1012,10 @@ def run_fetch(
     now: Callable[[], datetime],
     sleep: Callable[[float], None],
 ) -> Outcome[FetchCounts]:
-    """Run a fetch of one source signed in as the settings say, and save its counts.
+    """Run a fetch of one source signed in as the settings say, and give how it ended.
 
-    The scopes are one source's, whose name ends the record's,
-    ``<runs>/<time>-<source>.json``, saved even when the run stops; another source's are
-    another fetch. Each scope is fetched over its window, and one searched by update time
+    The scopes are one source's; another source's are another fetch. Each scope is
+    fetched over its window, and one searched by update time
     also read whole when ``whole_read_due`` says so. The coverage of every scope listed
     or searched whole grows as ``Coverage.extended`` rules, and each read whole was read
     whole when the run started. Every fetch reads the tombstones and keeps each as it
@@ -1026,8 +1024,7 @@ def run_fetch(
     ``fetch.coverage`` says at INFO what became of each finished scope's coverage,
     and why it was held, if it was. It ends done when nothing failed, failed when
     something did, and sign in again when the sign-in no longer holds or no session was
-    saved; its record says interrupted for Ctrl-C, failed for any other error that stops
-    it. Raises PeriodError when --since
+    saved; Ctrl-C, and any other error that stops it, pass. Raises PeriodError when --since
     does not come before the windows' end, StoreBusyError when another run writes, and
     ValueError for scopes of no source or of several, all before anything is written.
     """
@@ -1092,22 +1089,9 @@ def run_fetch(
                 ending = found  # once the coverage is stored, else an error stopped it
         except SignInNeededError:  # from the client: no session was saved
             ending = "sign in again"
-        except KeyboardInterrupt:
-            ending = "interrupted"
-            counts.add("runs: interrupted")
-            raise
         finally:
             if ending == "sign in again":
                 counts.add("runs: stopped, sign-in needed")
-            settings.runs.mkdir(parents=True, exist_ok=True)
-            saved = {
-                "ending": ending or "failed",  # none: an error stopped it
-                "counts": dict(sorted(counts.counts.items())),
-            }
-            stamp = started.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-            (settings.runs / f"{stamp}-{store.source}.json").write_text(
-                json.dumps(saved, indent=1), "utf-8"
-            )
     return Outcome(
         ending=ending,
         counts=replace(counts, windows=windows_of(windows, extensions)),

@@ -42,3 +42,14 @@ class Record(BaseModel):
         """
         kept = {name: getattr(self, name) for name in type(self).model_fields}
         return type(self)(**{**kept, **changes})
+
+
+def refused_fields(error: ValidationError) -> str:
+    """Name each field that a validation refused, by its path, and why; never its value.
+
+    A path joins its names by dots; a value refused whole, at no field, is ``the whole``.
+    """
+    return "; ".join(
+        f"{'.'.join(str(part) for part in problem['loc']) or 'the whole'}: {problem['msg']}"
+        for problem in error.errors(include_input=False)
+    )

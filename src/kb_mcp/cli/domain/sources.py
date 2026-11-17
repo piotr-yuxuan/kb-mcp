@@ -16,14 +16,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from kb_mcp.cli.domain.command import PREPARE
+
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Iterable, Mapping
+    from datetime import datetime
 
-    from kb_mcp.sources.declaration import Source
-
-# The commands over sources, whose names a run reads.
-FETCH, PREPARE = "fetch", "prepare"
+    from kb_mcp.sources.declaration import Option, Source
 
 
 def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, object]:
@@ -32,6 +32,35 @@ def given(arguments: argparse.Namespace, flags: Iterable[str]) -> dict[str, obje
     ``add_source_options`` keeps an option's value under its flag itself.
     """
     return {flag: getattr(arguments, flag) for flag in flags}
+
+
+def fetch_flags(sources: Iterable[Source]) -> dict[str, Option]:
+    """Give each option of those of ``sources`` that have a fetcher, by its flag."""
+    return {
+        flag: option
+        for each in sources
+        if each.connector.fetcher is not None
+        for flag, option in each.connector.flags.items()
+    }
+
+
+def fetch_options(
+    arguments: argparse.Namespace, taken: Iterable[Source], start: datetime
+) -> dict[str, object]:
+    """Give each option of the sources ``taken`` that no setting holds, by flag, as recorded.
+
+    As of the run's ``start`` where its declaration says how, such as --since 7d, a time,
+    and --until not given, that start; else as given, None when not given. An option
+    that replaces a setting, such as --space, is in the settings that the run records.
+    No source's options are read unless it is taken, as ``fetch``'s refusals read them.
+    """
+    return {
+        flag: getattr(arguments, flag)
+        if option.absolute is None
+        else option.absolute(getattr(arguments, flag), start)
+        for flag, option in sorted(fetch_flags(taken).items())
+        if option.setting is None
+    }
 
 
 def chosen_to_fetch(
@@ -73,8 +102,11 @@ def chosen_to_prepare(
 def chosen(
     arguments: argparse.Namespace, settings: Mapping[str, object]
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
-    """Return what the command that the arguments name takes, and why each other is left out."""
-    choose = chosen_to_fetch if arguments.command.name == FETCH else chosen_to_prepare
+    """Return what the command that the arguments name takes, and why each other is left out.
+
+    ``prepare`` takes what a prepare takes; ``fetch`` and ``refresh``, what a fetch takes.
+    """
+    choose = chosen_to_prepare if arguments.command.name == PREPARE else chosen_to_fetch
     return choose(arguments, settings)
 
 
@@ -112,9 +144,8 @@ def fetch_described(
     unbound = {flag for flag, left in arguments.command.narrowed(arguments).items() if not left}
     flags = {
         flag
-        for connector in (declared.connector for declared in arguments.sources)
-        for flag, option in connector.flags.items()
-        if connector.fetcher is not None and (option.setting is None or flag in unbound)
+        for flag, option in fetch_flags(arguments.sources).items()
+        if option.setting is None or flag in unbound
     }
     for flag, value in sorted(given(arguments, flags).items()):
         ignoring = [each.name for each in taken if flag not in each.connector.flags]

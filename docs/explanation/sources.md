@@ -306,12 +306,13 @@ keeps out of the index.
 ## Confluence and Jira, fetched and prepared apart
 
 They share the site, the sign-in and the raw store, so `sources/atlassian/` stays one
-package, but each is a source: a row, a report and a set of files of its own.
+package, but each is a source: a unit of each stage, an entry of the run's record and a
+set of files of its own.
 
 - **Fetched apart.** Each fetch takes its own source's scopes
   ([`purview_of`](../../src/kb_mcp/sources/atlassian/fetch/app/fetcher.py)), so spaces,
   probes, projects and users keep their order across two runs, each with its own sign-in
-  check, hold on the raw store and report, `<data>/runs/<time>-<source>.json`. The record of
+  check, hold on the raw store and entry in the run's record. The record of
   what answered as gone is every source's since plan 061, each fetch keeping the others'
   entries as it found them; one damaged fails each fetch that reads it, that source's row
   alone, and stops no prepare.
@@ -353,12 +354,16 @@ package, but each is a source: a row, a report and a set of files of its own.
 
 ## `fetch` and `prepare` through the registry
 
-[`run_each`](../../src/kb_mcp/cli/app/sources.py) is one use case over the sources taken:
-each fetcher or preparer, a row each, which its `preflight` begins. Each row runs even when an earlier one failed,
-since the next reads what is on disk, Ctrl-C stops the rest, and the rows' endings fold into
-the exit status ([`folded`](../../src/kb_mcp/kernel/exit_status.py)). A row names its source, with its
-result's text ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` stay apart,
-`index` reading the mirror whatever sources it holds, and `embed` the index.
+[`run_units`](../../src/kb_mcp/cli/app/units.py) runs a run's units, each of a source's
+the fetcher or a preparer that its declaration names
+([`source_planned`](../../src/kb_mcp/cli/app/sources.py)), which its `preflight` begins.
+Each unit runs even when another source's failed, since the next reads what is on disk;
+a source's prepare runs once its fetch is done; Ctrl-C stops the rest, and the units'
+endings fold into the exit status ([`folded`](../../src/kb_mcp/kernel/exit_status.py)). A
+row names its source, with its result's text
+([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` are units over the
+whole, `index` reading the mirror whatever sources it holds, and `embed` the index, and
+know no source ([`whole_planned`](../../src/kb_mcp/cli/commands/_runs.py)).
 
 What a run says of a source comes from the declarations: the names that each command takes
 are those of the sources configured ([`register`](../../src/kb_mcp/cli/options/fetch.py),

@@ -263,7 +263,7 @@ CONNECTORS = (*atlassian.CONNECTORS, NOTES, WORKLOG)
 That one line gives it a source of its name, which makes `[sources.notes]` a setting,
 `notes` a choice of `prepare`, and its `preparers` part of each run that takes it
 ([`settings_model`](../../src/kb_mcp/config/domain/settings.py),
-[`run_each`](../../src/kb_mcp/cli/app/sources.py)).
+[`units_of`](../../src/kb_mcp/cli/domain/runs.py)).
 
 ## 7. Give it its place in the contracts
 
