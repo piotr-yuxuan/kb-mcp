@@ -109,8 +109,9 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
     try:
         purview = purview_of(run)
         source = purview.source
+        signing = choose_sign_in(run.settings, source)
         if not run.dry_run:
-            choose_sign_in(run.settings, source).adopt_former()
+            signing.adopt_former()
         act = plan_fetch if run.dry_run else run_fetch
         outcome = act(run.settings, purview, run.now, run.sleep)
     except StoreBusyError:
@@ -122,7 +123,5 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
         structlog.get_logger().error("fetch.refused", source=run.source.name, reason=str(error))
         return Outcome.of(problems=(Problem(where=run.source.name, reason=str(error)),))
     if outcome.ending == "sign in again":
-        structlog.get_logger().error(
-            "fetch.sign_in_needed", source=source, hint=choose_sign_in(run.settings, source).again
-        )
+        structlog.get_logger().error("fetch.sign_in_needed", source=source, hint=signing.again)
     return outcome
