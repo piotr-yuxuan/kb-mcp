@@ -28,7 +28,7 @@ def run(
     in the order of their first source; the run says why a sign-in did not complete, and
     none after it is tried. The result holds the places signed in before, if any.
     """
-    taken = signing(arguments, values_of(loaded))
+    taken = signing(arguments, values_of(loaded.settings))
     logins: dict[str, list[Source]] = {}
     for each in taken:
         logins.setdefault(str(each.connector.login), []).append(each)

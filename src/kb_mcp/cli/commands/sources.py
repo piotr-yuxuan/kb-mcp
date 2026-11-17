@@ -36,7 +36,7 @@ def run(
     runs, by place and reason, never content.
     """
     stage = arguments.command.name
-    taken, _ = chosen(arguments, values_of(loaded))
+    taken, _ = chosen(arguments, values_of(loaded.settings))
     configuration = Configuration(
         run=run,
         command=stage,

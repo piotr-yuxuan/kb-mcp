@@ -160,7 +160,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None
         index = SqliteIndex(settings.index)
         library = Library(index, settings.docs, meaning, settings.search_mode, reranking)
         offered = surface(library, arguments.tools)
-        values = values_of(loaded)
+        values = values_of(loaded.settings)
         held: list[str] = []
         with contextlib.suppress(UnavailableIndexError), index.reading() as reader:
             held = sorted(name for name, _ in reader.values("source"))

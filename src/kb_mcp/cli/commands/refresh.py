@@ -37,7 +37,7 @@ def run(
     """
     configuration = None
     if arguments.resume is None:
-        values = values_of(loaded)
+        values = values_of(loaded.settings)
         fetched, _ = chosen_to_fetch(arguments, values)
         configuration = Configuration(
             run=run,
