@@ -94,17 +94,18 @@ def recorded(
                 structlog.get_logger().error("run.refused", reason=f"run {run}: {error}")
                 return ExitStatus.REFUSED, None
             # The entries last handed to the record, written or not.
-            handed = [last]
+            handed = last
 
             def write(entries: tuple[Recorded, ...]) -> None:
-                handed[0] = entries
+                nonlocal handed
+                handed = entries
                 record.write_outcomes(entries)
 
             try:
                 done = run_units(units, last, started, write, dry_run=fixed.dry_run)
             finally:
                 settled = {each.unit for each in units if each.refused is not None}
-                if record.folder is not None and resumable(handed[0], settled):
+                if record.folder is not None and resumable(handed, settled):
                     resume = f"{PROGRAM} refresh --resume {run}"
                     structlog.get_logger().warning("run.resumable", resume=resume)
     except RunBusyError:
