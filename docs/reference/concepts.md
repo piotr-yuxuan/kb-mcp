@@ -2,7 +2,7 @@
 
 Each entry's "In the code" paragraph names the code that implements it; where a sentence
 here and the code differ, the code is what runs, and the difference is a defect of one or
-the other, as the entry says where it is kept on purpose.
+the other, unless the entry says that it is kept on purpose, under "Where the code differs".
 
 [The entity-relationship views](concepts-er.html) draw the core concepts with their
 relationships and cardinalities.
