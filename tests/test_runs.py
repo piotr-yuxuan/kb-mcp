@@ -452,7 +452,8 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
     Jira without its site, Confluence and the work log configured: the echo says that
     Jira will not be fetched nor prepared, and why; Confluence and the work log are
     fetched and prepared, then index and embed run; Jira's fetch fails, naming the
-    setting, as the record holds it, and its prepare is not run: exit 1.
+    setting, as the record holds it, and its prepare is not run: exit 1. Named, Jira
+    refuses the refresh, exit 2, before any run is recorded.
     """
     options = given(home, endpoint, confluence=True)
     config = home / "config.toml"
@@ -480,6 +481,10 @@ def test_a_refresh_whose_source_lacks_its_site_fails_that_source_alone(
     assert f"  fetch: source jira: will not run, {reason}\n" in err
     assert "  prepare: source jira: will not run, as its fetch will not\n" in err
     assert (home / "data" / "docs" / "worklog").is_dir()
+    runs = sorted((home / "data" / "runs").iterdir())
+    assert main(["refresh", "--yes", *options, "jira"]) == ExitStatus.REFUSED
+    assert reason in capsys.readouterr().err
+    assert sorted((home / "data" / "runs").iterdir()) == runs
 
 
 @pytest.mark.usefixtures("site")

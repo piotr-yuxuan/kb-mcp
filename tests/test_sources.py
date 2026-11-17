@@ -1569,6 +1569,27 @@ def test_a_source_taken_by_default_that_its_settings_refuse_fails_its_unit_alone
     assert sorted((home / "data" / "runs").iterdir()) == runs
 
 
+def test_a_fetch_whose_every_source_its_settings_refuse_fails_each_unit_and_exits_1(
+    home: Path, capsys: CaptureFixture[str]
+) -> None:
+    """Plan 070: a source's settings fail its unit, whatever else the run takes, or none.
+
+    Jira alone, without its site, made configured by --project, which does not name it:
+    its unit fails, naming the setting, exit 1, as when another source runs.
+    """
+    config = settings_file(home, None)
+    given = command(home, config, "fetch", "--yes", "--format", "json", "--project", "PRB")
+    assert main(given) == ExitStatus.FAILED
+    rows = json.loads(capsys.readouterr().out)["sources"]
+    assert [(row["source"], row["ending"], row["problems"]) for row in rows] == [
+        (
+            "jira",
+            "failed",
+            [{"where": "jira", "reason": "sources.jira.site: not set; add it to the settings"}],
+        )
+    ]
+
+
 def test_a_source_s_own_light_checks_are_asked_when_a_fetch_takes_it(
     home: Path, signed_in: FakeSite, capsys: CaptureFixture[str]
 ) -> None:
