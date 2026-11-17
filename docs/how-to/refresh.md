@@ -111,6 +111,13 @@ asks again unless given `--yes`, saying the units done and those it runs in plac
 settings, then, as any run, whether telemetry is on, the values ignored and the command to
 copy, which resumes it again.
 
+A resume runs by the settings that the run recorded, not by the settings file: a fix there,
+such as a site set for a source whose fetch failed without it, is seen by a new run alone,
+such as `kb-mcp refresh jira`. A resume of a source still refused by the settings recorded
+says so before it asks, `fetch jira: will not run, by the settings that the run recorded`,
+and why; only a secret, such as an API token, which it takes from its environment again,
+can change that.
+
 It finds the run under the data directory that its settings, or `--data-dir`, name, so give
 the same `--config` or `--data-dir` as the run did. Anything that would change the
 configuration is refused, exit 2: a source named, `--since`, `--until`, `--max-file-mb`,
@@ -130,8 +137,9 @@ them alone, then indexes and embeds the whole mirror. It takes those that `fetch
 `confluence`, `jira` and `worklog`. Without a name, it fetches every one configured, and
 prepares every one that keeps a store of spaces or projects, and the work log when
 configured. A source named but not configured is refused, naming its setting, as is a run
-left with none. A flag of a source not taken, such as `--project` with `refresh
-confluence`, is said not applied.
+left with none, and so is a source named whose settings it cannot run with, such as Jira
+without its site, before anything is asked. A flag of a source not taken, such as
+`--project` with `refresh confluence`, is said not applied.
 
 Preparing Confluence alone leaves Jira's files whose links depend on Confluence's pages
 as they are until Jira is prepared, and what they attach stays until then. `index` digests
@@ -183,6 +191,15 @@ A run's exit status folds how its units last ended, the most severe first:
 A source's fetch that fails stops none of the others: their prepares run, then index and
 embed, and the run exits 1. Resuming it, once you have fixed what failed, fetches and
 prepares that source alone, then indexes and embeds again.
+
+So does a source that the run takes without its name but whose settings it cannot run with,
+such as Jira without its site, or with an API token and no email: the summary before the
+question says `source jira: will not run`, and why, naming the setting; its fetch's unit
+fails with that problem, `fetch.refused`, its prepare is not run, the other sources run, and
+the run exits 1. Fix the setting, then run again, `kb-mcp refresh jira`: a resume would run
+by the settings recorded, as section 3 says. Named before the fix, such a source refuses
+the run, exit 2, before anything is asked. An option that does not read, such as
+`--since yesterday`, refuses the run whichever sources it takes: it is the command line's.
 
 ## 7. Look before running
 

@@ -140,8 +140,8 @@ for the server, a `sops exec-env` command, whose `KB_MCP_SITE="$ATLASSIAN_SITE"`
 `KB_MCP_SOURCES__CONFLUENCE__SITE="$ATLASSIAN_SITE" KB_MCP_SOURCES__JIRA__SITE="$ATLASSIAN_SITE"`,
 as [an API token kept by sops](api-token-with-sops.md) shows. The sign-in's variables that
 the rename first gave, `KB_MCP_SITE`, `KB_MCP_EMAIL` and `KB_MCP_API_TOKEN`, name no
-setting since its settings moved: each run says it ignored them, a run refused for want
-of the site first of all; rename them alike. A machine set up between the two renames,
+setting since its settings moved: each run says it ignored them, before it says that a
+source's site is not set; rename them alike. A machine set up between the two renames,
 whose settings hold `[accounts.atlassian]` or whose environment sets
 `KB_MCP_ACCOUNTS__ATLASSIAN__…`, is refused with the same advice, naming each source's
 key or variable. For each
@@ -359,7 +359,8 @@ What reads a run's output follows:
   `prepare`, `index` and `embed`, where they were `download`, `mirror`, `index` and `sync`.
 - **`doctor`.** A machine with no Confluence or Jira source whose site or scopes are set
   gets the machine's checks alone, exit 0, where it failed `site: not set`; one whose
-  source has scopes and no site is refused, exit 2, naming the setting.
+  source has scopes and no site gets a check of that source failed, exit 1, naming the
+  setting, and the others.
 
 ## 10. Check again
 

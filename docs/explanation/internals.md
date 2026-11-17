@@ -100,9 +100,12 @@ choose among those that a command can take
   ([`PeriodError`](../../src/kb_mcp/sources/atlassian/fetch/domain/period.py)),
   or a work log that is not a folder; a fetcher or a preparer that does not load refuses the
   run, before its first unit
-  ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/units.py)), and a source's light check
-  of its settings, which the entry asks before the run, refuses it too (plan 070 makes the
-  latter tolerant). Ctrl-C ends the unit it stops interrupted, and runs no later one; an
+  ([`SourcesRefusedError`](../../src/kb_mcp/cli/app/units.py)). A source's light check of
+  its settings, such as a site not set, fails its fetch's unit alone, by the settings that
+  the run recorded ([`source_planned`](../../src/kb_mcp/cli/app/sources.py)), unless the
+  source is named on the command line: the entry then refuses the run, exit 2, as it does
+  an option of the period that does not read. Ctrl-C ends the unit it stops interrupted,
+  and runs no later one; an
   error that nothing catches ends it failed, by the error's type, runs no later one, and
   fails the run, exit 1, with its traceback, the units that it did not run left to a
   resume ([`run_units`](../../src/kb_mcp/cli/app/units.py)). The exit status folds how

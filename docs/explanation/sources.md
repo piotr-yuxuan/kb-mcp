@@ -65,10 +65,12 @@ preparers
 above the preparers, they above the fetcher, it above the tables: both read the tables,
 and the declaration imports neither ([contract
 J](code-layout.md#the-contracts)). A declaration's light checks are functions that it
-holds, which `fetch` asks before anything is asked of the user: what it refuses, such as
-an API token without its email
-([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), what its run
-does not apply, and what its echo says.
+holds, which `fetch` asks before anything is asked of the user: what a source's settings
+refuse, such as an API token without its email
+([`token_without_email`](../../src/kb_mcp/sources/atlassian/declared.py)), which fails
+that source's fetch alone, or refuses a run that names it; what its options refuse, such
+as a period that does not read, which refuses the run; what its run does not apply, and
+what its echo says.
 
 - **One fetcher may serve several connectors.** Confluence and Jira name one fetcher,
   which reads the scope types of the connector of the source that it runs for from
@@ -372,8 +374,8 @@ setting is set ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)); and so do t
 lines ([`fetch_described`](../../src/kb_mcp/cli/domain/sources.py)), the settings not applied
 of the sources left out ([`left_unapplied`](../../src/kb_mcp/cli/options/_sources.py)), the
 light refusals ([`refused`](../../src/kb_mcp/cli/options/fetch.py)) and the options, each flag once. A
-source's options and light checks are its fetch's, so a site not set refuses `fetch`, never
-`prepare`. Both commands run by one module
+source's options and light checks are its fetch's, so a site not set fails that source's
+fetch, or refuses one that names it, never `prepare`. Both commands run by one module
 ([`run`](../../src/kb_mcp/cli/commands/sources.py)). `login` and `doctor` read each source
 that signs in: its connector's run, checks and light rules, each named by its
 [`Connector`](../../src/kb_mcp/sources/declaration.py), once for the sources of one run or
