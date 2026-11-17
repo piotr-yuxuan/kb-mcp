@@ -70,7 +70,7 @@ def preflight(run: SourceRun) -> str | None:
     record of another space stops nothing. A source of projects reads what answered as
     gone once its fetch has begun (``run_fetch``), before its first request, and what
     each project's searches found since its last whole read when the fetch reaches that
-    project, after the projects before it: either damaged then fails that source's row
+    project, after the projects before it: either damaged then fails that source's unit
     alone, its searches by update time too, or those still to come.
     """
     store = RawStore(run.settings.raw, run.source.name)
@@ -98,7 +98,7 @@ def fetch(run: SourceRun) -> Outcome[FetchCounts]:
     later fetch's start, a record damaged since, or one that ``preflight`` leaves to the
     run. It fails this fetch alone, a problem
     by the source and an error, ``fetch.refused``, naming the source, and the run's next
-    rows go on.
+    units go on.
 
     Another run writing the raw store fails the fetch before it starts, a problem by the
     raw store and an error, ``fetch.store_busy``; each scope that failed is a warning,

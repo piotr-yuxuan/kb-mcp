@@ -207,9 +207,13 @@ def run_sources(
         progress.failed(error)
         raise
     finally:
-        rows = [progress.entries[each.unit] for each in taken if each.unit in progress.outcomes]
-        status = folded([*progress.own, *(row.ending for row in rows)])
-        log.info(finished, status=int(status), sources=[f"{r.source}: {r.ending}" for r in rows])
+        entries = [progress.entries[each.unit] for each in taken if each.unit in progress.outcomes]
+        status = folded([*progress.own, *(entry.ending for entry in entries)])
+        log.info(
+            finished,
+            status=int(status),
+            sources=[f"{each.source}: {each.ending}" for each in entries],
+        )
 
 
 def run_units(

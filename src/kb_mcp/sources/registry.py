@@ -56,7 +56,7 @@ def refuse(sources: Iterable[Source]) -> None:
     A source's name is its table, its folders and the front matter's ``source``, so each
     source is configured once: a name matches ``SOURCE_NAME``, is none of ``RESERVED``,
     and is declared once. A connector names a setting, its first saying whether a source
-    is configured, and a fetcher or a preparer, or a run of it would have no row; its
+    is configured, and a fetcher or a preparer, or a run of it would have no unit; its
     location is one of its settings, which a connector that signs in names, as signing in
     reads it. An option is one flag of ``fetch``, which the sources declaring it share:
     each declares it alike, and it matches ``FLAG``, or argparse would read it as a
