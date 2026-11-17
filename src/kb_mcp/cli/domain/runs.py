@@ -205,20 +205,25 @@ def resume_said(
 
     Each unit that it runs with its last ending, or ``none yet``; then each fetch that it
     runs that will not run, as ``refused`` says why by its source, by the settings that
-    the run recorded.
+    the run recorded, and each later unit of that source, which will not run either.
     """
     chosen = attempted(units, last)
     done = [unit.name for unit in units if unit not in chosen]
     runs = [f"{unit.name} ({last.get(unit, 'none yet')})" for unit in units if unit in chosen]
     unrun = [
-        f"  {unit.name}: will not run, by the settings that the run recorded:"
-        f" {refused[unit.source]}\n"
+        f"  {unit.name}: will not run, "
+        + (
+            f"by the settings that the run recorded: {refused[unit.source]}"
+            if unit.stage == FETCH
+            else "as its fetch will not"
+        )
+        + "\n"
         for unit in units
-        if unit in chosen and unit.stage == FETCH and unit.source in refused
+        if unit in chosen and unit.source in refused
     ]
     return (
         f"refresh --resume {configuration.run}: the run of {configuration.command}, started"
         f" {configuration.started.isoformat()}\n"
         f"  done: {', '.join(done) or 'none'}\n"
-        f"  to run: {', '.join(runs) or 'none'}\n" + "".join(unrun)
+        f"  to run: {', '.join(runs) or 'none'}\n" + "".join(dict.fromkeys(unrun))
     )

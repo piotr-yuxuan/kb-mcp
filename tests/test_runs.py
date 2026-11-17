@@ -500,8 +500,9 @@ def test_a_resume_runs_a_fetch_failed_by_its_settings_by_those_that_the_run_reco
 
     A refresh with Jira's site unset, then the site set in the settings file: the resume
     says before it asks that Jira's fetch will not run, by the settings that the run
-    recorded, and why; it runs that fetch again, which fails again, Jira's prepare not
-    run, then index and embed: exit 1. A new refresh of Jira reads the site and fetches.
+    recorded, and why, nor Jira's prepare, as its fetch will not; it runs that fetch
+    again, which fails again, Jira's prepare not run, then index and embed: exit 1. A new
+    refresh of Jira reads the site and fetches.
     """
     options = given(home, endpoint)
     config = home / "config.toml"
@@ -515,6 +516,7 @@ def test_a_resume_runs_a_fetch_failed_by_its_settings_by_those_that_the_run_reco
     out, err = capsys.readouterr()
     assert status == ExitStatus.FAILED
     assert f"  fetch jira: will not run, by the settings that the run recorded: {reason}\n" in err
+    assert err.count("  prepare jira: will not run, as its fetch will not\n") == 1
     units = {(each["stage"], each["source"]): each for each in json.loads(out)["units"]}
     earlier = {each["invocation"] for each in first["units"]}
     again = {
