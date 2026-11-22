@@ -63,7 +63,7 @@
     <div class="diagram-container">
 <svg viewBox="0 0 1280 900" width="1280" height="900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="concepts-er-what-title concepts-er-what-desc">
 <title id="concepts-er-what-title">What the knowledge is</title>
-<desc id="concepts-er-what-desc">Entity-relationship view of connectors, sources, scopes, documents, sections, mentions and persons: a source is an instance of a connector and has scopes, a scope holds documents, a document is cut into sections and names mentions, and each mention joins one person.</desc>
+<desc id="concepts-er-what-desc">Entity-relationship view of connectors, sources, scopes, documents, sections, mentions and persons: a source is an instance of a connector and has scopes, a source and a scope hold documents, a document is cut into sections and names mentions, and each mention joins one person.</desc>
 <rect width="100%" height="100%" fill="#f7f7f7"/>
 <!-- Relationships, behind the entities -->
 <path d="M 360,100 H 480" fill="none" stroke="#5e605c" stroke-width="1"/>
@@ -73,6 +73,7 @@
 <path d="M 360,360 H 480" fill="none" stroke="#5e605c" stroke-width="1"/>
 <path d="M 1040,560 V 660" fill="none" stroke="#5e605c" stroke-width="1"/>
 <path d="M 1120,560 V 584 Q 1120,592 1128,592 H 1168 Q 1176,592 1176,584 V 560" fill="none" stroke="#5e605c" stroke-width="1"/>
+<path d="M 720,180 V 232 Q 720,240 728,240 H 952 Q 960,240 960,248 V 300" fill="none" stroke="#5e605c" stroke-width="1"/>
 <!-- Entity: Connector -->
 <rect x="40" y="40" width="320" height="180" rx="6" fill="#f7f7f7"/>
 <rect x="40" y="40" width="320" height="180" rx="6" fill="#ffffff" stroke="#4d4d4c" stroke-width="1"/>
@@ -173,8 +174,8 @@
 <text x="1224" y="480" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">started by a whole read</text>
 <text x="936" y="500" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">attachments</text>
 <text x="1224" y="500" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">files beside its own</text>
-<text x="936" y="520" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">ref</text>
-<text x="1224" y="520" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">source:key, else source:id</text>
+<text x="936" y="520" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">key · ref</text>
+<text x="1224" y="520" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">if any; source:key, else source:id</text>
 <text x="936" y="540" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">body</text>
 <text x="1224" y="540" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">Markdown; none in a container</text>
 <!-- Entity: Section -->
@@ -234,6 +235,12 @@
 <text x="1108" y="576" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">N</text>
 <rect x="1184" y="566" width="32" height="12" rx="2" fill="#f7f7f7"/>
 <text x="1200" y="576" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0..1</text>
+<rect x="808" y="220" width="64" height="12" rx="2" fill="#f7f7f7"/>
+<text x="840" y="229" fill="#5e605c" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.12em">SOURCE OF</text>
+<rect x="728" y="188" width="16" height="12" rx="2" fill="#f7f7f7"/>
+<text x="736" y="198" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">1</text>
+<rect x="968" y="280" width="16" height="12" rx="2" fill="#f7f7f7"/>
+<text x="976" y="290" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">N</text>
 <text x="60" y="500" fill="#4d4d4c" font-size="15" font-style="italic" font-family="'Instrument Serif', 'Noto Serif', serif" text-anchor="start">A person is the class of the mentions joined</text>
 <text x="60" y="518" fill="#4d4d4c" font-size="15" font-style="italic" font-family="'Instrument Serif', 'Noto Serif', serif" text-anchor="start">across every source, scope and sign-in.</text>
 <path d="M 230,482 Q 220,452 200,426" fill="none" stroke="rgba(77,77,76,0.40)" stroke-width="1" stroke-dasharray="4,3"/>
@@ -251,7 +258,7 @@
 <text x="620" y="878" fill="#4d4d4c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace">→</text>
 <text x="636" y="878" fill="#5e605c" font-size="9" font-family="'Geist', system-ui, sans-serif">Reference</text>
 <text x="716" y="878" fill="#4d4d4c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace">1 · N · 0..1</text>
-<text x="800" y="878" fill="#5e605c" font-size="9" font-family="'Geist', system-ui, sans-serif">Cardinality at each end</text>
+<text x="800" y="878" fill="#5e605c" font-size="9" font-family="'Geist', system-ui, sans-serif">Cardinality; N is any number</text>
 </svg>
     </div>
     <div class="cards">
@@ -307,7 +314,7 @@
 <text x="56" y="56" fill="#8959a8" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.14em">ENTITY · ONE COMMAND</text>
 <text x="56" y="72" fill="#4d4d4c" font-size="14" font-weight="600" font-family="'Geist', system-ui, sans-serif">Run</text>
 <text x="56" y="100" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace"># run id</text>
-<text x="344" y="100" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">resumable by it</text>
+<text x="344" y="100" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">resumable by it; kept under runs/</text>
 <text x="56" y="120" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">configuration</text>
 <text x="344" y="120" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">fixed at start, no secret kept</text>
 <text x="64" y="140" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">stages</text>
@@ -362,7 +369,7 @@
 <text x="784" y="380" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">copy · derived · memo</text>
 <text x="784" y="400" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">input · credential · journal</text>
 <text x="496" y="420" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">owner · lock</text>
-<text x="784" y="420" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">one layout owner</text>
+<text x="784" y="420" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">one owner; a lock if shared</text>
 <text x="496" y="440" fill="#4d4d4c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace">fingerprints</text>
 <text x="784" y="440" fill="#5e605c" font-size="10" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="end">of its derivations</text>
 <!-- Entity: Tool -->
@@ -465,10 +472,10 @@
 <text x="904" y="398" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">N</text>
 <rect x="208" y="484" width="40" height="12" rx="2" fill="#f7f7f7"/>
 <text x="228" y="493" fill="#5e605c" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.12em">CALLS</text>
-<rect x="208" y="448" width="16" height="12" rx="2" fill="#f7f7f7"/>
-<text x="216" y="458" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">N</text>
-<rect x="208" y="520" width="16" height="12" rx="2" fill="#f7f7f7"/>
-<text x="216" y="530" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">N</text>
+<rect x="208" y="448" width="32" height="12" rx="2" fill="#f7f7f7"/>
+<text x="224" y="458" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0..1</text>
+<rect x="208" y="520" width="32" height="12" rx="2" fill="#f7f7f7"/>
+<text x="224" y="530" fill="#5e605c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0..1</text>
 <rect x="1088" y="494" width="80" height="12" rx="2" fill="#f7f7f7"/>
 <text x="1128" y="503" fill="#5e605c" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.12em">ANSWERS WITH</text>
 <rect x="1088" y="468" width="16" height="12" rx="2" fill="#f7f7f7"/>
@@ -523,6 +530,8 @@
 <text x="692" y="998" fill="#5e605c" font-size="9" font-family="'Geist', system-ui, sans-serif">Identity</text>
 <text x="764" y="998" fill="#4d4d4c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace">→</text>
 <text x="780" y="998" fill="#5e605c" font-size="9" font-family="'Geist', system-ui, sans-serif">Reference</text>
+<text x="860" y="998" fill="#4d4d4c" font-size="10" font-weight="600" font-family="'Geist Mono', ui-monospace, monospace">1 · N · 0..1</text>
+<text x="944" y="998" fill="#5e605c" font-size="9" font-family="'Geist', system-ui, sans-serif">Cardinality; N is any number</text>
 </svg>
     </div>
     <div class="cards">
@@ -536,7 +545,7 @@
       </div>
       <div class="card">
         <div class="card-header"><span class="card-dot ink"></span><h3>A stage moves data between stores</h3></div>
-        <p>Fetch, prepare, index and embed each read stores and write one, redoing only what changed. Stores are of
+        <p>Fetch, prepare, index and embed each read stores and write others, redoing only what changed. Stores are of
         six sorts: copy, derived, memo, input, credential and journal; a derivation's fingerprint keys what it
         wrote. Of the stages, embed alone calls a service that computes. The sign-in state, a credential store,
         is written by <code>login</code>, a run of its own, before the runs that rely on it.</p>
