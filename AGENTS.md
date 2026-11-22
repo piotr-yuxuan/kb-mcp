@@ -10,13 +10,15 @@ never this project's docs.
 
 Follow the `workflow:plans` skill with these parameters:
 
-- Plans are `docs/work/plans/NNN-slug.md`, untracked: `docs/work/` is git-ignored and
-  never committed; parked ones are under `docs/work/held/`, done ones under
-  `docs/work/changelog/`. Records under `docs/work/` are history, never a contract.
+- Plans are `docs/work/plans/NNN-slug.md`, each beside its `NNN-checks.sh`, untracked:
+  `docs/work/` is git-ignored and never committed; parked ones are under
+  `docs/work/held/`, done ones under `docs/work/changelog/`. Records under `docs/work/`
+  are history, never a contract.
 - Checks, run in full before each review and each merge:
   - `uv run ruff check` and `uv run ruff format --check`;
   - `uv run lint-imports`;
-  - `uv run pytest -n auto`, on every core by pytest-xdist;
+  - `uv run pytest -n 4`, on four workers by pytest-xdist, to keep a laptop cool, where
+    CI and the tutorial spread over every core;
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
 - The words, each defined once, in [the concepts](docs/reference/concepts.md); new code
