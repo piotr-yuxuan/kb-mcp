@@ -124,7 +124,8 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [The README](../README.md): what the command does and needs, and its first command.
 - [Instructions for coding agents](../AGENTS.md), for contributors: the workflow, the
-  checks and the sandbox's credentials.
+  checks, the rules that keep the concepts, the core concepts in brief and the
+  sandbox's credentials.
 - [The sandbox corpus](../sandbox/README.md), for contributors: the fictional company
   seeded into the sandbox site to evaluate search, and the facts its pages share.
 - [The proof test](../spikes/README.md), for contributors: plan 001's probe of reading

@@ -21,8 +21,6 @@ Follow the `workflow:plans` skill with these parameters:
     CI and the tutorial spread over every core;
   - `uv run --with-requirements sandbox/seed_corpus.py --with pytest pytest sandbox`,
     which needs pandoc on `PATH`.
-- The words, each defined once, in [the concepts](docs/reference/concepts.md); new code
-  takes them, and the names of each entry's "In the code" paragraph.
 - The design: why each decision was taken and what it costs, in
   [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
   [the internals](docs/explanation/internals.md); the formats that the stages share, in
@@ -37,6 +35,62 @@ Follow the `workflow:plans` skill with these parameters:
   rewrites; else the reference test fails, naming them.
 - What runs log, trace and measure: `docs/reference/telemetry/`, changed with the code.
 - At most three review rounds.
+
+## The concepts
+
+[The concepts](docs/reference/concepts.md) define the program's words, each once; new
+code takes them, and the names of each entry's "In the code" paragraph.
+
+- Each plan has a section *Concepts*, which the review of its draft checks against the
+  concepts and against the other plans under `docs/work/plans/` and `docs/work/held/`:
+
+  ```markdown
+  ## Concepts
+
+  Adds: <concepts or context words>
+  Changes: <and how>
+  Retires: <and what replaces them>
+  Relies on: <concepts used unchanged>
+  ```
+
+- A definition changes only in a plan whose *Concepts* declares the change, and never
+  to make a check pass; the pre-merge summary shows the page's diff. An "In the code"
+  paragraph follows the code in the commit that changes it.
+- Definitions are timeless. Where the code differs from one goes in
+  [the differences](docs/reference/differences.md), classed as that page says.
+- A plan that changes a core concept rewrites its line below, and the opening paragraph
+  of the concepts, in the same commit.
+- Tests take their expectations from the concepts, the trade-offs and the reference
+  written by hand, never from the implementation nor from a page generated from it,
+  such as the commands and the settings.
+- The diagrams, such as [the entity-relationship views](docs/reference/concepts-er.html),
+  are derived from the concepts and the trade-offs, drawn with the skill
+  `diagram-design:diagram-design` under the profile that `.diagram-design` names; a plan
+  that changes what one shows redraws it.
+
+### The core concepts
+
+The concepts define them; each line here only points to its entry.
+
+```
+connector  the code that reads one kind of origin, which it never writes
+source     one configured instance of a connector: a name, a location, a sign-in
+scope      a part of one source that the user selects, read and tracked as a unit
+document   a unit of content that an origin holds and a scope lists: (source, id)
+section    one part of a document's body, from one heading to the next
+person     what the program takes for one human: the mentions joined as one
+ranking    the ordered answer to a query: sections, at most one per document
+tool       an operation that the server offers an agent
+stage      one of the four steps of the pipeline: fetch, prepare, index, embed
+run        what the program does for one command, known by its run id
+store      durable data that the program owns and keeps between runs
+service    a server, other than an origin, that a run sends text to, under a rule
+```
+
+Words to avoid: an origin's own words to define a concept in general, such as
+Confluence's node or space tree; identity, for a document's id, since it is kept for
+persons; people, for a count of persons. Connector and scope never mean an MCP client's
+connector or `--scope`, nor an API token's scopes.
 
 ## Sandbox credentials
 
