@@ -70,7 +70,8 @@ code takes them, and the names of each entry's "In the code" paragraph.
 
 ### The core concepts
 
-The concepts define them; each line here only points to its entry.
+Each line summarises its entry in [the concepts](docs/reference/concepts.md#core-concepts),
+which rules.
 
 ```
 connector  the code that reads one kind of origin, which it never writes
