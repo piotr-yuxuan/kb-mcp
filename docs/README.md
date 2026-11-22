@@ -58,6 +58,9 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [Concepts](reference/concepts.md): the program's concepts, each defined once, and the
   code and the names that carry each.
+- [Differences](reference/differences.md): where the code differs from a concept's
+  definition, and whether that is a defect of the code or of the definition, an
+  aspiration or an intended gap.
 - [Entity-relationship views](reference/concepts-er.html): the concepts drawn with their
   relationships and cardinalities, in two views.
 - [Commands](reference/commands.md): what the command and each subcommand say with
@@ -121,7 +124,8 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [The README](../README.md): what the command does and needs, and its first command.
 - [Instructions for coding agents](../AGENTS.md), for contributors: the workflow, the
-  checks and the sandbox's credentials.
+  checks, the rules that keep the concepts, the core concepts in brief, the layout and
+  the sandbox's credentials.
 - [The sandbox corpus](../sandbox/README.md), for contributors: the fictional company
   seeded into the sandbox site to evaluate search, and the facts its pages share.
 - [The proof test](../spikes/README.md), for contributors: plan 001's probe of reading

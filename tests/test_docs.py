@@ -8,7 +8,8 @@ of the four folders; each command line of the program in a bash block parses, as
 OpenAI-compatible API works; Docker's command follows each of Podman's; the reference
 of the MCP server names, as plan 019 first checked, each tool and prompt that a server
 lists over stdio, with their parameters; the tutorial of a first mirror and the guide
-to embeddings pull the model that the settings default to; and the how-to for adding a
+to embeddings pull the model that the settings default to; the instructions for coding
+agents list the concepts page's core concepts, in its order; and the how-to for adding a
 source gives the code of the memo source that the tests run, under its own names.
 """
 
@@ -354,6 +355,27 @@ def test_the_map_links_each_page_of_the_four_kinds_and_docs_holds_no_other(
     assert [f"docs/README.md does not link {page}" for page in sorted(kinds - mapped)] == []
     others = sorted(page for page in pages - kinds if not page.startswith("docs/work/"))
     assert others == ["docs/README.md"]
+
+
+def test_the_instructions_for_agents_list_the_core_concepts_in_order() -> None:
+    """``AGENTS.md`` names the concepts page's core concepts, in the page's order.
+
+    Each line of the first block after its heading "The core concepts" opens with the
+    name of one entry under "Core concepts" in ``docs/reference/concepts.md``.
+    """
+    concepts = PARSER.parse((ROOT / "docs" / "reference" / "concepts.md").read_text("utf-8"))
+    core: list[str] = []
+    section = None
+    for before, block in itertools.pairwise(concepts):
+        if before.type == "heading_open" and before.tag == "h2":
+            section = block.content
+        elif before.type == "heading_open" and before.tag == "h3" and section == "Core concepts":
+            core.append(block.content)
+    agents = PARSER.parse((ROOT / "AGENTS.md").read_text("utf-8"))
+    after = itertools.dropwhile(lambda token: token.content != "The core concepts", agents)
+    listed = next((token for token in after if token.type == "fence"), None)
+    assert listed is not None
+    assert [line.split()[0] for line in listed.content.splitlines()] == core
 
 
 def shell_commands(line: str) -> list[list[str]]:
