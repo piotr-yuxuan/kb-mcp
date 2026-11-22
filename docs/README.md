@@ -58,6 +58,9 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [Concepts](reference/concepts.md): the program's concepts, each defined once, and the
   code and the names that carry each.
+- [Differences](reference/differences.md): where the code differs from a concept's
+  definition, and whether that is a defect of the code or of the definition, an
+  aspiration or an intended gap.
 - [Entity-relationship views](reference/concepts-er.html): the concepts drawn with their
   relationships and cardinalities, in two views.
 - [Commands](reference/commands.md): what the command and each subcommand say with

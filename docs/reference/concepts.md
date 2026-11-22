@@ -1,8 +1,8 @@
 # Concepts
 
-Each entry's "In the code" paragraph names the code that implements it; where a sentence
-here and the code differ, the code is what runs, and the difference is a defect of one or
-the other, unless the entry says that it is kept on purpose, under "Where the code differs".
+Each entry's "In the code" paragraph names the code that implements it. Definitions are
+timeless: where a sentence here and the code differ, the code is what runs, and
+[the differences](differences.md) record it, each with its class.
 
 [The entity-relationship views](concepts-er.html) draw the core concepts with their
 relationships and cardinalities.
@@ -36,9 +36,9 @@ It relies on, and links, core entries and their parts only.
 
 **Definition.** The code that reads one kind of origin. An **origin** is a system
 outside the program that holds documents, which the program reads and never writes: a
-site of a cloud service, a client's own server, a folder of files on this machine, later
-a repository. Confluence, Jira and the work log are kinds of origin; git, Notion or
-Google Drive may be later. A connector declares, for its kind:
+site of a cloud service, a client's own server, a folder of files on this machine, a
+repository. Confluence, Jira, the work log, git, Notion and Google Drive are kinds of
+origin. A connector declares, for its kind:
 
 - its scope types, and how each fetch enumerates the documents of each: listed whole,
   searched by update time, or read in place; a scope type searched by update time also
@@ -116,8 +116,8 @@ that the index holds.
 ### scope
 
 **Definition.** A part of one source that the user selects, read and tracked as a unit,
-known by (source, scope type, scope key): a space, a project, the work log's folder,
-later a repository. Its scope type, declared by the connector, says how its documents
+known by (source, scope type, scope key): a space, a project, the work log's folder, a
+repository. Its scope type, declared by the connector, says how its documents
 are enumerated and which document types it holds. A scope keeps its **coverage** between
 runs: a covered period [start, end) over which the origin was asked for every change, by
 a whole read or by a search by update time, and then for each change that it listed or
@@ -431,11 +431,7 @@ documents' paths and, for those that meaning placed, the chunk that matched
 ([`Matched`](../../src/kb_mcp/search/domain/search.py));
 [`ranking`](../../src/kb_mcp/mcp/app/tools.py),
 [`reranked`](../../src/kb_mcp/mcp/app/tools.py) and
-[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py). Where the code
-differs: the section by words of a document is found as a page or the reranker reads it
-([`snippet_of`](../../src/kb_mcp/mcp/app/tools.py),
-[`place_of`](../../src/kb_mcp/mcp/app/tools.py)), not held by the ranking, since finding
-it for every document ranked would cost a query of the words per document.
+[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py).
 
 ### tool
 
