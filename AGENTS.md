@@ -92,6 +92,23 @@ Confluence's node or space tree; identity, for a document's id, since it is kept
 persons; people, for a count of persons. Connector and scope never mean an MCP client's
 connector or `--scope`, nor an API token's scopes.
 
+## Layout
+
+The top-level folders; [the code's layout](docs/explanation/code-layout.md) says where
+code goes, and [the map](docs/README.md) lists the pages.
+
+```
+src/kb_mcp/  the package, one folder per bounded context
+tests/       the tests and their fixtures
+sandbox/     the fictional company seeded into the sandbox site, and its tests
+spikes/      the proof test of reading Atlassian Cloud through a browser session
+scripts/     release.py, which CD runs to release the commit that CI checked
+deploy/      Grafana's LGTM container, to observe runs on this machine
+docs/        the pages, a folder for each Diataxis kind
+docs/work/   plans, their checks and notes, and the roadmap; not tracked
+.github/     the workflows of CI and CD, the code owners, the security policy
+```
+
 ## Sandbox credentials
 
 `atlassian-test-credientials.sops.json`, at the root of the primary checkout, holds the
