@@ -1217,3 +1217,36 @@ anything is written.
 - **Rejected.** No plan weighed another way: the rule came with the programme of plans,
   and plan 003 made every command enforce it.
 - **Settled** by plan 003.
+
+## A budget of twelve thousand lines
+
+The program's own code, `src/`, is held to a budget: 12,000 lines of code in all, 70
+files, 160 types, and no module over 700 lines of code, which keeps the budget on files
+from making monoliths. A line of code is a non-blank line that holds a token other than
+a comment, a docstring's lines included; a type is a class, a `type` statement, an alias
+or a call that makes one. Each context has a ceiling on each measure, its comment lines
+included, which falls as the context shrinks and rises only on the user's word, and
+targets, which hold once a plan has converged it; the contexts' targets leave the rest
+of the budget in reserve ([`CEILINGS`](../../tests/test_code_size.py),
+[`TARGETS`](../../tests/test_code_size.py)). [The manifest](../../tests/fixtures/parity.json)
+holds every command, option, setting, MCP tool and prompt, and telemetry name that the
+program offered when the budget came, and [its test](../../tests/test_parity.py) fails
+when one is lost. The concepts page holds at most 35 entries, under a ceiling that only
+a concept declared and approved raises ([`ENTRIES`](../../tests/test_concepts.py)).
+
+- **Why.** The user's judgement, on 2026-11-23, of 22,934 lines of code in 198 files and
+  336 types: too large, and in their words "extremely fragmented and with poor conceptual
+  clarity". An estimate of what an expert would write at parity came to 7,000 to 9,700
+  lines of code; the targets are that, with docstrings, and room where served text
+  weighs. Budgets on files, types and concepts make fragmentation and dilution checks
+  that a plan passes or fails, not impressions; the manifest keeps the budget from being
+  met by dropping what the program offers.
+- **Cost.** Every change pays in lines, and a plan that grows a context must ask for its
+  ceiling. A feature after the plans that converge the contexts fits the reserve, or
+  waits for the user to raise the budget. Each of those plans first rewrites the tests
+  of the internals it moves onto the context's interface. A docstring is short, and a
+  comment cannot stand in for it, comment lines being held by their ceilings.
+- **Rejected.** No budget, as plans 054 to 073 ran: each was reviewed alone, and the
+  whole grew. A budget on lines alone, which large modules, comments or data files could
+  meet while fragmentation and dilution went on.
+- **Settled** by the user, in plan 074.

@@ -5,6 +5,9 @@ The package `kb_mcp` is grouped by concern: each folder under
 program knows, from its pure rules to its effects. So a change to search stays under
 `search/`, and a change to how the site answers stays under `sources/atlassian/`. Plan
 014 made this layout; Import Linter, run by `uv run lint-imports`, keeps it.
+Under the budget, each context converges to
+[where the layout is going](#where-the-layout-is-going); the sections before it describe
+the contexts that have not yet, and shrink as each does.
 
 ## The contexts, in their order
 
@@ -236,6 +239,9 @@ would only hide. Any other value is a record.
 
 ## Where a new module goes
 
+In a context that has converged, a new module follows
+[where the layout is going](#where-the-layout-is-going); in any other:
+
 1. Find the concern it serves, and so its context. A new source of documents is a new
    package under `sources/`, with its declaration, its table and a sub-package per stage it
    takes part in, `fetch/` and `prepare/`, each with its own layers; a line of the registry; and a
@@ -246,3 +252,65 @@ would only hide. Any other value is a record.
 3. Run `uv run lint-imports`. A broken contract says which import crosses a boundary;
    move the code, or the import, rather than the boundary. A module that fits no
    context needs a split, or a new context placed in contract A's order and H's list.
+
+## Where the layout is going
+
+The code is held to a budget of 12,000 lines of code, 70 files and 160 types;
+[the trade-offs](trade-offs.md#a-budget-of-twelve-thousand-lines) say why. One plan at a
+time converges a context, or a part of one, to the layout below, bottom-up in contract
+A's order, so that no converged context is reopened; the sections above then describe
+only the contexts that have not converged, and shrink. `tests/test_code_size.py` holds
+each context's targets in lines, files and types, and lists those that have converged,
+which their targets then hold.
+
+- **T1. The contracts keep their intent.** The plan that converges a context rewrites
+  each over its modules: A, the order of the contexts; E, the mirror's readers never
+  read a source; G, declaring the command imports none of the packages that runs need;
+  H, Rich and requests in `observability` and `cli` alone; I, no source imports another;
+  J, within a source, its declaration, preparing, fetching and its settings, over
+  modules; K, lxml and Playwright in the Atlassian package alone; and the test that
+  keeps OpenTelemetry's SDK within `observability`. F, the network through effects only,
+  becomes `httpx` imported only by the modules that its contract names. B, C and D lapse
+  with the layers, T2 taking C's purpose.
+- **T2. Modules, not layers.** A context holds no `commands`, `options`, `app`,
+  `adapters` or `domain` sub-packages: a module per concept or concern, named by it. A
+  source keeps its declaration and its settings as modules, and its fetch and its
+  prepare each as a module or a flat package, so that J holds. Decisions stay apart from
+  effects: each converged context's contract names its pure modules, every other module
+  of it being an effect. A pure module imports no effect module of any context, nor
+  `httpx`, `sqlite3`, `subprocess`, `socket`, `ssl`, `requests`, `truststore`,
+  `certifi`, `anyio`, Playwright, the MCP SDK, structlog, `logging`, OpenTelemetry,
+  Rich, `os`, `sys`, `time`, `fcntl`, `tempfile`, `shutil`, `threading`, `secrets`,
+  `uuid`, `random`, `importlib`, `platformdirs` or `pydantic_settings`. It may build
+  paths with `pathlib`; reading or writing through them, `open`, and the clock through
+  `datetime.now` are findings of the review.
+- **T3. A port only where it pays.** A `Protocol` only where two implementations exist,
+  or where a test needs a fake of a server that the program calls, such as a model
+  server or a site; elsewhere the concrete class.
+- **T4. A record where data crosses a boundary.** A record for data that is served,
+  stored or passed between contexts, or that holds an invariant. An internal value stays
+  in its caller's variables, or is returned as a tuple only where its elements differ in
+  type or are unpacked at the call, else as a record; never a dict standing for a
+  record. No type re-spells another: such pairs are retired or unified, as the skill
+  `principles:concept-design` names the move. [Records](#records) describes the contexts
+  not yet converged, until the last plan rewrites it.
+- **T5. A docstring states the contract.** Ruff's docstring rules stay. A docstring
+  states, in a line or two, the contract that the name and the signature do not; a
+  comment does not stand in for it, comment lines being held by their ceilings. Text
+  that the program serves or prints, such as a tool's description or a command's help,
+  is product text, and is kept.
+- **T6. No module over 700 lines of code.**
+- **T7. Parity.** What the manifest, `tests/fixtures/parity.json`, the hand-written
+  reference pages ([the MCP tools](../reference/mcp-tools.md),
+  [the data layout](../reference/data-layout.md),
+  [telemetry](../reference/telemetry/README.md)) and the tests of behaviour hold is
+  kept, unless a plan's decision, approved by the user, changes it.
+- **T8. Each type has a home.** On [the concepts page](../reference/concepts.md), an
+  entry's **Home.**, after its **In the code.** and in the same form, a paragraph in a
+  core entry and a `- **Home.**` bullet in a context entry, names its types in plain
+  backticks. A type is homed by the concept it carries, an error by the concept it
+  refuses, a port by the concept it serves. *Mechanics* is a table,
+  `| Role | Home | Why |`, its role bare in the first cell: `wiring`, `adapter`,
+  `telemetry` or `utility`. *Not yet modelled* is a table, `| Concept | Meaning | Home |`,
+  of the concepts that a later plan defines. *Kept apart* holds one bullet per pair of
+  look-alikes, `` `A` and `B`: `` then the purpose of each.
