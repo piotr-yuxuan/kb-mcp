@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING
 import pytest
 import structlog
 
+from kb_mcp.config.app.settings import default_log_folder
 from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.output import Output
-from kb_mcp.observability.adapters.logs import QUIET, default_log_folder
+from kb_mcp.observability.adapters.logs import QUIET
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.observability.app.observed import Invocation, early, observed
 

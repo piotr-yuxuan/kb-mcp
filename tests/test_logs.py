@@ -20,12 +20,9 @@ import structlog
 from opentelemetry.sdk.trace import TracerProvider
 from structlog.testing import capture_logs
 
+from kb_mcp.config.app.settings import default_log_folder
 from kb_mcp.observability.adapters import logs
-from kb_mcp.observability.adapters.logs import (
-    default_log_folder,
-    log_file,
-    route_through_logging,
-)
+from kb_mcp.observability.adapters.logs import log_file, route_through_logging
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -17,12 +17,10 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO, override
 
-import platformdirs
 import structlog
 from opentelemetry import trace
 from structlog.tracebacks import ExceptionDictTransformer
 
-from kb_mcp.kernel.names import PROGRAM
 from kb_mcp.observability.domain.log_files import expired, log_file_name
 from kb_mcp.observability.domain.redaction import redact_secrets
 
@@ -119,15 +117,6 @@ def span_ids(
         "trace_id": trace.format_trace_id(context.trace_id),
         "span_id": trace.format_span_id(context.span_id),
     }
-
-
-def default_log_folder() -> Path:
-    """Return the user's log folder for this program, as platformdirs places it.
-
-    On macOS ``~/Library/Logs/kb-mcp``; on Linux
-    ``$XDG_STATE_HOME/kb-mcp/log``, ``~/.local/state`` by default.
-    """
-    return Path(platformdirs.user_log_dir(PROGRAM, appauthor=False))
 
 
 def route_through_logging() -> None:

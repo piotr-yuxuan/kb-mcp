@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import platformdirs
 from pydantic_settings import EnvSettingsSource
 
 from kb_mcp.config.adapters.settings_file import git_root, read_settings_file
@@ -19,15 +21,23 @@ from kb_mcp.config.domain.settings import (
     shared_entries,
     unsafe_location,
 )
-from kb_mcp.observability.adapters.logs import default_log_folder
+from kb_mcp.kernel.names import PROGRAM
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
 
 class UnsafeDataDirError(SettingsError):
     """A data directory, or a log folder, where company data could leave the machine."""
+
+
+def default_log_folder() -> Path:
+    """Return the user's log folder for this program, as platformdirs places it.
+
+    On macOS ``~/Library/Logs/kb-mcp``; on Linux
+    ``$XDG_STATE_HOME/kb-mcp/log``, ``~/.local/state`` by default.
+    """
+    return Path(platformdirs.user_log_dir(PROGRAM, appauthor=False))
 
 
 def load_settings(
