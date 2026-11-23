@@ -38,7 +38,7 @@ from structlog.tracebacks import ExceptionDictTransformer
 
 from kb_mcp.kernel.names import PROGRAM, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
-from kb_mcp.observability import progress
+from kb_mcp.observability import SDK, progress
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterator
@@ -60,9 +60,6 @@ RUN_DURATION = metrics.get_meter(__name__).create_histogram(
 QUIET = ("httpx", "httpcore", "urllib3", "requests")
 # The most that a run's file holds of lines, in bytes, before the line log.capped.
 CAP = 256 * 2**20
-# The OpenTelemetry SDK's loggers, whose records go to the file alone: on stderr they
-# would break -q, and exported, a failed export would log about itself.
-SDK = "opentelemetry"
 # How long a log file is kept after its run started; its name: a subcommand's name, its
 # run's start and its process's id.
 KEPT = timedelta(days=30)
@@ -407,7 +404,7 @@ def observed(invocation: Invocation, folder: Path, endpoint: str | None) -> Iter
         if endpoint is not None:
             try:
                 exporting = importlib.import_module(TELEMETRY).exporting
-                stack.enter_context(exporting(endpoint, running.id, command))
+                stack.enter_context(exporting(endpoint, running.id, command, redacted))
             except OSError as error:
                 log.warning("telemetry.undelivered", endpoint=endpoint, reason=str(error))
         spanned = (

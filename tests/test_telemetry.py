@@ -28,7 +28,8 @@ from opentelemetry.sdk.trace import TracerProvider
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import ExitStatus
-from kb_mcp.observability.observed import SDK, early
+from kb_mcp.observability import SDK
+from kb_mcp.observability.observed import early, redacted
 from kb_mcp.observability.telemetry import Exported
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.collector import LOGS, METRICS, TRACES, Collector, attributes, collecting, plain
@@ -182,7 +183,7 @@ def test_an_exported_record_has_the_event_as_body_its_fields_and_the_span_around
     provider = LoggerProvider(shutdown_on_exit=False)
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     tracer = TracerProvider(shutdown_on_exit=False).get_tracer(__name__)
-    root, sink = logging.getLogger(), Exported(provider, "check")
+    root, sink = logging.getLogger(), Exported(provider, "check", redacted)
     with early():
         root.addHandler(sink)
         try:
@@ -240,7 +241,7 @@ def test_no_secret_reaches_the_files_stderr_or_telemetry_at_debug(
     exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider(shutdown_on_exit=False)
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
-    root, sink = logging.getLogger(), Exported(provider, "fetch")
+    root, sink = logging.getLogger(), Exported(provider, "fetch", redacted)
 
     def site(request: httpx.Request) -> httpx.Response:
         if "authorization" in request.headers:

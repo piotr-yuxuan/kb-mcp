@@ -35,10 +35,10 @@ from opentelemetry.semconv.attributes.service_attributes import (
 )
 
 from kb_mcp.kernel.names import PROGRAM
-from kb_mcp.observability.observed import SDK, redacted
+from kb_mcp.observability import SDK
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 # How long a run waits, at its start, to connect to the endpoint, in seconds.
 PROBE_S = 0.5
@@ -71,10 +71,12 @@ class Exported(LoggingHandler):
     Its fields are redacted, but ``NATIVE`` and the standard library's; ``command`` is one.
     """
 
-    def __init__(self, provider: LoggerProvider, command: str) -> None:
-        """Export through ``provider`` the records of a run of ``command``."""
+    def __init__(
+        self, provider: LoggerProvider, command: str, redact: Callable[[object], object]
+    ) -> None:
+        """Export through ``provider`` the records of a run of ``command``, by ``redact``."""
         super().__init__(logging.INFO, provider)
-        self.command = command
+        self.command, self.redact = command, redact
         self.addFilter(lambda record: record.name.partition(".")[0] != SDK)
 
     @override
@@ -90,7 +92,7 @@ class Exported(LoggingHandler):
             "args": (),
             "command": self.command,
         }
-        super().emit(logging.makeLogRecord(cast("dict[str, object]", redacted(copied))))
+        super().emit(logging.makeLogRecord(cast("dict[str, object]", self.redact(copied))))
 
 
 class Stopping(threading.Thread):
@@ -117,8 +119,12 @@ class Stopping(threading.Thread):
 
 
 @contextmanager
-def exporting(endpoint: str, run: str, command: str) -> Iterator[None]:
+def exporting(
+    endpoint: str, run: str, command: str, redact: Callable[[object], object]
+) -> Iterator[None]:
     """Export the traces, metrics and logs of a run of ``command``, id ``run``, to ``endpoint``.
+
+    Each log record is exported as ``redact`` returns it.
 
     Raises OSError when the endpoint takes no connection, installing nothing. On leaving,
     ``LIMIT_S`` at most, then one ``telemetry.undelivered`` and the SDK silenced.
@@ -152,7 +158,7 @@ def exporting(endpoint: str, run: str, command: str) -> Iterator[None]:
     )
     trace.set_tracer_provider(tracers)
     metrics.set_meter_provider(meters)
-    root, sink = logging.getLogger(), Exported(loggers, command)
+    root, sink = logging.getLogger(), Exported(loggers, command, redact)
     root.addHandler(sink)
     try:
         yield
