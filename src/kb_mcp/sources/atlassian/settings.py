@@ -14,7 +14,7 @@ from pydantic import AfterValidator, BaseModel, Field, SecretStr
 from pydantic_core import PydanticCustomError
 
 from kb_mcp.config.domain.settings import RULE, TABLE, matching
-from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
+from kb_mcp.sources.atlassian import PROJECT_KEY, SPACE_KEY
 
 # A host name: labels of letters, digits and inner hyphens, joined by dots; it names the
 # folder of the site's session, so it is never empty, ``.`` nor ``..``.

@@ -134,7 +134,7 @@ folder of the raw store
 ([`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)); the work log keeps
-no store ([`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py)). A connector's other
+no store ([`WORKLOG_TYPES`](../../src/kb_mcp/sources/worklog/__init__.py)). A connector's other
 options, each an [`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds,
 are its fetch's:
 

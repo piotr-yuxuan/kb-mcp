@@ -252,7 +252,7 @@ gives,
 [`IndexedDocument`](../../src/kb_mcp/search/domain/search.py);
 [`FrontMatter.ref`](../../src/kb_mcp/mirror/domain/mirror.py); the document types of each
 connector, [`Connector.document_types`](../../src/kb_mcp/sources/declaration.py), with
-[`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py);
+[`WORKLOG_TYPES`](../../src/kb_mcp/sources/worklog/__init__.py);
 [`Link`](../../src/kb_mcp/mirror/domain/mirror.py),
 [`Link.document`](../../src/kb_mcp/mirror/domain/mirror.py) and
 [`RELATIONS`](../../src/kb_mcp/mirror/domain/mirror.py);
