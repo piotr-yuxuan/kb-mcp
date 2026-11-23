@@ -29,8 +29,8 @@ import structlog
 from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from kb_mcp.config.adapters.settings_file import git_root
-from kb_mcp.config.domain.settings import unsafe_location
+from kb_mcp.config.file import git_root
+from kb_mcp.config.settings import unsafe_location
 from kb_mcp.evaluation.adapters.mcp_client import ServerError, called, listed
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import (

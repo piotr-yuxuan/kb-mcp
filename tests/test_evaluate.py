@@ -16,7 +16,7 @@ import yaml
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
+from kb_mcp.config.settings import Settings
 from kb_mcp.evaluation.app import evaluation
 from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,

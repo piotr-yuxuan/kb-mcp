@@ -25,7 +25,7 @@ from mcp_types import INVALID_PARAMS, ToolAnnotations
 from opentelemetry import metrics
 
 from kb_mcp.cli.commands._embedding import open_endpoint
-from kb_mcp.config.domain.settings import values_of
+from kb_mcp.config.settings import values_of
 from kb_mcp.kernel.names import PROGRAM, RERANKING, ExitStatus
 from kb_mcp.mcp.app.surface import surface
 from kb_mcp.mcp.app.tools import FALLBACKS, Library, UnanswerableError, search_filters
@@ -41,7 +41,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
 
 # What people read for the server, beside the name that clients key it by, as MCP
 # separates them since its revision of 2025-06-18.

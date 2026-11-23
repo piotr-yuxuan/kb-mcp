@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, InstanceOf
 
-from kb_mcp.config.domain.settings import Settings
+from kb_mcp.config.settings import Settings
 from kb_mcp.kernel.records import Record
 from kb_mcp.sources.declaration import Source
 

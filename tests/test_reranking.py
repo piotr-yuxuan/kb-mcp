@@ -21,7 +21,7 @@ from kb_mcp.cli.commands.reranker import (
     text,
 )
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Rerank, Settings, SettingsError
+from kb_mcp.config.settings import Rerank, Settings, SettingsError
 from kb_mcp.kernel.names import (
     BOUND_S,
     LONGEST_QUERY,

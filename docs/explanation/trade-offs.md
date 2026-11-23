@@ -788,7 +788,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   keyed on the relation `summary` and the role `participant`, never on the work log's
   types, so that any connector that links a record to its summary joins by attendance
   (058). The aliases are a file, since a setting cannot hold a free mapping of names
-  ([`kind_of`](../../src/kb_mcp/config/domain/settings.py)), and a file
+  ([`kind_of`](../../src/kb_mcp/config/settings.py)), and a file
   adds no setting to log, layer or document.
 - **Cost.** A first name outside a linked meeting, a nickname, a caption tool's `You`,
   or a colleague written two ways in the work log alone stays apart until the user
@@ -1135,10 +1135,10 @@ registers every declaration, and imports a run only once the arguments are parse
 ## File, then environment, then flags
 
 Settings come from one model,
-[`Settings`](../../src/kb_mcp/config/domain/settings.py), fed by three
+[`Settings`](../../src/kb_mcp/config/settings.py), fed by three
 layers, each stronger than the last: the settings file, the environment (the prefix
 `KB_MCP_`, `__` for nesting) and the flags.
-[`load_settings`](../../src/kb_mcp/config/app/settings.py) reads each layer,
+[`load_settings`](../../src/kb_mcp/config/load.py) reads each layer,
 merges them and keeps each value's layer.
 
 - **Why.** The Unix convention: the file holds what stays, the environment what a
@@ -1203,9 +1203,9 @@ only once an endpoint is set, and only to this machine.
 The data directory and the log folder are refused under a synchronised folder (iCloud,
 `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, `~/Desktop`, `~/Documents`)
 or inside a git working tree
-([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)); a
+([`unsafe_location`](../../src/kb_mcp/config/settings.py)); a
 command then stops with
-[`UnsafeDataDirError`](../../src/kb_mcp/config/app/settings.py) before
+[`UnsafeDataDirError`](../../src/kb_mcp/config/load.py) before
 anything is written.
 
 - **Why.** The mirror is the company's content. A synchronised folder would copy it off

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
 
 DECLINED = 1
 REFUSED = 2

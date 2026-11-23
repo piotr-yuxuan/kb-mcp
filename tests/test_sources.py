@@ -74,7 +74,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from opentelemetry.sdk.metrics.export import Metric
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.sources.declaration import Connector, Source
     from tests.conftest import InMemory
 

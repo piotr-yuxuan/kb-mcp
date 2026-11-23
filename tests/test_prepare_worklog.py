@@ -32,7 +32,7 @@ import yaml
 from pydantic import Field
 from structlog.testing import capture_logs
 
-from kb_mcp.config.domain.settings import Settings
+from kb_mcp.config.settings import Settings
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem
 from kb_mcp.mirror.adapters import conversions

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 import pytest
 from structlog.testing import capture_logs
 
-from kb_mcp.config.domain.settings import Settings
+from kb_mcp.config.settings import Settings
 from kb_mcp.kernel.records import Problem
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE

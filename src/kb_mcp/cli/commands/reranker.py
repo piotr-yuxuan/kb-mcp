@@ -18,7 +18,7 @@ from kb_mcp.search.adapters.reranking import SEARCH, RerankError, rerank, served
 if TYPE_CHECKING:
     import argparse
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.kernel.names import Detail
 
 # The probe: a question, a passage that answers it, and one that does not.

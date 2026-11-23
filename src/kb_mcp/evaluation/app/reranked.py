@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from datetime import datetime
 
-    from kb_mcp.config.domain.settings import SearchMode, Settings
+    from kb_mcp.config.settings import SearchMode, Settings
     from kb_mcp.evaluation.app.evaluation import EvaluatedIndex
     from kb_mcp.evaluation.domain.evaluation import Question
     from kb_mcp.search.adapters.reranking import Reranked

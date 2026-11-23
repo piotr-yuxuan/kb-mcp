@@ -20,7 +20,7 @@ import structlog
 from opentelemetry.sdk.trace import TracerProvider
 from structlog.testing import capture_logs
 
-from kb_mcp.config.app.settings import default_log_folder
+from kb_mcp.config.load import default_log_folder
 from kb_mcp.observability import observed
 from kb_mcp.observability.observed import log_file, route_through_logging
 

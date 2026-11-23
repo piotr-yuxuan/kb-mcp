@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
     from pathlib import Path
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
 
 
 class Unit(Record):

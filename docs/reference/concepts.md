@@ -638,8 +638,8 @@ settings, secrets masked. The configuration:
 [`Configuration`](../../src/kb_mcp/cli/domain/runs.py), resolved by each command that
 enables a stage, [`Command.stages`](../../src/kb_mcp/cli/domain/command.py), recorded and
 read back by [`RunRecord`](../../src/kb_mcp/cli/adapters/run_record.py), whose settings
-are [`without_secrets`](../../src/kb_mcp/config/domain/settings.py) and, read back,
-[`with_secrets`](../../src/kb_mcp/config/domain/settings.py), relative values made
+are [`without_secrets`](../../src/kb_mcp/config/settings.py) and, read back,
+[`with_secrets`](../../src/kb_mcp/config/settings.py), relative values made
 absolute by [`Option.absolute`](../../src/kb_mcp/sources/declaration.py). The units:
 [`Unit`](../../src/kb_mcp/cli/domain/runs.py), [`units_of`](../../src/kb_mcp/cli/domain/runs.py),
 [`followed`](../../src/kb_mcp/cli/domain/runs.py) and, for a resume,
@@ -722,9 +722,9 @@ the work log's copy store,
 [`CopyStore`](../../src/kb_mcp/sources/worklog/fetch/adapters/copy_store.py), with
 [`Copies`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py) and
 [`WorklogCopy`](../../src/kb_mcp/sources/worklog/fetch/domain/copies.py), under
-[`Settings.copies`](../../src/kb_mcp/config/domain/settings.py);
-[`Settings.data_dir`](../../src/kb_mcp/config/domain/settings.py),
-[`Settings.docs`](../../src/kb_mcp/config/domain/settings.py) and
+[`Settings.copies`](../../src/kb_mcp/config/settings.py);
+[`Settings.data_dir`](../../src/kb_mcp/config/settings.py),
+[`Settings.docs`](../../src/kb_mcp/config/settings.py) and
 [`write_changed`](../../src/kb_mcp/mirror/adapters/mirror_files.py);
 [`SqliteIndex`](../../src/kb_mcp/search/adapters/sqlite_index.py) and
 [`SCHEMA`](../../src/kb_mcp/search/adapters/sqlite_index.py);
@@ -774,8 +774,8 @@ service; a failing service is skipped for a while rather than called on every qu
 [`RERANKING`](../../src/kb_mcp/kernel/names.py) and
 [`TELEMETRY`](../../src/kb_mcp/kernel/names.py);
 [`refused_endpoint`](../../src/kb_mcp/kernel/names.py), the services' rules, which
-[`rerank_address`](../../src/kb_mcp/config/domain/settings.py) and
-[`telemetry_address`](../../src/kb_mcp/config/domain/settings.py) check too;
+[`rerank_address`](../../src/kb_mcp/config/settings.py) and
+[`telemetry_address`](../../src/kb_mcp/config/settings.py) check too;
 [`loopback`](../../src/kb_mcp/kernel/names.py) and
 [`endpoint_host`](../../src/kb_mcp/kernel/names.py);
 [`QUIET_S`](../../src/kb_mcp/search/app/meaning.py), how long a failing service is
@@ -936,6 +936,6 @@ or `detailed`. JSON ignores it.
 One named value of a [run](#run)'s configuration, as a layer gives it: an option, an
 environment variable, the settings file or its default.
 
-- **In the code.** [`Settings`](../../src/kb_mcp/config/domain/settings.py),
-  [`Loaded`](../../src/kb_mcp/config/domain/settings.py) and
-  [`LayerValue`](../../src/kb_mcp/config/domain/settings.py).
+- **In the code.** [`Settings`](../../src/kb_mcp/config/settings.py),
+  [`Loaded`](../../src/kb_mcp/config/settings.py) and
+  [`LayerValue`](../../src/kb_mcp/config/settings.py).

@@ -1,4 +1,4 @@
-"""Loading the settings, with the guard on where the data and the logs live, for every command."""
+"""Loading the settings from the file, the environment and the flags, and the guard on places."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 
 import platformdirs
 
-from kb_mcp.config.adapters.settings_file import git_root, read_settings_file
-from kb_mcp.config.domain.settings import (
+from kb_mcp.config.file import git_root, read_settings_file
+from kb_mcp.config.settings import (
     LayerValue,
     Loaded,
     Settings,
@@ -31,35 +31,17 @@ class UnsafeDataDirError(SettingsError):
 
 
 def default_log_folder() -> Path:
-    """Return the user's log folder for this program, as platformdirs places it.
-
-    On macOS ``~/Library/Logs/kb-mcp``; on Linux
-    ``$XDG_STATE_HOME/kb-mcp/log``, ``~/.local/state`` by default.
-    """
+    """Return the user's log folder for this program, as platformdirs places it."""
     return Path(platformdirs.user_log_dir(PROGRAM, appauthor=False))
 
 
 def load_settings(
     path: Path, flags: Mapping[str, tuple[str, object]], home: Path, model: type[Settings]
 ) -> Loaded:
-    """Read the settings file, the environment and the flags given, each stronger, and check.
+    """Read the settings file, the environment and ``flags``, each stronger, and guard the places.
 
-    The settings are of ``model``, which ``settings_model`` composed. ``flags`` maps
-    each flag, such as ``--data-dir``, to the setting it overrides, by its path joined by
-    dots, and its value, None when it was not given. The file's layer is its name, and a
-    variable's its name. ``~`` in a path is ``home``, which must be resolved. What was
-    ignored is each variable that names no setting or is empty, then each value replaced.
-
-    Telemetry's endpoint has two layers more, OpenTelemetry's own variables, as
-    ``shared_entries`` reads them: ``OTEL_EXPORTER_OTLP_ENDPOINT``, below the file,
-    ignored unless the setting would take it, and ``OTEL_SDK_DISABLED`` when true, above
-    all, which leaves the endpoint unset: telemetry off.
-
-    The data directory, each place under it where data is written, and the log folder,
-    the user's (``default_log_folder``) when none is set, are resolved (links followed,
-    ``..`` removed) before the guard judges them, as logs hold titles and queries; the
-    resolved data directory and log folder are what every command then uses. Links
-    deeper inside are not followed.
+    ``flags`` maps a flag to its setting and its value, None when not given. The data
+    directory and the log folder are resolved before the guard, and given so.
     """
     try:
         values = read_settings_file(path)

@@ -10,13 +10,13 @@ fixed.
 `<data>` is the setting `data_dir`, by default `~/kb-mcp`. It is never
 under a synchronised folder (iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google
 Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come
-from `config.app.settings.load_settings`, which merges the settings file, the
+from `config.load.load_settings`, which merges the settings file, the
 environment and the flags given, then resolves the data directory and each of the places
 below that the program writes (links followed, `..` removed), judges each resolved path
 with names compared regardless of case, and raises `UnsafeDataDirError` when one is
 refused; `aliases.toml`, which the user alone writes, is not judged. Links deeper
 inside those places are not followed. Every command loads its settings that way, in its
-entry; `config.domain.settings.settings_of`, which builds them from the layers, checks
+entry; `config.settings.settings_of`, which builds them from the layers, checks
 no location and is not for commands.
 
 | Path | `Settings` | Written by | Read by |

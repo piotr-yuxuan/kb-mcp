@@ -261,7 +261,7 @@ from kb_mcp.sources.registry import SOURCES
 if TYPE_CHECKING:
     import argparse
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.kernel.names import Detail
 
 
@@ -279,7 +279,7 @@ def text(counts: dict[str, int], _summary: Detail) -> str:
 
 Finding the files is an effect, so it stays out of the rule: the run takes the mirror's
 folder from the settings
-([`Settings.docs`](../../src/kb_mcp/config/domain/settings.py)), lets
+([`Settings.docs`](../../src/kb_mcp/config/settings.py)), lets
 [`documents`](../../src/kb_mcp/mirror/adapters/markdown.py), in the
 mirror's `adapters` layer, find the files there, and hands their paths to the rule,
 with the names of the registry's sources: the command, in `cli`, may import the

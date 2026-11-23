@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
 
 
 def open_endpoint(arguments: argparse.Namespace, settings: Settings) -> Endpoint:

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 
 from kb_mcp.cli.domain.sources import given
 from kb_mcp.cli.main import main, parser
-from kb_mcp.config.domain.settings import TABLE, settings_model
+from kb_mcp.config.settings import TABLE, settings_model
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA, LOGIN, SINCE
 from kb_mcp.sources.atlassian.fetch.domain.content import (

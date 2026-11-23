@@ -25,7 +25,7 @@ from kb_mcp.sources.atlassian.prepare.app.prepare import prepare_atlassian
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts, Classes
     from kb_mcp.sources.stages import SourceRun
 

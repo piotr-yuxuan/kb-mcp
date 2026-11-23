@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from kb_mcp.cli.domain.runs import Configuration, Outcomes, Recorded
-from kb_mcp.config.domain.settings import SettingsError, with_secrets
+from kb_mcp.config.settings import SettingsError, with_secrets
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
 from kb_mcp.kernel.records import refused_fields
@@ -29,7 +29,7 @@ from kb_mcp.kernel.records import refused_fields
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.kernel.records import Record
 
 # The record's files, and its lock, in the run's folder.

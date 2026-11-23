@@ -10,7 +10,7 @@ from kb_mcp.kernel.names import ExitStatus
 if TYPE_CHECKING:
     import argparse
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.kernel.names import Detail
 
 

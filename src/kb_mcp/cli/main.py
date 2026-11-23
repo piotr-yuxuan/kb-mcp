@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 
 from kb_mcp.cli import options
-from kb_mcp.config.adapters.settings_file import SETTINGS_PATH, named_sources
+from kb_mcp.config.file import SETTINGS_PATH, named_sources
 from kb_mcp.kernel.names import MEANINGS, PROGRAM
 from kb_mcp.sources.registry import SOURCES, configured, refuse
 

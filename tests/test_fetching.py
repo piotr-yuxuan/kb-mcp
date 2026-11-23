@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from tests.conftest import InMemory
 
 SITE = "https://sandbox.example.invalid"

@@ -83,7 +83,6 @@ containers = [
   "kb_mcp.mirror",
   "kb_mcp.sources.*.fetch",
   "kb_mcp.sources.*.prepare",
-  "kb_mcp.config",
 ]
 layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"]
 exhaustive = true
@@ -96,6 +95,7 @@ source_modules = [
   "kb_mcp.kernel.names",
   "kb_mcp.kernel.fields",
   "kb_mcp.kernel.records",
+  "kb_mcp.config.settings",
   "kb_mcp.**.domain",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
@@ -106,6 +106,8 @@ forbidden_modules = [
   "kb_mcp.**.adapters",
   "kb_mcp.**.app",
   "kb_mcp.observability",
+  "kb_mcp.config.load",
+  "kb_mcp.config.file",
   "httpx",
   "sqlite3",
   "subprocess",
@@ -166,6 +168,7 @@ source_modules = [
   "kb_mcp.**.app",
   "kb_mcp.cli.commands",
   "kb_mcp.kernel",
+  "kb_mcp.config",
   "kb_mcp.observability.observed",
   "kb_mcp.observability.progress",
   "kb_mcp.observability.telemetry",
@@ -182,6 +185,7 @@ source_modules = [
   "kb_mcp.cli.options",
   "kb_mcp.kernel.names",
   "kb_mcp.kernel.fields",
+  "kb_mcp.config.file",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
   "kb_mcp.sources.*.declared",

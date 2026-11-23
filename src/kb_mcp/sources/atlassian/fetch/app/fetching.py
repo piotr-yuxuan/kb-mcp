@@ -70,7 +70,7 @@ if TYPE_CHECKING:
 
     from pydantic import SerializerFunctionWrapHandler
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.kernel.names import Detail, Ending
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, FetchedDocument, Listed

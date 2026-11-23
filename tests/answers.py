@@ -21,7 +21,7 @@ from tests.mirrors import MOMENT, fillers, write
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.config.domain.settings import SearchMode
+    from kb_mcp.config.settings import SearchMode
     from kb_mcp.mirror.domain.mirror import FrontMatter
 
 OPENING = re.compile(r'<untrusted-reference-data boundary="([0-9a-f]{16})">\n')

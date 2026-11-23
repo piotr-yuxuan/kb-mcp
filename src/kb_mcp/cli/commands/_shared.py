@@ -14,8 +14,8 @@ from pydantic_core import to_json, to_jsonable_python
 from kb_mcp.cli.adapters.confirmation import ask
 from kb_mcp.cli.app.resumption import resumption
 from kb_mcp.cli.domain.echo import before, ignored_lines
-from kb_mcp.config.app.settings import load_settings
-from kb_mcp.config.domain.settings import SettingsError, settings_model, values_of
+from kb_mcp.config.load import load_settings
+from kb_mcp.config.settings import SettingsError, settings_model, values_of
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.kernel.records import Invocation
 from kb_mcp.observability.observed import observed

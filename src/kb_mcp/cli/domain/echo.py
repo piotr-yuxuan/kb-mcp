@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.cli.domain.command import OBSERVING
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.config.domain.settings import Ignored, values_of
+from kb_mcp.config.settings import Ignored, values_of
 from kb_mcp.kernel.names import CONNECTOR
 
 if TYPE_CHECKING:
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.cli.domain.command import Command
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.kernel.records import Invocation
 
 # What follows what a run says before it acts: the run, a question first, or a refusal,

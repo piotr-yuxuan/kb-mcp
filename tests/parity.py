@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.main import parser
-from kb_mcp.config.domain.settings import setting_paths, variable
+from kb_mcp.config.settings import setting_paths, variable
 from kb_mcp.kernel.names import PROGRAM
 from tests.composed import MODEL
 from tests.reference import README, documented, operations

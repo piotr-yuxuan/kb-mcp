@@ -22,7 +22,7 @@ import pytest
 import kb_mcp
 from kb_mcp.cli import commands, options
 from kb_mcp.cli.main import main, parser
-from kb_mcp.config.domain.settings import setting_paths
+from kb_mcp.config.settings import setting_paths
 from kb_mcp.kernel.names import MEANINGS, ExitStatus
 from kb_mcp.kernel.records import Invocation
 from tests.composed import MODEL

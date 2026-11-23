@@ -69,7 +69,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.sources.declaration import Connector
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.

@@ -1,14 +1,4 @@
-"""Settings: where data lives, and each source's table, composed.
-
-``settings_model`` composes the model of the settings from the core's, ``Settings``, and
-the table of each source that the entry gives it, under ``sources``; this module names
-no source. They come in layers, each stronger than the last: the settings file, the
-environment, then the flags given. Each layer gives entries, a value at a setting's path
-of that model; ``settings_of`` merges them, a stronger value replacing a weaker one
-whole, a list included, and builds the settings, whose fields hold every rule of a value.
-Secrets come from the environment alone. Where data may live is judged by
-``unsafe_location``, once the loader has resolved the data directory.
-"""
+"""The settings' model and rules, composed with each source's table, and their layers merged."""
 
 from __future__ import annotations
 
@@ -105,7 +95,7 @@ class SettingsError(ValueError):
 
 
 def matching(pattern: re.Pattern[str], expected: str) -> AfterValidator:
-    """Check a text by one of the kernel's patterns, whole; refuse another as ``expected``."""
+    """Check a text by a pattern, whole; refuse another as ``expected``."""
 
     def check(value: str) -> str:
         if not pattern.fullmatch(value):
@@ -132,10 +122,7 @@ def rerank_address(value: str) -> str:
 
 
 def telemetry_address(value: str) -> str:
-    """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
-
-    Raises PydanticCustomError, a ValueError, saying why by the service's rule.
-    """
+    """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another, a ValueError."""
     refusal = refused_endpoint(value, TELEMETRY, remote_allowed=False)
     if refusal:
         raise PydanticCustomError(RULE, refusal)
@@ -143,11 +130,7 @@ def telemetry_address(value: str) -> str:
 
 
 def local_path(path: Path) -> Path:
-    """Accept an absolute path; refuse another, which would lie below the current directory.
-
-    ``settings_of`` makes ``~`` the home before the model sees a path, a default's
-    included: built without it, the settings refuse a path under ``~``.
-    """
+    """Accept an absolute path, as ``settings_of`` makes one under ``~``; refuse another."""
     if "\0" in str(path) or not path.is_absolute():
         message = "an absolute path, or one under ~"
         raise PydanticCustomError(RULE, message)
@@ -156,15 +139,6 @@ def local_path(path: Path) -> Path:
 
 # A path on this machine, such as the data directory: absolute.
 LocalPath = Annotated[Path, AfterValidator(local_path)]
-ModelName = Annotated[
-    str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
-]
-EmbeddingUrl = Annotated[str, AfterValidator(endpoint_address)]
-RerankUrl = Annotated[str, AfterValidator(rerank_address)]
-RerankerName = Annotated[
-    str, matching(MODEL_NAME, "the name of a reranking model, such as qwen3-reranker-0.6b")
-]
-TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 # Every table of the settings: frozen, and refusing a key it does not know.
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
@@ -195,7 +169,7 @@ class Telemetry(BaseModel):
 
     model_config = TABLE
 
-    endpoint: TelemetryEndpoint | None = Field(
+    endpoint: Annotated[str, AfterValidator(telemetry_address)] | None = Field(
         default=None,
         description=(
             "The OTLP endpoint on this machine that traces, metrics and logs go to, over"
@@ -218,16 +192,16 @@ class Rerank(BaseModel):
             " server: off by default, as it ranked worse on the sandbox."
         ),
     )
-    url: RerankUrl = Field(
+    url: Annotated[str, AfterValidator(rerank_address)] = Field(
         default=DEFAULT_RERANK_URL,
         description=(
             "The reranking server's API, up to /rerank, excluded: an address of this"
             " machine, never another."
         ),
     )
-    model: RerankerName = Field(
-        default=DEFAULT_RERANKER, description="The reranking model, as the server names it."
-    )
+    model: Annotated[
+        str, matching(MODEL_NAME, "the name of a reranking model, such as qwen3-reranker-0.6b")
+    ] = Field(default=DEFAULT_RERANKER, description="The reranking model, as the server names it.")
     depth: int = Field(
         default=DEFAULT_RERANK_DEPTH,
         ge=DEPTHS.start,
@@ -240,15 +214,7 @@ class Rerank(BaseModel):
 
 
 class Settings(BaseModel):
-    """What every command needs to know: the data directory, the defaults, the tables.
-
-    The core's settings, whose ``sources`` holds no table: ``settings_model`` composes
-    from it the model that holds each source's. The loader builds the settings from the
-    layers' merge (``settings_of``), with the home that ``~`` stands for: their paths are
-    absolute, the default data directory included. The model reads nothing of its own.
-    The loader then resolves the data directory, and the log folder, which is the
-    platform's for the user when none is set.
-    """
+    """The core's settings, whose ``sources`` holds no table, and the data directory's places."""
 
     model_config = TABLE
 
@@ -260,7 +226,9 @@ class Settings(BaseModel):
             " folder, nor inside a git working tree."
         ),
     )
-    model: ModelName = Field(
+    model: Annotated[
+        str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
+    ] = Field(
         default=DEFAULT_MODEL,
         description="The embedding model that embed embeds with, as the endpoint names it.",
     )
@@ -279,7 +247,7 @@ class Settings(BaseModel):
             " chunkings were compared."
         ),
     )
-    embedding_url: EmbeddingUrl = Field(
+    embedding_url: Annotated[str, AfterValidator(endpoint_address)] = Field(
         default=DEFAULT_EMBEDDING_URL,
         description="The OpenAI-compatible API that embeds, up to /embeddings, excluded.",
     )
@@ -310,7 +278,7 @@ class Settings(BaseModel):
 
     @property
     def copies(self) -> Path:
-        """The copy stores of the sources read in place, a folder each: their documents as read."""
+        """The copy stores of the sources read in place, a folder each."""
         return self.data_dir / "copies"
 
     @property
@@ -355,10 +323,7 @@ class Settings(BaseModel):
 
     @property
     def runs(self) -> Path:
-        """A folder per recorded run: its configuration, its units' last entries, its lock.
-
-        The configuration names the sources, their scopes and their site, as the settings do.
-        """
+        """A folder per recorded run: its configuration, its units' last entries, its lock."""
         return self.data_dir / "runs"
 
     @property
@@ -400,14 +365,7 @@ def bare(annotation: object) -> object:
 
 
 def kind_of(annotation: object) -> SettingKind:
-    """Give the kind of a setting that is no table by its type; refuse a type of no kind.
-
-    An alias, ``Annotated`` and ``| None`` are looked through: ``LocalPath | None`` is a
-    path. A list is a tuple of text, each item ``str`` or a ``Literal`` of it, since it is
-    shown joined and no rule of a path reads its items. Another type, such as
-    ``list[str]``, ``tuple[Path, ...]`` or a table that may be None, raises TypeError, so
-    that the environment never reads a setting by the wrong kind.
-    """
+    """Give a setting's kind through aliases and ``| None``, a list a tuple of str; or TypeError."""
     annotation = bare(annotation)
     origin, arguments = get_origin(annotation), get_args(annotation)
     others = [argument for argument in arguments if argument is not NoneType]
@@ -431,12 +389,7 @@ def kind_of(annotation: object) -> SettingKind:
 def setting_paths(
     model: type[BaseModel], above: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], SettingKind]:
-    """Give the path of each setting of a model, at any depth, and its kind.
-
-    A table is a model of its own, whose settings follow it. The environment gives a
-    table or a list in JSON, and it alone gives a secret; ``~`` in a path is the home.
-    Raises TypeError for a setting of a type that ``kind_of`` knows no kind for.
-    """
+    """Give the path of each setting of a model, a table's then those inside, and its kind."""
     paths: dict[tuple[str, ...], SettingKind] = {}
     for name, info in model.model_fields.items():
         path = (*above, name)
@@ -450,17 +403,10 @@ def setting_paths(
 
 
 def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[Settings]:
-    """Compose the settings' model: the core's, with each source's table.
+    """Compose the settings' model: the core's, with each source's connector's table, by name.
 
-    ``sources`` gives each source's connector and its connector's table by the source's
-    name, which names its table, ``[sources.<name>]``, whose ``connector`` names that
-    connector and no other; the tables follow one another in name order, each described
-    by its docstring. Raises SettingsError, naming the source, for a name that the model
-    already holds, such as ``json``, which its field would shadow, as the settings may name
-    the source; and TypeError, naming the table, for one that holds a setting of a
-    type that has no kind, one without a default, since a source left unset still has
-    its table, or one that holds a table, as a connector's settings are values, each said
-    by its path, all before any value is read.
+    Raises SettingsError for a name that the model holds, such as ``json``; TypeError for a
+    table holding a setting of no kind, one without a default, or a table.
     """
     tables = {
         name: create_model(
@@ -515,10 +461,7 @@ def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[S
 
 
 def defaults(model: type[Settings]) -> dict[tuple[str, ...], object]:
-    """Give each setting's default by its path, a table's aside, as the model holds it.
-
-    That is before validation: a path keeps its ``~``.
-    """
+    """Give each setting's default by its path, a table's aside, before validation."""
     built = model.model_construct()
     return {
         path: reduce(getattr, path, built)
@@ -528,7 +471,7 @@ def defaults(model: type[Settings]) -> dict[tuple[str, ...], object]:
 
 
 def values_of(settings: Settings) -> dict[str, object]:
-    """Give every setting's value by its path joined by dots, as a command's functions take them."""
+    """Give every setting's value by its path joined by dots, a table's aside."""
     return {
         ".".join(path): reduce(getattr, path, settings)
         for path, kind in setting_paths(type(settings)).items()
@@ -542,14 +485,7 @@ def variable(path: tuple[str, ...]) -> str:
 
 
 class LayerValue(Record):
-    """A value that a layer gives a setting: the setting's path, the value, the layer.
-
-    A default's layer is None, so that no layer is taken for the defaults by its name,
-    such as a settings file named ``default``. An ``implicit`` entry is a default that
-    an empty table of its layer gives: the layer wrote no value, so a stronger one that
-    replaces it replaces none. Its representation leaves the value out, which may be a
-    secret not yet masked.
-    """
+    """A value that a layer, None for a default, gives a setting; ``implicit``: an empty table's."""
 
     path: tuple[str, ...]
     value: object = Field(repr=False)
@@ -566,12 +502,7 @@ class Ignored(Record):
 
 
 class Loaded(Record):
-    """The settings, each one's layer by its path joined by dots, and the values ignored.
-
-    ``replaced`` names each setting, by its path joined by dots, whose value that a layer
-    wrote a stronger layer replaced. The settings are of the model that ``settings_model``
-    composed, whose setting paths are ``paths``; written as JSON, they hold every table.
-    """
+    """The settings, each one's layer, the values ignored, and those that a stronger replaced."""
 
     settings: SerializeAsAny[Settings]
     layers: Mapping[str, str] = Field(default_factory=dict)
@@ -584,22 +515,14 @@ class Loaded(Record):
         return setting_paths(type(self.settings))
 
     def layer(self, setting: str) -> str:
-        """Name the layer that gave a setting, by its path joined by dots, or default.
-
-        Raises KeyError for a path that names no setting, such as a misspelt one.
-        """
+        """Name the layer that gave a setting, or default; KeyError for no setting."""
         if tuple(setting.split(".")) not in self.paths:
             raise KeyError(setting)
         return self.layers.get(setting, DEFAULT_LAYER)
 
 
 def refuse_not_a_source(path: tuple[str, ...], layer: str, model: type[Settings]) -> None:
-    """Raise SettingsError for a path under ``sources`` of a source that the model lacks.
-
-    A source is the registry's, or one that the settings name, of a name of the rule, and
-    of a connector that the registry holds, by its ``connector`` or by its name. The
-    message names the source and the layer, never a value.
-    """
+    """Raise SettingsError for a path under ``sources`` of a source that the model lacks."""
     sources = model.model_fields["sources"].annotation
     if path[:1] != ("sources",) or len(path) == 1 or path[1] in sources.model_fields:
         return
@@ -618,10 +541,7 @@ def entries_of(
 ) -> list[LayerValue]:
     """Give a value that a layer read at a path as entries: a table's, one per value in it.
 
-    An empty table of the model's settings gives each setting under it its default, so
-    that the layer replaces a weaker one's values there and is said to have given them;
-    each entry is implicit, as the layer wrote no value there. Another empty table is an
-    entry of its own, so that one naming no setting is refused too.
+    An empty table of the model gives each setting under it its default, ``implicit``.
     """
     if isinstance(value, dict) and value:
         return [
@@ -641,12 +561,7 @@ def entries_of(
 def refuse_secrets(
     entries: Iterable[LayerValue], paths: Mapping[tuple[str, ...], SettingKind]
 ) -> None:
-    """Raise SettingsError for a secret that these entries write, naming its own variable.
-
-    A secret comes from that variable alone, so no other layer may write it: the settings
-    file, or the variable of a table above it. An empty table that holds one writes no
-    value of it: only one written is refused, by its setting and layer, never its value.
-    """
+    """Raise SettingsError for a secret that these entries write, naming its own variable."""
     for entry in entries:
         if paths.get(entry.path) == "secret" and not entry.implicit:
             setting = ".".join(entry.path)
@@ -681,19 +596,10 @@ JSON_TYPES: dict[SettingKind, type] = {"table": dict, "list": list}
 def environment_entries(
     environ: Mapping[str, str], model: type[Settings]
 ) -> tuple[list[LayerValue], list[Ignored]]:
-    """Give the settings' variables of an environment as entries, and those ignored.
+    """Give the variables of the prefix as entries, without regard to case, and those ignored.
 
-    Each variable of the prefix is read by the paths of the model's settings, without
-    regard to case. One that names no setting, at any depth, or that is empty, is
-    ignored, since other tools and versions share the environment; but one under
-    ``sources`` of a source that the model does not hold, not empty, is refused, as
-    ``refuse_not_a_source`` says. A table is a JSON object, a list a JSON array: else
-    SettingsError names the variable, never its value. So it does for two variables of
-    one setting, or of a table and of a path inside it, as no value would then name its
-    variable. Each value is an entry of its variable: a table or a list as its JSON
-    decodes, its keys as written, another as its text, which the model reads. A secret
-    written in that JSON is refused, as in the settings file: only a variable of its own
-    gives one.
+    Ignored: one naming no setting, or empty. Refused: a table or a list not in JSON, two
+    variables of one setting, and a secret in JSON.
     """
     paths = setting_paths(model)
     scanned: list[tuple[tuple[str, ...], str]] = []
@@ -747,13 +653,9 @@ ENDPOINT = ("telemetry", "endpoint")
 def shared_entries(
     environ: Mapping[str, str],
 ) -> tuple[list[LayerValue], list[LayerValue], list[Ignored]]:
-    """Give OpenTelemetry's own variables of an environment as entries of telemetry's endpoint.
+    """Give OpenTelemetry's variables as entries of the endpoint: those below, above, ignored.
 
-    ``OTEL_EXPORTER_OTLP_ENDPOINT`` gives an entry of the layer below the settings file,
-    unless the setting would refuse its value: it is then ignored, with the rule that it
-    breaks. ``OTEL_SDK_DISABLED``, when true as the SDK reads it, gives one of the layer
-    above all, which leaves the endpoint unset: telemetry off. Give the entries below,
-    those above, then what was ignored.
+    The shared endpoint lies below the file, ignored if refused; ``true`` disables above all.
     """
     below: list[LayerValue] = []
     ignored: list[Ignored] = []
@@ -775,21 +677,11 @@ def shared_entries(
     )
 
 
-def at_home(path: Path, home: Path) -> Path:
-    """Give a path that begins with ``~`` with ``home`` in its place."""
-    return home.joinpath(*path.parts[1:])
-
-
 def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]) -> Loaded:
-    """Merge the layers' entries, weakest first, and build the model's settings from them.
+    """Merge the entries, weakest first, each replacing any at or under its path whole, and build.
 
-    An entry replaces any earlier one at its path, above it or below it, whole: a list is
-    never joined to another. A value replaced that a layer wrote is ignored, and its
-    setting is ``replaced``; a default, by no layer or implicit, is neither. ``~`` in a
-    path, a default's included, is ``home``: each path setting at its default is an
-    entry of no layer, the weakest. Raises
-    SettingsError naming each setting refused and the layers that gave it, never its
-    value: first an entry whose path names no setting.
+    ``~`` in a path is ``home``. Raises SettingsError naming each setting refused and its
+    layers, never its value; first an entry whose path names no setting.
     """
     paths = setting_paths(model)
     at_defaults = [
@@ -821,7 +713,7 @@ def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]
             and isinstance(value, str | Path)
             and Path(value).parts[:1] == ("~",)
         ):
-            value = at_home(Path(value), home)
+            value = home.joinpath(*Path(value).parts[1:])
         table[path[-1]] = value
     layers = {
         ".".join(path): entry.layer for path, entry in kept.items() if entry.layer is not None
@@ -868,9 +760,7 @@ def without_secrets(settings: Settings) -> dict[str, object]:
 def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
     """Build settings of the model of ``secrets`` from values without secrets, and its secrets.
 
-    ``values`` are as ``without_secrets`` gives them; each secret is the one that
-    ``secrets`` holds. Raises SettingsError naming each setting refused, never its value,
-    such as the table of a source that the model no longer holds.
+    Raises SettingsError naming each setting refused, never its value.
     """
     model = type(secrets)
     tree = copy.deepcopy(dict(values))
@@ -885,12 +775,9 @@ def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
-    """Return why company data must not live at this path, or None when it may.
+    """Say why company data must not live at a resolved path: in a git tree or synced; else None.
 
-    ``path`` and ``home`` must be resolved, without links or ``..``; names compare
-    without regard to case, as on the default file system of macOS. ``git_root`` is the
-    working tree that holds the path, if any: data there could be committed. A
-    synchronised folder would copy the data off the machine.
+    Names compare without regard to case, as on macOS.
     """
     if git_root is not None:
         return f"inside the git working tree {git_root}"

@@ -38,7 +38,7 @@ from kb_mcp.cli.domain.runs import (
     units_of,
 )
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import with_secrets, without_secrets
+from kb_mcp.config.settings import with_secrets, without_secrets
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import ExitStatus, RefusedError
 from kb_mcp.kernel.records import Outcome, Problem

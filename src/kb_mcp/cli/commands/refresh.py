@@ -11,13 +11,13 @@ from kb_mcp.cli.domain.command import FETCH, INDEX, PREPARE, STAGES
 from kb_mcp.cli.domain.rows import Refreshed
 from kb_mcp.cli.domain.runs import Configuration, keyed
 from kb_mcp.cli.domain.sources import chosen_to_fetch, chosen_to_prepare, fetch_options
-from kb_mcp.config.domain.settings import values_of, without_secrets
+from kb_mcp.config.settings import values_of, without_secrets
 
 if TYPE_CHECKING:
     import argparse
     from datetime import datetime
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.kernel.names import Detail, ExitStatus
 
 

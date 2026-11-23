@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from kb_mcp.config.domain.settings import SearchMode
+    from kb_mcp.config.settings import SearchMode
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.domain.indexes import SearchReader
     from kb_mcp.search.domain.search import Sort

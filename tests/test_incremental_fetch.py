@@ -52,7 +52,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.kernel.names import Ending
 
 FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)

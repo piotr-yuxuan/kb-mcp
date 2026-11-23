@@ -27,7 +27,7 @@ kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp index && kb-mcp embe
 The space was never fetched: without `--since`, its first run would take its last 7
 days, and `--since` reaches back to the start of the year. The search settings
 keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
-[`DEFAULT_MODEL`](../../src/kb_mcp/config/domain/settings.py).
+[`DEFAULT_MODEL`](../../src/kb_mcp/config/settings.py).
 
 ## Part 1: the chain
 
@@ -60,26 +60,26 @@ to stderr until the settings are read, and `main` imports the
 
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) maps each flag given to
 its setting ([`Command.setting_flags`](../../src/kb_mcp/cli/domain/command.py))
-and calls [`load_settings`](../../src/kb_mcp/config/app/settings.py). Three
+and calls [`load_settings`](../../src/kb_mcp/config/load.py). Three
 layers, each stronger than the last: the file
-([`read_settings_file`](../../src/kb_mcp/config/adapters/settings_file.py)),
+([`read_settings_file`](../../src/kb_mcp/config/file.py)),
 the environment
-([`environment_entries`](../../src/kb_mcp/config/domain/settings.py)) and
-the flags. [`settings_of`](../../src/kb_mcp/config/domain/settings.py)
-merges their [`LayerValue`](../../src/kb_mcp/config/domain/settings.py) rows,
-weakest first, into one [`Settings`](../../src/kb_mcp/config/domain/settings.py),
+([`environment_entries`](../../src/kb_mcp/config/settings.py)) and
+the flags. [`settings_of`](../../src/kb_mcp/config/settings.py)
+merges their [`LayerValue`](../../src/kb_mcp/config/settings.py) rows,
+weakest first, into one [`Settings`](../../src/kb_mcp/config/settings.py),
 which Pydantic validates, and keeps each value's layer in a
-[`Loaded`](../../src/kb_mcp/config/domain/settings.py). A value refused is
-a [`SettingsError`](../../src/kb_mcp/config/domain/settings.py) that names
+[`Loaded`](../../src/kb_mcp/config/settings.py). A value refused is
+a [`SettingsError`](../../src/kb_mcp/config/settings.py) that names
 the setting and its layers, never the value.
 
 Then the guard. The data directory, each folder under it and the log folder are resolved,
 links followed, and judged by
-[`unsafe_location`](../../src/kb_mcp/config/domain/settings.py), given the
+[`unsafe_location`](../../src/kb_mcp/config/settings.py), given the
 git working tree that holds each, if any
-([`git_root`](../../src/kb_mcp/config/adapters/settings_file.py)). Under a
+([`git_root`](../../src/kb_mcp/config/file.py)). Under a
 synchronised folder, or inside a git tree, the run stops with
-[`UnsafeDataDirError`](../../src/kb_mcp/config/app/settings.py), exit 2,
+[`UnsafeDataDirError`](../../src/kb_mcp/config/load.py), exit 2,
 before anything is written.
 
 Then what fetch cannot run with. Its
@@ -408,7 +408,7 @@ a client: [`refused_endpoint`](../../src/kb_mcp/kernel/names.py) refuses
 an address that is not a literal one of this machine
 ([`loopback`](../../src/kb_mcp/kernel/names.py)) unless the run allows
 it, and plain http to one even then. The default,
-[`DEFAULT_EMBEDDING_URL`](../../src/kb_mcp/config/domain/settings.py), is
+[`DEFAULT_EMBEDDING_URL`](../../src/kb_mcp/config/settings.py), is
 Ollama's on `127.0.0.1`. An API key, if the environment gives one, goes as the bearer
 token of this client alone.
 

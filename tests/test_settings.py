@@ -13,8 +13,8 @@ import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
-from kb_mcp.config.domain.settings import (
+from kb_mcp.config.load import UnsafeDataDirError, load_settings
+from kb_mcp.config.settings import (
     TABLE,
     Ignored,
     LayerValue,

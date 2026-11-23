@@ -14,7 +14,7 @@ import pytest
 from pydantic import BaseModel
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import TABLE
+from kb_mcp.config.settings import TABLE
 from kb_mcp.sources.atlassian.fetch.adapters.browser import SignInFailedError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, read_cookies
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
 
 SITE = "https://sandbox.example.invalid"
 CLIENT = "https://client.example.invalid"

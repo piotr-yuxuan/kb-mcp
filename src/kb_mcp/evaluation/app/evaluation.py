@@ -22,7 +22,7 @@ import yaml
 from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field, ValidationError
 
-from kb_mcp.config.domain.settings import SearchMode
+from kb_mcp.config.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
     CONTROL,
     CUTOFF,
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.evaluation.domain.evaluation import Choice
     from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import Embedder

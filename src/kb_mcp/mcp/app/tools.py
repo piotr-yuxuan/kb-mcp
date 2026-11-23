@@ -25,7 +25,7 @@ import structlog
 from opentelemetry import metrics, trace
 from pydantic import Field
 
-from kb_mcp.config.domain.settings import SearchMode as Mode
+from kb_mcp.config.settings import SearchMode as Mode
 from kb_mcp.kernel.names import DEPTHS, DOCUMENT_ID, LONGEST_QUERY
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app import responses

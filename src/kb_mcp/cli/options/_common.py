@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, override
 
 from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
-from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
+from kb_mcp.config.file import SETTINGS_PATH
 from kb_mcp.kernel.names import DETAILS, EMBEDDINGS, FORMATS, LEVELS, MODEL_NAME, refused_endpoint
 
 if TYPE_CHECKING:

@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from kb_mcp.config.domain.settings import Settings
+from kb_mcp.config.settings import Settings
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError, StoreBusyError
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import COPIES, CopyStore

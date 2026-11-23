@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.cli.app.units import Planned
     from kb_mcp.cli.domain.runs import Configuration
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
 
 
 def planned(

@@ -15,7 +15,7 @@ import httpx
 import truststore
 from opentelemetry import metrics
 
-from kb_mcp.config.domain.settings import SettingsError
+from kb_mcp.config.settings import SettingsError
 from kb_mcp.kernel.names import loopback, refused_endpoint
 from kb_mcp.kernel.records import Record
 from kb_mcp.observability.http import ObservedTransport

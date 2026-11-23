@@ -91,8 +91,8 @@ all that it reads, and gives an [`Outcome`](../../src/kb_mcp/kernel/records.py).
 with an interface's methods is one, and each source's is a module, its functions the
 methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
 it against the runtime-checkable protocol. It may use the interfaces, the mirror,
-`config`'s rules of a table ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
-[`LocalPath`](../../src/kb_mcp/config/domain/settings.py)), `observability` and the
+`config`'s rules of a table ([`TABLE`](../../src/kb_mcp/config/settings.py),
+[`LocalPath`](../../src/kb_mcp/config/settings.py)), `observability` and the
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
 - **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk as
@@ -181,7 +181,7 @@ name that the program holds. Once the arguments are parsed, so that `--help` imp
 table, the entry also refuses a table whose settings are not those that its declaration
 names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model already holds,
 such as `json`, or that cannot be built by default
-([`settings_model`](../../src/kb_mcp/config/domain/settings.py)). These are a programmer's
+([`settings_model`](../../src/kb_mcp/config/settings.py)). These are a programmer's
 errors, raised, not exits. A name is a table, a folder of the mirror, a command argument
 and the front matter's `source`, so each source is configured once: two
 Confluence sites or two work logs cannot be configured, and allowing them later (named
@@ -212,18 +212,18 @@ module alone.
 
 The settings file holds a table per source, `[sources.<name>]`, and the entry composes
 them into the settings' model, in name order, each at its place among the fields
-([`settings_model`](../../src/kb_mcp/config/domain/settings.py)), which
-[`Loaded`](../../src/kb_mcp/config/domain/settings.py) carries for all that reads a
+([`settings_model`](../../src/kb_mcp/config/settings.py)), which
+[`Loaded`](../../src/kb_mcp/config/settings.py) carries for all that reads a
 setting's path. The sources are the registry's, `confluence`, `jira` and `worklog`, which
 always exist, and each other that the settings file or the environment names, of the
 connector that its `connector` names, by default its own name's
-([`named_sources`](../../src/kb_mcp/config/adapters/settings_file.py),
+([`named_sources`](../../src/kb_mcp/config/file.py),
 [`configured`](../../src/kb_mcp/sources/registry.py)): `[sources.clientjira]` with
 `connector = "jira"` is a second Jira site, beside `[sources.jira]`. The entry reads those
 names before it builds the parser, standard library alone, so that each command's choices,
 help and settings read are declared by source, as they were by the registry. A source of no
 connector that the registry holds, or of a name off the rule, is refused by the settings,
-naming it ([`refuse_not_a_source`](../../src/kb_mcp/config/domain/settings.py)).
+naming it ([`refuse_not_a_source`](../../src/kb_mcp/config/settings.py)).
 
 So `config` imports no source: each table lives in its package
 ([`ConfluenceTable`](../../src/kb_mcp/sources/atlassian/settings.py),
@@ -248,7 +248,7 @@ sources of two sites sign in apart. A connector that signs in names its `locatio
 setting where a source of it is, its run of `login`, the sources that a `login` naming
 none leaves, such as one that signs in by an API token, and its checks of `doctor`
 ([`Connector`](../../src/kb_mcp/sources/declaration.py)). The places `session/` and
-`runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)),
+`runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/settings.py)),
 which the data guard judges.
 
 ## What every source's documents share

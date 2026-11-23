@@ -73,7 +73,7 @@ and it holds the identity provider's and Atlassian's cookies. So the whole folde
 sign-in: whoever reads it can act as you on the site until the session ends. That is
 why the data directory may lie neither under a synchronised folder nor in a git working
 tree, where it would be copied off the machine or committed
-([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)), and
+([`unsafe_location`](../../src/kb_mcp/config/settings.py)), and
 why agents never get it. To end it, see
 [end the session](../how-to/sso-machine.md#end-the-session).
 
@@ -85,7 +85,7 @@ place where it would outlive a run:
 
 - **From the environment alone.** The settings file refuses a token, naming the
   variable to use instead
-  ([`file_entries`](../../src/kb_mcp/config/domain/settings.py),
+  ([`file_entries`](../../src/kb_mcp/config/settings.py),
   [`test_check_refuses_a_secret_in_the_settings_file`](../../tests/test_cli.py)), and no
   flag takes one, as [the commands](../reference/commands.md) show: it never sits in a
   file that other tools read, in your shell's history or on a command line. Generic
@@ -227,7 +227,7 @@ What a run logs is for you, on this machine, and may hold titles and queries
   and `run.start` masks it.
 - A refused setting is named with the layer that gave it, never with its value, since
   a secret pasted in the wrong place would be echoed
-  ([`settings_of`](../../src/kb_mcp/config/domain/settings.py),
+  ([`settings_of`](../../src/kb_mcp/config/settings.py),
   [`test_a_setting_refused_with_a_secret_as_its_value_does_not_echo_it`](../../tests/test_secrets.py)).
 - A traceback shows no frame's locals, where a token could sit
   ([`log_file`](../../src/kb_mcp/observability/observed.py)).
@@ -258,7 +258,7 @@ mistake. None of it stops someone who is already on the machine as you:
   the mirror is plain Markdown. A backup of your home copies the data directory as
   it copies any folder: the guard refuses synchronised folders and git working trees,
   nothing else
-  ([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)). The
+  ([`unsafe_location`](../../src/kb_mcp/config/settings.py)). The
   disk's own encryption, such as FileVault or LUKS, is what keeps a lost machine's data.
 - **A tunnel.** The services' rules, of the embedding endpoint, the reranking server and
   telemetry's, trust that a loopback address is this machine

@@ -80,9 +80,9 @@ choose among those that a command can take
   time, an end left to now made the start
   ([`fetch_options`](../../src/kb_mcp/cli/domain/sources.py)). It writes it under
   `<data>/runs/<run id>/`, every secret left out
-  ([`without_secrets`](../../src/kb_mcp/config/domain/settings.py)), then reads it back,
+  ([`without_secrets`](../../src/kb_mcp/config/settings.py)), then reads it back,
   takes the secrets from its environment
-  ([`with_secrets`](../../src/kb_mcp/config/domain/settings.py)), and runs its units from
+  ([`with_secrets`](../../src/kb_mcp/config/settings.py)), and runs its units from
   that alone ([`recorded`](../../src/kb_mcp/cli/commands/_runs.py)); each unit's entry is
   written as it ends ([`Progress`](../../src/kb_mcp/cli/app/units.py)), as [the data
   layout](../reference/data-layout.md#runs) says. A dry run records nothing.

@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.worklog.fetch.domain.worklog import OrgText
     from kb_mcp.sources.worklog.settings import WorklogTable

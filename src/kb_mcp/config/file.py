@@ -1,7 +1,6 @@
-"""The settings file, the sources that the settings name, and the git tree that holds a path.
+"""The settings file, the sources that it and the environment name, the git tree of a path.
 
-Standard library alone, as the entry reads the sources named before it parses the
-arguments, and ``--help`` imports no package that runs need.
+Standard library alone (contract G): the entry reads the sources before it parses.
 """
 
 from __future__ import annotations
@@ -22,11 +21,7 @@ SOURCES = "sources"
 
 
 def read_settings_file(path: Path) -> dict[str, object]:
-    """Read the settings file as TOML; a missing file holds no settings.
-
-    Raises ValueError for a file that is not TOML (tomllib's TOMLDecodeError) or not
-    text, and OSError for one that cannot be read, such as a folder.
-    """
+    """Read the settings file as TOML, a missing one empty; ValueError or OSError for another."""
     path = path.expanduser()
     if not path.exists():
         return {}
@@ -52,11 +47,7 @@ def decoded(text: str) -> object:
 def named_sources(path: Path, environ: Mapping[str, str]) -> dict[str, str | None]:
     """Give each source that the settings file and the environment name, and its connector.
 
-    The connector is ``sources.<name>.connector`` as the strongest of the two writes it,
-    the environment by its own variable or in the JSON of a table's; None when neither
-    writes one. A file or a variable that does not read, or a value that is no table or
-    no text, names nothing: the loader refuses it, naming its layer. An empty variable
-    names nothing, as the loader ignores it.
+    The connector as the strongest writes it, else None; what does not read names nothing.
     """
     try:
         tables = [read_settings_file(path).get(SOURCES)]
