@@ -3,7 +3,8 @@
 ``measure`` counts each context's lines of code, files, types, largest module and comment
 lines; ``breaches`` says where the measures break their ceilings, the ceilings their
 bounds, or a converged context or part its targets; ``overspent`` where the targets pass
-the budget. The trade-offs' "A budget of twelve thousand lines" says why.
+the budget. ``src/`` is held to the tables below, plain literals that a plan edits: the
+trade-offs' "A budget of twelve thousand lines" says why.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import io
 import math
 import re
 import tokenize
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
@@ -20,11 +22,50 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping, Sequence
-    from pathlib import Path
 
 type Measure = tuple[int, int, int, int, int]  # lines, files, types, largest, comments
 type Target = tuple[int, int, int, int]  # lines, files, types, largest
 
+# Each context's ceilings: no measure may pass its own, nor a ceiling stand above its
+# bound, so that they fall as the context shrinks; a plan raises one on the user's word.
+CEILINGS = {
+    "sources/atlassian": (5_150, 35, 82, 1_050, 190),
+    "search": (4_500, 20, 78, 1_250, 220),
+    "cli": (4_500, 56, 33, 300, 80),
+    "sources/worklog": (2_150, 23, 23, 750, 90),
+    "evaluation": (1_750, 13, 38, 600, 60),
+    "mcp": (1_450, 6, 11, 950, 50),
+    "config": (1_300, 9, 25, 950, 50),
+    "observability": (1_050, 15, 17, 250, 50),
+    "mirror": (850, 12, 12, 300, 60),
+    "kernel": (600, 13, 20, 200, 70),
+    "sources": (400, 5, 19, 250, 30),
+    "(root)": (100, 3, 2, 100, 10),
+}
+# Each context's targets, and each converging part's, which hold once it converges; the
+# contexts' leave the rest of the budget in reserve.
+TARGETS = {
+    "sources/atlassian": (2_600, 10, 36, 700),
+    "search": (2_200, 8, 30, 700),
+    "cli": (2_000, 10, 16, 700),
+    "sources/worklog": (900, 6, 8, 700),
+    "evaluation": (1_000, 5, 16, 700),
+    "mcp": (800, 4, 6, 700),
+    "config": (550, 3, 10, 700),
+    "observability": (400, 3, 6, 700),
+    "mirror": (300, 4, 6, 700),
+    "kernel": (200, 3, 8, 700),
+    "sources": (150, 4, 8, 700),
+    "(root)": (10, 2, 0, 700),
+}
+BUDGET = (12_000, 70, 160, 700)
+# Each part of a context that a plan converges apart, as "<context>:<part>", by the paths
+# of its modules under the package, each a module or a package, without ".py".
+PARTS = {}
+# The contexts and parts that plans have converged, which their targets hold.
+CONVERGED = ()
+
+ROOT = Path(__file__).parents[1]
 PACKAGE = "kb_mcp"
 # What each place of a measure counts; a target's are the first four.
 MEASURES = ("lines", "files", "types", "largest", "comments")
@@ -566,3 +607,17 @@ def test_targets_past_the_budget_are_a_breach(name: str, target: Target, what: s
     assert overspent(AT_BUDGET, SMALL_BUDGET, ("a:part",)) == []
     found = overspent({**AT_BUDGET, name: target}, SMALL_BUDGET, ("a:part",))
     assert [what in each for each in found] == [True]
+
+
+def test_src_is_within_its_ceilings() -> None:
+    """Each context of ``src/`` is within its ceilings, each at most its bound.
+
+    Each converged context and part is within its targets too.
+    """
+    measured = measure(ROOT / "src", PARTS)
+    assert breaches(measured, CEILINGS, TARGETS, CONVERGED, PARTS) == []
+
+
+def test_the_targets_fit_the_budget() -> None:
+    """The contexts' targets leave the budget a reserve, and no target passes its largest."""
+    assert overspent(TARGETS, BUDGET, PARTS) == []
