@@ -56,7 +56,6 @@ RUNS_PACKAGES = frozenset(
         "playwright",
         "pydantic",
         "pydantic_core",
-        "pydantic_settings",
         "requests",
         "rich",
         "structlog",

@@ -12,8 +12,8 @@ from typing import NamedTuple
 class WorklogType(NamedTuple):
     """A type of the work log's documents: its plural, its id's rule, its file's name.
 
-    ``plural`` names its folder of the mirror; a type
-    ``named_by_id`` names its file by its id alone, which holds what a title would add.
+    ``plural`` names its folder of the mirror; a type ``named_by_id`` names its file by its
+    id alone, which holds what a title would add.
     """
 
     plural: str

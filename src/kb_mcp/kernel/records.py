@@ -132,8 +132,7 @@ class Outcome[C: Counts](Record):
 class Invocation(Record):
     """One start of the program: its command, how it reports, and what ``run.start`` says.
 
-    ``commands`` names those whose log files past 30 days it removes; ``run`` is the run
-    that it resumes, None for a new one.
+    ``commands``: those whose old log files it removes; ``run``: the run it resumes, or None.
     """
 
     command: str

@@ -282,7 +282,7 @@ which their targets then hold.
   `httpx`, `sqlite3`, `subprocess`, `socket`, `ssl`, `requests`, `truststore`,
   `certifi`, `anyio`, Playwright, the MCP SDK, structlog, `logging`, OpenTelemetry,
   Rich, `os`, `sys`, `time`, `fcntl`, `tempfile`, `shutil`, `threading`, `secrets`,
-  `uuid`, `random`, `importlib`, `platformdirs` or `pydantic_settings`. It may build
+  `uuid`, `random`, `importlib` or `platformdirs`. It may build
   paths with `pathlib`; reading or writing through them, `open`, and the clock through
   `datetime.now` are findings of the review.
 - **T3. A port only where it pays.** A `Protocol` only where two implementations exist,

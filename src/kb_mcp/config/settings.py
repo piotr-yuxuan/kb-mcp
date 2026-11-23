@@ -680,8 +680,7 @@ def shared_entries(
 def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]) -> Loaded:
     """Merge the entries, weakest first, each replacing any at or under its path whole, and build.
 
-    ``~`` in a path is ``home``. Raises SettingsError naming each setting refused and its
-    layers, never its value; first an entry whose path names no setting.
+    ``~`` is ``home``. Raises SettingsError naming each refusal's setting and layers, never values.
     """
     paths = setting_paths(model)
     at_defaults = [

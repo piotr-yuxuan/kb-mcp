@@ -460,11 +460,7 @@ def test_connector_at_the_top_is_not_a_setting_rather_than_moved() -> None:
 
 @pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "DATA_DIR", "unknown"])
 def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: str) -> None:
-    """A key that names no setting is refused, from any layer, never taken as an option.
-
-    pydantic-settings' model takes ``_cli_parse_args`` as one, which parses sys.argv,
-    ``_env_file``, which reads the file named, and ``DATA_DIR`` as ``data_dir``.
-    """
+    """A key that names no setting is refused, from any layer, never taken as an option."""
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
         settings_of([LayerValue(path=(key,), value="/etc/passwd", layer="a layer")], HOME, MODEL)
 
@@ -851,11 +847,7 @@ def test_two_variables_of_one_setting_or_of_a_table_and_inside_it_are_refused(
     *,
     inner_first: bool,
 ) -> None:
-    """pydantic-settings merges them, by the environment's order below the top.
-
-    No value of the merge could name the variable that gave it: both are named, in
-    either order, never what they hold.
-    """
+    """Both are named, in either order, never what they hold: no merge could name its variable."""
     for name, value in [inner, outer] if inner_first else [outer, inner]:
         monkeypatch.setenv(name, value)
     with pytest.raises(SettingsError) as refused:
@@ -895,10 +887,7 @@ def test_a_variable_naming_no_setting_inside_another_s_setting_is_ignored_alone(
     *,
     unknown_first: bool,
 ) -> None:
-    """The other gives its value whole, in either order; this one is ignored, as alone.
-
-    pydantic-settings would merge it into the other's table or list.
-    """
+    """The other gives its value whole, in either order; this one is ignored, as alone."""
     named = (unknown, f'["{SENTINEL}"]')
     for name, value in [named, given] if unknown_first else [given, named]:
         monkeypatch.setenv(name, value)
@@ -924,7 +913,7 @@ def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
 def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """As pydantic-settings reads it: the layer is the variable's own name."""
+    """The layer is the variable's own name, as written."""
     monkeypatch.setenv("kb_mcp_sources__jira__site", "https://lower.example.invalid")
     monkeypatch.setenv("Kb_Mcp_Spaces", '["X"]')
     loaded = loaded_from(tmp_path, "")
@@ -1067,11 +1056,7 @@ def test_an_empty_table_that_holds_a_secret_writes_none_and_loads(
 def test_a_list_or_a_table_not_in_json_is_refused_by_its_variable_never_its_value(
     tmp_path: Path, monkeypatch: MonkeyPatch, name: str, value: str
 ) -> None:
-    """PLAT,PRB is not JSON, nor an object a list, nor null a table: the variable is named.
-
-    pydantic-settings would refuse PLAT,PRB naming no variable, and drop a table's null
-    unread.
-    """
+    """PLAT,PRB is not JSON, nor an object a list, nor null a table: the variable is named."""
     monkeypatch.setenv(name, value)
     with pytest.raises(SettingsError) as refused:
         loaded_from(tmp_path, "")

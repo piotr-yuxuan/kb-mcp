@@ -89,11 +89,7 @@ def printable(text: str, *, width: int) -> str:
 
 
 def redacted(value: object) -> object:
-    """Copy a value, what a key holds redacted, at any depth, when its words name a secret.
-
-    A key's words are split at ``_``, ``-`` and ``.``, lowered: one of ``SECRET_WORDS``, or
-    ``api`` then ``key``. A mapping, a list and a tuple are copied; another value is kept.
-    """
+    """Copy a value, what a key holds redacted, at any depth, when its words name a secret."""
     if isinstance(value, Mapping):
         kept: dict[object, object] = {}
         for key, item in value.items():
@@ -198,8 +194,7 @@ def log_file(
 ) -> Iterator[Path]:
     """Write each event and record from DEBUG as a JSON line into the run's file, by its path.
 
-    First the files of ``commands`` that ``expired`` are removed. Raises OSError when
-    ``folder`` cannot be made or written.
+    First removes the expired files of ``commands``; raises OSError if ``folder`` fails.
     """
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     for old in folder.iterdir():
@@ -375,8 +370,7 @@ def early() -> Iterator[None]:
 def observed(invocation: Invocation, folder: Path, endpoint: str | None) -> Iterator[Running]:
     """Observe an invocation, yielding a ``Running`` whose status the body sets.
 
-    Ctrl-C or an exception in the body goes no further: the status says it. A ``folder`` or
-    an ``endpoint`` that fails gives one warning, and the run goes on without it.
+    Ctrl-C or an exception in the body sets the status; a failing sink warns once, then none.
     """
     route_through_logging()
     root = logging.getLogger()
