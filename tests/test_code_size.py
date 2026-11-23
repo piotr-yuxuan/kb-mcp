@@ -284,13 +284,19 @@ def breaches(
     A measure past its ceiling; a ceiling above its bound: lines and the largest module
     rounded up to 50, then 50 more, files one more, types two, comment lines rounded up to
     10, then 10 more; a converged context or part past its targets; a context without a
-    ceiling or a target, a part without a target, a ceiling without its context.
+    ceiling or a target, a part without a target, a ceiling without its context, a
+    converged name that names nothing measured.
     """
     contexts = [name for name in measured if name not in parts]
     found = [f"{name}: no ceiling" for name in contexts if name not in ceilings]
     found += [f"{name}: no target" for name in [*contexts, *parts] if name not in targets]
     found += [
         f"{name}: a ceiling, and no such context" for name in ceilings if name not in contexts
+    ]
+    found += [
+        f"{name}: converged, and no context or part of that name measured"
+        for name in converged
+        if name not in measured
     ]
     for name in (name for name in contexts if name in ceilings):
         lines, files, types, largest, comments = measured[name]
@@ -582,6 +588,24 @@ def test_a_context_or_part_without_its_tables_is_a_breach() -> None:
     )
     named = sorted(each.partition(": ")[0] for each in found)
     assert named == ["ctx:empty", "ctx:part", "gone", "new", "new"]
+
+
+def test_a_converged_name_that_measures_nothing_is_a_breach(tmp_path: Path) -> None:
+    """A name misspelt, or a part whose paths reach no module, converges nothing.
+
+    Each is named, though its target is there.
+    """
+    files = {"kb_mcp/kernel/__init__.py": "X = 1\n", "kb_mcp/kernel/names.py": "X = 1\n"}
+    parts = {"kernel:gone": ("kernel/gone",)}
+    measured = measure(written(tmp_path, files), parts)
+    found = breaches(
+        measured,
+        {"kernel": (100, 3, 2, 100, 10)},  # at the bound of its measure
+        {"kernel": FAR, "kernel:gone": FAR, "kernal": FAR},
+        ("kernal", "kernel:gone"),
+        parts,
+    )
+    assert sorted(each.partition(": ")[0] for each in found) == ["kernal", "kernel:gone"]
 
 
 # Targets that sum to a budget, the part's aside, which would pass it.
