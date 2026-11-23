@@ -25,9 +25,40 @@ Follow the `workflow:plans` skill with these parameters:
   [the trade-offs](docs/explanation/trade-offs.md); how the stages work together, in
   [the internals](docs/explanation/internals.md); the formats that the stages share, in
   [the data layout](docs/reference/data-layout.md); where code goes, in
-  [the code's layout](docs/explanation/code-layout.md); the plans, in the roadmap,
-  `docs/work/roadmap.md`, untracked. Only the adapter of a representation reads its
-  JSON, and only one module knows the site's HTML.
+  [the code's layout](docs/explanation/code-layout.md), and in a converged context
+  [where the layout is going](docs/explanation/code-layout.md#where-the-layout-is-going);
+  the plans, in the roadmap, `docs/work/roadmap.md`, untracked. Only the adapter of a
+  representation reads its JSON, and only one module knows the site's HTML.
+- The budget: the goal for `src/` is 12,000 lines of code, 70 files and 160 types, with
+  no module over 700 lines of code, reached one context at a time. Meanwhile each
+  context's ceilings hold it, comment lines included, each falling as it shrinks; once a
+  plan has converged a context, or a part of one, its targets hold it too, the contexts'
+  targets summing within the goal. `tests/test_code_size.py` holds both. A plan sets
+  each ceiling that it changes at its bound; raising one needs the user's word, which the
+  approval of a draft whose expected deltas raise it gives.
+- What the program offers, its commands, options, settings, MCP tools and prompts, and
+  telemetry names, is in the manifest `tests/fixtures/parity.json`, which
+  `uv run python -m tests.parity` writes. Nothing leaves it but by a decision that the
+  user approves, in the plan that edits it.
+- Each plan states in its draft what it expects to change in lines, files, types,
+  comment lines and concept entries, per context, and in its record what it changed.
+- Each plan under the budget converges one context, or a part of one named in `PARTS`,
+  whole, one plan at a time, bottom-up in contract A's order, so that no converged
+  context or part is reopened. Its draft defines, with the user, the concepts that it
+  adds, before any code. Then three phases, each in commits of its own:
+  1. the tests of what it converges are rewritten onto its interface, against the old
+     code, with no change under `src/`, pinning every key of the JSON that its commands
+     print or serve and every stored format that it writes;
+  2. the candidates of the type audit, under `docs/work/research/`, are made as moves of
+     `principles:concept-design`, declared in *Concepts* with what each gains and costs,
+     changing no assertion; the moves are the request, so the limit of one move made
+     beside another request, in `workflow:plans`, does not bound them;
+  3. the code is rewritten to the target layout, changing no assertion: its types are
+     homed, its contracts rewritten, its ceilings set at their bounds, and it joins
+     `CONVERGED`, within its targets or back to the user.
+
+  A dependent plan is revised once its dependency starts; its branch is cut from the
+  dependency's tip once the dependency's review starts, and rebased after it merges.
 - A new page goes in the folder of `docs/` named by its Diataxis kind, and
   [the map](docs/README.md) links it in the commit that writes it. The reference of
   commands and settings is generated from the code: after changing a command, an option
@@ -56,6 +87,9 @@ code takes them, and the names of each entry's "In the code" paragraph.
 - A definition changes only in a plan whose *Concepts* declares the change, and never
   to make a check pass; the pre-merge summary shows the page's diff. An "In the code"
   paragraph follows the code in the commit that changes it.
+- The entries under *Core concepts* and *Context vocabulary* stay within the ceiling
+  that `tests/test_concepts.py` holds, itself within the budget's 35. A plan raises it
+  only by declaring the new concept in its *Concepts*, approved by the user.
 - Definitions are timeless. Where the code differs from one goes in
   [the differences](docs/reference/differences.md), classed as that page says.
 - A plan that changes a core concept rewrites its line below, and the opening paragraph
