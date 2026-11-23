@@ -19,8 +19,8 @@ import pytest
 
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import RefusedError
-from kb_mcp.sources.worklog.fetch.adapters.copy_store import COPIES, CopyStore, CopyStoreBusyError
+from kb_mcp.kernel.names import RefusedError, StoreBusyError
+from kb_mcp.sources.worklog.fetch.adapters.copy_store import COPIES, CopyStore
 from kb_mcp.sources.worklog.fetch.domain.copies import Carried, Copies, WorklogCopy
 
 if TYPE_CHECKING:
@@ -120,7 +120,7 @@ def test_writing_needs_the_lock_and_one_writer_holds_it(store: CopyStore) -> Non
         store.put(HELD)
     with (
         store.writing(),
-        pytest.raises(CopyStoreBusyError),
+        pytest.raises(StoreBusyError),
         CopyStore(store.folder.parent, "worklog").writing(),
     ):
         pass

@@ -231,7 +231,7 @@ def fetch_worklog(
     subtrees tagged ARCHIVE are left out. A dry run takes no lock and writes nothing, and
     ends not run, or failed for a problem found.
 
-    Raises ``CopyStoreBusyError`` while another run writes the store, and
+    Raises ``StoreBusyError`` while another run writes the store, and
     ``RepresentationError`` for a store that does not read. ``worklog.carried`` says at
     INFO how many dates a store began with, and how many files of the mirror did not
     read; ``worklog.fetched`` at INFO what the read found.

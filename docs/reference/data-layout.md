@@ -348,7 +348,7 @@ Owned by `sources.worklog.fetch.adapters.copy_store.CopyStore`; nothing else rea
 writes under `<data>/copies/`. Each work log, each source of the `worklog` connector, has
 a folder of its own, `<data>/copies/<source>/`, which holds one file, `copies.json`, and
 its writers' lock, `.lock`: one run at a time writes a source's store, inside
-`CopyStore.writing()`, which raises `CopyStoreBusyError` when another run holds it, and `put`
+`CopyStore.writing()`, which raises `StoreBusyError` when another run holds it, and `put`
 refuses to run outside it. The file is replaced whole, through a hidden file renamed into
 place, so that it is the last write or the one before it, never part of one.
 

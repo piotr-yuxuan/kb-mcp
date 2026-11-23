@@ -147,7 +147,7 @@ being read whole anyway; a scope never fetched, its last 7 days. A catch-up that
   gone. One run at a time:
   [`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
   holds a lock, and a second run stops at once with
-  [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
+  [`StoreBusyError`](../../src/kb_mcp/kernel/names.py).
   A snapshot is written into a hidden folder and renamed into place
   ([`RawStore.put`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
   complete or absent. Its responses are never written again; its record gains the files

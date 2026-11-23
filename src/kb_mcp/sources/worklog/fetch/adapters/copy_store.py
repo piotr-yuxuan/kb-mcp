@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
+from kb_mcp.kernel.names import StoreBusyError
 from kb_mcp.sources.worklog.fetch.domain.copies import Carried, Copies, WorklogCopy
 
 if TYPE_CHECKING:
@@ -27,10 +28,6 @@ COPIES = "copies.json"
 LOCK = ".lock"
 # Where a problem of the store as a whole lies, as its fetch and its prepare say it.
 STORE = "copy store"
-
-
-class CopyStoreBusyError(RuntimeError):
-    """Another run is writing the work log's copy store."""
 
 
 class CopyStore:
@@ -49,14 +46,14 @@ class CopyStore:
 
     @contextmanager
     def writing(self) -> Iterator[None]:
-        """Hold the store's lock while writing; raise ``CopyStoreBusyError`` if it is held."""
+        """Hold the store's lock while writing; raise ``StoreBusyError`` if it is held."""
         self.folder.mkdir(parents=True, exist_ok=True)
         handle = os.open(self.folder / LOCK, os.O_RDWR | os.O_CREAT, 0o600)
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             os.close(handle)
-            raise CopyStoreBusyError from None
+            raise StoreBusyError from None
         self._lock = handle
         try:
             yield

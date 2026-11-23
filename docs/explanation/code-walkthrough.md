@@ -159,7 +159,7 @@ opens the [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_sto
 under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
 a second run stops at once with
-[`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
+[`StoreBusyError`](../../src/kb_mcp/kernel/names.py),
 and its unit fails while the next one runs.
 
 The sign-in comes from

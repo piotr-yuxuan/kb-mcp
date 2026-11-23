@@ -58,6 +58,10 @@ class RefusedError(ValueError):
     """A value that a domain type refuses; the message names the field, never the value."""
 
 
+class StoreBusyError(RuntimeError):
+    """Another run holds the lock of a store that this one would write."""
+
+
 def require(pattern: re.Pattern[str], value: str, name: str) -> None:
     """Refuse a value that does not match its rule, naming the field and the rule."""
     if not pattern.fullmatch(value):

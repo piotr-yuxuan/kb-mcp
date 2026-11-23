@@ -34,6 +34,7 @@ from kb_mcp.cli.domain.runs import Unit
 from kb_mcp.cli.domain.sources import chosen, fetch_described, given, refusals
 from kb_mcp.cli.main import main, parser
 from kb_mcp.kernel.exit_status import Ending, ExitStatus
+from kb_mcp.kernel.names import StoreBusyError
 from kb_mcp.kernel.outcome import Outcome, Problem
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
@@ -44,7 +45,7 @@ from kb_mcp.mirror.adapters.pandoc import (
 )
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts

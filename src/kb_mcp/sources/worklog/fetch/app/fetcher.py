@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.kernel.fields import RepresentationError
+from kb_mcp.kernel.names import StoreBusyError
 from kb_mcp.kernel.outcome import Outcome, Problem
-from kb_mcp.sources.worklog.fetch.adapters.copy_store import STORE, CopyStoreBusyError
+from kb_mcp.sources.worklog.fetch.adapters.copy_store import STORE
 from kb_mcp.sources.worklog.fetch.app.fetching import fetch_worklog
 
 if TYPE_CHECKING:
@@ -46,7 +47,7 @@ def fetch(run: SourceRun) -> Outcome[WorklogFetched]:
     source = run.source.name
     try:
         done = fetch_worklog(run.settings, run.source_table, source, run.now, dry_run=run.dry_run)
-    except CopyStoreBusyError:
+    except StoreBusyError:
         store = str(run.settings.copies / source)
         structlog.get_logger().error("fetch.store_busy", source=source, store=store, hint=BUSY)
         return Outcome.of(problems=(Problem(where=STORE, reason=BUSY),))
