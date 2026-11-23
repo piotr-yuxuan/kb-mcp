@@ -27,7 +27,6 @@ from typing import (
     Union,
     get_args,
     get_origin,
-    override,
 )
 from urllib.parse import urlsplit
 
@@ -42,7 +41,6 @@ from pydantic import (
     create_model,
 )
 from pydantic_core import PydanticCustomError
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
 from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
@@ -52,9 +50,7 @@ from kb_mcp.kernel.reranking import DEPTHS
 
 if TYPE_CHECKING:
     import re
-    from collections.abc import Callable, Iterable
-
-    from pydantic_settings import PydanticBaseSettingsSource
+    from collections.abc import Iterable
 
 DEFAULT_DATA_DIR = "~/kb-mcp"
 # The embedding model, as the endpoint names it: docs/how-to/embeddings.md says why.
@@ -139,8 +135,7 @@ def local_path(path: Path) -> Path:
     """Accept an absolute path; refuse another, which would lie below the current directory.
 
     ``settings_of`` makes ``~`` the home before the model sees a path, a default's
-    included, since no validation context reaches pydantic-settings' ``__init__``: built
-    without it, the settings refuse a path under ``~``.
+    included: built without it, the settings refuse a path under ``~``.
     """
     if "\0" in str(path) or not path.is_absolute():
         message = "an absolute path, or one under ~"
@@ -233,25 +228,18 @@ class Rerank(BaseModel):
     )
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     """What every command needs to know: the data directory, the defaults, the tables.
 
     The core's settings, whose ``sources`` holds no table: ``settings_model`` composes
     from it the model that holds each source's. The loader builds the settings from the
     layers' merge (``settings_of``), with the home that ``~`` stands for: their paths are
-    absolute, the default data directory included. The model reads nothing of its own:
-    the loader reads its variables by pydantic-settings' ``EnvSettingsSource``, with the
-    prefix and the nesting of its configuration, an empty variable ignored. The loader
-    then resolves the data directory, and the log folder, which is the platform's for
-    the user when none is set.
+    absolute, the default data directory included. The model reads nothing of its own.
+    The loader then resolves the data directory, and the log folder, which is the
+    platform's for the user when none is set.
     """
 
-    model_config = SettingsConfigDict(
-        **TABLE,
-        env_prefix=PREFIX,
-        env_nested_delimiter=NESTING,
-        env_ignore_empty=True,
-    )
+    model_config = TABLE
 
     data_dir: LocalPath = Field(
         default=Path(DEFAULT_DATA_DIR),
@@ -303,19 +291,6 @@ class Settings(BaseSettings):
         default_factory=Rerank,
         description="Reranking by a server on this machine, off by default.",
     )
-
-    @classmethod
-    @override
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Take the values given alone: the loader reads the layers and merges them."""
-        return (init_settings,)
 
     @property
     def raw(self) -> Path:
@@ -693,25 +668,21 @@ JSON_TYPES: dict[SettingKind, type] = {"table": dict, "list": list}
 
 
 def environment_entries(
-    environ: Mapping[str, str], parse: Callable[[], Mapping[str, object]], model: type[Settings]
+    environ: Mapping[str, str], model: type[Settings]
 ) -> tuple[list[LayerValue], list[Ignored]]:
     """Give the settings' variables of an environment as entries, and those ignored.
 
-    Each variable of the prefix is first scanned by the paths of the model's settings,
-    without regard to case, as pydantic-settings reads it. One that names no setting, at
-    any depth, or that is empty, is ignored, since other tools and versions share the
-    environment; but one under ``sources`` of a source that the model does not hold, not
-    empty, is refused, as ``refuse_not_a_source`` says. A table is a JSON object, a
-    list a JSON array: else SettingsError names the variable, never its value, where
-    pydantic-settings would name none. So it does
-    for two variables of one setting, or of a table and of a path inside it:
-    pydantic-settings would merge them, below the top by the environment's order, and no
-    value would name its variable. Then ``parse``, pydantic-settings'
-    ``EnvSettingsSource`` of the model and of this environment, reads them, and each
-    value read is an entry of its variable; a table or a list is the JSON that the scan
-    decoded, its keys as written, since the source merges into it the variables below
-    it, those that name no setting included. A secret written in that JSON is refused,
-    as in the settings file: only a variable of its own gives one.
+    Each variable of the prefix is read by the paths of the model's settings, without
+    regard to case. One that names no setting, at any depth, or that is empty, is
+    ignored, since other tools and versions share the environment; but one under
+    ``sources`` of a source that the model does not hold, not empty, is refused, as
+    ``refuse_not_a_source`` says. A table is a JSON object, a list a JSON array: else
+    SettingsError names the variable, never its value. So it does for two variables of
+    one setting, or of a table and of a path inside it, as no value would then name its
+    variable. Each value is an entry of its variable: a table or a list as its JSON
+    decodes, its keys as written, another as its text, which the model reads. A secret
+    written in that JSON is refused, as in the settings file: only a variable of its own
+    gives one.
     """
     paths = setting_paths(model)
     scanned: list[tuple[tuple[str, ...], str]] = []
@@ -745,13 +716,10 @@ def environment_entries(
             setting = ".".join(path)
             message = f"{name}, {inner[0]}: both set {setting}, which one variable alone may set"
             raise SettingsError(message)
-    found = parse()
     entries = [
         entry
         for path, name in scanned
-        for entry in entries_of(
-            decoded[name] if name in decoded else reduce(getitem, path, found), path, name, model
-        )
+        for entry in entries_of(decoded.get(name, environ[name]), path, name, model)
     ]
     refuse_secrets((entry for entry in entries if entry.layer in decoded), paths)
     return entries, ignored
@@ -810,8 +778,7 @@ def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]
     path, a default's included, is ``home``: each path setting at its default is an
     entry of no layer, the weakest. Raises
     SettingsError naming each setting refused and the layers that gave it, never its
-    value: first an entry whose path names no setting, which ``BaseSettings`` could take
-    as an argument of its own, such as ``_env_file``.
+    value: first an entry whose path names no setting.
     """
     paths = setting_paths(model)
     at_defaults = [

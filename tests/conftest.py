@@ -63,7 +63,7 @@ sys.addaudithook(guard)
 def settings_environment(monkeypatch: MonkeyPatch) -> None:
     """Remove the variables that the settings read, so that none of the user's reaches a test.
 
-    pydantic-settings reads its own without regard to case; OpenTelemetry's are read as
+    The settings read their own without regard to case; OpenTelemetry's are read as
     written.
     """
     for name in [

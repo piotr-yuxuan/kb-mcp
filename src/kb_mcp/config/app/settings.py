@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import platformdirs
-from pydantic_settings import EnvSettingsSource
 
 from kb_mcp.config.adapters.settings_file import git_root, read_settings_file
 from kb_mcp.config.domain.settings import (
@@ -70,7 +69,7 @@ def load_settings(
     except OSError as error:
         message = f"{path}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
-    environment, unread = environment_entries(os.environ, EnvSettingsSource(model), model)
+    environment, unread = environment_entries(os.environ, model)
     below, above, unshared = shared_entries(os.environ)
     loaded = settings_of(
         [

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
-from pydantic_settings import EnvSettingsSource
 
 from kb_mcp.cli.main import main
 from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
@@ -962,7 +961,7 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert SENTINEL not in f"{settings!r} {settings} {loaded!r}"
-    entries, _ = environment_entries(os.environ, EnvSettingsSource(MODEL), MODEL)
+    entries, _ = environment_entries(os.environ, MODEL)
     assert SENTINEL not in f"{entries!r} {entries}"
 
 
