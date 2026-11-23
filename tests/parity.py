@@ -4,8 +4,9 @@
 lists: ``commands``, each as its help names it; ``options``, each option string,
 positional, as ``<dest>``, and choice of each command, from the parser as
 ``tests.reference_pages`` walks it; ``settings``, each setting's key and its variable,
-from the model as the settings page is made; ``mcp``, each tool with its parameters and
-each prompt with its arguments, as a server started as agents start it lists them; and
+from the model as the settings page is made; ``mcp``, each tool with its parameters, an
+object's keys among them, one level down, and each prompt with its arguments, as a
+server started as agents start it lists them; and
 ``telemetry``, each event, span and instrument that the hand-written pages of
 ``docs/reference/telemetry/`` list. ``tests/test_parity.py`` fails when the code offers
 less than the manifest holds; an entry leaves it only by a decision that the user
@@ -67,6 +68,23 @@ def offered(home: Path) -> dict[str, list[str]]:
         command=sys.executable, args=["-m", "kb_mcp"], env={"HOME": str(home)}
     )
     _, listed, _ = talk(server, [])
+    tools = []
+    for tool in listed["tools"]:
+        schema = tool["inputSchema"]
+        definitions = schema.get("$defs", {})
+        tools.append(f"tool {tool['name']}")
+        for key, parameter in schema.get("properties", {}).items():
+            tools.append(f"tool {tool['name']} {key}")
+            # An object's keys, one level down, its schema in a union or behind a $ref.
+            shapes = [
+                definitions[shape["$ref"].rpartition("/")[2]] if "$ref" in shape else shape
+                for shape in [parameter, *parameter.get("anyOf", [])]
+            ]
+            tools += [
+                f"tool {tool['name']} {key} {field}"
+                for shape in shapes
+                for field in shape.get("properties", {})
+            ]
     pages = documented(README, *operations())
     found = {
         "commands": commands,
@@ -77,11 +95,7 @@ def offered(home: Path) -> dict[str, list[str]]:
             if kind != "table"
         ],
         "mcp": [
-            *(
-                f"tool {tool['name']}{named}"
-                for tool in listed["tools"]
-                for named in ["", *(f" {key}" for key in tool["inputSchema"].get("properties", {}))]
-            ),
+            *tools,
             *(
                 f"prompt {prompt['name']}{named}"
                 for prompt in listed["prompts"]
