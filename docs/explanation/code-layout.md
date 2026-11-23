@@ -209,7 +209,7 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   does not report an alias. A record base defined in one module and subclassed in
   another joins that list.
 
-Seventeen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
+Fifteen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
 that every dataclass under `src/kb_mcp/` is in this table, and that every class of the
 table is one:
 
@@ -217,7 +217,6 @@ table is one:
 |---|---|
 | `cli.domain.command.Command` | G: `--help` imports it |
 | `kernel.endpoint.Service` | G: `--help` imports it |
-| `kernel.output.Output` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `sources.declaration.Connector` | G: `--help` imports it |
 | `sources.declaration.DocumentType` | G: `--help` imports it |

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from kb_mcp.kernel.names import RefusedError
+from kb_mcp.kernel.output import Detail, Format, Level
 
 
 class Record(BaseModel):
@@ -42,6 +44,41 @@ class Record(BaseModel):
         """
         kept = {name: getattr(self, name) for name in type(self).model_fields}
         return type(self)(**{**kept, **changes})
+
+
+class Invocation(Record):
+    """One start of the program: its command, how it reports, and what ``run.start`` says.
+
+    ``level`` is the least severe of what it says on stderr; ``detail`` and ``format``
+    say how its result is written on stdout. ``quiet``, from -q alone, which sets the
+    level error, leaves a result as text unwritten, and what is said before a run that
+    asks nothing. ``stdin_terminal`` and ``stderr_terminal`` say whether someone can read
+    a question there and answer it. One not ``traced`` is no trace of its own, such as a
+    server's, each of whose requests is one. ``commands`` names those whose log files
+    past 30 days it removes; ``run`` is the id of the run that it resumes, None for a new
+    run.
+    """
+
+    command: str
+    level: Level
+    detail: Detail
+    format: Format
+    quiet: bool
+    stdin_terminal: bool
+    stderr_terminal: bool
+    dry_run: bool = False
+    traced: bool = True
+    commands: frozenset[str] = frozenset()
+    run: str | None = None
+    described: Mapping[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def check_quiet(self) -> Self:
+        """Refuse ``quiet`` at a level other than error, which -q sets."""
+        if self.quiet and self.level != "error":
+            message = f"quiet at the level {self.level}: -q sets the level error"
+            raise RefusedError(message)
+        return self
 
 
 def refused_fields(error: ValidationError) -> str:

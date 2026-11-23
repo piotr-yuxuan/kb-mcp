@@ -17,8 +17,8 @@ from kb_mcp.cli.domain.echo import before, ignored_lines
 from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model, values_of
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.output import Output
-from kb_mcp.observability.app.observed import Invocation, observed
+from kb_mcp.kernel.record import Invocation
+from kb_mcp.observability.app.observed import observed
 from kb_mcp.sources.registry import tables
 
 # What run.start names in place of an argument's value that the command keeps out of logs.
@@ -55,14 +55,6 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     it, unless -q. An exception or Ctrl-C ends the run as ``observed`` says.
     """
     command: Command = arguments.command
-    output = Output(
-        arguments.level,
-        arguments.detail,
-        arguments.format,
-        quiet=arguments.quiet,
-        stdin_terminal=sys.stdin.isatty(),
-        stderr_terminal=sys.stderr.isatty(),
-    )
     flags = {
         option: (setting, getattr(arguments, dest))
         for dest, (option, setting) in command.setting_flags(arguments).items()
@@ -73,6 +65,32 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     except SettingsError as error:
         structlog.get_logger().error("settings.refused", reason=str(error))
         return ExitStatus.REFUSED
+    resume = getattr(arguments, "resume", None)
+    # Each unlogged argument is a positional string, given as the last token equal to it.
+    hidden = {
+        len(given) - 1 - list(reversed(given)).index(getattr(arguments, dest))
+        for dest in command.unlogged
+    }
+    invocation = Invocation(
+        # A step, such as eval-agents' call, is observed as its command: their log files,
+        # root spans and kb_mcp.command share its name, as its pattern has it.
+        command=command.name.partition(" ")[0],
+        level=arguments.level,
+        detail=arguments.detail,
+        format=arguments.format,
+        quiet=arguments.quiet,
+        stdin_terminal=sys.stdin.isatty(),
+        stderr_terminal=sys.stderr.isatty(),
+        dry_run=command.dry_run and arguments.dry_run,
+        traced=command.traced,
+        commands=arguments.commands,
+        run=resume,
+        described={
+            "arguments": [UNLOGGED if at in hidden else each for at, each in enumerate(given)],
+            "settings": to_jsonable_python(loaded),
+            "telemetry_layer": loaded.layer("telemetry.endpoint"),
+        },
+    )
     refusal = command.refused(arguments, values_of(loaded.settings)) if command.refused else None
     refusal = refusal or next(
         (f"{name}: not found on PATH" for name in command.programs if not shutil.which(name)),
@@ -86,7 +104,6 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
         ),
         None,
     )
-    resume = getattr(arguments, "resume", None)
     resumed = (
         resumption(resume, loaded, sources, remote_allowed=arguments.allow_remote_embeddings)
         if refusal is None and resume
@@ -94,53 +111,32 @@ def enter(arguments: argparse.Namespace, given: Sequence[str], sources: Sequence
     )
     refusal = refusal or (resumed and resumed.refusal)
     if refusal is not None:
-        sys.stderr.write(ignored_lines(loaded.ignored if output.level != "error" else ()))
+        sys.stderr.write(ignored_lines(loaded.ignored if invocation.level != "error" else ()))
         structlog.get_logger().error("run.refused", reason=refusal)
         return ExitStatus.REFUSED
     said, then = before(
         arguments,
         loaded,
-        output,
+        invocation,
         lambda path: path.expanduser().absolute(),
         None if resumed is None else resumed.said,
     )
-    # Each unlogged argument is a positional string, given as the last token equal to it.
-    hidden = {
-        len(given) - 1 - list(reversed(given)).index(getattr(arguments, dest))
-        for dest in command.unlogged
-    }
     sys.stderr.write(said)
     stopped = ask(then, sys.stdin, sys.stderr)
     if stopped is not None:
         return stopped
     with observed(
-        output,
-        loaded.settings.logs.dir,
-        loaded.settings.telemetry.endpoint,
-        Invocation(
-            # A step, such as eval-agents' call, is observed as its command: their log
-            # files, root spans and kb_mcp.command share its name, as its pattern has it.
-            command=command.name.partition(" ")[0],
-            described={
-                "arguments": [UNLOGGED if at in hidden else each for at, each in enumerate(given)],
-                "settings": to_jsonable_python(loaded),
-                "telemetry_layer": loaded.layer("telemetry.endpoint"),
-            },
-            dry_run=command.dry_run and arguments.dry_run,
-            traced=command.traced,
-            commands=arguments.commands,
-            run=resume,
-        ),
-    ) as run:
+        invocation, loaded.settings.logs.dir, loaded.settings.telemetry.endpoint
+    ) as running:
         module = importlib.import_module(command.run)
         status, result = (
-            module.run(arguments, loaded, run.id, run.started)
+            module.run(arguments, loaded, running.id, running.started)
             if command.stages
             else module.run(arguments, loaded)
         )
-        if result is not None and output.format == "json":
+        if result is not None and invocation.format == "json":
             sys.stdout.write(f"{to_json(result, indent=2, inf_nan_mode='null').decode()}\n")
-        elif result is not None and not output.quiet:
-            sys.stdout.write(module.text(result, output.detail))
-        run.status = int(status)
-    return run.status
+        elif result is not None and not invocation.quiet:
+            sys.stdout.write(module.text(result, invocation.detail))
+        running.status = int(status)
+    return running.status

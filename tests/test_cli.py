@@ -24,7 +24,7 @@ from kb_mcp.cli import commands, options
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import setting_paths
 from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
-from kb_mcp.kernel.output import Output
+from kb_mcp.kernel.record import Invocation
 from tests.composed import MODEL
 from tests.endpoint import nothing_listening
 from tests.test_confirmation import read_until
@@ -547,7 +547,15 @@ def test_every_subcommand_takes_the_level_its_options_name(
 def test_quiet_is_at_the_level_error_alone(level: Level) -> None:
     """-q sets the level error, so that a run quiet at another level is a mistake."""
     with pytest.raises(ValueError, match="-q sets the level error"):
-        Output(level, "short", "text", quiet=True, stdin_terminal=False, stderr_terminal=False)
+        Invocation(
+            command="check",
+            level=level,
+            detail="short",
+            format="text",
+            quiet=True,
+            stdin_terminal=False,
+            stderr_terminal=False,
+        )
 
 
 @pytest.mark.parametrize(

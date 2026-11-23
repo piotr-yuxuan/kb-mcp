@@ -12,7 +12,6 @@ import importlib
 import logging
 import secrets
 import time
-from collections.abc import Mapping
 from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import UTC, datetime
 from importlib.metadata import version
@@ -20,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 from opentelemetry import metrics, trace
-from pydantic import AwareDatetime, ConfigDict, Field
+from pydantic import AwareDatetime, ConfigDict
 from rich.console import Console
 
 from kb_mcp.kernel.exit_status import ExitStatus
@@ -38,7 +37,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Output
+    from kb_mcp.kernel.record import Invocation
 
 # What exports telemetry, imported only for a run that has an endpoint: the SDK, its
 # exporters and requests take a tenth of a second to import, which a run without would
@@ -51,27 +50,10 @@ RUN_DURATION = metrics.get_meter(__name__).create_histogram(
 )
 
 
-class Invocation(Record):
-    """What a run is asked to do: its command, by name, and what ``run.start`` says of it.
+class Running(Record):
+    """An invocation that ``observed`` watches: its run's id, its start, the status its body sets.
 
-    A run that is not ``traced`` is no trace of its own, such as a server's, each of
-    whose requests is one. ``commands`` names those whose log files past 30 days the run
-    removes from its folder: none by default. ``run`` is the id of the run that this
-    invocation resumes, None for a new run, whose id ``observed`` makes.
-    """
-
-    command: str
-    described: Mapping[str, object] = Field(default_factory=dict)
-    dry_run: bool = False
-    traced: bool = True
-    commands: frozenset[str] = frozenset()
-    run: str | None = None
-
-
-class Run(Record):
-    """A run that ``observed`` watches: its id, its start, and the exit status its body sets.
-
-    ``started`` is the instant that names its log file.
+    ``started`` is the instant that names its log file. A new run's id is made here.
     """
 
     model_config = ConfigDict(frozen=False)
@@ -103,13 +85,8 @@ def early() -> Iterator[None]:
 
 
 @contextmanager
-def observed(
-    output: Output,
-    folder: Path,
-    endpoint: str | None,
-    invocation: Invocation,
-) -> Iterator[Run]:
-    """Observe a run as ``invocation`` has it, yielding a ``Run`` whose status the body sets.
+def observed(invocation: Invocation, folder: Path, endpoint: str | None) -> Iterator[Running]:
+    """Observe an invocation, yielding a ``Running`` whose status the body sets.
 
     Ctrl-C or an exception in the body goes no further: the status becomes
     ``ExitStatus.INTERRUPTED`` or ``ExitStatus.FAILED``. A ``folder`` that cannot be
@@ -121,14 +98,14 @@ def observed(
     root = logging.getLogger()
     log = structlog.get_logger()
     command = invocation.command
-    run = Run(id=invocation.run or secrets.token_hex(8), started=datetime.now(UTC))
+    running = Running(id=invocation.run or secrets.token_hex(8), started=datetime.now(UTC))
     with ExitStack() as stack:
         for handler in [handler for handler in root.handlers if isinstance(handler, ConsoleLines)]:
             root.removeHandler(handler)
             stack.callback(root.addHandler, handler)
-        console = Console(stderr=True, force_terminal=output.stderr_terminal)
-        stderr = ConsoleLines(console, logging.getLevelNamesMapping()[output.level.upper()])
-        bars = output.stderr_terminal and not output.quiet
+        console = Console(stderr=True, force_terminal=invocation.stderr_terminal)
+        stderr = ConsoleLines(console, logging.getLevelNamesMapping()[invocation.level.upper()])
+        bars = invocation.stderr_terminal and not invocation.quiet
         stderr.addFilter(lambda record: not bars or record.name != progress.__name__)
         root.addHandler(stderr)
         stack.callback(root.removeHandler, stderr)
@@ -136,14 +113,14 @@ def observed(
         path = None
         try:
             path = stack.enter_context(
-                log_file(folder, command, run.id, run.started, invocation.commands)
+                log_file(folder, command, running.id, running.started, invocation.commands)
             )
         except OSError as error:
             log.warning("log.unwritable", folder=str(folder), reason=str(error))
         if endpoint is not None:
             try:
                 exporting = importlib.import_module(TELEMETRY).exporting
-                stack.enter_context(exporting(endpoint, run.id, command))
+                stack.enter_context(exporting(endpoint, running.id, command))
             except OSError as error:
                 log.warning("telemetry.undelivered", endpoint=endpoint, reason=str(error))
         spanned = (
@@ -164,17 +141,17 @@ def observed(
         )
         began = time.monotonic()
         try:
-            yield run
+            yield running
         except KeyboardInterrupt:
-            run.status = ExitStatus.INTERRUPTED
+            running.status = ExitStatus.INTERRUPTED
             log.warning("run.interrupted", seconds=round(time.monotonic() - began, 3))
         except Exception:
-            run.status = ExitStatus.FAILED
+            running.status = ExitStatus.FAILED
             log.exception("run.failed", seconds=round(time.monotonic() - began, 3))
         else:
-            log.info("run.end", status=run.status, seconds=round(time.monotonic() - began, 3))
-        span.set_attribute("kb_mcp.exit_status", int(run.status))
+            log.info("run.end", status=running.status, seconds=round(time.monotonic() - began, 3))
+        span.set_attribute("kb_mcp.exit_status", int(running.status))
         RUN_DURATION.record(
             time.monotonic() - began,
-            {"kb_mcp.command": command, "kb_mcp.exit_status": int(run.status)},
+            {"kb_mcp.command": command, "kb_mcp.exit_status": int(running.status)},
         )

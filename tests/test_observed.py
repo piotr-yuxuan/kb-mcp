@@ -12,10 +12,10 @@ import structlog
 
 from kb_mcp.config.app.settings import default_log_folder
 from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.output import Output
+from kb_mcp.kernel.record import Invocation
 from kb_mcp.observability.adapters.logs import QUIET
 from kb_mcp.observability.adapters.progress import task
-from kb_mcp.observability.app.observed import Invocation, early, observed
+from kb_mcp.observability.app.observed import early, observed
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,12 +38,16 @@ def said(err: str) -> list[tuple[str, ...]]:
     return [match.groups() for match in map(LOG_LINE.match, err.splitlines()) if match]
 
 
-def output(level: Level, *, terminal: bool = False) -> Output:
-    """Give how a run reports at a level, stderr piped unless a ``terminal``, -q at error."""
-    return Output(
-        level,
-        "short",
-        "text",
+def invocation(level: Level, *, terminal: bool = False, command: str = "check") -> Invocation:
+    """Give an invocation of ``command`` at a level, stderr piped unless a ``terminal``.
+
+    -q at the level error.
+    """
+    return Invocation(
+        command=command,
+        level=level,
+        detail="short",
+        format="text",
         quiet=level == "error",
         stdin_terminal=False,
         stderr_terminal=terminal,
@@ -79,7 +83,7 @@ def test_a_run_s_stderr_takes_the_place_of_early_s_and_gives_it_back(
 ) -> None:
     """At the run's level while it lasts, each line once; from WARNING again after."""
     with early():
-        with observed(output("debug"), default_log_folder(), None, Invocation(command="check")):
+        with observed(invocation("debug"), default_log_folder(), None):
             structlog.get_logger().debug("run.inside")
         structlog.get_logger().info("early.info")
         structlog.get_logger().warning("early.warning")
@@ -100,7 +104,7 @@ def test_a_run_outside_early_logs_through_the_standard_library_all_the_same(
     """
     levels = {name: logging.getLogger(name).level for name in ("", *QUIET)}
     try:
-        with observed(output("warning"), tmp_path, None, Invocation(command="check")):
+        with observed(invocation("warning"), tmp_path, None):
             structlog.get_logger().info("some.event")
     finally:
         structlog.reset_defaults()
@@ -121,10 +125,10 @@ def test_a_run_has_an_id_with_or_without_a_file_whose_lines_carry_it(tmp_path: P
     blocking.write_text("", "utf-8")
     with (
         early(),
-        observed(output("info"), blocking / "logs", None, Invocation(command="check")) as alone,
+        observed(invocation("info"), blocking / "logs", None) as alone,
     ):
         assert re.fullmatch("[0-9a-f]{16}", alone.id)
-    with early(), observed(output("info"), logs, None, Invocation(command="check")) as filed:
+    with early(), observed(invocation("info"), logs, None) as filed:
         assert re.fullmatch("[0-9a-f]{16}", filed.id)
     assert filed.id != alone.id
     (path,) = logs.iterdir()
@@ -147,7 +151,7 @@ def test_a_run_ends_with_its_body_s_status_or_as_failed_or_interrupted(
 ) -> None:
     """What the body lets through is said, and goes no further: its status says it."""
     folder = default_log_folder()
-    with early(), observed(output("info"), folder, None, Invocation(command="check")) as run:
+    with early(), observed(invocation("info"), folder, None) as run:
         run.status = 3
         if raised is not None:
             raise raised
@@ -158,17 +162,17 @@ def test_a_run_ends_with_its_body_s_status_or_as_failed_or_interrupted(
 @pytest.mark.parametrize(
     ("reported", "bar", "events"),
     [
-        (output("info", terminal=True), True, False),
-        (output("debug", terminal=True), True, False),
-        (output("error", terminal=True), False, False),
-        (output("info", terminal=False), False, True),
-        (output("warning", terminal=False), False, False),
+        (invocation("info", terminal=True, command="index"), True, False),
+        (invocation("debug", terminal=True, command="index"), True, False),
+        (invocation("error", terminal=True, command="index"), False, False),
+        (invocation("info", terminal=False, command="index"), False, True),
+        (invocation("warning", terminal=False, command="index"), False, False),
     ],
 )
 def test_progress_is_bars_on_a_terminal_unless_quiet_else_its_events_from_info(
     capsys: CaptureFixture[str],
     monkeypatch: MonkeyPatch,
-    reported: Output,
+    reported: Invocation,
     *,
     bar: bool,
     events: bool,
@@ -177,7 +181,7 @@ def test_progress_is_bars_on_a_terminal_unless_quiet_else_its_events_from_info(
     monkeypatch.setenv("NO_COLOR", "1")
     with (
         early(),
-        observed(reported, default_log_folder(), None, Invocation(command="index")),
+        observed(reported, default_log_folder(), None),
         task("files", 2) as files,
     ):
         files.advance(2)
