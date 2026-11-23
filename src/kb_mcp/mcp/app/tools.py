@@ -26,9 +26,8 @@ from opentelemetry import metrics, trace
 from pydantic import Field
 
 from kb_mcp.config.domain.settings import SearchMode as Mode
-from kb_mcp.kernel.names import DOCUMENT_ID
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.reranking import DEPTHS, LONGEST_QUERY
+from kb_mcp.kernel.names import DEPTHS, DOCUMENT_ID, LONGEST_QUERY
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app import responses
 from kb_mcp.mirror.domain.mirror import ROLES, document_id
 from kb_mcp.search.app.meaning import Nearest

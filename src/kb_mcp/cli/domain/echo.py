@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.cli.domain.command import Command
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.record import Invocation
+    from kb_mcp.kernel.records import Invocation
 
 # What follows what a run says before it acts: the run, a question first, or a refusal,
 # since no one could answer one.

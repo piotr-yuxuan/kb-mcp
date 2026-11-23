@@ -21,7 +21,7 @@ import pytest
 import kb_mcp
 from kb_mcp import sources
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.domain.content import Space
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue
 from kb_mcp.sources.registry import SOURCES

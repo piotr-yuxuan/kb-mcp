@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import structlog
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.adapters.conversions import WAIT_S
 from kb_mcp.observability.adapters.progress import task
 

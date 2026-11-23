@@ -1045,7 +1045,7 @@ which is only the example: any such server works.
   so new weights call for new vectors; another server lists none, and vectors then
   follow the model's name alone. The text sent is the company's content: an address
   that is not a literal one of this machine needs `--allow-remote-embeddings` on every
-  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). Each
+  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/names.py)). Each
   `eval-agents call` is such a run, which an agent makes: the person running the
   evaluation, and only they, tells each subagent to add the flag right after `call` in
   every bridge command, in a sentence that replaces the subagent's usual instruction
@@ -1156,7 +1156,7 @@ merges them and keeps each value's layer.
 ## Records as Pydantic models
 
 Each value of the program, a document, a setting's layer or a run's outcome, is a
-[`Record`](../../src/kb_mcp/kernel/record.py): a Pydantic model built by keyword,
+[`Record`](../../src/kb_mcp/kernel/records.py): a Pydantic model built by keyword,
 checked where it is built, and frozen unless it accumulates. Fifteen classes stay
 dataclasses, each for the reason that [the code's layout](code-layout.md#records) gives.
 

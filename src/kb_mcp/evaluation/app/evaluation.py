@@ -41,8 +41,8 @@ from kb_mcp.evaluation.domain.evaluation import (
     quoting,
 )
 from kb_mcp.evaluation.domain.golden import Golden
-from kb_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.domain.settings import Settings
     from kb_mcp.evaluation.domain.evaluation import Choice
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
 
 MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)

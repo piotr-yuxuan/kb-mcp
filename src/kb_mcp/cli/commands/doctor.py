@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 from kb_mcp.cli.app.doctor import doctor
 from kb_mcp.cli.options.doctor import checked
 from kb_mcp.config.domain.settings import values_of
-from kb_mcp.kernel.exit_status import ExitStatus, folded
+from kb_mcp.kernel.names import ExitStatus, folded
 
 if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.stages import Check
 
 

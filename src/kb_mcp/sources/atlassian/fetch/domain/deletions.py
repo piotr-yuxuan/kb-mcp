@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Self
 from pydantic import model_validator
 
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.domain.coverage import Scope
 
 if TYPE_CHECKING:

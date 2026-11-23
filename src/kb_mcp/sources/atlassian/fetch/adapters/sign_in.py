@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 from pydantic import Field
 
 from kb_mcp.config.domain.settings import variable
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import SignInNeededError
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (

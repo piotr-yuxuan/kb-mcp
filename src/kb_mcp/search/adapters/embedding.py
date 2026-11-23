@@ -22,7 +22,7 @@ from numpy.typing import NDArray
 from opentelemetry import trace
 from pydantic import ConfigDict
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,

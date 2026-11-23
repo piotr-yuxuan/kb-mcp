@@ -29,8 +29,8 @@ import pytest
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.names import ExitStatus
+from kb_mcp.kernel.records import Problem
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA

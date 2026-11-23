@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from opentelemetry import trace
 
-from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.kernel.names import CHUNKINGS
 from kb_mcp.mirror.adapters.conversions import damaged
 from kb_mcp.mirror.domain.mirror import FrontMatter, Link, Mention, SourceFile
 from kb_mcp.search.adapters import vector_cache
@@ -63,7 +63,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.domain.indexes import Change, Put
     from kb_mcp.search.domain.search import Matched, Sort
 

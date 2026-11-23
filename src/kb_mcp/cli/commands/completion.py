@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 
 import argcomplete
 
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.names import PROGRAM
+from kb_mcp.kernel.names import PROGRAM, ExitStatus
 
 if TYPE_CHECKING:
     import argparse

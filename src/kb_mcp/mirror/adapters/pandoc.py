@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

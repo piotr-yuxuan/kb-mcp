@@ -9,14 +9,12 @@ from typing import TYPE_CHECKING, override
 from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
-from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
-from kb_mcp.kernel.names import MODEL_NAME
-from kb_mcp.kernel.output import DETAILS, FORMATS, LEVELS
+from kb_mcp.kernel.names import DETAILS, EMBEDDINGS, FORMATS, LEVELS, MODEL_NAME, refused_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from kb_mcp.kernel.output import Level
+    from kb_mcp.kernel.names import Level
 
 # What took the place of --site, which is gone.
 SITE_GONE = (

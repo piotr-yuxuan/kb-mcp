@@ -28,7 +28,7 @@ from kb_mcp.config.domain.settings import (
     Settings,
     SettingsError,
 )
-from kb_mcp.kernel.endpoint import EMBEDDINGS, Service
+from kb_mcp.kernel.names import EMBEDDINGS, Service
 from kb_mcp.search.adapters import embedding
 from kb_mcp.search.adapters.embedding import (
     BATCH,

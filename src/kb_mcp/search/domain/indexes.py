@@ -21,7 +21,7 @@ import json
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, SourceFile
 from kb_mcp.search.domain.people import JoinOutcome
 from kb_mcp.search.domain.search import Chunk, Section

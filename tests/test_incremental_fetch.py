@@ -14,7 +14,7 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.records import Problem
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.search.adapters.sqlite_index import reading
 from kb_mcp.search.app.indexing import build_index, updated
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.exit_status import Ending
+    from kb_mcp.kernel.names import Ending
 
 FIRST = datetime(2026, 10, 22, 9, tzinfo=UTC)
 SECOND = datetime(2026, 10, 23, 9, tzinfo=UTC)

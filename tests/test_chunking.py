@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, get_args
 import numpy as np
 import pytest
 
-from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
+from kb_mcp.kernel.names import CHUNKINGS, Chunking
 from kb_mcp.search.domain.chunking import CHUNKERS, section_chunks
 from kb_mcp.search.domain.search import sections
 from tests.mirrors import page

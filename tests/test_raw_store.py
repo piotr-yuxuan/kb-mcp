@@ -12,7 +12,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import StoreBusyError
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.records import Problem
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
 from kb_mcp.sources.atlassian.fetch.domain import names

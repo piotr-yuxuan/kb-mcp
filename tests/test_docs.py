@@ -37,7 +37,7 @@ from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.main import parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from tests.test_serve import talk
 
 if TYPE_CHECKING:

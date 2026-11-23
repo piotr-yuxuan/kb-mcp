@@ -148,7 +148,7 @@ starts there, here `given`; a `--since` that does not come before the fetch wind
 which fails that unit alone, naming both options. Each unit runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A unit runs even when the
 one before it failed, as it reads what is on disk. The exit status folds the units'
-endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/exit_status.py)):
+endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/names.py)):
 interrupted, then sign in again, then failed; else 0.
 
 ### 4. The source and the site's port
@@ -312,7 +312,7 @@ leaves out those confirmed gone, unless a listing taken since names them again, 
 page or a post in the space whose freshest listing names it, and names each one's file
 by [`confluence_path`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py): the
 source's name, the space's key, then the id and the title's
-[`slug`](../../src/kb_mcp/kernel/slug.py).
+[`slug`](../../src/kb_mcp/kernel/names.py).
 
 [`document_file`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) then builds each
 document's file:
@@ -404,9 +404,9 @@ compares them with the index, to warn when they differ, and reads nothing else o
 Only then does it open the embedding endpoint, by
 [`open_endpoint`](../../src/kb_mcp/cli/commands/_embedding.py), then
 [`endpoint`](../../src/kb_mcp/search/adapters/model_api.py), the only way to
-a client: [`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py) refuses
+a client: [`refused_endpoint`](../../src/kb_mcp/kernel/names.py) refuses
 an address that is not a literal one of this machine
-([`loopback`](../../src/kb_mcp/kernel/endpoint.py)) unless the run allows
+([`loopback`](../../src/kb_mcp/kernel/names.py)) unless the run allows
 it, and plain http to one even then. The default,
 [`DEFAULT_EMBEDDING_URL`](../../src/kb_mcp/config/domain/settings.py), is
 Ollama's on `127.0.0.1`. An API key, if the environment gives one, goes as the bearer
@@ -487,7 +487,7 @@ outcome has no problem.
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/outcome.py). `index`
+its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/records.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).

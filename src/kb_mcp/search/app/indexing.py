@@ -30,10 +30,9 @@ import structlog
 from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field
 
-from kb_mcp.kernel.chunking import Chunking
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import Chunking
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem, Record
 from kb_mcp.mirror.adapters import markdown
 from kb_mcp.mirror.adapters.source_files import source_files
 from kb_mcp.observability.adapters.progress import task
@@ -59,7 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from datetime import datetime
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.mirror.domain.mirror import SourceFile
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.domain.indexes import Held, IndexedBody, SearchIndex, WordsIndex

@@ -33,9 +33,8 @@ from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.runs import Unit
 from kb_mcp.cli.domain.sources import chosen, fetch_described, given, refusals
 from kb_mcp.cli.main import main, parser
-from kb_mcp.kernel.exit_status import Ending, ExitStatus
-from kb_mcp.kernel.names import StoreBusyError
-from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.names import Ending, ExitStatus, StoreBusyError
+from kb_mcp.kernel.records import Outcome, Problem
 from kb_mcp.mirror.adapters import pandoc as pandoc_adapter
 from kb_mcp.mirror.adapters.mirror_files import Changes
 from kb_mcp.mirror.adapters.pandoc import (

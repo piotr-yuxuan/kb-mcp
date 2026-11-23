@@ -31,7 +31,7 @@ from mcp.client.stdio import StdioServerParameters
 
 from kb_mcp.cli.adapters.run_record import RunRecord
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mirror.adapters.pandoc import Pandoc
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.app.indexing import Embedding, build_index

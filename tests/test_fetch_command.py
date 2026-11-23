@@ -15,7 +15,7 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.records import Outcome, Problem
 from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore

@@ -87,7 +87,7 @@ what its echo says.
 ## The stages' interfaces
 
 A fetcher or a preparer takes a [`SourceRun`](../../src/kb_mcp/sources/stages.py), the source that it runs for and
-all that it reads, and gives an [`Outcome`](../../src/kb_mcp/kernel/outcome.py). Any object
+all that it reads, and gives an [`Outcome`](../../src/kb_mcp/kernel/records.py). Any object
 with an interface's methods is one, and each source's is a module, its functions the
 methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
 it against the runtime-checkable protocol. It may use the interfaces, the mirror,
@@ -112,7 +112,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   Atlassian's does not run.
 - **A result** is a record, which `--format json` writes as every result, and whose `text`
   its row writes ([`text`](../../src/kb_mcp/cli/commands/sources.py)). Each keeps its
-  own problems: a [`Problem`](../../src/kb_mcp/kernel/outcome.py) has a place and a
+  own problems: a [`Problem`](../../src/kb_mcp/kernel/records.py) has a place and a
   reason, and the work log's counts say by that place what each held back.
 - **Pandoc is the preparers' own.** `SourceRun` holds no tool that one of them alone needs, so each
   preparer that converts finds it
@@ -350,7 +350,7 @@ the fetcher or a preparer that its declaration names
 ([`source_planned`](../../src/kb_mcp/cli/app/sources.py)), which its `preflight` begins.
 Each unit runs even when another source's failed, since the next reads what is on disk;
 a source's prepare runs once its fetch is done; Ctrl-C stops the rest, and the units'
-endings fold into the exit status ([`folded`](../../src/kb_mcp/kernel/exit_status.py)). A
+endings fold into the exit status ([`folded`](../../src/kb_mcp/kernel/names.py)). A
 row names its source, with its result's text
 ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` are units over the
 whole, `index` reading the mirror whatever sources it holds, and `embed` the index, and

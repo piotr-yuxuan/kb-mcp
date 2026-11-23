@@ -42,11 +42,22 @@ from pydantic import (
 )
 from pydantic_core import PydanticCustomError
 
-from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
-from kb_mcp.kernel.names import CONNECTOR, MODEL_NAME, NESTING, PREFIX, RESERVED, SOURCE_NAME
-from kb_mcp.kernel.record import Record, refused_fields
-from kb_mcp.kernel.reranking import DEPTHS
+from kb_mcp.kernel.names import (
+    CHUNKINGS,
+    CONNECTOR,
+    DEPTHS,
+    MODEL_NAME,
+    NESTING,
+    PREFIX,
+    RERANKING,
+    RESERVED,
+    SOURCE_NAME,
+    TELEMETRY,
+    Chunking,
+    endpoint_host,
+    refused_endpoint,
+)
+from kb_mcp.kernel.records import Record, refused_fields
 
 if TYPE_CHECKING:
     import re

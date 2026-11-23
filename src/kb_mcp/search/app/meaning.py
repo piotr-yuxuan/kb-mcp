@@ -12,7 +12,7 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.domain.search import Matched, Score
 

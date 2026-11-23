@@ -39,10 +39,9 @@ from kb_mcp.cli.domain.runs import (
 )
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import with_secrets, without_secrets
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.names import ExitStatus, RefusedError
+from kb_mcp.kernel.records import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher

@@ -20,8 +20,8 @@ import httpx
 import structlog
 from opentelemetry import trace
 
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.reranking import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
+from kb_mcp.kernel.names import LONGEST_QUERY, LONGEST_TEXT, MOST_TEXTS
+from kb_mcp.kernel.records import Record
 from kb_mcp.observability.adapters.http import client_span, server
 from kb_mcp.search.adapters.model_api import (
     OPERATION_DURATION,

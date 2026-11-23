@@ -23,8 +23,8 @@ import kb_mcp
 from kb_mcp.cli import commands, options
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import setting_paths
-from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
-from kb_mcp.kernel.record import Invocation
+from kb_mcp.kernel.names import MEANINGS, ExitStatus
+from kb_mcp.kernel.records import Invocation
 from tests.composed import MODEL
 from tests.endpoint import nothing_listening
 from tests.test_confirmation import read_until
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.kernel.output import Level
+    from kb_mcp.kernel.names import Level
 
 ROOT = Path(__file__).parents[1]
 # The exit status for what is refused before acting: options, and settings, an unsafe data

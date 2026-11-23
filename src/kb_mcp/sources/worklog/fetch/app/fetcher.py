@@ -14,7 +14,7 @@ import structlog
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import StoreBusyError
-from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.records import Outcome, Problem
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import STORE
 from kb_mcp.sources.worklog.fetch.app.fetching import fetch_worklog
 

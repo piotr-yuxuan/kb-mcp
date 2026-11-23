@@ -18,7 +18,7 @@ from kb_mcp.cli.options._common import (
     endpoint_elsewhere,
 )
 from kb_mcp.cli.options.evaluate_agents import positive
-from kb_mcp.kernel.reranking import BAR_DEPTHS, DEPTHS
+from kb_mcp.kernel.names import BAR_DEPTHS, DEPTHS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

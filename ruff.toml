@@ -26,7 +26,7 @@ max-complexity = 10
 # a record subclassed in another module is named too: the tests' Counting is a Pandoc,
 # a source's row an Outcome.
 runtime-evaluated-base-classes = [
-  "kb_mcp.kernel.record.Record",
+  "kb_mcp.kernel.records.Record",
   "kb_mcp.mirror.adapters.pandoc.Pandoc",
-  "kb_mcp.kernel.outcome.Outcome",
+  "kb_mcp.kernel.records.Outcome",
 ]

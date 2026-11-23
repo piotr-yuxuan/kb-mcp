@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.commands._embedding import open_endpoint
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import ExitStatus
+from kb_mcp.kernel.records import Record
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.app.indexing import prefixes_said
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 # Characters of a digest shown, as Ollama shows them.
 SHORT = 12

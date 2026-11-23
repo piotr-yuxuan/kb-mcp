@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore

@@ -15,7 +15,7 @@ from hashlib import sha256
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.outcome import Outcome
+from kb_mcp.kernel.records import Outcome
 from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter, scope_name
@@ -24,7 +24,7 @@ from kb_mcp.mirror.domain.mirror_text import one_line
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.stages import SourceRun
 
 # The source's name, which is its folder of the mirror too, as the registry's rule has it.

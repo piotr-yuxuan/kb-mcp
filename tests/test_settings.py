@@ -28,15 +28,15 @@ from kb_mcp.config.domain.settings import (
     settings_of,
     unsafe_location,
 )
-from kb_mcp.kernel.endpoint import (
+from kb_mcp.kernel.names import (
     EMBEDDINGS,
     RERANKING,
     TELEMETRY,
+    ExitStatus,
     Service,
     loopback,
     refused_endpoint,
 )
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.settings import ConfluenceTable
 from kb_mcp.sources.worklog.settings import WorklogTable
 from tests.composed import MODEL

@@ -111,7 +111,7 @@ choose among those that a command can take
   resume ([`run_units`](../../src/kb_mcp/cli/app/units.py)). The exit status folds how
   every unit last ended, whichever invocation ended it, and the run's own: interrupted,
   then sign in again, then failed
-  ([`folded`](../../src/kb_mcp/kernel/exit_status.py)).
+  ([`folded`](../../src/kb_mcp/kernel/names.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 
 ## Fetch: from the site to the raw store

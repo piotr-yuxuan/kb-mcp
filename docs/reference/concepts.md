@@ -458,8 +458,8 @@ URL or a path in the mirror. Tools answer with rankings, with documents and thei
 sections, with scopes and their trees, and with the state of the index: what it holds
 and when it was built.
 
-**In the code.** [`Tool`](../../src/kb_mcp/kernel/tools.py) and
-[`TOOLS`](../../src/kb_mcp/kernel/tools.py);
+**In the code.** [`Tool`](../../src/kb_mcp/kernel/names.py) and
+[`TOOLS`](../../src/kb_mcp/kernel/names.py);
 [`Library`](../../src/kb_mcp/mcp/app/tools.py),
 [`cursor_at`](../../src/kb_mcp/mcp/app/tools.py),
 [`continued`](../../src/kb_mcp/mcp/app/tools.py),
@@ -647,19 +647,19 @@ absolute by [`Option.absolute`](../../src/kb_mcp/sources/declaration.py). The un
 [`run_units`](../../src/kb_mcp/cli/app/units.py), its last entry a
 [`Recorded`](../../src/kb_mcp/cli/domain/runs.py); `refresh`, and its `--resume`,
 [`resumption`](../../src/kb_mcp/cli/app/resumption.py). The outcome:
-[`Outcome`](../../src/kb_mcp/kernel/outcome.py), with
-[`OutcomeWarning`](../../src/kb_mcp/kernel/outcome.py), whose counts are each
+[`Outcome`](../../src/kb_mcp/kernel/records.py), with
+[`OutcomeWarning`](../../src/kb_mcp/kernel/records.py), whose counts are each
 stage's record, such as
 [`FetchCounts`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) and
 [`IndexCounts`](../../src/kb_mcp/search/app/indexing.py); embed's
 [`Filled`](../../src/kb_mcp/search/app/indexing.py). The ending:
-[`Ending`](../../src/kb_mcp/kernel/exit_status.py) and
-[`folded`](../../src/kb_mcp/kernel/exit_status.py),
+[`Ending`](../../src/kb_mcp/kernel/names.py) and
+[`folded`](../../src/kb_mcp/kernel/names.py),
 [`Check`](../../src/kb_mcp/sources/stages.py) and
 [`Check.state`](../../src/kb_mcp/sources/stages.py),
-[`ExitStatus`](../../src/kb_mcp/kernel/exit_status.py) and
-[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py). The problem:
-[`Problem`](../../src/kb_mcp/kernel/outcome.py).
+[`ExitStatus`](../../src/kb_mcp/kernel/names.py) and
+[`MEANINGS`](../../src/kb_mcp/kernel/names.py). The problem:
+[`Problem`](../../src/kb_mcp/kernel/records.py).
 
 ### store
 
@@ -769,15 +769,15 @@ does likewise, each under its own invocation's consent. Every run sends the tele
 endpoint what it records, when one is set. A ranking notes when it went without a
 service; a failing service is skipped for a while rather than called on every query.
 
-**In the code.** [`Service`](../../src/kb_mcp/kernel/endpoint.py),
-[`EMBEDDINGS`](../../src/kb_mcp/kernel/endpoint.py),
-[`RERANKING`](../../src/kb_mcp/kernel/endpoint.py) and
-[`TELEMETRY`](../../src/kb_mcp/kernel/endpoint.py);
-[`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py), the services' rules, which
+**In the code.** [`Service`](../../src/kb_mcp/kernel/names.py),
+[`EMBEDDINGS`](../../src/kb_mcp/kernel/names.py),
+[`RERANKING`](../../src/kb_mcp/kernel/names.py) and
+[`TELEMETRY`](../../src/kb_mcp/kernel/names.py);
+[`refused_endpoint`](../../src/kb_mcp/kernel/names.py), the services' rules, which
 [`rerank_address`](../../src/kb_mcp/config/domain/settings.py) and
 [`telemetry_address`](../../src/kb_mcp/config/domain/settings.py) check too;
-[`loopback`](../../src/kb_mcp/kernel/endpoint.py) and
-[`endpoint_host`](../../src/kb_mcp/kernel/endpoint.py);
+[`loopback`](../../src/kb_mcp/kernel/names.py) and
+[`endpoint_host`](../../src/kb_mcp/kernel/names.py);
 [`QUIET_S`](../../src/kb_mcp/search/app/meaning.py), how long a failing service is
 skipped; the commands `model` and `reranker`; the telemetry exporter
 ([the telemetry reference](telemetry/README.md)).
@@ -830,7 +830,7 @@ store's own records.
   [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py), one
   source's view of it, which holds the source's name,
   [`StoredSnapshot`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py) and,
-  for what its adapter refuses, a [`Problem`](../../src/kb_mcp/kernel/outcome.py).
+  for what its adapter refuses, a [`Problem`](../../src/kb_mcp/kernel/records.py).
 
 ### snapshot
 
@@ -928,8 +928,8 @@ their layers, each source's lines, and the command to copy.
 One axis of how a [run](#run)'s result is written, beside its format and level: `short`
 or `detailed`. JSON ignores it.
 
-- **In the code.** [`Detail`](../../src/kb_mcp/kernel/output.py) and
-  [`DETAILS`](../../src/kb_mcp/kernel/output.py); the option `--detail`.
+- **In the code.** [`Detail`](../../src/kb_mcp/kernel/names.py) and
+  [`DETAILS`](../../src/kb_mcp/kernel/names.py); the option `--detail`.
 
 ### setting
 

@@ -15,8 +15,7 @@ import stat
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
-from kb_mcp.kernel.outcome import Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Problem, Record
 from kb_mcp.sources.worklog.fetch.domain.worklog import (
     ARCHIVED,
     ORG,

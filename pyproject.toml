@@ -94,7 +94,9 @@ id = "C"
 name = "Pure rules, in any context, use no effect and no use case"
 type = "forbidden"
 source_modules = [
-  "kb_mcp.kernel",
+  "kb_mcp.kernel.names",
+  "kb_mcp.kernel.fields",
+  "kb_mcp.kernel.records",
   "kb_mcp.**.domain",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
@@ -104,9 +106,33 @@ source_modules = [
 forbidden_modules = [
   "kb_mcp.**.adapters",
   "kb_mcp.**.app",
+  "httpx",
+  "sqlite3",
+  "subprocess",
+  "socket",
+  "ssl",
+  "requests",
+  "truststore",
+  "certifi",
+  "anyio",
+  "playwright",
+  "mcp",
+  "structlog",
+  "logging",
   "opentelemetry",
   "rich",
-  "structlog",
+  "os",
+  "sys",
+  "time",
+  "fcntl",
+  "tempfile",
+  "shutil",
+  "threading",
+  "secrets",
+  "uuid",
+  "random",
+  "importlib",
+  "platformdirs",
 ]
 
 [[tool.importlinter.contracts]]
@@ -136,7 +162,7 @@ forbidden_modules = ["kb_mcp.sources"]
 id = "F"
 name = "Use cases and commands reach the network through effects only"
 type = "forbidden"
-source_modules = ["kb_mcp.**.app", "kb_mcp.cli.commands"]
+source_modules = ["kb_mcp.**.app", "kb_mcp.cli.commands", "kb_mcp.kernel"]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true
 
@@ -147,6 +173,8 @@ type = "forbidden"
 source_modules = [
   "kb_mcp.cli.main",
   "kb_mcp.cli.options",
+  "kb_mcp.kernel.names",
+  "kb_mcp.kernel.fields",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
   "kb_mcp.sources.*.declared",

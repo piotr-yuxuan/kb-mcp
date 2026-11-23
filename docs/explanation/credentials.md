@@ -134,7 +134,7 @@ It is sent as `Authorization: Bearer`, to the endpoint alone and only when set
 The key travels with the mirror's text, so the rule that keeps the text keeps the key:
 the endpoint must be a literal address of this machine, unless the run's own command
 line says `--allow-remote-embeddings`, and one elsewhere is reached over https alone
-([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py),
+([`refused_endpoint`](../../src/kb_mcp/kernel/names.py),
 [`test_a_remote_endpoint_needs_the_flag_and_https`](../../tests/test_embedding.py)). No
 run hands its word to a later one: `eval-agents prepare` writes it into none of the
 runs' files, and each `eval-agents call` of runs that need it is given it or refused
@@ -262,7 +262,7 @@ mistake. None of it stops someone who is already on the machine as you:
   disk's own encryption, such as FileVault or LUKS, is what keeps a lost machine's data.
 - **A tunnel.** The services' rules, of the embedding endpoint, the reranking server and
   telemetry's, trust that a loopback address is this machine
-  ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). A port of this
+  ([`refused_endpoint`](../../src/kb_mcp/kernel/names.py)). A port of this
   machine forwarded elsewhere, by an SSH tunnel say, carries what is sent to it there:
   the mirror's text and the key, or telemetry's records. The rule cannot see it.
 - **A copy made before the end.** A session or a token copied elsewhere signs in as you

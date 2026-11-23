@@ -253,7 +253,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mirror.adapters.markdown import documents
 from kb_mcp.mirror.domain.count import per_source
 from kb_mcp.sources.registry import SOURCES
@@ -262,7 +262,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, dict[str, int]]:

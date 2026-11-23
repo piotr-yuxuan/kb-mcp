@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.endpoint import EMBEDDINGS
+from kb_mcp.kernel.names import EMBEDDINGS
 from kb_mcp.search.adapters.model_api import Endpoint, endpoint
 from kb_mcp.search.app.indexing import Indexing
 

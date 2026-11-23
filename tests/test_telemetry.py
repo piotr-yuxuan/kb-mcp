@@ -27,7 +27,7 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.trace import TracerProvider
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.observability.adapters.logs import SDK
 from kb_mcp.observability.adapters.telemetry import Exported
 from kb_mcp.observability.app.observed import early

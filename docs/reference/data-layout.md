@@ -1009,7 +1009,7 @@ the words of each section's title, labels, breadcrumb, heading and body, whose c
 table `chunks` (each chunk of a section's body, its range and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row
-`chunking`, how the chunks were cut (one of `kernel.chunking`'s names), empty without a
+`chunking`, how the chunks were cut (one of `kernel.names.CHUNKINGS`), empty without a
 model; an index without the row, 011's or 018's, was cut by `sections`. A chunk keeps
 the section that holds its middle and its range in the document's body, so that a window
 may cross sections; before schema 7, its range was in that section's body. Plan 023 adds the column `key` to
@@ -1281,7 +1281,7 @@ OpenAI-compatible endpoint, the setting `embedding_url` (by default Ollama's
 `http://127.0.0.1:11434/v1`), and `search.adapters.reranking` alone a reranking server,
 the setting `rerank.url` (by default `http://127.0.0.1:9931/v1`, plan 022). Both
 connect through `search.adapters.model_api`, which refuses an address that is not a
-literal loopback one by the kernel's rule (`kernel.endpoint`): for embeddings unless
+literal loopback one by the kernel's rule (`kernel.names.refused_endpoint`): for embeddings unless
 the command is given `--allow-remote-embeddings`, for reranking always. Nothing that
 the reranking server answers is stored. A model's fingerprint is the
 SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty from a

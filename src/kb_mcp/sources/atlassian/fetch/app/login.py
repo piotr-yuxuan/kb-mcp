@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 import structlog
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.adapters.browser import (
     SignInFailedError,
     disable_password_saving,

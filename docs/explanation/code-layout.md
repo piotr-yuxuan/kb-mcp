@@ -181,7 +181,7 @@ the root of another package, which OpenTelemetry's API and SDK share: so
 ## Records
 
 A record is a value of the program: a document, a setting's layer, a run's outcome. Each
-is a `kernel.record.Record`, a Pydantic model built by keyword and checked at
+is a `kernel.records.Record`, a Pydantic model built by keyword and checked at
 construction, frozen unless it accumulates as a run goes (`model_config =
 ConfigDict(frozen=False)`). A record refuses a keyword it does not know, and its errors
 never print a value. Plan 028 made the program's dataclasses records. Their rules:
@@ -204,7 +204,7 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   methods.
 - Pydantic reads a record's annotations, so the types they name are imported at run
   time, never under `TYPE_CHECKING`, and so is a `type` alias that they name. Ruff
-  knows records by their base, `kb_mcp.kernel.record.Record`, which `ruff.toml` names
+  knows records by their base, `kb_mcp.kernel.records.Record`, which `ruff.toml` names
   among its runtime-evaluated base classes, and reports an import to move as TC004; it
   does not report an alias. A record base defined in one module and subclassed in
   another joins that list.
@@ -216,7 +216,7 @@ table is one:
 | Class | Why it stays a dataclass |
 |---|---|
 | `cli.domain.command.Command` | G: `--help` imports it |
-| `kernel.endpoint.Service` | G: `--help` imports it |
+| `kernel.names.Service` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `sources.declaration.Connector` | G: `--help` imports it |
 | `sources.declaration.DocumentType` | G: `--help` imports it |

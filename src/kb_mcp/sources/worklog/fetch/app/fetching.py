@@ -19,8 +19,7 @@ from opentelemetry import trace
 
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE, RefusedError
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem, Record
 from kb_mcp.mirror.adapters.markdown import documents, load
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_file
 from kb_mcp.mirror.domain.mirror import scope_name
@@ -48,7 +47,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.worklog.fetch.domain.worklog import OrgText
     from kb_mcp.sources.worklog.settings import WorklogTable
 

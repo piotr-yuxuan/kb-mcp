@@ -19,7 +19,7 @@ import pytest
 
 from kb_mcp.cli.commands import sources as sources_command
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies

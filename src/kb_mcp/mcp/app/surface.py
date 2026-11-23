@@ -13,8 +13,8 @@ import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.tools import Tool
+from kb_mcp.kernel.names import Tool
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import LONGEST, UnanswerableError, bounded, instant
 

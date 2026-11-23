@@ -15,7 +15,7 @@ from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
 from kb_mcp.kernel.names import StoreBusyError
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.records import Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,

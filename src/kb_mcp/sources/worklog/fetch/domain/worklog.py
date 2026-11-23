@@ -20,10 +20,8 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import ConfigDict, Field, model_validator
 
-from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE, RefusedError, require
-from kb_mcp.kernel.outcome import OutcomeWarning
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.slug import slug
+from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE, RefusedError, require, slug
+from kb_mcp.kernel.records import OutcomeWarning, Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT, FrontMatter, scope_name
 from kb_mcp.sources.worklog import (
     DAY_TYPE,

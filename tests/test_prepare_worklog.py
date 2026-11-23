@@ -34,7 +34,7 @@ from structlog.testing import capture_logs
 
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem
 from kb_mcp.mirror.adapters import conversions
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.mirror_files import write_changed

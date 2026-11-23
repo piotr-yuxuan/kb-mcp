@@ -20,9 +20,8 @@ from kb_mcp.cli.domain.command import INDEX, WHOLE
 from kb_mcp.cli.domain.rows import Ended
 from kb_mcp.cli.domain.runs import Configuration, resumable, units_of
 from kb_mcp.config.domain.settings import without_secrets
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import PROGRAM
+from kb_mcp.kernel.names import PROGRAM, ExitStatus
 from kb_mcp.search.app.indexing import fill_and_prune, update_index
 
 if TYPE_CHECKING:
@@ -34,7 +33,7 @@ if TYPE_CHECKING:
     from kb_mcp.cli.app.units import Done
     from kb_mcp.cli.domain.runs import Recorded, Unit
     from kb_mcp.config.domain.settings import Loaded, Settings
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 # What to do while another invocation holds the run.
 BUSY = "another invocation holds this run; try again once it ends"

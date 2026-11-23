@@ -28,8 +28,7 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem, Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import TIME, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
@@ -80,7 +79,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.mirror.adapters.conversions import Conversions
 
 # The document classes of a source, which a prepare takes whole.

@@ -11,8 +11,8 @@ import pytest
 import structlog
 
 from kb_mcp.config.app.settings import default_log_folder
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.record import Invocation
+from kb_mcp.kernel.names import ExitStatus
+from kb_mcp.kernel.records import Invocation
 from kb_mcp.observability.adapters.logs import QUIET
 from kb_mcp.observability.adapters.progress import task
 from kb_mcp.observability.app.observed import early, observed
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.kernel.output import Level
+    from kb_mcp.kernel.names import Level
 
 # A log line on stderr: its time, its level padded in brackets, its event, then the rest.
 LOG_LINE = re.compile(r"\S+ \[(\w+) *\] (\S+)")

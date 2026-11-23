@@ -127,7 +127,7 @@ NOTES = Connector(
 A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/stages.py)): `preflight`,
 what it cannot go on with, read as its unit begins, which fails that unit alone, naming the
 source, and `prepare`, which writes the
-documents through the mirror and gives an [`Outcome`](../../src/kb_mcp/kernel/outcome.py): how
+documents through the mirror and gives an [`Outcome`](../../src/kb_mcp/kernel/records.py): how
 it ended, its problems and warnings, and its counts, a record whose `text` writes them. Mind what the writer and the front matter ask:
 
 - **Write every document, each time.** The writer leaves a file whose bytes have not
@@ -178,7 +178,7 @@ from hashlib import sha256
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.outcome import Outcome
+from kb_mcp.kernel.records import Outcome
 from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter, scope_name
@@ -187,7 +187,7 @@ from kb_mcp.mirror.domain.mirror_text import one_line
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.stages import SourceRun
 
 # The source's name, which is its folder of the mirror too, as the registry's rule has it.
@@ -307,7 +307,7 @@ import json
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 
 if TYPE_CHECKING:

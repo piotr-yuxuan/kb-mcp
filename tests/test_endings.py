@@ -15,13 +15,11 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from kb_mcp.kernel.exit_status import Ending, ExitStatus, folded
-from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import Ending, ExitStatus, RefusedError, folded
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem, Record
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 # Each ending and its status, most severe first, as the page lists them.
 SEVERITY = (

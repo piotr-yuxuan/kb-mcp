@@ -694,7 +694,7 @@ options:
 ## Exit statuses
 
 Every command ends with one of these statuses, which
-[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py) defines once, for
+[`MEANINGS`](../../src/kb_mcp/kernel/names.py) defines once, for
 `--help` and for this page.
 
 | Status | Meaning |

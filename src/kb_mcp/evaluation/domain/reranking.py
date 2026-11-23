@@ -13,8 +13,8 @@ from statistics import fmean
 from pydantic import Field
 
 from kb_mcp.evaluation.domain.evaluation import ALPHA, holm, paired_test
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
+from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S
+from kb_mcp.kernel.records import Record
 
 # The loss of MRR@10 that a group may show: with some 32 questions a group, the standard
 # error of its mean difference is about 0.05, so that 0.02 would refuse a harmless

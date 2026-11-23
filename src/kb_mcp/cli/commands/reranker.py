@@ -10,10 +10,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from kb_mcp.kernel.endpoint import RERANKING
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.reranking import BOUND_S, LONGEST_TEXT
+from kb_mcp.kernel.names import BOUND_S, LONGEST_TEXT, RERANKING, ExitStatus
+from kb_mcp.kernel.records import Record
 from kb_mcp.search.adapters.model_api import Bounds, endpoint
 from kb_mcp.search.adapters.reranking import SEARCH, RerankError, rerank, served
 
@@ -21,7 +19,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 # The probe: a question, a passage that answers it, and one that does not.
 PROBE = "How do I roll back a release?"

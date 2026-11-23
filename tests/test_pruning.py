@@ -23,7 +23,7 @@ from structlog.testing import capture_logs
 from kb_mcp.cli.main import main
 from kb_mcp.config.domain.settings import Settings
 from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.search.adapters import vector_cache
 from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
 from kb_mcp.search.app import pruning
@@ -58,8 +58,8 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from kb_mcp.kernel.chunking import Chunking
-    from kb_mcp.kernel.outcome import Outcome
+    from kb_mcp.kernel.names import Chunking
+    from kb_mcp.kernel.records import Outcome
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.app.indexing import Filled
     from tests.conftest import InMemory

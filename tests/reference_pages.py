@@ -27,8 +27,7 @@ from kb_mcp.cli.main import parser
 from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
 from kb_mcp.config.app.settings import default_log_folder
 from kb_mcp.config.domain.settings import NESTING, PREFIX, setting_paths, variable
-from kb_mcp.kernel.exit_status import MEANINGS
-from kb_mcp.kernel.names import PROGRAM
+from kb_mcp.kernel.names import MEANINGS, PROGRAM
 from tests.composed import MODEL
 
 if TYPE_CHECKING:
@@ -120,7 +119,7 @@ folder of logs.
 ## Exit statuses
 
 Every command ends with one of these statuses, which
-[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py) defines once, for
+[`MEANINGS`](../../src/kb_mcp/kernel/names.py) defines once, for
 `--help` and for this page.
 
 | Status | Meaning |

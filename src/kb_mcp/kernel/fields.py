@@ -1,4 +1,4 @@
-"""Strict reading of JSON responses, so that a changed response fails where it changed."""
+"""Strict reading of decoded JSON: a failure names the field's path, never the value found."""
 
 from __future__ import annotations
 
@@ -21,28 +21,19 @@ KIND_NAMES = {
 
 
 class RepresentationError(ValueError):
-    """A response without the shape its adapter expects.
-
-    The message names the field's path and what was expected, never the value found,
-    so that it can be reported without carrying content.
-    """
+    """A response without the shape that its adapter expects."""
 
 
 class Fields:
-    """A JSON object whose fields are read by type, each failure naming the field's path.
-
-    Every field must be present. The ``optional_`` readers also accept null, and accept
-    absence only when told ``absent=True``: a field that a response always carries, even
-    as null, is then refused when the site stops sending it.
-    """
+    """A JSON object read by type, each field present; ``optional_`` takes null, absent if told."""
 
     def __init__(self, value: object, path: str) -> None:
-        """Wrap a decoded JSON object; ``path`` names it in error messages."""
+        """Wrap a decoded JSON object, which ``path`` names in errors."""
         if type(value) is not dict:
             message = f"{path}: expected an object"
             raise RepresentationError(message)
-        self._value = cast("dict[str, object]", value)
-        self._path = path
+        self.value = cast("dict[str, object]", value)
+        self.path = path
 
     @classmethod
     def each(cls, value: object, path: str) -> list[Fields]:
@@ -52,40 +43,26 @@ class Fields:
             raise RepresentationError(message)
         return [cls(item, f"{path}[{index}]") for index, item in enumerate(value)]
 
-    @property
-    def value(self) -> dict[str, object]:
-        """Return the object as it was decoded, to be stored as received."""
-        return self._value
-
-    @property
-    def path(self) -> str:
-        """Name this object, as error messages do."""
-        return self._path
-
     @contextmanager
     def refusals(self) -> Iterator[None]:
-        """Report a domain type's refusal of what was read as a refusal of this object.
-
-        Only the domain's own refusals are caught: their messages name the field and the
-        rule, never the value. Any other error is a fault of the program, and passes.
-        """
+        """Raise a domain type's refusal of what was read as a refusal of this object."""
         try:
             yield
         except RefusedError as error:
-            message = f"{self._path}: {error}"
+            message = f"{self.path}: {error}"
             raise RepresentationError(message) from None
 
     def _typed(self, key: str, kind: type, *, nullable: bool, absent: bool = False) -> object:
-        if key not in self._value:
+        if key not in self.value:
             if absent:
                 return None
-            message = f"{self._path}.{key}: missing"
+            message = f"{self.path}.{key}: missing"
             raise RepresentationError(message)
-        value = self._value[key]
+        value = self.value[key]
         if value is None and nullable:
             return None
         if type(value) is not kind:
-            message = f"{self._path}.{key}: expected {KIND_NAMES[kind]}"
+            message = f"{self.path}.{key}: expected {KIND_NAMES[kind]}"
             raise RepresentationError(message)
         return value
 
@@ -94,7 +71,7 @@ class Fields:
         return cast("str", self._typed(key, str, nullable=False))
 
     def optional_text(self, key: str, *, absent: bool = False) -> str | None:
-        """Read a string, or None when it is null (or absent, when that is allowed)."""
+        """Read a string, or None."""
         return cast("str | None", self._typed(key, str, nullable=True, absent=absent))
 
     def integer(self, key: str) -> int:
@@ -106,7 +83,7 @@ class Fields:
         return cast("bool", self._typed(key, bool, nullable=False))
 
     def optional_integer(self, key: str) -> int | None:
-        """Read an integer, or None when it is null."""
+        """Read an integer, or None."""
         return cast("int | None", self._typed(key, int, nullable=True))
 
     def time(self, key: str) -> datetime:
@@ -118,7 +95,7 @@ class Fields:
         except ValueError, OverflowError:
             moment = None
         if moment is None or moment.tzinfo is None:
-            message = f"{self._path}.{key}: expected an ISO 8601 time with an offset"
+            message = f"{self.path}.{key}: expected an ISO 8601 time with an offset"
             raise RepresentationError(message)
         return moment
 
@@ -126,19 +103,19 @@ class Fields:
         """Read a list of strings."""
         values = cast("list[object]", self._typed(key, list, nullable=False))
         if not all(type(value) is str for value in values):
-            message = f"{self._path}.{key}: expected a list of strings"
+            message = f"{self.path}.{key}: expected a list of strings"
             raise RepresentationError(message)
         return cast("tuple[str, ...]", tuple(values))
 
     def object(self, key: str) -> Fields:
         """Read a nested object."""
-        return Fields(self._typed(key, dict, nullable=False), f"{self._path}.{key}")
+        return Fields(self._typed(key, dict, nullable=False), f"{self.path}.{key}")
 
     def optional_object(self, key: str, *, absent: bool = False) -> Fields | None:
-        """Read a nested object, or None when it is null (or absent, when allowed)."""
+        """Read a nested object, or None."""
         value = self._typed(key, dict, nullable=True, absent=absent)
-        return None if value is None else Fields(value, f"{self._path}.{key}")
+        return None if value is None else Fields(value, f"{self.path}.{key}")
 
     def objects(self, key: str) -> list[Fields]:
         """Read a list of objects."""
-        return Fields.each(self._typed(key, list, nullable=False), f"{self._path}.{key}")
+        return Fields.each(self._typed(key, list, nullable=False), f"{self.path}.{key}")

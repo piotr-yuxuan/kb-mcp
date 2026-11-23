@@ -28,12 +28,9 @@ from kb_mcp.evaluation.app.reranked import (
     recorded,
 )
 from kb_mcp.evaluation.domain.reranking import GROUPS, Decision
-from kb_mcp.kernel.endpoint import RERANKING
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.reranking import BAR_DEPTHS, BOUND_S
+from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S, RERANKING, STAMP, ExitStatus
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
-from kb_mcp.observability.domain.log_files import STAMP
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
 from kb_mcp.search.adapters.reranking import EVALUATION, rerank, served
@@ -43,7 +40,7 @@ if TYPE_CHECKING:
     import argparse
 
     from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 HEADER = (
     "| Depth | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Found@ask"

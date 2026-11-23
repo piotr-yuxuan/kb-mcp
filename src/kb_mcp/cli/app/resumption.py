@@ -11,7 +11,7 @@ from kb_mcp.cli.domain.sources import fetch_flags, refusals
 from kb_mcp.config.domain.settings import values_of
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

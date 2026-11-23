@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.outcome import OutcomeWarning
+from kb_mcp.kernel.records import OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index, vector_cache

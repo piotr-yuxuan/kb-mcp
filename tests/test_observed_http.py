@@ -20,7 +20,7 @@ import pytest
 from opentelemetry.trace import SpanKind, StatusCode
 from structlog.testing import capture_logs
 
-from kb_mcp.kernel.endpoint import EMBEDDINGS
+from kb_mcp.kernel.names import EMBEDDINGS
 from kb_mcp.search.adapters.embedding import (
     DOCUMENTS,
     SINGLE,

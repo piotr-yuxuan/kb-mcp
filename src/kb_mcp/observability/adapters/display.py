@@ -26,7 +26,7 @@ from rich.progress import (
 from rich.table import Column
 from rich.text import Text
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.observability.adapters.logs import SDK, SHARED
 from kb_mcp.observability.adapters.progress import Bar, Display
 from kb_mcp.observability.domain.inert_text import printable

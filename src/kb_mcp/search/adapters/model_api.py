@@ -16,14 +16,14 @@ import truststore
 from opentelemetry import metrics
 
 from kb_mcp.config.domain.settings import SettingsError
-from kb_mcp.kernel.endpoint import loopback, refused_endpoint
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import loopback, refused_endpoint
+from kb_mcp.kernel.records import Record
 from kb_mcp.observability.adapters.http import ObservedTransport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from kb_mcp.kernel.endpoint import Service
+    from kb_mcp.kernel.names import Service
 
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # The buckets of an operation's duration, in seconds, that the GenAI conventions advise.

@@ -23,7 +23,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from kb_mcp.config.domain.settings import Settings
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.records import Problem
 from kb_mcp.mirror.adapters.markdown import dump, load
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE
 from kb_mcp.sources.declaration import Source
@@ -47,7 +47,7 @@ from tests.test_prepare_worklog import (
 )
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.outcome import Outcome
+    from kb_mcp.kernel.records import Outcome
     from kb_mcp.sources.worklog.fetch.domain.copies import Copies
 
 # The mirror that the branch's base wrote from the fixture, as of MODIFIED.

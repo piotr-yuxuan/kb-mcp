@@ -22,9 +22,8 @@ from opentelemetry import metrics, trace
 from pydantic import AwareDatetime, ConfigDict
 from rich.console import Console
 
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.names import PROGRAM
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import PROGRAM, ExitStatus
+from kb_mcp.kernel.records import Record
 from kb_mcp.observability.adapters import progress
 from kb_mcp.observability.adapters.display import Bars, ConsoleLines
 from kb_mcp.observability.adapters.logs import (
@@ -37,7 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from kb_mcp.kernel.record import Invocation
+    from kb_mcp.kernel.records import Invocation
 
 # What exports telemetry, imported only for a run that has an endpoint: the SDK, its
 # exporters and requests take a tenth of a second to import, which a run without would

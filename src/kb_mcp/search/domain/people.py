@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER, IDENTITY
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import PARTICIPANT
 
 if TYPE_CHECKING:

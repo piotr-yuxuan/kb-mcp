@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Self
 from pydantic import Field, model_validator
 
 from kb_mcp.kernel.names import ATLASSIAN_ISSUER, RefusedError, require
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, Mention, document_id, scope_name
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import (

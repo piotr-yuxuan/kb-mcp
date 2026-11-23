@@ -26,7 +26,7 @@ from lxml.html import Element, HtmlElement, HTMLParser, document_fromstring, tos
 from pydantic import Field, InstanceOf
 
 from kb_mcp.kernel.names import ISSUE_KEY
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror_text import one_line, visible
 
 # The attribute of the wrapper that the site renders around a macro's output.

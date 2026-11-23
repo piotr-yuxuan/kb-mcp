@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.kernel.names import PROGRAM
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     import argparse

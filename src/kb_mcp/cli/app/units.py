@@ -19,9 +19,8 @@ from pydantic_core import to_jsonable_python
 
 from kb_mcp.cli.domain.command import FETCH, PREPARE, WHOLE
 from kb_mcp.cli.domain.runs import Recorded, Unit, attempted, followed, keyed
-from kb_mcp.kernel.exit_status import Ending, ExitStatus, folded
-from kb_mcp.kernel.outcome import Outcome, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import Ending, ExitStatus, folded
+from kb_mcp.kernel.records import Outcome, Problem, Record
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

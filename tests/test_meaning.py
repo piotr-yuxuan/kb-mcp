@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from kb_mcp.kernel.endpoint import EMBEDDINGS
+from kb_mcp.kernel.names import EMBEDDINGS
 from kb_mcp.mcp.app.tools import Asked, Library, ranking
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
