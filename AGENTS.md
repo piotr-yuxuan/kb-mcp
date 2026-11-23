@@ -29,12 +29,13 @@ Follow the `workflow:plans` skill with these parameters:
   [where the layout is going](docs/explanation/code-layout.md#where-the-layout-is-going);
   the plans, in the roadmap, `docs/work/roadmap.md`, untracked. Only the adapter of a
   representation reads its JSON, and only one module knows the site's HTML.
-- The budget: `src/` holds at most 12,000 lines of code, 70 files and 160 types, no
-  module over 700 lines of code, and comment lines that never pass their ceilings.
-  `tests/test_code_size.py` holds each context to its ceilings, which fall as it
-  shrinks, and each converged context or part to its targets. A plan sets each ceiling
-  that it changes at its bound; raising one needs the user's word, which the approval of
-  a draft whose expected deltas raise it gives.
+- The budget: the goal for `src/` is 12,000 lines of code, 70 files and 160 types, with
+  no module over 700 lines of code, reached one context at a time. Meanwhile each
+  context's ceilings hold it, comment lines included, each falling as it shrinks; once a
+  plan has converged a context, or a part of one, its targets hold it too, the contexts'
+  targets summing within the goal. `tests/test_code_size.py` holds both. A plan sets
+  each ceiling that it changes at its bound; raising one needs the user's word, which the
+  approval of a draft whose expected deltas raise it gives.
 - What the program offers, its commands, options, settings, MCP tools and prompts, and
   telemetry names, is in the manifest `tests/fixtures/parity.json`, which
   `uv run python -m tests.parity` writes. Nothing leaves it but by a decision that the

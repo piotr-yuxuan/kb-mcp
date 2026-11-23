@@ -255,7 +255,7 @@ In a context that has converged, a new module follows
 
 ## Where the layout is going
 
-The code is held to a budget of 12,000 lines of code, 70 files and 160 types;
+The code has a budget to reach, 12,000 lines of code, 70 files and 160 types;
 [the trade-offs](trade-offs.md#a-budget-of-twelve-thousand-lines) say why. One plan at a
 time converges a context, or a part of one, to the layout below, bottom-up in contract
 A's order, so that no converged context is reopened; the sections above then describe

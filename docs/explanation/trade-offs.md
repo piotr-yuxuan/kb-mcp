@@ -1220,15 +1220,16 @@ anything is written.
 
 ## A budget of twelve thousand lines
 
-The program's own code, `src/`, is held to a budget: 12,000 lines of code in all, 70
+The program's own code, `src/`, has a budget to reach: 12,000 lines of code in all, 70
 files, 160 types, and no module over 700 lines of code, which keeps the budget on files
 from making monoliths. A line of code is a non-blank line that holds a token other than
 a comment, a docstring's lines included; a type is a class, a `type` statement, an alias
-or a call that makes one. Each context has a ceiling on each measure, its comment lines
-included, which falls as the context shrinks and rises only on the user's word, and
-targets, which hold once a plan has converged it; the contexts' targets leave the rest
-of the budget in reserve ([`CEILINGS`](../../tests/test_code_size.py),
-[`TARGETS`](../../tests/test_code_size.py)). [The manifest](../../tests/fixtures/parity.json)
+or a call that makes one. The budget is reached one context at a time: each context has
+targets within it, which hold the context once a plan has converged it, the contexts'
+targets leaving the rest in reserve ([`TARGETS`](../../tests/test_code_size.py)).
+Meanwhile, and after, a ceiling on each measure, its comment lines included, holds each
+context, falling as it shrinks and rising only on the user's word
+([`CEILINGS`](../../tests/test_code_size.py)). [The manifest](../../tests/fixtures/parity.json)
 holds every command, option, setting, MCP tool and prompt, and telemetry name that the
 program offered when the budget came, and [its test](../../tests/test_parity.py) fails
 when one is lost. The concepts page holds at most 35 entries, under a ceiling that only
