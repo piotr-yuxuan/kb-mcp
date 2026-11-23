@@ -29,16 +29,16 @@ type Target = tuple[int, int, int, int]  # lines, files, types, largest
 # Each context's ceilings: no measure may pass its own, nor a ceiling stand above its
 # bound, so that they fall as the context shrinks; a plan raises one on the user's word.
 CEILINGS = {
-    "sources/atlassian": (5_150, 35, 82, 1_050, 190),
+    "sources/atlassian": (5_150, 35, 81, 1_050, 190),
     "search": (4_500, 20, 78, 1_250, 220),
-    "cli": (4_500, 56, 33, 300, 80),
+    "cli": (4_450, 56, 33, 300, 80),
     "sources/worklog": (2_150, 23, 23, 750, 90),
     "evaluation": (1_750, 13, 38, 600, 60),
     "mcp": (1_450, 6, 11, 950, 50),
-    "config": (1_300, 9, 25, 950, 50),
-    "observability": (1_050, 15, 17, 250, 50),
+    "config": (850, 5, 18, 750, 40),
+    "observability": (800, 6, 16, 450, 50),
     "mirror": (850, 12, 12, 300, 60),
-    "kernel": (600, 13, 20, 200, 70),
+    "kernel": (450, 5, 20, 200, 60),
     "sources": (400, 5, 19, 250, 30),
     "(root)": (100, 3, 2, 100, 10),
 }

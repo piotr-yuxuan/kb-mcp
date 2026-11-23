@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # The ceiling of the page's entries, then the target.
 ENTRIES = (28, 35)
 # The contexts whose types the check of homes holds, before they converge.
-HOMED: tuple[str, ...] = ()
+HOMED = ("kernel", "observability", "config")
 # The most types that *Mechanics* may home.
 MECHANICS = 20
 PAGE = Path(__file__).parents[1] / "docs" / "reference" / "concepts.md"
