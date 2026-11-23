@@ -21,25 +21,32 @@ SECTIONS = frozenset({"Core concepts", "Context vocabulary"})
 
 
 def entries(text: str) -> int:
-    """Count the entries of a concepts page, read as GitHub renders it."""
+    """Count the entries of a concepts page, read as GitHub renders it.
+
+    A level-two heading opens a section, which the next of level one or two ends.
+    """
     section, count = None, 0
     # Each inline token, the text of a heading, follows the token that opens it.
     for before, block in itertools.pairwise(MarkdownIt("commonmark").parse(text)):
-        if before.type == "heading_open" and before.tag == "h2":
-            section = block.content
+        if before.type == "heading_open" and before.tag in {"h1", "h2"}:
+            section = block.content if before.tag == "h2" else None
         elif before.type == "heading_open" and before.tag == "h3" and section in SECTIONS:
             count += 1
     return count
 
 
 def test_entries_are_counted_under_both_sections() -> None:
-    """A level-three heading under either section counts; no other heading, nor code."""
+    """A level-three heading under either section counts; no other heading, nor code.
+
+    A level-one or level-two heading ends the section.
+    """
     page = (
         "# Concepts\n\n### before\n\n## Core concepts\n\n### connector\n\n#### deeper\n\n"
         "```markdown\n### in code\n```\n\n### source\n\n## Context vocabulary\n\n"
-        "### account\n\n## Elsewhere\n\n### other\n"
+        "### account\n\n# Appendix\n\n### after\n\n## Core concepts\n\n### person\n\n"
+        "## Elsewhere\n\n### other\n"
     )
-    assert entries(page) == len(["connector", "source", "account"])
+    assert entries(page) == len(["connector", "source", "account", "person"])
 
 
 def test_the_concepts_stay_within_their_ceiling() -> None:
