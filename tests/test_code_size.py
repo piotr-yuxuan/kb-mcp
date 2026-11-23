@@ -177,28 +177,61 @@ def formed(value: ast.expr, classes: Collection[str]) -> bool:
     return False
 
 
-def typed(tree: ast.Module, classes: Collection[str]) -> int:
-    """Count the types that a module defines, ``classes`` being every class of ``src/``.
+def named_types(tree: ast.Module, classes: Collection[str]) -> list[str]:
+    """Name the types that a module defines, but those that a call makes, which have no name.
 
-    Anywhere: a class, a ``type`` statement, a call that makes one. At its top, or under an
-    ``if`` there: a name annotated ``TypeAlias``, unless a call makes it, and a capitalised
-    name assigned a type.
+    ``classes`` is every class of ``src/``. Anywhere: a class, a ``type`` statement. At its
+    top, or under an ``if`` there: a name annotated ``TypeAlias``, unless a call makes it,
+    and a capitalised name assigned a type.
     """
-    count = sum(
-        isinstance(node, (ast.ClassDef, ast.TypeAlias)) or made(node) for node in ast.walk(tree)
-    )
+    names = [
+        node.name if isinstance(node, ast.ClassDef) else ast.unparse(node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.TypeAlias))
+    ]
     top = list(tree.body)
     while top:
         match top.pop():
             case ast.If(body=body, orelse=orelse):
                 top += [*body, *orelse]
-            case ast.AnnAssign(annotation=annotation, value=value) if (
-                name_of(annotation) == "TypeAlias"
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value) if (
+                name_of(annotation) == "TypeAlias" and not made(value)
             ):
-                count += not made(value)
+                names.append(name)
             case ast.Assign(targets=[ast.Name(id=name)], value=value) if name[0].isupper():
-                count += formed(value, classes)
-    return count
+                names += [name] if formed(value, classes) else []
+    return names
+
+
+def typed(tree: ast.Module, classes: Collection[str]) -> int:
+    """Count the types that a module defines, ``classes`` being every class of ``src/``.
+
+    Those that ``named_types`` names, and each call anywhere that makes one.
+    """
+    return len(named_types(tree, classes)) + sum(made(node) for node in ast.walk(tree))
+
+
+def places(module: Sequence[str], parts: Mapping[str, Sequence[str]]) -> list[str]:
+    """Name what a module is measured in: its context, then each part of ``parts`` holding it.
+
+    ``module`` is its path under the package, by its names, without ``.py``.
+    """
+    match module:
+        case ("__init__",) | ("__main__",):
+            context = "(root)"
+        case ("sources", source, _, *_):
+            context = f"sources/{source}"
+        case (first, *_):
+            context = first
+    named = "/".join(module)
+    return [
+        context,
+        *(
+            part
+            for part, paths in parts.items()
+            if any(named == each or named.startswith(f"{each}/") for each in paths)
+        ),
+    ]
 
 
 def measure(
@@ -246,21 +279,7 @@ def measure(
         rows = text.split("\n")
         lines = len([row for row in code if rows[row - 1].strip()])
         types = typed(trees[path], classes)
-        module = path.relative_to(package).with_suffix("").parts
-        match module:
-            case ("__init__",) | ("__main__",):
-                context = "(root)"
-            case ("sources", source, _, *_):
-                context = f"sources/{source}"
-            case (first, *_):
-                context = first
-        named = "/".join(module)
-        holding = [
-            part
-            for part, paths in parts.items()
-            if any(named == each or named.startswith(f"{each}/") for each in paths)
-        ]
-        for name in (context, *holding):
+        for name in places(path.relative_to(package).with_suffix("").parts, parts):
             was = measured.get(name, (0, 0, 0, 0, 0))
             measured[name] = (
                 was[0] + lines,
