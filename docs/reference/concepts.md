@@ -431,7 +431,10 @@ documents' paths and, for those that meaning placed, the chunk that matched
 ([`Matched`](../../src/kb_mcp/search/domain/search.py));
 [`ranking`](../../src/kb_mcp/mcp/app/tools.py),
 [`reranked`](../../src/kb_mcp/mcp/app/tools.py) and
-[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py).
+[`Reader.recent`](../../src/kb_mcp/search/adapters/sqlite_index.py); its mode,
+[`SearchMode`](../../src/kb_mcp/config/settings.py).
+
+**Home.** `SearchMode`.
 
 ### tool
 
@@ -480,6 +483,8 @@ and when it was built.
 telemetry attributes `kb_mcp.hits`, which counts the documents that a ranking holds, for
 `search` and `ask` alike, and `kb_mcp.passages`, the quotes of `ask`.
 
+**Home.** `Tool`.
+
 ### stage
 
 **Definition.** One of the four steps of the pipeline, each also the name of the command
@@ -516,14 +521,23 @@ Of the stages, embed alone calls a service that computes; index asks none.
 [`Preparer`](../../src/kb_mcp/sources/stages.py) and
 [`SourceRun`](../../src/kb_mcp/sources/stages.py); the commands `fetch`, `prepare`,
 `index` and `embed`, and `refresh`, which enables the four, in
-[`cli/commands/`](../../src/kb_mcp/cli/commands/); [`STAGES`](../../src/kb_mcp/cli/domain/command.py).
+[`cli/commands/`](../../src/kb_mcp/cli/commands/); [`STAGES`](../../src/kb_mcp/cli/domain/command.py);
+embed's chunkings, [`Chunking`](../../src/kb_mcp/kernel/names.py).
+
+**Home.** `Chunking`.
 
 ### run
 
 **Definition.** What the program does for one command, from its start until each of its
-units has ended, known by its run id. One invocation starts it and any later one resumes
-it; each writes its own log file and its own trace, tagged with the run id, save that
-`serve` makes a trace for each request.
+units has ended, known by its run id.
+
+An **invocation** is one start of `kb-mcp` with its arguments, until it exits: it starts a
+run, or resumes one by its id. Three things are its own and not its run's configuration:
+the consent to send text off this machine, the answer to the question asked before the
+run writes (or `--yes`), and how its result is written, its format, detail and level, and
+whether it is quiet. An observed invocation writes its own log file, named by its command
+and its start; a traced one, its own trace, tagged with its run's id. `completion` is not
+observed; `serve` is traced by request, not whole.
 
 Its **configuration** is the named values that decide it, each taken from the strongest
 layer that gives it: the options, then the environment, then the settings file, then the
@@ -541,11 +555,8 @@ reading any store when the run starts, and fixed for the run:
   left to a scope's coverage stays a rule, which fetch applies.
 
 A secret, which the environment alone gives, is part of the configuration but never
-recorded: a resumed run takes it from its environment again. Three things belong to each
-invocation, not to the configuration: the consent to send text off this machine
-(`--allow-remote-embeddings`), the answer to the question asked before a run writes (or
-`--yes`), and how the result is written (its format, detail and level). Not `--config`,
-which names the settings file, one layer.
+recorded: a resumed run takes it from its environment again. Not `--config`, which names
+the settings file, one layer.
 
 Its work is units, one for each enabled stage at that stage's grain: the stage applied
 to one source, or over the whole; or the one unit of a command that is no stage. A unit
@@ -620,7 +631,7 @@ on. A command that is no stage of the pipeline is a run too, whose configuration
 no stage and whose work is one unit of its own, giving one outcome: `check`, `doctor`,
 `login`, `model`, `reranker`, `serve`, `eval`, `eval-rerank` and each step of
 `eval-agents`. `login` writes the sign-in state that later runs rely on. `completion`
-reads no settings, writes no log and no trace, and is no run.
+reads no settings, and is no run.
 
 An outcome is not the field `outcome` of an event, nor the telemetry attribute
 `kb_mcp.outcome`, which say what became of one item or one step, such as a document
@@ -632,9 +643,11 @@ and its outcomes are kept under `runs/`, by run id, and read back only to resume
 command line prints its outcomes, writes them as JSON and folds them into its exit
 status; telemetry tags every span and event of a run with its run id.
 
-**In the code.** [`Running`](../../src/kb_mcp/observability/observed.py), one
-invocation under way, with its run id, log and trace; the event `run.start`, which logs the
-settings, secrets masked. The configuration:
+**In the code.** [`Invocation`](../../src/kb_mcp/kernel/records.py), which the command
+builds before its echo, and [`Running`](../../src/kb_mcp/observability/observed.py), one
+invocation under way, with its run id, log and trace, by
+[`observed`](../../src/kb_mcp/observability/observed.py); the event `run.start`, which
+logs the settings, secrets masked. The configuration:
 [`Configuration`](../../src/kb_mcp/cli/domain/runs.py), resolved by each command that
 enables a stage, [`Command.stages`](../../src/kb_mcp/cli/domain/command.py), recorded and
 read back by [`RunRecord`](../../src/kb_mcp/cli/adapters/run_record.py), whose settings
@@ -660,6 +673,9 @@ stage's record, such as
 [`ExitStatus`](../../src/kb_mcp/kernel/names.py) and
 [`MEANINGS`](../../src/kb_mcp/kernel/names.py). The problem:
 [`Problem`](../../src/kb_mcp/kernel/records.py).
+
+**Home.** `Invocation`, `Running`, `Level`, `Format`, `ConsoleLines`, `CappedFile`,
+`Outcome`, `Counts`, `Problem`, `OutcomeWarning`, `Ending` and `ExitStatus`.
 
 ### store
 
@@ -742,7 +758,12 @@ converter name, version line and arguments
 are [`vector_key`](../../src/kb_mcp/search/adapters/vector_cache.py) and the conversion
 cache's key, each the SHA-256 of a fingerprint, a NUL and the input. A server that lists
 no digest of its model leaves the embedding's fingerprint blind to new weights under one
-name.
+name. The writers' lock refuses a second writer by
+[`StoreBusyError`](../../src/kb_mcp/kernel/names.py); the data directory's guard refuses
+a place where data could leave the machine by
+[`UnsafeDataDirError`](../../src/kb_mcp/config/load.py).
+
+**Home.** `StoreBusyError` and `UnsafeDataDirError`.
 
 ### service
 
@@ -780,7 +801,10 @@ service; a failing service is skipped for a while rather than called on every qu
 [`endpoint_host`](../../src/kb_mcp/kernel/names.py);
 [`QUIET_S`](../../src/kb_mcp/search/app/meaning.py), how long a failing service is
 skipped; the commands `model` and `reranker`; the telemetry exporter
-([the telemetry reference](telemetry/README.md)).
+([the telemetry reference](telemetry/README.md)),
+[`exporting`](../../src/kb_mcp/observability/telemetry.py).
+
+**Home.** `Service`, `Exported`, `Direct` and `Stopping`.
 
 ## Context vocabulary
 
@@ -930,12 +954,45 @@ or `detailed`. JSON ignores it.
 
 - **In the code.** [`Detail`](../../src/kb_mcp/kernel/names.py) and
   [`DETAILS`](../../src/kb_mcp/kernel/names.py); the option `--detail`.
+- **Home.** `Detail`.
 
 ### setting
 
 One named value of a [run](#run)'s configuration, as a layer gives it: an option, an
 environment variable, the settings file or its default.
 
-- **In the code.** [`Settings`](../../src/kb_mcp/config/settings.py),
-  [`Loaded`](../../src/kb_mcp/config/settings.py) and
-  [`LayerValue`](../../src/kb_mcp/config/settings.py).
+A value that a layer gives and the run does not use is **ignored**: a variable of the
+program's prefix that names no setting or is empty; a shared variable whose value the
+setting refuses; a value that a stronger layer replaces; a value that the command
+does not apply or does not read. The echo names each, with its layer and why, never its
+value.
+
+- **In the code.** [`Settings`](../../src/kb_mcp/config/settings.py), its tables and
+  its kinds ([`SettingKind`](../../src/kb_mcp/config/settings.py)),
+  [`Loaded`](../../src/kb_mcp/config/settings.py),
+  [`LayerValue`](../../src/kb_mcp/config/settings.py) and
+  [`Ignored`](../../src/kb_mcp/config/settings.py), by
+  [`load_settings`](../../src/kb_mcp/config/load.py).
+- **Home.** `Settings`, `Sources`, `Logs`, `Telemetry`, `Rerank`, `LocalPath`,
+  `SettingKind`, `Loaded`, `LayerValue`, `Ignored` and `SettingsError`.
+
+## Mechanics
+
+The types that carry no concept: the base of the records, the strict reader of JSON,
+and how a run tells of itself.
+
+| Role | Home | Why |
+|---|---|---|
+| utility | `Record` | the base of every record: built by keyword, checked, frozen |
+| utility | `RefusedError` | a value that a record's rule refuses, named by its field, never its value |
+| adapter | `Fields` and `RepresentationError` | the strict reader of decoded JSON, and what it refuses |
+| telemetry | `ObservedTransport` | each request to another program, as a span, a duration and an event |
+| telemetry | `Task`, `Bar`, `Display` and `Unseen` | a long task's progress, as events, and as bars where a display draws them |
+| telemetry | `Bars`, `TaskBar` and `Remaining` | the bars that Rich draws on a terminal |
+
+## Kept apart
+
+- `Problem` and `OutcomeWarning`: the one fails its unit; the other changes neither its
+  ending nor what it removes.
+- `StoreBusyError` and `RunBusyError`: a store held fails the unit that would write it; a
+  run held refuses the invocation that would resume it.
