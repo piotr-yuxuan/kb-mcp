@@ -24,7 +24,7 @@ from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
 from kb_mcp.cli.main import main, parser
 from kb_mcp.config.domain.settings import DEFAULT_MODEL, values_of
-from kb_mcp.observability.app.observed import early
+from kb_mcp.observability.observed import early
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.registry import SOURCES
 from tests.endpoint import nothing_listening

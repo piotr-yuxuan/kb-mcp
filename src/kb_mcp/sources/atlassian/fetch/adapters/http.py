@@ -15,7 +15,7 @@ import truststore
 from pydantic import ConfigDict, Field
 
 from kb_mcp.kernel.records import Record
-from kb_mcp.observability.adapters.http import ObservedTransport
+from kb_mcp.observability.http import ObservedTransport
 from kb_mcp.sources.atlassian.fetch.domain.content import SITE_PATH
 
 if TYPE_CHECKING:

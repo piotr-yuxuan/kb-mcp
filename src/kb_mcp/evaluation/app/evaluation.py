@@ -44,7 +44,7 @@ from kb_mcp.evaluation.domain.golden import Golden
 from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning

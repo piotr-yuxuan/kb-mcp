@@ -163,7 +163,7 @@ checks the ids, in their order, against this table:
 | E | Search, the server and the evaluation, with their commands, `index` and `embed` among them, read the mirror, never a source: the index is built from the mirror alone |
 | F | Use cases and commands reach the network through effects only (no `httpx`) |
 | G | Declaring the command, `cli.main` and `cli.options`, with the registry and each source's declaration, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
-| H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
+| H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.progress`, through which they all report progress, so that it never imports the display that draws it |
 | I | No source imports another, `sources.atlassian` and `sources.worklog`: a list that a test holds to the packages of the registry's declarations, so a new source's package joins it |
 | J | Within each source, from the top: its declaration, preparing, fetching, its settings: the declaration names the fetcher and preparers by path and imports neither, and preparing may use fetching, never the reverse. It is exhaustive: a source's package holds these alone |
 | K | Only `sources.atlassian` uses lxml and Playwright, so that an extra can hold them later: every other context, the modules beside the sources' packages, `sources.worklog` and `sources.atlassian.settings`, which every command loads by its path, import neither, as `cli` loads what uses them by the declarations' paths. It names every other context, so a new one, or a new source, joins its list, as H's does |
@@ -200,7 +200,7 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   fields; one that accumulates has no hash, as a dataclass that was not frozen.
 - A protocol is never a record's base, as its metaclass and Pydantic's conflict: a
   record that implements one, such as `site_html.HtmlPart` a `Construct` or
-  `display.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
+  `observed.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
   methods.
 - Pydantic reads a record's annotations, so the types they name are imported at run
   time, never under `TYPE_CHECKING`, and so is a `type` alias that they name. Ruff
@@ -228,7 +228,7 @@ table is one:
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
 | `sources.atlassian.fetch.app.fetching.Fetching` | It holds the raw store under its lock and the site's client |
 | `evaluation.app.evaluation.EvaluatedIndex` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
-| `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
+| `observability.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
 | `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 
 A new dataclass needs a row here with its reason, of these three kinds: a module that

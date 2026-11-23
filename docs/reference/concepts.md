@@ -632,7 +632,7 @@ and its outcomes are kept under `runs/`, by run id, and read back only to resume
 command line prints its outcomes, writes them as JSON and folds them into its exit
 status; telemetry tags every span and event of a run with its run id.
 
-**In the code.** [`Running`](../../src/kb_mcp/observability/app/observed.py), one
+**In the code.** [`Running`](../../src/kb_mcp/observability/observed.py), one
 invocation under way, with its run id, log and trace; the event `run.start`, which logs the
 settings, secrets masked. The configuration:
 [`Configuration`](../../src/kb_mcp/cli/domain/runs.py), resolved by each command that

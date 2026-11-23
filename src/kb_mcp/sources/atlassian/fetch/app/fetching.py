@@ -27,7 +27,7 @@ from pydantic import ConfigDict, Field, model_serializer
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
 from kb_mcp.kernel.records import Outcome, Problem, Record
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     SignInNeededError,

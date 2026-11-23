@@ -215,11 +215,11 @@ What a run logs is for you, on this machine, and may hold titles and queries
 
 - Every event is redacted before any sink: what a key naming a secret holds reads
   `[redacted]`
-  ([`redacted`](../../src/kb_mcp/observability/domain/redaction.py)).
+  ([`redacted`](../../src/kb_mcp/observability/observed.py)).
   The rule reads keys, not values, so the code never logs a header, and shows a URL's
   query on the site's host alone, as a media redirect carries a signed token in its
   query
-  ([`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py)).
+  ([`ObservedTransport`](../../src/kb_mcp/observability/http.py)).
 - A secret setting is never shown: the echo before a run and `check` say whether it
   is set
   ([`setting_line`](../../src/kb_mcp/cli/domain/echo.py),
@@ -230,7 +230,7 @@ What a run logs is for you, on this machine, and may hold titles and queries
   ([`settings_of`](../../src/kb_mcp/config/domain/settings.py),
   [`test_a_setting_refused_with_a_secret_as_its_value_does_not_echo_it`](../../tests/test_secrets.py)).
 - A traceback shows no frame's locals, where a token could sit
-  ([`log_file`](../../src/kb_mcp/observability/adapters/logs.py)).
+  ([`log_file`](../../src/kb_mcp/observability/observed.py)).
 
 End to end,
 [`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py) runs

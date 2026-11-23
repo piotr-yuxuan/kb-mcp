@@ -1,11 +1,7 @@
 """What a run tells of itself: structured logs, progress, traces and metrics.
 
-Of OpenTelemetry's variables, which other programs share, a run reads two alone, by its
-settings: ``OTEL_EXPORTER_OTLP_ENDPOINT`` and ``OTEL_SDK_DISABLED``. Every other is taken
-out of the process's environment here, before any module of this context imports
-OpenTelemetry, as the API and the SDK read some on their import or at the first call for
-a provider: one naming a provider would install the SDK with telemetry off, or end the
-run if unknown, and a sampler could drop every trace.
+OpenTelemetry's variables, but the two that the settings read, leave the environment here,
+before the API or the SDK reads one: a provider or a sampler named would change the run.
 """
 
 import os

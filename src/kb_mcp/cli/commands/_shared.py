@@ -18,7 +18,7 @@ from kb_mcp.config.app.settings import load_settings
 from kb_mcp.config.domain.settings import SettingsError, settings_model, values_of
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.kernel.records import Invocation
-from kb_mcp.observability.app.observed import observed
+from kb_mcp.observability.observed import observed
 from kb_mcp.sources.registry import tables
 
 # What run.start names in place of an argument's value that the command keeps out of logs.

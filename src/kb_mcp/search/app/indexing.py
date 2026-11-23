@@ -35,7 +35,7 @@ from kb_mcp.kernel.names import Chunking
 from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem, Record
 from kb_mcp.mirror.adapters import markdown
 from kb_mcp.mirror.adapters.source_files import source_files
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from kb_mcp.search.adapters.embedding import connect, prefixes

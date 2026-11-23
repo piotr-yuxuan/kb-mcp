@@ -25,7 +25,7 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.metrics.export import Gauge, Histogram, Sum
 from opentelemetry.trace import get_current_span
 
-from kb_mcp.observability.adapters.telemetry import Exported
+from kb_mcp.observability.telemetry import Exported
 from tests.collector import attributes, plain
 
 if TYPE_CHECKING:

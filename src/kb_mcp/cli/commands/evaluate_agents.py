@@ -41,7 +41,7 @@ from kb_mcp.kernel.names import TOOLS, ExitStatus, loopback
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.mirror.adapters import markdown
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 
 if TYPE_CHECKING:

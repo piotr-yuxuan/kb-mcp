@@ -28,9 +28,8 @@ from opentelemetry.sdk.trace import TracerProvider
 
 from kb_mcp.cli.main import main
 from kb_mcp.kernel.names import ExitStatus
-from kb_mcp.observability.adapters.logs import SDK
-from kb_mcp.observability.adapters.telemetry import Exported
-from kb_mcp.observability.app.observed import early
+from kb_mcp.observability.observed import SDK, early
+from kb_mcp.observability.telemetry import Exported
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from tests.collector import LOGS, METRICS, TRACES, Collector, attributes, collecting, plain
 from tests.endpoint import nothing_listening

@@ -13,9 +13,8 @@ import structlog
 from kb_mcp.config.app.settings import default_log_folder
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.kernel.records import Invocation
-from kb_mcp.observability.adapters.logs import QUIET
-from kb_mcp.observability.adapters.progress import task
-from kb_mcp.observability.app.observed import early, observed
+from kb_mcp.observability.observed import QUIET, early, observed
+from kb_mcp.observability.progress import task
 
 if TYPE_CHECKING:
     from pathlib import Path

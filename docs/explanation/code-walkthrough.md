@@ -52,7 +52,7 @@ Nothing heavier is imported to parse: argcomplete runs the program at every Tab,
 answers before any run is imported ([why argparse and
 argcomplete](trade-offs.md#argparse-with-argcomplete)). With no arguments at all, `main`
 parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is observed:
-[`early`](../../src/kb_mcp/observability/app/observed.py) sends warnings
+[`early`](../../src/kb_mcp/observability/observed.py) sends warnings
 to stderr until the settings are read, and `main` imports the
 [`ENTRY_MODULE`](../../src/kb_mcp/cli/main.py) shared by every observed command.
 
@@ -111,7 +111,7 @@ each value ignored, and why; and the command to copy
 `--yes` skips the question, and with no terminal to answer it, the run is refused.
 
 Only now does the run begin.
-[`observed`](../../src/kb_mcp/observability/app/observed.py) opens its log
+[`observed`](../../src/kb_mcp/observability/observed.py) opens its log
 file, its telemetry when an endpoint is set, and the trace's root span, named after the
 command, and logs `run.start`; `enter` then imports `cli.commands.sources`, which `fetch` and
 `prepare` share, and calls its
@@ -172,7 +172,7 @@ that `login` saved. Either gives an httpx client built by
 by the system's certificates, plain http refused
 ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 no redirect followed by httpx itself, and each request observed by
-[`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py). A token's
+[`ObservedTransport`](../../src/kb_mcp/observability/http.py). A token's
 header goes to the site's host alone
 ([`ApiToken.authorise`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
 [credentials](credentials.md#on-the-wire) say why.
@@ -491,7 +491,7 @@ its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/records.py). `index
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).
-[`observed`](../../src/kb_mcp/observability/app/observed.py) ends the run:
+[`observed`](../../src/kb_mcp/observability/observed.py) ends the run:
 `run.end`, the exit status on the root span, the run's duration.
 
 ## Part 2: a search
@@ -613,16 +613,16 @@ from each document fetched, and a call of a tool is one trace:
 
 | Span | Opened by |
 |---|---|
-| `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
+| `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/observed.py), after the command's name |
 | `fetch.source`, `prepare.source`, one a unit | [`run_sources`](../../src/kb_mcp/cli/app/units.py) |
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
-| `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
+| `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/http.py), through [`client_span`](../../src/kb_mcp/observability/http.py) |
 | `prepare.read`, `prepare.build`, `prepare.write` | [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
 | `index.join` | [`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py) |
 | `index.embed` | [`filling`](../../src/kb_mcp/search/app/indexing.py) |
-| `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
+| `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/http.py) |
 | `tools/call search`, a call's root | the MCP SDK; [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) adds the mode, the documents found and whether words stood in for meaning |
 | `search.lexical`, `search.semantic` | [`ranking`](../../src/kb_mcp/mcp/app/tools.py) |
 

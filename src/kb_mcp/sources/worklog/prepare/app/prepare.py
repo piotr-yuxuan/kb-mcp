@@ -40,7 +40,7 @@ from kb_mcp.mirror.domain.mirror import (
     scope_name,
 )
 from kb_mcp.mirror.domain.mirror_text import one_line
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES, WorklogFrontMatter
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from kb_mcp.sources.worklog.prepare.domain.layout import places, retired, worklog_path

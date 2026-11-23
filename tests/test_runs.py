@@ -1191,7 +1191,7 @@ def test_the_run_s_start_and_the_invocation_recorded_are_its_log_file_s_instant(
         def now(cls, _tz: tzinfo | None = None) -> datetime:
             return instant
 
-    monkeypatch.setattr("kb_mcp.observability.app.observed.datetime", Clock)
+    monkeypatch.setattr("kb_mcp.observability.observed.datetime", Clock)
     options = given(home, endpoint)
     assert main(["fetch", "--yes", "--format", "json", *options, "worklog"]) == ExitStatus.OK
     configured, entries = record_of(home, json.loads(capsys.readouterr().out)["run"])

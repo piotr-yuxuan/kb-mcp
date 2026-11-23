@@ -45,7 +45,7 @@ by default the user's log folder as platformdirs places it:
 `~/Library/Logs/kb-mcp` on macOS,
 `$XDG_STATE_HOME/kb-mcp/log` on Linux. `load_settings` resolves and
 judges it as it does the data directory, and names `logs.dir` when it refuses it.
-`observability.adapters.logs.log_file` alone writes there: one file a run,
+`observability.observed.log_file` alone writes there: one file a run,
 `<command>-<start>-<pid>.jsonl`, 0600, in a folder that it makes 0700, and it removes
 the files of that pattern, named after any of the program's commands, whose run
 started more than 30 days before. The program reads none back. [The telemetry

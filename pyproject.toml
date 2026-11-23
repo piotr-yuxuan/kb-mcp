@@ -84,7 +84,6 @@ containers = [
   "kb_mcp.sources.*.fetch",
   "kb_mcp.sources.*.prepare",
   "kb_mcp.config",
-  "kb_mcp.observability",
 ]
 layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"]
 exhaustive = true
@@ -106,6 +105,7 @@ source_modules = [
 forbidden_modules = [
   "kb_mcp.**.adapters",
   "kb_mcp.**.app",
+  "kb_mcp.observability",
   "httpx",
   "sqlite3",
   "subprocess",
@@ -162,7 +162,14 @@ forbidden_modules = ["kb_mcp.sources"]
 id = "F"
 name = "Use cases and commands reach the network through effects only"
 type = "forbidden"
-source_modules = ["kb_mcp.**.app", "kb_mcp.cli.commands", "kb_mcp.kernel"]
+source_modules = [
+  "kb_mcp.**.app",
+  "kb_mcp.cli.commands",
+  "kb_mcp.kernel",
+  "kb_mcp.observability.observed",
+  "kb_mcp.observability.progress",
+  "kb_mcp.observability.telemetry",
+]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true
 
@@ -200,7 +207,7 @@ id = "H"
 name = "Only observability and the command use Rich and requests, never progress"
 type = "forbidden"
 source_modules = [
-  "kb_mcp.observability.adapters.progress",
+  "kb_mcp.observability.progress",
   "kb_mcp.evaluation",
   "kb_mcp.mcp",
   "kb_mcp.search",

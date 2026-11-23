@@ -26,7 +26,7 @@ from kb_mcp.evaluation.domain.evaluation import (
 )
 from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
 from kb_mcp.kernel.records import Record
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.search.app.reranking import Reranking
 
 if TYPE_CHECKING:

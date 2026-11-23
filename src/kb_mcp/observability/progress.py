@@ -1,11 +1,6 @@
-"""Progress: how far a run's long tasks are, as events and as bars on a terminal.
+"""Progress: how far a run's long tasks are, as events and as bars that a display draws.
 
-Code reports a task with ``task()``, wherever it runs and with no setup. Each task logs
-the event ``progress``: its name, how many of its items are done, of how many, and the
-seconds it has left by ``remaining``, every 10 s at most and once at its end. Its bar is
-drawn only by a display installed with ``drawn``, as ``observed`` does on a terminal:
-this module draws nothing and imports no Rich (contract H), so that what reports
-progress imports none either.
+It draws nothing and imports no Rich (contract H), so that what reports progress neither.
 """
 
 from __future__ import annotations
@@ -18,13 +13,18 @@ from typing import TYPE_CHECKING, Protocol, override
 
 import structlog
 
-from kb_mcp.observability.domain.time_remaining import remaining
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
 
 # The fewest seconds between two events progress of a task, but before its last.
 HEARTBEAT = 10.0
+
+
+def remaining(done: float, total: float | None, elapsed: float) -> float | None:
+    """Say the seconds that a task has left at its pace; None if its total or pace is unknown."""
+    if total is None or done <= 0:
+        return None
+    return max(total - done, 0) * elapsed / done
 
 
 class Bar(Protocol):
@@ -67,10 +67,7 @@ DISPLAY = ContextVar[Display | None]("display", default=None)
 
 @dataclass
 class Task:
-    """A task under way: its items done, of ``total`` if known, and the item it is at.
-
-    ``said`` is when it last logged ``progress``, on ``clock``, or when it began.
-    """
+    """A task under way: its items done, of ``total`` if known, the item it is at, ``said`` when."""
 
     what: str
     total: int | None
@@ -90,11 +87,7 @@ class Task:
             self.say(now)
 
     def each[T](self, items: Iterable[T], name: Callable[[T], str]) -> Iterator[T]:
-        """Give each item in turn, shown by its ``name`` as the one the task is at.
-
-        An item is counted done once the next is asked for, or the items end; one whose
-        handling raises, or that a loop breaks at, is not.
-        """
+        """Give each item, shown by its ``name``, counted done once the next is asked for."""
         for item in items:
             self.item = name(item)
             self.bar.show(self.done, self.item)
@@ -118,10 +111,9 @@ class Task:
 def task(
     what: str, total: int | None = None, clock: Callable[[], float] = time.monotonic
 ) -> Iterator[Task]:
-    """Report the progress of the task ``what``, of ``total`` items if known, within.
+    """Report the progress of the task ``what`` within: its bar, if drawn, and its events.
 
-    Its bar is drawn on the display installed, if any, until it ends, however it ends;
-    it then logs ``progress`` a last time.
+    It logs ``progress`` every 10 s at most and at its end, however it ends.
     """
     began = clock()
     bar = (DISPLAY.get() or Unseen()).bar(what, total)

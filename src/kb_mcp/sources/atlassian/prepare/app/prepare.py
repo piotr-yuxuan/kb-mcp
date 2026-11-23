@@ -35,7 +35,7 @@ from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
 from kb_mcp.mirror.adapters.pandoc import PandocFailedError
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, dumped
 from kb_mcp.mirror.domain.mirror import SourceFile, scope_name
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
     COVERAGE,
     TOMBSTONES,
