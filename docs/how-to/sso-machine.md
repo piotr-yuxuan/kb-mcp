@@ -36,8 +36,8 @@ site = "https://<your-site>.atlassian.net"
 ```
 
 `site`, `spaces` and `projects` belong to each source's table: at the top of the file, or
-under `[accounts.atlassian]`, where they were before, they are refused, and the message
-names the setting of each source that they moved to.
+under `[accounts.atlassian]`, where they were before, they name no setting, and are
+refused.
 
 Each setting can also come from a variable, `KB_MCP_` then its path in
 capitals joined by `__`, a list or a table in JSON

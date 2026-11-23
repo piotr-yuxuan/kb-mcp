@@ -24,7 +24,6 @@ from kb_mcp.config.domain.settings import (
     SettingsError,
     environment_entries,
     file_entries,
-    refuse_moved,
     setting_paths,
     settings_model,
     settings_of,
@@ -452,62 +451,6 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
     }
     assert loaded.ignored == ()
     assert loaded.replaced == frozenset()
-
-
-@pytest.mark.parametrize(
-    ("key", "moved"),
-    [
-        ("spaces", "sources.confluence.spaces"),
-        ("projects", "sources.jira.projects"),
-        ("site", "sources.confluence.site and sources.jira.site"),
-        ("email", "sources.confluence.email and sources.jira.email"),
-        (
-            "api_token",
-            "KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and KB_MCP_SOURCES__JIRA__API_TOKEN",
-        ),
-    ],
-)
-def test_the_old_keys_at_the_top_of_the_file_are_refused_naming_their_new_places(
-    key: str, moved: str
-) -> None:
-    """Plan 015 moved spaces and projects into their sources' tables, without an alias.
-
-    Plan 030 moved the site and the email into the Atlassian account's table alike, and
-    plan 059 into each Atlassian source's: the advice names each, a secret by its
-    variable. The file's entries leave them out, for the refusal once loaded.
-    """
-    assert file_entries({key: "x"}, FILE, MODEL) == []
-    with pytest.raises(SettingsError) as refused:
-        refuse_moved({key: "x"}, FILE, {}, MODEL(data_dir=HOME))
-    assert str(refused.value) == f"{key} ({FILE}): moved into the table of each source"
-    assert f"  {key} ({FILE}) to {moved}\n" in refused.value.advice
-
-
-@pytest.mark.parametrize(
-    ("sources", "to"),
-    [
-        ({}, "sources.confluence.site and sources.jira.site"),
-        ({"jira": {"projects": ["PRB"]}}, "sources.confluence.site and sources.jira.site"),
-        ({"confluence": {"site": "https://own.example.invalid"}}, "sources.jira.site"),
-        (
-            {"confluence": {"site": "https://a.invalid"}, "jira": {"site": "https://b.invalid"}},
-            "nowhere: delete it, as each source holds its own",
-        ),
-    ],
-    ids=["none configured", "one configured", "one with its own", "both with their own"],
-)
-def test_a_moved_key_goes_to_each_source_that_holds_no_value_of_its_own(
-    sources: dict[str, object], to: str
-) -> None:
-    """Review rounds 1 to 3: each source that read the account and holds no value of its own.
-
-    Configured or not: a flag may give a source what it covers, so that one configured by
-    flags alone read the account's site too, and the advice is the same whatever the run.
-    """
-    settings = MODEL(data_dir=HOME, sources=sources)
-    with pytest.raises(SettingsError) as refused:
-        refuse_moved({"accounts": {"atlassian": {"site": "x"}}}, FILE, {}, settings)
-    assert refused.value.advice.endswith(f"  accounts.atlassian.site ({FILE}) to {to}\n")
 
 
 def test_connector_at_the_top_is_not_a_setting_rather_than_moved() -> None:

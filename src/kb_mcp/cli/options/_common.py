@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 # What took the place of --site, which is gone.
 SITE_GONE = (
     "gone; each source's site is its setting, sources.<name>.site in the settings file, or"
-    " KB_MCP_SOURCES__<NAME>__SITE, as docs/how-to/move-to-kb-mcp.md says"
+    " KB_MCP_SOURCES__<NAME>__SITE"
 )
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")

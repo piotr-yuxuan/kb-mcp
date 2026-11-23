@@ -307,7 +307,7 @@ Two more of the store's own records, each replaced whole:
   `exact` as false. Every version before plan 061, 0.1.4 and the tag `pre-kb-mcp` among
   them, refuses the whole record, every source's, rather than ignore it, once it holds
   an entry without a period: keep a copy of `raw/coverage.json` before the first fetch
-  to go back to one ([moving to kb-mcp](../how-to/move-to-kb-mcp.md)).
+  to go back to one.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each document absent from its scope's whole read, a space's
   listing or a project's, by its `source`, its document `type` and its `id`, with the key of that

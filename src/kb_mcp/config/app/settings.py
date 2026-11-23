@@ -3,29 +3,18 @@
 from __future__ import annotations
 
 import os
-from copy import replace
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic_settings import EnvSettingsSource
 
-from kb_mcp.config.adapters.settings_file import SETTINGS_PATH, git_root, read_settings_file
-from kb_mcp.config.domain.former_name import (
-    FORMER_DATA_DIR,
-    FORMER_SETTINGS_FILE,
-    Found,
-    refuse_former_name,
-)
+from kb_mcp.config.adapters.settings_file import git_root, read_settings_file
 from kb_mcp.config.domain.settings import (
-    DEFAULT_DATA_DIR,
     LayerValue,
     Loaded,
     Settings,
     SettingsError,
-    at_home,
     environment_entries,
     file_entries,
-    refuse_moved,
     settings_of,
     shared_entries,
     unsafe_location,
@@ -34,6 +23,7 @@ from kb_mcp.observability.adapters.logs import default_log_folder
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 
 class UnsafeDataDirError(SettingsError):
@@ -47,10 +37,9 @@ def load_settings(
 
     The settings are of ``model``, which ``settings_model`` composed. ``flags`` maps
     each flag, such as ``--data-dir``, to the setting it overrides, by its path joined by
-    dots, and its value, None when it was not given. The file's layer is its name, the
-    former settings file's its path from ``~``, and a variable's its name. ``~`` in a
-    path is ``home``, which must be resolved. What was ignored is each variable that
-    names no setting or is empty, then each value replaced.
+    dots, and its value, None when it was not given. The file's layer is its name, and a
+    variable's its name. ``~`` in a path is ``home``, which must be resolved. What was
+    ignored is each variable that names no setting or is empty, then each value replaced.
 
     Telemetry's endpoint has two layers more, OpenTelemetry's own variables, as
     ``shared_entries`` reads them: ``OTEL_EXPORTER_OTLP_ENDPOINT``, below the file,
@@ -62,45 +51,21 @@ def load_settings(
     ``..`` removed) before the guard judges them, as logs hold titles and queries; the
     resolved data directory and log folder are what every command then uses. Links
     deeper inside are not followed.
-
-    Before the guard, ``refuse_former_name`` judges what the program's former name left,
-    from what exists under ``home``: the former settings file is read in place of the
-    default one when that is missing, so that its values are judged too, but for its
-    keys renamed since, which the stop names, as it does of a file given under the former
-    name. The settings file given and the data directory are compared with the defaults
-    once resolved, so that any path naming a default is taken for it. Then
-    ``refuse_moved`` refuses the settings given where they were before, naming the
-    sources' settings they moved to.
     """
-    defaults = {
-        place: at_home(place, home)
-        for place in (SETTINGS_PATH, FORMER_SETTINGS_FILE, Path(DEFAULT_DATA_DIR), FORMER_DATA_DIR)
-    }
-    found = Found(
-        settings_file=SETTINGS_PATH,
-        settings_given=path,
-        reads_default=path.expanduser().resolve() == defaults[SETTINGS_PATH].resolve(),
-        existing=frozenset(place for place, there in defaults.items() if there.exists()),
-        former_data_in_git=git_root(defaults[FORMER_DATA_DIR]) is not None,
-    )
-    read = defaults[FORMER_SETTINGS_FILE] if found.former_file_judged else path
     try:
-        values = read_settings_file(read)
+        values = read_settings_file(path)
     except ValueError as error:
-        message = f"{read}: not a TOML file"
+        message = f"{path}: not a TOML file"
         raise SettingsError(message) from error
     except OSError as error:
-        message = f"{read}: not readable ({type(error).__name__})"
+        message = f"{path}: not readable ({type(error).__name__})"
         raise SettingsError(message) from error
-    judged = replace(found, keys_read=frozenset(values))
     environment, unread = environment_entries(os.environ, EnvSettingsSource(model), model)
     below, above, unshared = shared_entries(os.environ)
-    kept = {name: value for name, value in values.items() if name not in judged.renamed_keys}
-    layer = str(FORMER_SETTINGS_FILE) if found.former_file_judged else path.name
     loaded = settings_of(
         [
             *below,
-            *file_entries(kept, layer, model),
+            *file_entries(values, path.name, model),
             *environment,
             *(
                 LayerValue(path=tuple(setting.split(".")), value=value, layer=flag)
@@ -119,8 +84,6 @@ def load_settings(
             "logs": logs.model_copy(update={"dir": (logs.dir or default_log_folder()).resolve()}),
         }
     )
-    refuse_former_name(judged, loaded, settings.data_dir, os.environ, home)
-    refuse_moved(kept, layer, os.environ, loaded.settings)
     places = [
         ("data_dir", settings.data_dir, ""),
         *(("data_dir", part, f"{part.name}: ") for part in settings.parts),

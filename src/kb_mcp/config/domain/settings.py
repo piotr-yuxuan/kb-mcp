@@ -2,13 +2,12 @@
 
 ``settings_model`` composes the model of the settings from the core's, ``Settings``, and
 the table of each source that the entry gives it, under ``sources``; this module names
-no source but in ``MOVED``. They come in layers, each
-stronger than the last: the settings file, the environment, then the flags given. Each
-layer gives entries, a value at a setting's path of that model; ``settings_of`` merges
-them, a stronger value replacing a weaker one whole, a list included, and builds the
-settings, whose fields hold every rule of a value. Secrets come from the environment
-alone. Where data may live is judged by ``unsafe_location``, once the loader has
-resolved the data directory.
+no source. They come in layers, each stronger than the last: the settings file, the
+environment, then the flags given. Each layer gives entries, a value at a setting's path
+of that model; ``settings_of`` merges them, a stronger value replacing a weaker one
+whole, a list included, and builds the settings, whose fields hold every rule of a value.
+Secrets come from the environment alone. Where data may live is judged by
+``unsafe_location``, once the loader has resolved the data directory.
 """
 
 from __future__ import annotations
@@ -77,11 +76,6 @@ DEFAULT_RERANKER = "qwen3-reranker-0.6b"
 DEFAULT_RERANK_DEPTH = 30
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
-# The table that held each account's settings, ``[accounts.<name>]``, before they moved
-# into each source's table, such as ``sources.jira.site``.
-MOVED = "accounts"
-# The depth of a setting in an account's table, accounts.<name>.<key>, as a path.
-ACCOUNT_DEPTH = 3
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
 # What each source's ``connector`` says, which the model adds to its connector's table.
@@ -100,12 +94,7 @@ SYNCED_NAMES = ("Dropbox", "OneDrive", "Google Drive", "GoogleDrive")
 
 
 class SettingsError(ValueError):
-    """A setting that cannot be used; the message names it and its layer, never its value.
-
-    ``advice``, empty unless a refusal has more to say, is written after it as it is.
-    """
-
-    advice = ""
+    """A setting that cannot be used; the message names it and its layer, never its value."""
 
 
 def matching(pattern: re.Pattern[str], expected: str) -> AfterValidator:
@@ -679,104 +668,14 @@ def refuse_secrets(
             raise SettingsError(message)
 
 
-def moved(path: tuple[str, ...], model: type[Settings]) -> bool:
-    """Say whether a path is where a setting was before: under ``MOVED``, or a source's at the top.
-
-    A key at the top that no setting holds, and that a source's table holds, such as
-    ``site``; not a misspelt one, nor ``connector``, which every table holds and none
-    held at the top.
-    """
-    sources = model.model_fields["sources"].annotation
-    tables = [each.annotation for each in sources.model_fields.values()]
-    return path[0] == MOVED or (
-        len(path) == 1
-        and path[0] not in (*model.model_fields, CONNECTOR)
-        and any(path[0] in each.model_fields for each in tables)
-    )
-
-
-def moved_to(key: str, sources: BaseModel) -> tuple[tuple[str, ...], ...]:
-    """Give the paths of a key moved into the sources' tables: that of each source that read it.
-
-    A source of the registry, named after its connector, as no other read it where it was,
-    whose table holds it and gives it no value of its own, which another layer may write;
-    configured or not, as a flag may give a source what it covers, so that the advice is
-    the same whatever the run that prints it.
-    """
-    return tuple(
-        ("sources", name, key)
-        for name, table in sources
-        if key in (fields := type(table).model_fields)
-        and get_args(fields[CONNECTOR].annotation) == (name,)
-        and not getattr(table, key)
-    )
-
-
-def refuse_moved(
-    values: Mapping[str, object], layer: str, environ: Mapping[str, str], settings: Settings
-) -> None:
-    """Raise SettingsError, with advice, for each setting given where it was before, ``moved``.
-
-    The settings file's, of ``layer``, and the environment's, by a variable of the prefix
-    under ``MOVED``, a table's JSON read key by key; a variable at the top names no
-    setting, and is ignored as one. The advice names each by its path and its layer,
-    never its value, and the setting of each source that it moved to, as ``moved_to``
-    gives them: by its variable for one given by a variable, or for a secret, which a
-    variable alone gives; by its path for another; so one round of edits moves them all.
-    A table given empty names no key, and is said alone.
-    """
-    model = type(settings)
-    paths = setting_paths(model)
-    found = [
-        entry
-        for name, value in values.items()
-        for entry in entries_of(value, (name,), layer, model)
-        if moved(entry.path, model)
-    ]
-    for name, text in sorted(environ.items()):
-        path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
-        if text and name.lower().startswith(PREFIX.lower()) and path[0] == MOVED:
-            try:
-                value = json.loads(text) if text.startswith("{") else text
-            except ValueError:
-                value = text
-            found += entries_of(value, path, name, model)
-    said = [f"{'.'.join(entry.path)} ({entry.layer})" for entry in found]
-    lines = []
-    for entry, where in zip(found, said, strict=True):
-        under = entry.path[0] == MOVED
-        key = entry.path[-1] if len(entry.path) == (ACCOUNT_DEPTH if under else 1) else None
-        by_variable = entry.layer != layer
-        named = [
-            variable(path) if by_variable or paths.get(path) == "secret" else ".".join(path)
-            for path in (moved_to(key, settings.sources) if key else ())
-        ]
-        to = " and ".join(named) or (
-            "nowhere: delete it, as each source holds its own" if key else "each source's table"
-        )
-        lines.append(f"  {where} to {to}\n")
-    if lines:
-        error = SettingsError(f"{', '.join(said)}: moved into the table of each source")
-        error.advice = (
-            "Move each setting into the table of each source, or rename each variable"
-            " where it is set (a shell's profile, an MCP client, sops):\n" + "".join(lines)
-        )
-        raise error
-
-
 def file_entries(
     values: Mapping[str, object], layer: str, model: type[Settings]
 ) -> list[LayerValue]:
-    """Give the settings file's values as entries; refuse an unknown one, then a secret.
-
-    One where it was before, ``moved``, is left out: ``refuse_moved`` refuses it, once
-    the settings name the sources that it moved to.
-    """
+    """Give the settings file's values as entries; refuse an unknown one, then a secret."""
     entries = [
         entry
         for name, value in values.items()
         for entry in entries_of(value, (name,), layer, model)
-        if not moved(entry.path, model)
     ]
     paths = setting_paths(model)
     for entry in entries:

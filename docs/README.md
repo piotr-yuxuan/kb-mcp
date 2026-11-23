@@ -20,8 +20,6 @@ the command and those who change its code, unless it is marked for contributors.
 
 - [Fetch through SSO on a managed machine](how-to/sso-machine.md): the settings, the
   sign-in in your browser and a first fetch, where the data must stay on the machine.
-- [Move to kb-mcp](how-to/move-to-kb-mcp.md): a machine set up under the program's former
-  name moved, its settings, data and variables, and what other programs keep of it.
 - [Bring every source up to date](how-to/refresh.md): `refresh`, one run of `fetch`,
   `prepare`, `index` and `embed`, recorded and resumed by its id, or each stage alone.
 - [Add the work log](how-to/work-log.md): a folder of org files written as Markdown into the mirror

@@ -43,8 +43,6 @@ SOURCE_NAMED = re.compile(r"\b(?:confluence|jira|worklog)\b|sources\.atlassian",
 NAMING = {
     # A docstring's example of a setting's path.
     "cli/domain/command.py": 1,
-    # A comment's example of a key moved into each source's table.
-    "config/domain/settings.py": 1,
     # Docstrings of the front matter's Atlassian-shaped keys, which question 3 keeps.
     "mirror/domain/mirror.py": 2,
 }

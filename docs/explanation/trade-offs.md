@@ -945,8 +945,7 @@ as a page or the reranker reads it
   instead lets the next prune delete the vectors that they alone read, which the next
   `eval` embeds again. The results of `embed` and `eval`, the event
   `index.chunk_refused`, the counter `kb_mcp.index.chunks` and eval's `indexes` break
-  the scripts and dashboards that read the former names
-  ([move to kb-mcp](../how-to/move-to-kb-mcp.md#8-what-runs-do-differently)). A search
+  the scripts and dashboards that read the former names. A search
   keeps each chunk's section and range in columns beside the matrix of vectors, not as
   a record per chunk, which would hold about 229 MB more for 200,000 chunks
   ([`ChunkVectors`](../../src/kb_mcp/search/domain/search.py)).

@@ -251,18 +251,6 @@ none leaves, such as one that signs in by an API token, and its checks of `docto
 `runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)),
 which the data guard judges.
 
-A settings file of the former name, the default's or one that `--config` names, holding
-these keys at its top is stopped before its entries are refused, each key named by the
-key of each source that holds it now
-([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py),
-[`moved_to`](../../src/kb_mcp/config/domain/settings.py)), a token by the variables that
-alone set it, so that the existing file gets its advice, and a value that the former
-default's file holds and a setting refuses names that file's path as its layer
-([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding a top-level `site`
-or `email`, or an `[accounts.atlassian]` table, and a variable
-`KB_MCP_ACCOUNTS__ATLASSIAN__…`, are refused with the same advice
-([`refuse_moved`](../../src/kb_mcp/config/domain/settings.py)).
-
 ## What every source's documents share
 
 **The front matter checks what is common**
