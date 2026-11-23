@@ -227,7 +227,8 @@ def measure(
     if stray:
         message = f"neither a module of {PACKAGE} nor ignored: {', '.join(stray)}"
         raise ValueError(message)
-    trees = {path: ast.parse(path.read_bytes(), path) for path in files}
+    texts = {path: path.read_text("utf-8") for path in files}
+    trees = {path: ast.parse(text, path) for path, text in texts.items()}
     classes = {
         node.name
         for tree in trees.values()
@@ -235,8 +236,7 @@ def measure(
         if isinstance(node, ast.ClassDef)
     }
     measured: dict[str, Measure] = {}
-    for path, tree in trees.items():
-        text = path.read_text("utf-8")
+    for path, text in texts.items():
         code, comments = set(), set()
         for token in tokenize.generate_tokens(io.StringIO(text).readline):
             if token.type == tokenize.COMMENT:
@@ -245,7 +245,7 @@ def measure(
                 code.update(range(token.start[0], token.end[0] + 1))
         rows = text.split("\n")
         lines = len([row for row in code if rows[row - 1].strip()])
-        types = typed(tree, classes)
+        types = typed(trees[path], classes)
         module = path.relative_to(package).with_suffix("").parts
         match module:
             case ("__init__",) | ("__main__",):
