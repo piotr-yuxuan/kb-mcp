@@ -12,8 +12,7 @@ from mcp.client.stdio import StdioServerParameters
 from opentelemetry import trace
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.reranking import LONGEST_TEXT, MOST_TEXTS
+from kb_mcp.kernel.names import LONGEST_TEXT, MOST_TEXTS, ExitStatus
 from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import LONGEST, Library, UnanswerableError
 from kb_mcp.search.adapters.reranking import Reranked, RerankError

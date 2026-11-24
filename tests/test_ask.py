@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     from _pytest.tempdir import TempPathFactory
 
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.mcp.app.tools import SearchFilters
     from tests.conftest import InMemory
 

@@ -16,7 +16,7 @@ from kb_mcp.cli.options._common import (
     endpoint_elsewhere,
     model_name,
 )
-from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.kernel.names import CHUNKINGS
 
 if TYPE_CHECKING:
     import argparse

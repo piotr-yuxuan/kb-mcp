@@ -28,7 +28,7 @@ from kb_mcp.cli.main import main
 # The status that a run reaching for the network ends with.
 REACHED = 3
 # What exports telemetry, which a run imports only once it has an endpoint.
-TELEMETRY = "kb_mcp.observability.adapters.telemetry"
+TELEMETRY = "kb_mcp.observability.telemetry"
 # What makes a connection, or looks a name up, or opens a port.
 NETWORK = frozenset({"socket.connect", "socket.bind", "socket.getaddrinfo", "socket.gethostbyname"})
 

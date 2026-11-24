@@ -10,13 +10,13 @@ fixed.
 `<data>` is the setting `data_dir`, by default `~/kb-mcp`. It is never
 under a synchronised folder (iCloud, `~/Library/CloudStorage`, Dropbox, OneDrive, Google
 Drive, `~/Desktop`, `~/Documents`) and never inside a git working tree. Settings come
-from `config.app.settings.load_settings`, which merges the settings file, the
+from `config.load.load_settings`, which merges the settings file, the
 environment and the flags given, then resolves the data directory and each of the places
 below that the program writes (links followed, `..` removed), judges each resolved path
 with names compared regardless of case, and raises `UnsafeDataDirError` when one is
 refused; `aliases.toml`, which the user alone writes, is not judged. Links deeper
 inside those places are not followed. Every command loads its settings that way, in its
-entry; `config.domain.settings.settings_of`, which builds them from the layers, checks
+entry; `config.settings.settings_of`, which builds them from the layers, checks
 no location and is not for commands.
 
 | Path | `Settings` | Written by | Read by |
@@ -45,7 +45,7 @@ by default the user's log folder as platformdirs places it:
 `~/Library/Logs/kb-mcp` on macOS,
 `$XDG_STATE_HOME/kb-mcp/log` on Linux. `load_settings` resolves and
 judges it as it does the data directory, and names `logs.dir` when it refuses it.
-`observability.adapters.logs.log_file` alone writes there: one file a run,
+`observability.observed.log_file` alone writes there: one file a run,
 `<command>-<start>-<pid>.jsonl`, 0600, in a folder that it makes 0700, and it removes
 the files of that pattern, named after any of the program's commands, whose run
 started more than 30 days before. The program reads none back. [The telemetry
@@ -307,7 +307,7 @@ Two more of the store's own records, each replaced whole:
   `exact` as false. Every version before plan 061, 0.1.4 and the tag `pre-kb-mcp` among
   them, refuses the whole record, every source's, rather than ignore it, once it holds
   an entry without a period: keep a copy of `raw/coverage.json` before the first fetch
-  to go back to one ([moving to kb-mcp](../how-to/move-to-kb-mcp.md)).
+  to go back to one.
 - `<data>/raw/tombstones.json`, read by `tombstones()` and written by
   `put_tombstones()`: each document absent from its scope's whole read, a space's
   listing or a project's, by its `source`, its document `type` and its `id`, with the key of that
@@ -348,7 +348,7 @@ Owned by `sources.worklog.fetch.adapters.copy_store.CopyStore`; nothing else rea
 writes under `<data>/copies/`. Each work log, each source of the `worklog` connector, has
 a folder of its own, `<data>/copies/<source>/`, which holds one file, `copies.json`, and
 its writers' lock, `.lock`: one run at a time writes a source's store, inside
-`CopyStore.writing()`, which raises `CopyStoreBusyError` when another run holds it, and `put`
+`CopyStore.writing()`, which raises `StoreBusyError` when another run holds it, and `put`
 refuses to run outside it. The file is replaced whole, through a hidden file renamed into
 place, so that it is the last write or the one before it, never part of one.
 
@@ -513,7 +513,7 @@ nothing in them depends on when they were prepared.
   characters becomes one `-`; leading and trailing `-` are removed; it is cut at 60
   characters, and a `-` left at the cut is removed. An empty slug leaves `<id>.md`, as
   does a work-log day or meeting, whose id holds its date or its title's slug already
-  (`kernel.names.WORKLOG_TYPES`, by `named_by_id`). When a title changes, the file
+  (`sources.worklog.WORKLOG_TYPES`, by `named_by_id`). When a title changes, the file
   is renamed and the old name removed.
 - `<ext>`: the attachment file name's extension in lower case when it matches
   `[a-z0-9]{1,8}`, otherwise none. Links from documents to assets are relative.
@@ -889,7 +889,7 @@ a document of the store not written, or carried over, also begins stays, such as
   begins with a letter and holds no colon or bracket, then `: `, blanks before the
   colon not the name's; the name is none of `SCHEDULED`, `DEADLINE`, `CLOSED` and
   `CLOCK`.
-- The rule of an id is its type's, `kernel.names.WORKLOG_TYPES`:
+- The rule of an id is its type's, `sources.worklog.WORKLOG_TYPES`:
   `e-[0-9a-f]{16}(?:-[0-9]+)?` for an entry;
   `t-(?:[0-9]{8}-[A-Za-z0-9_-]{1,64}|[0-9a-f]{16})` for a transcript; `d-[0-9]{8}` for
   a day, its date; `m-[0-9]{8}-[a-z0-9-]{1,64}` for a meeting, its day's date and its
@@ -1009,7 +1009,7 @@ the words of each section's title, labels, breadcrumb, heading and body, whose c
 table `chunks` (each chunk of a section's body, its range and its vector) and the meta
 rows `build` (a random id of the build), `model`, `fingerprint` and `dimensions`, the
 last three empty for an index built without a model. Plan 019 adds the meta row
-`chunking`, how the chunks were cut (one of `kernel.chunking`'s names), empty without a
+`chunking`, how the chunks were cut (one of `kernel.names.CHUNKINGS`), empty without a
 model; an index without the row, 011's or 018's, was cut by `sections`. A chunk keeps
 the section that holds its middle and its range in the document's body, so that a window
 may cross sections; before schema 7, its range was in that section's body. Plan 023 adds the column `key` to
@@ -1281,7 +1281,7 @@ OpenAI-compatible endpoint, the setting `embedding_url` (by default Ollama's
 `http://127.0.0.1:11434/v1`), and `search.adapters.reranking` alone a reranking server,
 the setting `rerank.url` (by default `http://127.0.0.1:9931/v1`, plan 022). Both
 connect through `search.adapters.model_api`, which refuses an address that is not a
-literal loopback one by the kernel's rule (`kernel.endpoint`): for embeddings unless
+literal loopback one by the kernel's rule (`kernel.names.refused_endpoint`): for embeddings unless
 the command is given `--allow-remote-embeddings`, for reranking always. Nothing that
 the reranking server answers is stored. A model's fingerprint is the
 SHA-256 of its name, the digest that Ollama lists for it (`/api/tags`, empty from a

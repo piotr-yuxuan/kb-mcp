@@ -15,7 +15,7 @@ from kb_mcp.sources.stages import Check
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.sources.declaration import Source
 
 # What says whether a source of each connector is signed in: its request, and its rule.

@@ -17,7 +17,7 @@ from typing import Literal, Self
 from pydantic import Field, InstanceOf, field_serializer, model_validator
 
 from kb_mcp.kernel.names import SOURCE_NAME, RefusedError, require
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, FIRST_FETCH, Period
 from kb_mcp.sources.declaration import ScopeType
 

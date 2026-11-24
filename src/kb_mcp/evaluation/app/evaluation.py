@@ -22,7 +22,7 @@ import yaml
 from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field, ValidationError
 
-from kb_mcp.config.domain.settings import SearchMode
+from kb_mcp.config.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
     CONTROL,
     CUTOFF,
@@ -41,10 +41,10 @@ from kb_mcp.evaluation.domain.evaluation import (
     quoting,
 )
 from kb_mcp.evaluation.domain.golden import Golden
-from kb_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
@@ -53,9 +53,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.evaluation.domain.evaluation import Choice
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
 
 MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)

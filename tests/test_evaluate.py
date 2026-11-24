@@ -16,7 +16,7 @@ import yaml
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Settings
+from kb_mcp.config.settings import Settings
 from kb_mcp.evaluation.app import evaluation
 from kb_mcp.evaluation.app.evaluation import (
     ASK_HEADER,
@@ -30,7 +30,7 @@ from kb_mcp.evaluation.app.evaluation import (
     table,
 )
 from kb_mcp.evaluation.domain.evaluation import Question, Quoted, holm
-from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.kernel.names import CHUNKINGS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading

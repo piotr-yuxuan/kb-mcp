@@ -1,10 +1,7 @@
-"""Requests to other programs, observed by OpenTelemetry's semantic conventions.
+"""Requests to other programs, observed by OpenTelemetry's semantic conventions, by its API.
 
-``ObservedTransport`` is the transport of the clients that reach the site and the embeddings
-endpoint: each request that it sends is a span, a duration and an event, by the HTTP
-conventions. ``client_span`` traces and measures any operation of a client, such as an
-embedding, made of such requests. Both use the OpenTelemetry API alone, which does
-nothing until the SDK is behind it.
+The API alone does nothing until the SDK is behind it. This module alone of
+``observability`` imports httpx (contract F).
 """
 
 from __future__ import annotations
@@ -46,10 +43,7 @@ REQUEST_DURATION = metrics.get_meter(__name__).create_histogram(
 
 
 def server(url: httpx.URL) -> dict[str, AttributeValue]:
-    """Give the conventions' ``server.address`` and ``server.port`` of a URL.
-
-    A URL that names no port has its scheme's: http's, or else https's.
-    """
+    """Give the conventions' ``server.address`` and ``server.port``, its scheme's if none."""
     return {
         SERVER_ADDRESS: url.host,
         SERVER_PORT: url.port or (HTTP_PORT if url.scheme == "http" else HTTPS_PORT),
@@ -63,15 +57,10 @@ def client_span(
     measured: dict[str, AttributeValue],
     traced: Mapping[str, AttributeValue],
 ) -> Iterator[None]:
-    """Trace an operation of a client as a span ``name``, and record its seconds in ``duration``.
+    """Trace an operation of a client as a span, and record its seconds in ``duration``.
 
-    The span holds ``measured`` and ``traced``; the duration ``measured`` alone, whose
-    values must be few. Both take ``measured`` as the operation leaves it, since it may
-    add to it, such as the status of an answer. An exception that the operation raises
-    sets ``error.type`` to its class, qualified by its module, as the conventions have
-    it; with ``error.type`` set either way, the span's status is an error. The
-    exception itself is not recorded: its message may hold what a span must not, such
-    as a token in a URL's query.
+    The span holds ``measured`` and ``traced``, the duration ``measured`` alone, as the
+    operation leaves it; an exception sets ``error.type``, its message unrecorded.
     """
     began = time.perf_counter()
     with TRACER.start_as_current_span(
@@ -94,19 +83,9 @@ def client_span(
 
 
 class ObservedTransport(httpx.BaseTransport):
-    """A transport that observes each request it sends, a redirect's included.
+    """A transport that observes each request it sends through ``network``, as httpx would.
 
-    Each is a span named after its method, by the HTTP conventions, until its answer's
-    headers; its duration, in ``http.client.request.duration``; and the event
-    ``http.<method>``, such as ``http.get``, at DEBUG, with its URL, its status or its
-    error, and its seconds. An answer of status 400 or above is an error, its status its
-    ``error.type``. A URL is shown without a user or a password, and with its query on
-    ``host`` alone: elsewhere, such as on the media host that a file redirects to, the
-    query may hold a token. No header is shown, and no trace context sent.
-
-    The requests go through ``network``, a client of its own, so that httpx chooses
-    their transport as it would, the environment's proxies included, which it ignores
-    for a client given a transport.
+    A URL is shown without a user or a password, with its query on ``host`` alone.
     """
 
     def __init__(self, network: httpx.Client, host: str) -> None:

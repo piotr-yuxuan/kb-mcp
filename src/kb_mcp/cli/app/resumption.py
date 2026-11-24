@@ -8,16 +8,16 @@ from kb_mcp.cli.adapters.run_record import RunRecord
 from kb_mcp.cli.domain.command import FETCH
 from kb_mcp.cli.domain.runs import keyed, resume_refused, resume_said, units_of
 from kb_mcp.cli.domain.sources import fetch_flags, refusals
-from kb_mcp.config.domain.settings import values_of
+from kb_mcp.config.settings import values_of
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from kb_mcp.cli.domain.runs import Configuration
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.sources.declaration import Source
 
 

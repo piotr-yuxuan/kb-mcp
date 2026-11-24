@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
     from pathlib import Path
 
-    from kb_mcp.kernel.outcome import Outcome
+    from kb_mcp.kernel.records import Outcome
     from kb_mcp.sources.atlassian.prepare.app.prepare import AtlassianCounts
 
 # The registry's Atlassian sources, by name, each with its connector's document classes.

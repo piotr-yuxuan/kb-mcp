@@ -1,6 +1,6 @@
 """How a document is cut into the chunks that vectors stand for, by each chunking.
 
-``CHUNKERS`` gives each chunking of ``kernel.chunking`` by its name: what it cuts a
+``CHUNKERS`` gives each chunking of ``kernel.names`` by its name: what it cuts a
 document into, as the index keeps each chunk, and the range that ``ask`` returns for a
 chunk found. A chunk belongs to the section that holds its middle, and its range is in
 the document's body, so that a window may cross sections. ``sections``, 011's, is the
@@ -16,15 +16,15 @@ import re
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.chunking import CHARACTERS_PER_TOKEN
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter
 from kb_mcp.search.domain.search import HEADING, Section
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
 
 # Each chunk of a document: the index in its sections of the one holding its middle, its
 # range in the body, and the text embedded.

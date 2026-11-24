@@ -20,12 +20,9 @@ import structlog
 from opentelemetry.sdk.trace import TracerProvider
 from structlog.testing import capture_logs
 
-from kb_mcp.observability.adapters import logs
-from kb_mcp.observability.adapters.logs import (
-    default_log_folder,
-    log_file,
-    route_through_logging,
-)
+from kb_mcp.config.load import default_log_folder
+from kb_mcp.observability import observed
+from kb_mcp.observability.observed import log_file, route_through_logging
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -279,7 +276,7 @@ def test_past_the_cap_a_line_log_capped_ends_the_file(
 ) -> None:
     """The earliest lines, whole, as many as fit in the cap; then log.capped; then none."""
     cap = 100_000
-    monkeypatch.setattr(logs, "CAP", cap)
+    monkeypatch.setattr(observed, "CAP", cap)
     with log_file(tmp_path, "download", RUN, NOW, COMMANDS) as path:
         for count in range(1000):
             structlog.get_logger().debug("fetch.document", count=f"{count:03}")
@@ -301,7 +298,7 @@ def test_past_the_cap_a_line_log_capped_ends_the_file(
 
 
 def test_a_file_that_stops_taking_lines_ends_saying_so_once_elsewhere(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+    tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     """As on a full disk: the first line that fails ends the file, and no other is tried.
 
@@ -310,15 +307,17 @@ def test_a_file_that_stops_taking_lines_ends_saying_so_once_elsewhere(
     nothing, though the lines it held were never written.
     """
     full = FullDisk(str(tmp_path / "check.jsonl"))
-    monkeypatch.setattr(
-        logs,
-        "open",
-        lambda *_, **__: io.TextIOWrapper(io.BufferedWriter(full), encoding="utf-8"),
-        raising=False,
-    )
-    with capture_logs() as events, log_file(tmp_path, "check", RUN, NOW, COMMANDS):
-        for count in range(3):
-            logging.getLogger("some.library").warning("line %d", count)
+    stream = io.TextIOWrapper(io.BufferedWriter(full), encoding="utf-8")
+    sink, root = observed.CappedFile(stream, observed.CAP), logging.getLogger()
+    root.addHandler(sink)
+    try:
+        with capture_logs() as events:
+            for count in range(3):
+                logging.getLogger("some.library").warning("line %d", count)
+    finally:
+        root.removeHandler(sink)
+        sink.close()
+        stream.close()
     assert full.closed
     assert events == [
         {
@@ -333,7 +332,7 @@ def test_a_file_that_stops_taking_lines_ends_saying_so_once_elsewhere(
 
 def test_the_cap_is_256_mib() -> None:
     """256 MiB, where a first download of 20,000 documents writes about 40 MB."""
-    assert logs.CAP == 256 * 2**20
+    assert observed.CAP == 256 * 2**20
 
 
 def test_the_default_folder_is_the_platform_s_log_folder_for_the_user(

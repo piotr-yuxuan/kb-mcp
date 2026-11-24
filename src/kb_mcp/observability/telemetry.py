@@ -1,9 +1,6 @@
 """Telemetry: the OpenTelemetry SDK, exporting a run's traces, metrics and logs over OTLP.
 
-This module alone of ``observability`` knows the SDK and its exporters. Code elsewhere
-traces and measures with the OpenTelemetry API, which does nothing until ``exporting``
-puts the SDK's providers behind it, and logs as ever, a sink of the root logger
-exporting its records. Telemetry goes to this machine alone, over http, in protobuf.
+This module alone knows the SDK, imported only for a run with an endpoint.
 """
 
 from __future__ import annotations
@@ -38,11 +35,10 @@ from opentelemetry.semconv.attributes.service_attributes import (
 )
 
 from kb_mcp.kernel.names import PROGRAM
-from kb_mcp.observability.adapters.logs import SDK
-from kb_mcp.observability.domain.redaction import redacted
+from kb_mcp.observability import SDK
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 # How long a run waits, at its start, to connect to the endpoint, in seconds.
 PROBE_S = 0.5
@@ -61,38 +57,31 @@ STRUCTLOG_EXTRA = frozenset({"_logger", "_name"})
 
 
 class Direct(requests.Session):
-    """A session that takes nothing from the environment: no proxy, above all."""
+    """A session that takes nothing from the environment: no proxy, netrc, nor bundle."""
 
     def __init__(self) -> None:
-        """Read neither the proxy variables, nor netrc, nor a certificate bundle's."""
+        """Make a session that trusts no variable of the environment."""
         super().__init__()
         self.trust_env = False
 
 
 class Exported(LoggingHandler):
-    """Export each record from INFO through the SDK, but the SDK's own.
+    """Export each record from INFO, but the SDK's own: its event or message, its fields beside.
 
-    An event's record has the event as its body, and the event's other fields as its
-    attributes, but those that it holds as fields of its own (``NATIVE``) and those
-    named as an attribute of the standard library's record, such as ``name``, which go
-    unexported; ``command`` is one more, as on each line of the run's file. Another
-    record, a library's, has its message as its body, whatever its message is, and the
-    fields it was given as ``extra`` as its attributes, redacted here, since no
-    processor sees them. Each carries the ids of the span around it.
+    Its fields are redacted, but ``NATIVE`` and the standard library's; ``command`` is one.
     """
 
-    def __init__(self, provider: LoggerProvider, command: str) -> None:
-        """Export through ``provider`` the records of a run of ``command``."""
+    def __init__(
+        self, provider: LoggerProvider, command: str, redact: Callable[[object], object]
+    ) -> None:
+        """Export through ``provider`` the records of a run of ``command``, by ``redact``."""
         super().__init__(logging.INFO, provider)
-        self.command = command
+        self.command, self.redact = command, redact
         self.addFilter(lambda record: record.name.partition(".")[0] != SDK)
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
-        """Export a copy of the record, its event as its message and its fields beside.
-
-        The record itself is left as it is, for the other sinks.
-        """
+        """Export a copy of the record, its event as its message; the record stays as it is."""
         event = isinstance(record.msg, dict) and "event" in record.msg
         fields = record.msg if event else {"event": record.getMessage()}
         standard = {key: value for key, value in vars(record).items() if key not in STRUCTLOG_EXTRA}
@@ -103,7 +92,7 @@ class Exported(LoggingHandler):
             "args": (),
             "command": self.command,
         }
-        super().emit(logging.makeLogRecord(cast("dict[str, object]", redacted(copied))))
+        super().emit(logging.makeLogRecord(cast("dict[str, object]", self.redact(copied))))
 
 
 class Stopping(threading.Thread):
@@ -130,27 +119,15 @@ class Stopping(threading.Thread):
 
 
 @contextmanager
-def exporting(endpoint: str, run: str, command: str) -> Iterator[None]:
-    """Export a run's traces, metrics and logs to ``endpoint``, over OTLP, as this program.
+def exporting(
+    endpoint: str, run: str, command: str, redact: Callable[[object], object]
+) -> Iterator[None]:
+    """Export the traces, metrics and logs of a run of ``command``, id ``run``, to ``endpoint``.
 
-    ``endpoint`` is ``http://<address>:<port>`` on this machine, as the settings give it,
-    and the run is a run of ``command`` whose id is ``run``. First the run connects to
-    it once, waiting ``PROBE_S`` at most: unreached, it raises OSError, and nothing is
-    installed. Within, the API's tracer and meter providers are the SDK's, and the root
-    logger has one sink more, ``Exported``. Each signal goes to its own path under the
-    endpoint, in protobuf, each export waiting ``TIMEOUT_S`` at most for an answer, by a
-    session that takes no proxy from the environment; spans and records go in batches,
-    metrics every ``METRICS_EVERY_MS`` and once more at the end. The resource names the
-    program, its version, and the run as its instance, and takes nothing from the
-    environment, ``OTEL_SERVICE_NAME`` and ``OTEL_RESOURCE_ATTRIBUTES`` included.
+    Each log record is exported as ``redact`` returns it.
 
-    On leaving, the providers shut down in parallel, ``LIMIT_S`` seconds in all, with
-    no exit hook of their own, or until Ctrl-C, which goes no further. One that is not
-    shut down by then, or fails to, makes one warning, ``telemetry.undelivered``, which
-    says why: what is unsent is dropped, and the SDK's
-    loggers say nothing more, since a thread of the SDK left running would else write
-    on stderr by logging's last resort, once the run's sinks are gone. The API keeps
-    the providers, shut down, as it takes them once a process.
+    Raises OSError when the endpoint takes no connection, installing nothing. On leaving,
+    ``LIMIT_S`` at most, then one ``telemetry.undelivered`` and the SDK silenced.
     """
     parts = urlsplit(endpoint)
     socket.create_connection((parts.hostname, parts.port), PROBE_S).close()
@@ -181,7 +158,7 @@ def exporting(endpoint: str, run: str, command: str) -> Iterator[None]:
     )
     trace.set_tracer_provider(tracers)
     metrics.set_meter_provider(meters)
-    root, sink = logging.getLogger(), Exported(loggers, command)
+    root, sink = logging.getLogger(), Exported(loggers, command, redact)
     root.addHandler(sink)
     try:
         yield

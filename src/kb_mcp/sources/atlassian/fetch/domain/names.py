@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from kb_mcp.kernel.names import PROJECT_KEY, SPACE_KEY
+from kb_mcp.sources.atlassian import PROJECT_KEY, SPACE_KEY
 from kb_mcp.sources.declaration import DocumentType, Option, ScopeType, key_of
 
 CONFLUENCE = "confluence"

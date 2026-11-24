@@ -8,20 +8,18 @@ from typing import TYPE_CHECKING, override
 
 from argcomplete.completers import DirectoriesCompleter, FilesCompleter
 
-from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
-from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
-from kb_mcp.kernel.names import MODEL_NAME
-from kb_mcp.kernel.output import DETAILS, FORMATS, LEVELS
+from kb_mcp.config.file import SETTINGS_PATH
+from kb_mcp.kernel.names import DETAILS, EMBEDDINGS, FORMATS, LEVELS, MODEL_NAME, refused_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from kb_mcp.kernel.output import Level
+    from kb_mcp.kernel.names import Level
 
 # What took the place of --site, which is gone.
 SITE_GONE = (
     "gone; each source's site is its setting, sources.<name>.site in the settings file, or"
-    " KB_MCP_SOURCES__<NAME>__SITE, as docs/how-to/move-to-kb-mcp.md says"
+    " KB_MCP_SOURCES__<NAME>__SITE"
 )
 # The level of each -v given, from none: warning, then info, then debug.
 VERBOSITY: tuple[Level, ...] = ("warning", "info", "debug")

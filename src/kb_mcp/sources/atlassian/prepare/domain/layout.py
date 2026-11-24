@@ -12,8 +12,7 @@ from html import escape
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.names import ASSETS
-from kb_mcp.kernel.slug import slug
+from kb_mcp.kernel.names import ASSETS, slug
 from kb_mcp.mirror.domain.mirror_text import one_line
 from kb_mcp.sources.atlassian.fetch.domain.content import BlogPost
 

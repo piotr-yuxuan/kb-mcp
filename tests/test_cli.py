@@ -22,9 +22,9 @@ import pytest
 import kb_mcp
 from kb_mcp.cli import commands, options
 from kb_mcp.cli.main import main, parser
-from kb_mcp.config.domain.settings import setting_paths
-from kb_mcp.kernel.exit_status import MEANINGS, ExitStatus
-from kb_mcp.kernel.output import Output
+from kb_mcp.config.settings import setting_paths
+from kb_mcp.kernel.names import MEANINGS, ExitStatus
+from kb_mcp.kernel.records import Invocation
 from tests.composed import MODEL
 from tests.endpoint import nothing_listening
 from tests.test_confirmation import read_until
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.kernel.output import Level
+    from kb_mcp.kernel.names import Level
 
 ROOT = Path(__file__).parents[1]
 # The exit status for what is refused before acting: options, and settings, an unsafe data
@@ -56,7 +56,6 @@ RUNS_PACKAGES = frozenset(
         "playwright",
         "pydantic",
         "pydantic_core",
-        "pydantic_settings",
         "requests",
         "rich",
         "structlog",
@@ -547,7 +546,15 @@ def test_every_subcommand_takes_the_level_its_options_name(
 def test_quiet_is_at_the_level_error_alone(level: Level) -> None:
     """-q sets the level error, so that a run quiet at another level is a mistake."""
     with pytest.raises(ValueError, match="-q sets the level error"):
-        Output(level, "short", "text", quiet=True, stdin_terminal=False, stderr_terminal=False)
+        Invocation(
+            command="check",
+            level=level,
+            detail="short",
+            format="text",
+            quiet=True,
+            stdin_terminal=False,
+            stderr_terminal=False,
+        )
 
 
 @pytest.mark.parametrize(

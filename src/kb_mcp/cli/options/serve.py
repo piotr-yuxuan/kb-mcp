@@ -12,7 +12,7 @@ from kb_mcp.cli.options._common import (
     add_settings_options,
     endpoint_by_meaning,
 )
-from kb_mcp.kernel.tools import TOOLS, Tool
+from kb_mcp.kernel.names import TOOLS, Tool
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

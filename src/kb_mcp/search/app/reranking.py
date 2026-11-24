@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 import structlog
 from opentelemetry import metrics
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.search.adapters.reranking import RerankError
 from kb_mcp.search.app.meaning import QUIET_S
 

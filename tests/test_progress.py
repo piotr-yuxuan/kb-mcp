@@ -8,7 +8,7 @@ from typing import override
 
 from structlog.testing import capture_logs
 
-from kb_mcp.observability.adapters.progress import Bar, Display, drawn, task
+from kb_mcp.observability.progress import Bar, Display, drawn, task
 
 
 @dataclass

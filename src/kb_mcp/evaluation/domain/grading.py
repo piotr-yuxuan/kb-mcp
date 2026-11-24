@@ -21,7 +21,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     paired_test,
     plain,
 )
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence

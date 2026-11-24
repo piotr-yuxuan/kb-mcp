@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import string
 
-from kb_mcp.kernel.reranking import LONGEST_TEXT
+from kb_mcp.kernel.names import LONGEST_TEXT
 
 # The text that a document is scored by: its title and the heading of its section, each
 # cut to these, a line each, then this much of the section about its best place.

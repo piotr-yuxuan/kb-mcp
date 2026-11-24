@@ -11,15 +11,14 @@ from kb_mcp.cli.domain.command import FETCH
 from kb_mcp.cli.domain.rows import Ran, Row
 from kb_mcp.cli.domain.runs import Configuration
 from kb_mcp.cli.domain.sources import chosen, fetch_options
-from kb_mcp.config.domain.settings import values_of, without_secrets
+from kb_mcp.config.settings import values_of, without_secrets
 
 if TYPE_CHECKING:
     import argparse
     from datetime import datetime
 
-    from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.exit_status import ExitStatus
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.config.settings import Loaded
+    from kb_mcp.kernel.names import Detail, ExitStatus
 
 
 def run(

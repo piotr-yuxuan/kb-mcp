@@ -31,12 +31,10 @@ from kb_mcp.evaluation.app.evaluation import (
     table,
 )
 from kb_mcp.evaluation.domain.evaluation import CONTROL, Choice
-from kb_mcp.kernel.chunking import CHUNKINGS
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import CHUNKINGS, STAMP, ExitStatus
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
-from kb_mcp.observability.domain.log_files import STAMP
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
@@ -44,8 +42,8 @@ from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 if TYPE_CHECKING:
     import argparse
 
-    from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.config.settings import Loaded
+    from kb_mcp.kernel.names import Detail
 
 
 class IndexesEvaluated(Record):

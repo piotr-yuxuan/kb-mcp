@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.outcome import Outcome, Problem
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoreBusyError
+from kb_mcp.kernel.names import StoreBusyError
+from kb_mcp.kernel.records import Outcome, Problem
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.sign_in import choose_sign_in
 from kb_mcp.sources.atlassian.fetch.app.fetching import Purview, plan_fetch, run_fetch
 from kb_mcp.sources.atlassian.fetch.domain.content import Space

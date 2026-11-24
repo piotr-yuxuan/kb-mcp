@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import httpx
 import pytest
 
-from kb_mcp.kernel.endpoint import EMBEDDINGS
+from kb_mcp.kernel.names import EMBEDDINGS
 from kb_mcp.mcp.app.tools import Asked, Library, ranking
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import ModelError, endpoint
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from kb_mcp.config.domain.settings import SearchMode
+    from kb_mcp.config.settings import SearchMode
     from kb_mcp.search.adapters.embedding import Embedder
     from kb_mcp.search.domain.indexes import SearchReader
     from kb_mcp.search.domain.search import Sort

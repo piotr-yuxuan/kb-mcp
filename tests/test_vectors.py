@@ -21,7 +21,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.chunking import CHUNKINGS
+from kb_mcp.kernel.names import CHUNKINGS
 from kb_mcp.mcp.app import responses
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters import sqlite_index, vector_cache
@@ -63,7 +63,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
     from numpy.typing import NDArray
 
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import ApiEmbedder
     from kb_mcp.search.app.indexing import Filled
     from kb_mcp.search.app.pruning import Pruned

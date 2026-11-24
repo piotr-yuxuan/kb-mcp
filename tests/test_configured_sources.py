@@ -19,7 +19,7 @@ import pytest
 
 from kb_mcp.cli.commands import sources as sources_command
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
 
 # The client's site, a second one.
 CLIENT_SITE = "https://client.example.invalid"
@@ -171,44 +171,6 @@ def test_a_dry_run_plans_each_source_of_one_connector_with_its_own_site(
     ]
     assert "source jira: projects PRB, site https://sandbox.example.invalid" in err
     assert "source clientjira: projects ABC, site https://client.example.invalid" in err
-
-
-# What criterion 2 refuses: the account's table in the file, or its variable, each with
-# the line that names its new places.
-FORMER = {
-    "a table": (
-        '[accounts.atlassian]\nsite = "https://x.atlassian.net"\n',
-        {},
-        ("accounts.atlassian.site (config.toml) to sources.confluence.site and sources.jira.site"),
-    ),
-    "a variable": (
-        "",
-        {"KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN": "token-sentinel-1b8f"},
-        (
-            "accounts.atlassian.api_token (KB_MCP_ACCOUNTS__ATLASSIAN__API_TOKEN) to"
-            " KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and KB_MCP_SOURCES__JIRA__API_TOKEN"
-        ),
-    ),
-}
-
-
-@pytest.mark.parametrize("case", FORMER.values(), ids=FORMER.keys())
-def test_the_account_s_former_settings_are_refused_naming_each_source_s(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-    capsys: CaptureFixture[str],
-    case: tuple[str, dict[str, str], str],
-) -> None:
-    """Criterion 2: exit 2, with advice naming the key or variable of each Atlassian source."""
-    text, variables, named = case
-    config = tmp_path / "config.toml"
-    config.write_text(text, "utf-8")
-    for name, value in variables.items():
-        monkeypatch.setenv(name, value)
-    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
-    assert f"  {named}\n" in err
-    assert "token-sentinel-1b8f" not in err
 
 
 def test_two_sites_of_one_connector_fetch_sign_in_and_prepare_apart(
@@ -393,17 +355,3 @@ def test_a_variable_of_a_source_named_as_the_model_s_attribute_is_refused(
     monkeypatch.setenv("KB_MCP_SOURCES__COPY__CONNECTOR", "jira")
     assert main(["check", "--config", str(tmp_path / "none.toml")]) == ExitStatus.REFUSED
     assert "sources.copy: a name that the settings' model holds" in capsys.readouterr().err
-
-
-def test_the_account_s_keys_go_to_the_registry_s_sources_alone(
-    tmp_path: Path, capsys: CaptureFixture[str]
-) -> None:
-    """Review round 2: a source added since never read the account; no key goes to it."""
-    config = tmp_path / "config.toml"
-    config.write_text(f'[accounts.atlassian]\nsite = "{SITE}"\n{CLIENT}', "utf-8")
-    assert main(["check", "--config", str(config)]) == ExitStatus.REFUSED
-    err = capsys.readouterr().err
-    assert (
-        "  accounts.atlassian.site (config.toml) to sources.confluence.site and sources.jira.site\n"
-    ) in err
-    assert "sources.clientjira.site" not in err

@@ -9,7 +9,7 @@ import pytest
 from pydantic import ConfigDict, ValidationError, model_validator
 
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.search.domain.search import ChunkVectors
 
 # A value that no message may hold.

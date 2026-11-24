@@ -14,9 +14,10 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import model_validator
 
-from kb_mcp.kernel.names import IDENTIFIER, WORKLOG_TYPES, RefusedError, require
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import IDENTIFIER, RefusedError, require
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import RELATIONS
+from kb_mcp.sources.worklog import WORKLOG_TYPES
 from kb_mcp.sources.worklog.fetch.domain.worklog import digest
 
 if TYPE_CHECKING:

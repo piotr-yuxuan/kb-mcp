@@ -16,7 +16,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.records import Problem
 from kb_mcp.sources.worklog.fetch.adapters import files
 
 CONTENT = "words of the file that must never show"

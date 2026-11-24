@@ -17,7 +17,7 @@ from mcp.client.stdio import StdioServerParameters
 from mcp.shared.exceptions import MCPError
 from mcp_types import TextContent
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence

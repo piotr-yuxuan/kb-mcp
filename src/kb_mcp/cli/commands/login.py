@@ -8,16 +8,15 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.cli.options.login import to_sign_in, unlocated
-from kb_mcp.config.domain.settings import values_of
-from kb_mcp.kernel.exit_status import ExitStatus, folded
+from kb_mcp.config.settings import values_of
+from kb_mcp.kernel.names import ExitStatus, folded
 
 if TYPE_CHECKING:
     import argparse
 
-    from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.exit_status import Ending
-    from kb_mcp.kernel.output import Detail
-    from kb_mcp.kernel.record import Record
+    from kb_mcp.config.settings import Loaded
+    from kb_mcp.kernel.names import Detail, Ending
+    from kb_mcp.kernel.records import Record
     from kb_mcp.sources.declaration import Source
 
 

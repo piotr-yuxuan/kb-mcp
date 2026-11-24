@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.app.units import Planned, SourcesRefusedError
 from kb_mcp.cli.domain.command import FETCH, PREPARE
-from kb_mcp.config.domain.settings import values_of, without_secrets
+from kb_mcp.config.settings import values_of, without_secrets
 from kb_mcp.sources.stages import Fetcher, Preparer
 
 if TYPE_CHECKING:

@@ -9,14 +9,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.config.domain.settings import settings_model
+from kb_mcp.config.settings import settings_model
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.registry import SOURCES, tables
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.sources.declaration import Connector
 
 

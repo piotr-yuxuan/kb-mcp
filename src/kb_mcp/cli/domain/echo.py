@@ -1,8 +1,8 @@
 """What a run says on stderr before it acts, and whether it asks first.
 
 Its settings, the values it ignores and its command to copy. Pure: the entry gives it the
-arguments, the settings loaded and how the run reports, writes what it returns, and asks
-the question if one follows.
+arguments, the settings loaded and the invocation, writes what it returns, and asks the
+question if one follows.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Literal
 
 from kb_mcp.cli.domain.command import OBSERVING
 from kb_mcp.cli.domain.command_line import command_line
-from kb_mcp.config.domain.settings import Ignored, values_of
+from kb_mcp.config.settings import Ignored, values_of
 from kb_mcp.kernel.names import CONNECTOR
 
 if TYPE_CHECKING:
@@ -21,8 +21,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from kb_mcp.cli.domain.command import Command
-    from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.output import Output
+    from kb_mcp.config.settings import Loaded
+    from kb_mcp.kernel.records import Invocation
 
 # What follows what a run says before it acts: the run, a question first, or a refusal,
 # since no one could answer one.
@@ -60,7 +60,7 @@ def ignored_lines(ignored: Iterable[Ignored]) -> str:
 def before(
     arguments: argparse.Namespace,
     loaded: Loaded,
-    output: Output,
+    invocation: Invocation,
     absolute: Callable[[Path], Path],
     instead: str | None = None,
 ) -> tuple[str, Then]:
@@ -94,13 +94,13 @@ def before(
     then: Then
     if not command.writes or arguments.yes or (command.dry_run and arguments.dry_run):
         then = "run"
-    elif output.stdin_terminal and output.stderr_terminal:
+    elif invocation.stdin_terminal and invocation.stderr_terminal:
         then = "ask"
     else:
         then = "refuse"
-    if output.quiet and then != "ask":
+    if invocation.quiet and then != "ask":
         return "", then
-    detailed = output.detail == "detailed"
+    detailed = invocation.detail == "detailed"
     values = values_of(loaded.settings)
     unapplied = command.unapplied(arguments, values) if command.unapplied else {}
     read = dict.fromkeys((*command.reads, *OBSERVING))
@@ -118,7 +118,7 @@ def before(
             if detailed and setting not in {*read, *unapplied, *connectors}
         ),
     ]
-    warned = ignored if output.level != "error" or then == "ask" else []
+    warned = ignored if invocation.level != "error" or then == "ask" else []
     noted = ignored_lines(warned)
     endpoint = loaded.settings.telemetry.endpoint
     telemetry = (

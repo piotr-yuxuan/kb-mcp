@@ -15,8 +15,9 @@ from typing import ClassVar, Self
 
 from pydantic import model_validator
 
-from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, PROJECT_KEY, SPACE_KEY, require
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, require
+from kb_mcp.kernel.records import Record
+from kb_mcp.sources.atlassian import PROJECT_KEY, SPACE_KEY
 from kb_mcp.sources.atlassian.fetch.domain.names import BLOGPOST, FOLDER, ISSUE, PAGE
 from kb_mcp.sources.declaration import DocumentType
 

@@ -8,8 +8,9 @@ into a copy store of the source's, from which its preparer writes the mirror.
 
 from __future__ import annotations
 
-from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE, WORKLOG_TYPES
+from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE
 from kb_mcp.sources.declaration import Connector, DocumentType, ScopeType
+from kb_mcp.sources.worklog import WORKLOG_TYPES
 
 WORKLOG = Connector(
     name="worklog",

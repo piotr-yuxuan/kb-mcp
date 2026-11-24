@@ -18,18 +18,12 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import (
-    DAY_TYPE,
-    ENTRY_TYPE,
-    MEETING_TYPE,
-    WORKLOG_SCOPE_TYPE,
-    RefusedError,
-)
-from kb_mcp.kernel.outcome import Outcome, OutcomeWarning, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE, RefusedError
+from kb_mcp.kernel.records import Outcome, OutcomeWarning, Problem, Record
 from kb_mcp.mirror.adapters.markdown import documents, load
 from kb_mcp.mirror.adapters.source_files import SOURCE_FILE, source_file
 from kb_mcp.mirror.domain.mirror import scope_name
+from kb_mcp.sources.worklog import DAY_TYPE, ENTRY_TYPE, MEETING_TYPE
 from kb_mcp.sources.worklog.fetch.adapters import files
 from kb_mcp.sources.worklog.fetch.adapters.copy_store import CopyStore
 from kb_mcp.sources.worklog.fetch.domain.copies import Carried, Copies, fetched
@@ -52,8 +46,8 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.config.settings import Settings
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.worklog.fetch.domain.worklog import OrgText
     from kb_mcp.sources.worklog.settings import WorklogTable
 
@@ -236,7 +230,7 @@ def fetch_worklog(
     subtrees tagged ARCHIVE are left out. A dry run takes no lock and writes nothing, and
     ends not run, or failed for a problem found.
 
-    Raises ``CopyStoreBusyError`` while another run writes the store, and
+    Raises ``StoreBusyError`` while another run writes the store, and
     ``RepresentationError`` for a store that does not read. ``worklog.carried`` says at
     INFO how many dates a store began with, and how many files of the mirror did not
     read; ``worklog.fetched`` at INFO what the read found.

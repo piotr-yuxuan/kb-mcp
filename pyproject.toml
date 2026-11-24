@@ -22,7 +22,6 @@ dependencies = [
   "platformdirs>=4.13,<5",
   "playwright>=1.64,<2",
   "pydantic>=2.14,<3",
-  "pydantic-settings>=2.15,<3",
   "pyyaml>=6,<7",
   "requests>=2.34,<3",
   "rich>=15,<16",
@@ -84,8 +83,6 @@ containers = [
   "kb_mcp.mirror",
   "kb_mcp.sources.*.fetch",
   "kb_mcp.sources.*.prepare",
-  "kb_mcp.config",
-  "kb_mcp.observability",
 ]
 layers = ["(main)", "(commands)", "(options)", "(app)", "(adapters)", "(domain)"]
 exhaustive = true
@@ -95,7 +92,10 @@ id = "C"
 name = "Pure rules, in any context, use no effect and no use case"
 type = "forbidden"
 source_modules = [
-  "kb_mcp.kernel",
+  "kb_mcp.kernel.names",
+  "kb_mcp.kernel.fields",
+  "kb_mcp.kernel.records",
+  "kb_mcp.config.settings",
   "kb_mcp.**.domain",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
@@ -105,9 +105,36 @@ source_modules = [
 forbidden_modules = [
   "kb_mcp.**.adapters",
   "kb_mcp.**.app",
+  "kb_mcp.observability",
+  "kb_mcp.config.load",
+  "kb_mcp.config.file",
+  "httpx",
+  "sqlite3",
+  "subprocess",
+  "socket",
+  "ssl",
+  "requests",
+  "truststore",
+  "certifi",
+  "anyio",
+  "playwright",
+  "mcp",
+  "structlog",
+  "logging",
   "opentelemetry",
   "rich",
-  "structlog",
+  "os",
+  "sys",
+  "time",
+  "fcntl",
+  "tempfile",
+  "shutil",
+  "threading",
+  "secrets",
+  "uuid",
+  "random",
+  "importlib",
+  "platformdirs",
 ]
 
 [[tool.importlinter.contracts]]
@@ -137,7 +164,15 @@ forbidden_modules = ["kb_mcp.sources"]
 id = "F"
 name = "Use cases and commands reach the network through effects only"
 type = "forbidden"
-source_modules = ["kb_mcp.**.app", "kb_mcp.cli.commands"]
+source_modules = [
+  "kb_mcp.**.app",
+  "kb_mcp.cli.commands",
+  "kb_mcp.kernel",
+  "kb_mcp.config",
+  "kb_mcp.observability.observed",
+  "kb_mcp.observability.progress",
+  "kb_mcp.observability.telemetry",
+]
 forbidden_modules = ["httpx"]
 allow_indirect_imports = true
 
@@ -148,6 +183,9 @@ type = "forbidden"
 source_modules = [
   "kb_mcp.cli.main",
   "kb_mcp.cli.options",
+  "kb_mcp.kernel.names",
+  "kb_mcp.kernel.fields",
+  "kb_mcp.config.file",
   "kb_mcp.sources.declaration",
   "kb_mcp.sources.registry",
   "kb_mcp.sources.*.declared",
@@ -162,7 +200,6 @@ forbidden_modules = [
   "playwright",
   "pydantic",
   "pydantic_core",
-  "pydantic_settings",
   "requests",
   "rich",
   "structlog",
@@ -174,7 +211,7 @@ id = "H"
 name = "Only observability and the command use Rich and requests, never progress"
 type = "forbidden"
 source_modules = [
-  "kb_mcp.observability.adapters.progress",
+  "kb_mcp.observability.progress",
   "kb_mcp.evaluation",
   "kb_mcp.mcp",
   "kb_mcp.search",

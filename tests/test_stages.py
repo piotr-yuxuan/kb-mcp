@@ -29,8 +29,8 @@ import pytest
 from structlog.testing import capture_logs
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.names import ExitStatus
+from kb_mcp.kernel.records import Problem
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.mirror.adapters.pandoc import Pandoc, PandocMissingError
 from kb_mcp.sources.atlassian.declared import CONFLUENCE, JIRA
@@ -69,7 +69,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from kb_mcp.sources.declaration import Connector
 
 # The period of a fetch: the week before the run, which holds what the scripted site serves.

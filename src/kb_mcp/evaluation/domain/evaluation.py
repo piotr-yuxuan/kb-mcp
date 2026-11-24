@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from pydantic import Field
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

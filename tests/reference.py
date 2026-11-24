@@ -25,7 +25,8 @@ from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogR
 from opentelemetry.sdk.metrics.export import Gauge, Histogram, Sum
 from opentelemetry.trace import get_current_span
 
-from kb_mcp.observability.adapters.telemetry import Exported
+from kb_mcp.observability.observed import redacted
+from kb_mcp.observability.telemetry import Exported
 from tests.collector import attributes, plain
 
 if TYPE_CHECKING:
@@ -182,7 +183,7 @@ class Emitted:
         provider = LoggerProvider(shutdown_on_exit=False)
         provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
         root = logging.getLogger()
-        sinks = [Gathering(self), Exported(provider, command)]
+        sinks = [Gathering(self), Exported(provider, command, redacted)]
         for sink in sinks:
             root.addHandler(sink)
         try:

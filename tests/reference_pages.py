@@ -24,11 +24,10 @@ from typing import TYPE_CHECKING, Any, override
 from unittest.mock import patch
 
 from kb_mcp.cli.main import parser
-from kb_mcp.config.adapters.settings_file import SETTINGS_PATH
-from kb_mcp.config.domain.settings import NESTING, PREFIX, setting_paths, variable
-from kb_mcp.kernel.exit_status import MEANINGS
-from kb_mcp.kernel.names import PROGRAM
-from kb_mcp.observability.adapters.logs import default_log_folder
+from kb_mcp.config.file import SETTINGS_PATH
+from kb_mcp.config.load import default_log_folder
+from kb_mcp.config.settings import NESTING, PREFIX, setting_paths, variable
+from kb_mcp.kernel.names import MEANINGS, PROGRAM
 from tests.composed import MODEL
 
 if TYPE_CHECKING:
@@ -120,7 +119,7 @@ folder of logs.
 ## Exit statuses
 
 Every command ends with one of these statuses, which
-[`MEANINGS`](../../src/kb_mcp/kernel/exit_status.py) defines once, for
+[`MEANINGS`](../../src/kb_mcp/kernel/names.py) defines once, for
 `--help` and for this page.
 
 | Status | Meaning |
@@ -182,7 +181,7 @@ def settings() -> str:
 Every setting of the command: how each is named, which layer wins, then a row per
 setting; then the variables that a run reads besides. This page is generated from the
 settings' model,
-[`Settings`](../../src/kb_mcp/config/domain/settings.py),
+[`Settings`](../../src/kb_mcp/config/settings.py),
 by `{REGENERATE}`, and `tests/test_reference.py` fails while
 it differs: change a setting's `Field` and its description, then run that command;
 never edit the page.
@@ -192,7 +191,7 @@ never edit the page.
 A run takes each setting from the strongest layer that gives it. From the weakest: its
 default; the settings file; the environment; the flags of the run. A stronger layer's
 value replaces a weaker one's whole, a list included, as
-[`settings_of`](../../src/kb_mcp/config/domain/settings.py) merges them;
+[`settings_of`](../../src/kb_mcp/config/settings.py) merges them;
 `check --detail detailed` names the layer that gave each setting.
 
 - **The settings file** is TOML: `{SETTINGS_PATH}`, unless

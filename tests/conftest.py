@@ -25,7 +25,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from kb_mcp.config.domain.former_name import FORMER_PREFIX
 from tests.endpoint import REACHABLE
 
 if TYPE_CHECKING:
@@ -64,13 +63,13 @@ sys.addaudithook(guard)
 def settings_environment(monkeypatch: MonkeyPatch) -> None:
     """Remove the variables that the settings read, so that none of the user's reaches a test.
 
-    pydantic-settings reads its own without regard to case; OpenTelemetry's are read as
-    written. Those of the former prefix go too, which would stop every run.
+    The settings read their own without regard to case; OpenTelemetry's are read as
+    written.
     """
     for name in [
         name
         for name in os.environ
-        if name.lower().startswith((PREFIX.lower(), FORMER_PREFIX.lower())) or name.startswith(OTEL)
+        if name.lower().startswith(PREFIX.lower()) or name.startswith(OTEL)
     ]:
         monkeypatch.delenv(name)
 

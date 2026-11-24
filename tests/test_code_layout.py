@@ -21,7 +21,7 @@ import pytest
 import kb_mcp
 from kb_mcp import sources
 from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.domain.content import Space
 from kb_mcp.sources.atlassian.prepare.domain.catalogue import Catalogue
 from kb_mcp.sources.registry import SOURCES
@@ -43,8 +43,6 @@ SOURCE_NAMED = re.compile(r"\b(?:confluence|jira|worklog)\b|sources\.atlassian",
 NAMING = {
     # A docstring's example of a setting's path.
     "cli/domain/command.py": 1,
-    # A comment's example of a key moved into each source's table.
-    "config/domain/settings.py": 1,
     # Docstrings of the front matter's Atlassian-shaped keys, which question 3 keeps.
     "mirror/domain/mirror.py": 2,
 }

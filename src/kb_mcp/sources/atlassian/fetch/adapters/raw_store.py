@@ -19,9 +19,8 @@ from typing import TYPE_CHECKING
 import structlog
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
-from kb_mcp.kernel.names import BLOBS, IDENTIFIER, RefusedError, require
-from kb_mcp.kernel.outcome import Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import BLOBS, IDENTIFIER, RefusedError, StoreBusyError, require
+from kb_mcp.kernel.records import Problem, Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.domain.content import (
     REVISION,
@@ -126,10 +125,6 @@ REPRESENTATIONS: dict[type[FetchedDocument], Representation] = {
         snapshot=jira_v3.snapshot,
     ),
 }
-
-
-class StoreBusyError(RuntimeError):
-    """Another run is writing the raw store."""
 
 
 class StoredSnapshot(Record):

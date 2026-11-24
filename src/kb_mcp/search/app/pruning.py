@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Literal
 import structlog
 from opentelemetry import metrics, trace
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.domain.indexes import UnavailableIndexError
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from opentelemetry.trace import Span
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)

@@ -73,7 +73,7 @@ and it holds the identity provider's and Atlassian's cookies. So the whole folde
 sign-in: whoever reads it can act as you on the site until the session ends. That is
 why the data directory may lie neither under a synchronised folder nor in a git working
 tree, where it would be copied off the machine or committed
-([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)), and
+([`unsafe_location`](../../src/kb_mcp/config/settings.py)), and
 why agents never get it. To end it, see
 [end the session](../how-to/sso-machine.md#end-the-session).
 
@@ -85,7 +85,7 @@ place where it would outlive a run:
 
 - **From the environment alone.** The settings file refuses a token, naming the
   variable to use instead
-  ([`file_entries`](../../src/kb_mcp/config/domain/settings.py),
+  ([`file_entries`](../../src/kb_mcp/config/settings.py),
   [`test_check_refuses_a_secret_in_the_settings_file`](../../tests/test_cli.py)), and no
   flag takes one, as [the commands](../reference/commands.md) show: it never sits in a
   file that other tools read, in your shell's history or on a command line. Generic
@@ -134,7 +134,7 @@ It is sent as `Authorization: Bearer`, to the endpoint alone and only when set
 The key travels with the mirror's text, so the rule that keeps the text keeps the key:
 the endpoint must be a literal address of this machine, unless the run's own command
 line says `--allow-remote-embeddings`, and one elsewhere is reached over https alone
-([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py),
+([`refused_endpoint`](../../src/kb_mcp/kernel/names.py),
 [`test_a_remote_endpoint_needs_the_flag_and_https`](../../tests/test_embedding.py)). No
 run hands its word to a later one: `eval-agents prepare` writes it into none of the
 runs' files, and each `eval-agents call` of runs that need it is given it or refused
@@ -215,11 +215,11 @@ What a run logs is for you, on this machine, and may hold titles and queries
 
 - Every event is redacted before any sink: what a key naming a secret holds reads
   `[redacted]`
-  ([`redacted`](../../src/kb_mcp/observability/domain/redaction.py)).
+  ([`redacted`](../../src/kb_mcp/observability/observed.py)).
   The rule reads keys, not values, so the code never logs a header, and shows a URL's
   query on the site's host alone, as a media redirect carries a signed token in its
   query
-  ([`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py)).
+  ([`ObservedTransport`](../../src/kb_mcp/observability/http.py)).
 - A secret setting is never shown: the echo before a run and `check` say whether it
   is set
   ([`setting_line`](../../src/kb_mcp/cli/domain/echo.py),
@@ -227,10 +227,10 @@ What a run logs is for you, on this machine, and may hold titles and queries
   and `run.start` masks it.
 - A refused setting is named with the layer that gave it, never with its value, since
   a secret pasted in the wrong place would be echoed
-  ([`settings_of`](../../src/kb_mcp/config/domain/settings.py),
+  ([`settings_of`](../../src/kb_mcp/config/settings.py),
   [`test_a_setting_refused_with_a_secret_as_its_value_does_not_echo_it`](../../tests/test_secrets.py)).
 - A traceback shows no frame's locals, where a token could sit
-  ([`log_file`](../../src/kb_mcp/observability/adapters/logs.py)).
+  ([`log_file`](../../src/kb_mcp/observability/observed.py)).
 
 End to end,
 [`test_no_run_at_debug_says_or_leaves_a_secret`](../../tests/test_secrets.py) runs
@@ -258,11 +258,11 @@ mistake. None of it stops someone who is already on the machine as you:
   the mirror is plain Markdown. A backup of your home copies the data directory as
   it copies any folder: the guard refuses synchronised folders and git working trees,
   nothing else
-  ([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)). The
+  ([`unsafe_location`](../../src/kb_mcp/config/settings.py)). The
   disk's own encryption, such as FileVault or LUKS, is what keeps a lost machine's data.
 - **A tunnel.** The services' rules, of the embedding endpoint, the reranking server and
   telemetry's, trust that a loopback address is this machine
-  ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). A port of this
+  ([`refused_endpoint`](../../src/kb_mcp/kernel/names.py)). A port of this
   machine forwarded elsewhere, by an SSH tunnel say, carries what is sent to it there:
   the mirror's text and the key, or telemetry's records. The rule cannot see it.
 - **A copy made before the end.** A session or a token copied elsewhere signs in as you

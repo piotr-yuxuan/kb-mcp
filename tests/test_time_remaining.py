@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kb_mcp.observability.domain.time_remaining import remaining
+from kb_mcp.observability.progress import remaining
 
 
 @pytest.mark.parametrize(

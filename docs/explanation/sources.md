@@ -87,12 +87,12 @@ what its echo says.
 ## The stages' interfaces
 
 A fetcher or a preparer takes a [`SourceRun`](../../src/kb_mcp/sources/stages.py), the source that it runs for and
-all that it reads, and gives an [`Outcome`](../../src/kb_mcp/kernel/outcome.py). Any object
+all that it reads, and gives an [`Outcome`](../../src/kb_mcp/kernel/records.py). Any object
 with an interface's methods is one, and each source's is a module, its functions the
 methods, since none holds state. [`loaded`](../../src/kb_mcp/cli/app/sources.py) checks
 it against the runtime-checkable protocol. It may use the interfaces, the mirror,
-`config`'s rules of a table ([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
-[`LocalPath`](../../src/kb_mcp/config/domain/settings.py)), `observability` and the
+`config`'s rules of a table ([`TABLE`](../../src/kb_mcp/config/settings.py),
+[`LocalPath`](../../src/kb_mcp/config/settings.py)), `observability` and the
 kernel, and no other source ([contract I](code-layout.md#the-contracts)).
 
 - **`preflight`** says what a fetcher or a preparer cannot go on with, read from disk as
@@ -112,7 +112,7 @@ kernel, and no other source ([contract I](code-layout.md#the-contracts)).
   Atlassian's does not run.
 - **A result** is a record, which `--format json` writes as every result, and whose `text`
   its row writes ([`text`](../../src/kb_mcp/cli/commands/sources.py)). Each keeps its
-  own problems: a [`Problem`](../../src/kb_mcp/kernel/outcome.py) has a place and a
+  own problems: a [`Problem`](../../src/kb_mcp/kernel/records.py) has a place and a
   reason, and the work log's counts say by that place what each held back.
 - **Pandoc is the preparers' own.** `SourceRun` holds no tool that one of them alone needs, so each
   preparer that converts finds it
@@ -134,7 +134,7 @@ folder of the raw store
 ([`Page`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`BlogPost`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py),
 [`Issue`](../../src/kb_mcp/sources/atlassian/fetch/domain/content.py)); the work log keeps
-no store ([`WORKLOG_TYPES`](../../src/kb_mcp/kernel/names.py)). A connector's other
+no store ([`WORKLOG_TYPES`](../../src/kb_mcp/sources/worklog/__init__.py)). A connector's other
 options, each an [`Option`](../../src/kb_mcp/sources/declaration.py) that no setting holds,
 are its fetch's:
 
@@ -181,7 +181,7 @@ name that the program holds. Once the arguments are parsed, so that `--help` imp
 table, the entry also refuses a table whose settings are not those that its declaration
 names ([`tables`](../../src/kb_mcp/sources/registry.py)), whose name a model already holds,
 such as `json`, or that cannot be built by default
-([`settings_model`](../../src/kb_mcp/config/domain/settings.py)). These are a programmer's
+([`settings_model`](../../src/kb_mcp/config/settings.py)). These are a programmer's
 errors, raised, not exits. A name is a table, a folder of the mirror, a command argument
 and the front matter's `source`, so each source is configured once: two
 Confluence sites or two work logs cannot be configured, and allowing them later (named
@@ -212,18 +212,18 @@ module alone.
 
 The settings file holds a table per source, `[sources.<name>]`, and the entry composes
 them into the settings' model, in name order, each at its place among the fields
-([`settings_model`](../../src/kb_mcp/config/domain/settings.py)), which
-[`Loaded`](../../src/kb_mcp/config/domain/settings.py) carries for all that reads a
+([`settings_model`](../../src/kb_mcp/config/settings.py)), which
+[`Loaded`](../../src/kb_mcp/config/settings.py) carries for all that reads a
 setting's path. The sources are the registry's, `confluence`, `jira` and `worklog`, which
 always exist, and each other that the settings file or the environment names, of the
 connector that its `connector` names, by default its own name's
-([`named_sources`](../../src/kb_mcp/config/adapters/settings_file.py),
+([`named_sources`](../../src/kb_mcp/config/file.py),
 [`configured`](../../src/kb_mcp/sources/registry.py)): `[sources.clientjira]` with
 `connector = "jira"` is a second Jira site, beside `[sources.jira]`. The entry reads those
 names before it builds the parser, standard library alone, so that each command's choices,
 help and settings read are declared by source, as they were by the registry. A source of no
 connector that the registry holds, or of a name off the rule, is refused by the settings,
-naming it ([`refuse_not_a_source`](../../src/kb_mcp/config/domain/settings.py)).
+naming it ([`refuse_not_a_source`](../../src/kb_mcp/config/settings.py)).
 
 So `config` imports no source: each table lives in its package
 ([`ConfluenceTable`](../../src/kb_mcp/sources/atlassian/settings.py),
@@ -248,20 +248,8 @@ sources of two sites sign in apart. A connector that signs in names its `locatio
 setting where a source of it is, its run of `login`, the sources that a `login` naming
 none leaves, such as one that signs in by an API token, and its checks of `doctor`
 ([`Connector`](../../src/kb_mcp/sources/declaration.py)). The places `session/` and
-`runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)),
+`runs/` stay `config`'s ([`Settings.parts`](../../src/kb_mcp/config/settings.py)),
 which the data guard judges.
-
-A settings file of the former name, the default's or one that `--config` names, holding
-these keys at its top is stopped before its entries are refused, each key named by the
-key of each source that holds it now
-([`RENAMED`](../../src/kb_mcp/config/domain/former_name.py),
-[`moved_to`](../../src/kb_mcp/config/domain/settings.py)), a token by the variables that
-alone set it, so that the existing file gets its advice, and a value that the former
-default's file holds and a setting refuses names that file's path as its layer
-([move to kb-mcp](../how-to/move-to-kb-mcp.md)). Any other file holding a top-level `site`
-or `email`, or an `[accounts.atlassian]` table, and a variable
-`KB_MCP_ACCOUNTS__ATLASSIAN__…`, are refused with the same advice
-([`refuse_moved`](../../src/kb_mcp/config/domain/settings.py)).
 
 ## What every source's documents share
 
@@ -362,7 +350,7 @@ the fetcher or a preparer that its declaration names
 ([`source_planned`](../../src/kb_mcp/cli/app/sources.py)), which its `preflight` begins.
 Each unit runs even when another source's failed, since the next reads what is on disk;
 a source's prepare runs once its fetch is done; Ctrl-C stops the rest, and the units'
-endings fold into the exit status ([`folded`](../../src/kb_mcp/kernel/exit_status.py)). A
+endings fold into the exit status ([`folded`](../../src/kb_mcp/kernel/names.py)). A
 row names its source, with its result's text
 ([`Row`](../../src/kb_mcp/cli/domain/rows.py)); `index` and `embed` are units over the
 whole, `index` reading the mirror whatever sources it holds, and `embed` the index, and

@@ -49,8 +49,8 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import SearchMode
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.config.settings import SearchMode
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.mirror.domain.mirror import FrontMatter
 
 # Each table of an index, by what no rowid changes: documents by every column but their

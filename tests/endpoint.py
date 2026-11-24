@@ -31,7 +31,7 @@ from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 import httpx
 import numpy as np
 
-from kb_mcp.kernel.endpoint import EMBEDDINGS, RERANKING
+from kb_mcp.kernel.names import EMBEDDINGS, RERANKING
 from kb_mcp.search.adapters.embedding import connect
 from kb_mcp.search.adapters.model_api import Endpoint, endpoint
 

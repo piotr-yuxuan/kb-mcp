@@ -25,8 +25,9 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from kb_mcp.kernel.names import WORKLOG_ID, RefusedError
+from kb_mcp.kernel.names import RefusedError
 from kb_mcp.mirror.domain.mirror import RELATIONS, Mention
+from kb_mcp.sources.worklog import WORKLOG_TYPES
 from kb_mcp.sources.worklog.fetch.domain import org
 from kb_mcp.sources.worklog.fetch.domain.worklog import (
     SUMMARY,
@@ -49,6 +50,8 @@ KEYWORDS = frozenset({"TODO", "WAITING", "DONE"})
 DECLARED = "#+TODO: TODO WAITING | DONE\n"
 MODIFIED = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 ENTRY_ID = re.compile(r"e-[0-9a-f]{16}")
+# Any work-log document's id, of whichever type, by the rules of its types.
+WORKLOG_ID = re.compile("|".join(f"(?:{each.id_rule.pattern})" for each in WORKLOG_TYPES.values()))
 # Titles with statistics cookies anywhere, and the words they leave.
 TITLES = [
     ("Review the ledger", "Review the ledger"),

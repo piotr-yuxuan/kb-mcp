@@ -20,8 +20,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.names import WORKLOG_TYPES
-from kb_mcp.kernel.outcome import OutcomeWarning
+from kb_mcp.kernel.records import OutcomeWarning
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.domain.mirror import RELATIONS, ROLES, Link, Mention
 from kb_mcp.search.adapters import sqlite_index, vector_cache
@@ -43,6 +42,7 @@ from kb_mcp.search.domain.people import (
     Spelling,
 )
 from kb_mcp.search.domain.search import WORDS, Filters, PersonCounts, sections
+from kb_mcp.sources.worklog import WORKLOG_TYPES
 from tests.endpoint import nothing_listening, tiny
 from tests.mirrors import (
     CREATED,

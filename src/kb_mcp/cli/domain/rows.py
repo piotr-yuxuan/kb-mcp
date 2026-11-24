@@ -15,9 +15,8 @@ from typing import TYPE_CHECKING
 from pydantic import Field, InstanceOf, model_serializer
 
 from kb_mcp.cli.domain.runs import Recorded, Unit
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.outcome import Outcome
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import ExitStatus
+from kb_mcp.kernel.records import Outcome, Record
 
 if TYPE_CHECKING:
     from pydantic import SerializerFunctionWrapHandler

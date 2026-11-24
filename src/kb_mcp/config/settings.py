@@ -1,15 +1,4 @@
-"""Settings: where data lives, and each source's table, composed.
-
-``settings_model`` composes the model of the settings from the core's, ``Settings``, and
-the table of each source that the entry gives it, under ``sources``; this module names
-no source but in ``MOVED``. They come in layers, each
-stronger than the last: the settings file, the environment, then the flags given. Each
-layer gives entries, a value at a setting's path of that model; ``settings_of`` merges
-them, a stronger value replacing a weaker one whole, a list included, and builds the
-settings, whose fields hold every rule of a value. Secrets come from the environment
-alone. Where data may live is judged by ``unsafe_location``, once the loader has
-resolved the data directory.
-"""
+"""The settings' model and rules, composed with each source's table, and their layers merged."""
 
 from __future__ import annotations
 
@@ -28,7 +17,6 @@ from typing import (
     Union,
     get_args,
     get_origin,
-    override,
 )
 from urllib.parse import urlsplit
 
@@ -43,19 +31,27 @@ from pydantic import (
     create_model,
 )
 from pydantic_core import PydanticCustomError
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from kb_mcp.kernel.chunking import CHUNKINGS, Chunking
-from kb_mcp.kernel.endpoint import RERANKING, TELEMETRY, endpoint_host, refused_endpoint
-from kb_mcp.kernel.names import CONNECTOR, MODEL_NAME, NESTING, PREFIX, RESERVED, SOURCE_NAME
-from kb_mcp.kernel.record import Record, refused_fields
-from kb_mcp.kernel.reranking import DEPTHS
+from kb_mcp.kernel.names import (
+    CHUNKINGS,
+    CONNECTOR,
+    DEPTHS,
+    MODEL_NAME,
+    NESTING,
+    PREFIX,
+    RERANKING,
+    RESERVED,
+    SOURCE_NAME,
+    TELEMETRY,
+    Chunking,
+    endpoint_host,
+    refused_endpoint,
+)
+from kb_mcp.kernel.records import Record, refused_fields
 
 if TYPE_CHECKING:
     import re
-    from collections.abc import Callable, Iterable
-
-    from pydantic_settings import PydanticBaseSettingsSource
+    from collections.abc import Iterable
 
 DEFAULT_DATA_DIR = "~/kb-mcp"
 # The embedding model, as the endpoint names it: docs/how-to/embeddings.md says why.
@@ -77,11 +73,6 @@ DEFAULT_RERANKER = "qwen3-reranker-0.6b"
 DEFAULT_RERANK_DEPTH = 30
 # The layer of a setting that no layer gives, as it is named.
 DEFAULT_LAYER = "default"
-# The table that held each account's settings, ``[accounts.<name>]``, before they moved
-# into each source's table, such as ``sources.jira.site``.
-MOVED = "accounts"
-# The depth of a setting in an account's table, accounts.<name>.<key>, as a path.
-ACCOUNT_DEPTH = 3
 # The type of every refusal of a value by the settings' rules.
 RULE = "setting"
 # What each source's ``connector`` says, which the model adds to its connector's table.
@@ -100,16 +91,11 @@ SYNCED_NAMES = ("Dropbox", "OneDrive", "Google Drive", "GoogleDrive")
 
 
 class SettingsError(ValueError):
-    """A setting that cannot be used; the message names it and its layer, never its value.
-
-    ``advice``, empty unless a refusal has more to say, is written after it as it is.
-    """
-
-    advice = ""
+    """A setting that cannot be used; the message names it and its layer, never its value."""
 
 
 def matching(pattern: re.Pattern[str], expected: str) -> AfterValidator:
-    """Check a text by one of the kernel's patterns, whole; refuse another as ``expected``."""
+    """Check a text by a pattern, whole; refuse another as ``expected``."""
 
     def check(value: str) -> str:
         if not pattern.fullmatch(value):
@@ -136,10 +122,7 @@ def rerank_address(value: str) -> str:
 
 
 def telemetry_address(value: str) -> str:
-    """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another.
-
-    Raises PydanticCustomError, a ValueError, saying why by the service's rule.
-    """
+    """Give telemetry's endpoint as ``http://<address>:<port>``; refuse another, a ValueError."""
     refusal = refused_endpoint(value, TELEMETRY, remote_allowed=False)
     if refusal:
         raise PydanticCustomError(RULE, refusal)
@@ -147,12 +130,7 @@ def telemetry_address(value: str) -> str:
 
 
 def local_path(path: Path) -> Path:
-    """Accept an absolute path; refuse another, which would lie below the current directory.
-
-    ``settings_of`` makes ``~`` the home before the model sees a path, a default's
-    included, since no validation context reaches pydantic-settings' ``__init__``: built
-    without it, the settings refuse a path under ``~``.
-    """
+    """Accept an absolute path, as ``settings_of`` makes one under ``~``; refuse another."""
     if "\0" in str(path) or not path.is_absolute():
         message = "an absolute path, or one under ~"
         raise PydanticCustomError(RULE, message)
@@ -161,15 +139,6 @@ def local_path(path: Path) -> Path:
 
 # A path on this machine, such as the data directory: absolute.
 LocalPath = Annotated[Path, AfterValidator(local_path)]
-ModelName = Annotated[
-    str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
-]
-EmbeddingUrl = Annotated[str, AfterValidator(endpoint_address)]
-RerankUrl = Annotated[str, AfterValidator(rerank_address)]
-RerankerName = Annotated[
-    str, matching(MODEL_NAME, "the name of a reranking model, such as qwen3-reranker-0.6b")
-]
-TelemetryEndpoint = Annotated[str, AfterValidator(telemetry_address)]
 # Every table of the settings: frozen, and refusing a key it does not know.
 TABLE = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
 
@@ -200,7 +169,7 @@ class Telemetry(BaseModel):
 
     model_config = TABLE
 
-    endpoint: TelemetryEndpoint | None = Field(
+    endpoint: Annotated[str, AfterValidator(telemetry_address)] | None = Field(
         default=None,
         description=(
             "The OTLP endpoint on this machine that traces, metrics and logs go to, over"
@@ -223,16 +192,16 @@ class Rerank(BaseModel):
             " server: off by default, as it ranked worse on the sandbox."
         ),
     )
-    url: RerankUrl = Field(
+    url: Annotated[str, AfterValidator(rerank_address)] = Field(
         default=DEFAULT_RERANK_URL,
         description=(
             "The reranking server's API, up to /rerank, excluded: an address of this"
             " machine, never another."
         ),
     )
-    model: RerankerName = Field(
-        default=DEFAULT_RERANKER, description="The reranking model, as the server names it."
-    )
+    model: Annotated[
+        str, matching(MODEL_NAME, "the name of a reranking model, such as qwen3-reranker-0.6b")
+    ] = Field(default=DEFAULT_RERANKER, description="The reranking model, as the server names it.")
     depth: int = Field(
         default=DEFAULT_RERANK_DEPTH,
         ge=DEPTHS.start,
@@ -244,25 +213,10 @@ class Rerank(BaseModel):
     )
 
 
-class Settings(BaseSettings):
-    """What every command needs to know: the data directory, the defaults, the tables.
+class Settings(BaseModel):
+    """The core's settings, whose ``sources`` holds no table, and the data directory's places."""
 
-    The core's settings, whose ``sources`` holds no table: ``settings_model`` composes
-    from it the model that holds each source's. The loader builds the settings from the
-    layers' merge (``settings_of``), with the home that ``~`` stands for: their paths are
-    absolute, the default data directory included. The model reads nothing of its own:
-    the loader reads its variables by pydantic-settings' ``EnvSettingsSource``, with the
-    prefix and the nesting of its configuration, an empty variable ignored. The loader
-    then resolves the data directory, and the log folder, which is the platform's for
-    the user when none is set.
-    """
-
-    model_config = SettingsConfigDict(
-        **TABLE,
-        env_prefix=PREFIX,
-        env_nested_delimiter=NESTING,
-        env_ignore_empty=True,
-    )
+    model_config = TABLE
 
     data_dir: LocalPath = Field(
         default=Path(DEFAULT_DATA_DIR),
@@ -272,7 +226,9 @@ class Settings(BaseSettings):
             " folder, nor inside a git working tree."
         ),
     )
-    model: ModelName = Field(
+    model: Annotated[
+        str, matching(MODEL_NAME, "the name of an embedding model, such as qwen3-embedding:0.6b")
+    ] = Field(
         default=DEFAULT_MODEL,
         description="The embedding model that embed embeds with, as the endpoint names it.",
     )
@@ -291,7 +247,7 @@ class Settings(BaseSettings):
             " chunkings were compared."
         ),
     )
-    embedding_url: EmbeddingUrl = Field(
+    embedding_url: Annotated[str, AfterValidator(endpoint_address)] = Field(
         default=DEFAULT_EMBEDDING_URL,
         description="The OpenAI-compatible API that embeds, up to /embeddings, excluded.",
     )
@@ -315,19 +271,6 @@ class Settings(BaseSettings):
         description="Reranking by a server on this machine, off by default.",
     )
 
-    @classmethod
-    @override
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Take the values given alone: the loader reads the layers and merges them."""
-        return (init_settings,)
-
     @property
     def raw(self) -> Path:
         """The raw store: responses as received, and attached files."""
@@ -335,7 +278,7 @@ class Settings(BaseSettings):
 
     @property
     def copies(self) -> Path:
-        """The copy stores of the sources read in place, a folder each: their documents as read."""
+        """The copy stores of the sources read in place, a folder each."""
         return self.data_dir / "copies"
 
     @property
@@ -380,10 +323,7 @@ class Settings(BaseSettings):
 
     @property
     def runs(self) -> Path:
-        """A folder per recorded run: its configuration, its units' last entries, its lock.
-
-        The configuration names the sources, their scopes and their site, as the settings do.
-        """
+        """A folder per recorded run: its configuration, its units' last entries, its lock."""
         return self.data_dir / "runs"
 
     @property
@@ -425,14 +365,7 @@ def bare(annotation: object) -> object:
 
 
 def kind_of(annotation: object) -> SettingKind:
-    """Give the kind of a setting that is no table by its type; refuse a type of no kind.
-
-    An alias, ``Annotated`` and ``| None`` are looked through: ``LocalPath | None`` is a
-    path. A list is a tuple of text, each item ``str`` or a ``Literal`` of it, since it is
-    shown joined and no rule of a path reads its items. Another type, such as
-    ``list[str]``, ``tuple[Path, ...]`` or a table that may be None, raises TypeError, so
-    that the environment never reads a setting by the wrong kind.
-    """
+    """Give a setting's kind through aliases and ``| None``, a list a tuple of str; or TypeError."""
     annotation = bare(annotation)
     origin, arguments = get_origin(annotation), get_args(annotation)
     others = [argument for argument in arguments if argument is not NoneType]
@@ -456,12 +389,7 @@ def kind_of(annotation: object) -> SettingKind:
 def setting_paths(
     model: type[BaseModel], above: tuple[str, ...] = ()
 ) -> dict[tuple[str, ...], SettingKind]:
-    """Give the path of each setting of a model, at any depth, and its kind.
-
-    A table is a model of its own, whose settings follow it. The environment gives a
-    table or a list in JSON, and it alone gives a secret; ``~`` in a path is the home.
-    Raises TypeError for a setting of a type that ``kind_of`` knows no kind for.
-    """
+    """Give the path of each setting of a model, a table's then those inside, and its kind."""
     paths: dict[tuple[str, ...], SettingKind] = {}
     for name, info in model.model_fields.items():
         path = (*above, name)
@@ -475,17 +403,10 @@ def setting_paths(
 
 
 def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[Settings]:
-    """Compose the settings' model: the core's, with each source's table.
+    """Compose the settings' model: the core's, with each source's connector's table, by name.
 
-    ``sources`` gives each source's connector and its connector's table by the source's
-    name, which names its table, ``[sources.<name>]``, whose ``connector`` names that
-    connector and no other; the tables follow one another in name order, each described
-    by its docstring. Raises SettingsError, naming the source, for a name that the model
-    already holds, such as ``json``, which its field would shadow, as the settings may name
-    the source; and TypeError, naming the table, for one that holds a setting of a
-    type that has no kind, one without a default, since a source left unset still has
-    its table, or one that holds a table, as a connector's settings are values, each said
-    by its path, all before any value is read.
+    Raises SettingsError for a name that the model holds, such as ``json``; TypeError for a
+    table holding a setting of no kind, one without a default, or a table.
     """
     tables = {
         name: create_model(
@@ -540,10 +461,7 @@ def settings_model(sources: Mapping[str, tuple[str, type[BaseModel]]]) -> type[S
 
 
 def defaults(model: type[Settings]) -> dict[tuple[str, ...], object]:
-    """Give each setting's default by its path, a table's aside, as the model holds it.
-
-    That is before validation: a path keeps its ``~``.
-    """
+    """Give each setting's default by its path, a table's aside, before validation."""
     built = model.model_construct()
     return {
         path: reduce(getattr, path, built)
@@ -553,7 +471,7 @@ def defaults(model: type[Settings]) -> dict[tuple[str, ...], object]:
 
 
 def values_of(settings: Settings) -> dict[str, object]:
-    """Give every setting's value by its path joined by dots, as a command's functions take them."""
+    """Give every setting's value by its path joined by dots, a table's aside."""
     return {
         ".".join(path): reduce(getattr, path, settings)
         for path, kind in setting_paths(type(settings)).items()
@@ -567,14 +485,7 @@ def variable(path: tuple[str, ...]) -> str:
 
 
 class LayerValue(Record):
-    """A value that a layer gives a setting: the setting's path, the value, the layer.
-
-    A default's layer is None, so that no layer is taken for the defaults by its name,
-    such as a settings file named ``default``. An ``implicit`` entry is a default that
-    an empty table of its layer gives: the layer wrote no value, so a stronger one that
-    replaces it replaces none. Its representation leaves the value out, which may be a
-    secret not yet masked.
-    """
+    """A value that a layer, None for a default, gives a setting; ``implicit``: an empty table's."""
 
     path: tuple[str, ...]
     value: object = Field(repr=False)
@@ -591,12 +502,7 @@ class Ignored(Record):
 
 
 class Loaded(Record):
-    """The settings, each one's layer by its path joined by dots, and the values ignored.
-
-    ``replaced`` names each setting, by its path joined by dots, whose value that a layer
-    wrote a stronger layer replaced. The settings are of the model that ``settings_model``
-    composed, whose setting paths are ``paths``; written as JSON, they hold every table.
-    """
+    """The settings, each one's layer, the values ignored, and those that a stronger replaced."""
 
     settings: SerializeAsAny[Settings]
     layers: Mapping[str, str] = Field(default_factory=dict)
@@ -609,22 +515,14 @@ class Loaded(Record):
         return setting_paths(type(self.settings))
 
     def layer(self, setting: str) -> str:
-        """Name the layer that gave a setting, by its path joined by dots, or default.
-
-        Raises KeyError for a path that names no setting, such as a misspelt one.
-        """
+        """Name the layer that gave a setting, or default; KeyError for no setting."""
         if tuple(setting.split(".")) not in self.paths:
             raise KeyError(setting)
         return self.layers.get(setting, DEFAULT_LAYER)
 
 
 def refuse_not_a_source(path: tuple[str, ...], layer: str, model: type[Settings]) -> None:
-    """Raise SettingsError for a path under ``sources`` of a source that the model lacks.
-
-    A source is the registry's, or one that the settings name, of a name of the rule, and
-    of a connector that the registry holds, by its ``connector`` or by its name. The
-    message names the source and the layer, never a value.
-    """
+    """Raise SettingsError for a path under ``sources`` of a source that the model lacks."""
     sources = model.model_fields["sources"].annotation
     if path[:1] != ("sources",) or len(path) == 1 or path[1] in sources.model_fields:
         return
@@ -643,10 +541,7 @@ def entries_of(
 ) -> list[LayerValue]:
     """Give a value that a layer read at a path as entries: a table's, one per value in it.
 
-    An empty table of the model's settings gives each setting under it its default, so
-    that the layer replaces a weaker one's values there and is said to have given them;
-    each entry is implicit, as the layer wrote no value there. Another empty table is an
-    entry of its own, so that one naming no setting is refused too.
+    An empty table of the model gives each setting under it its default, ``implicit``.
     """
     if isinstance(value, dict) and value:
         return [
@@ -666,12 +561,7 @@ def entries_of(
 def refuse_secrets(
     entries: Iterable[LayerValue], paths: Mapping[tuple[str, ...], SettingKind]
 ) -> None:
-    """Raise SettingsError for a secret that these entries write, naming its own variable.
-
-    A secret comes from that variable alone, so no other layer may write it: the settings
-    file, or the variable of a table above it. An empty table that holds one writes no
-    value of it: only one written is refused, by its setting and layer, never its value.
-    """
+    """Raise SettingsError for a secret that these entries write, naming its own variable."""
     for entry in entries:
         if paths.get(entry.path) == "secret" and not entry.implicit:
             setting = ".".join(entry.path)
@@ -679,104 +569,14 @@ def refuse_secrets(
             raise SettingsError(message)
 
 
-def moved(path: tuple[str, ...], model: type[Settings]) -> bool:
-    """Say whether a path is where a setting was before: under ``MOVED``, or a source's at the top.
-
-    A key at the top that no setting holds, and that a source's table holds, such as
-    ``site``; not a misspelt one, nor ``connector``, which every table holds and none
-    held at the top.
-    """
-    sources = model.model_fields["sources"].annotation
-    tables = [each.annotation for each in sources.model_fields.values()]
-    return path[0] == MOVED or (
-        len(path) == 1
-        and path[0] not in (*model.model_fields, CONNECTOR)
-        and any(path[0] in each.model_fields for each in tables)
-    )
-
-
-def moved_to(key: str, sources: BaseModel) -> tuple[tuple[str, ...], ...]:
-    """Give the paths of a key moved into the sources' tables: that of each source that read it.
-
-    A source of the registry, named after its connector, as no other read it where it was,
-    whose table holds it and gives it no value of its own, which another layer may write;
-    configured or not, as a flag may give a source what it covers, so that the advice is
-    the same whatever the run that prints it.
-    """
-    return tuple(
-        ("sources", name, key)
-        for name, table in sources
-        if key in (fields := type(table).model_fields)
-        and get_args(fields[CONNECTOR].annotation) == (name,)
-        and not getattr(table, key)
-    )
-
-
-def refuse_moved(
-    values: Mapping[str, object], layer: str, environ: Mapping[str, str], settings: Settings
-) -> None:
-    """Raise SettingsError, with advice, for each setting given where it was before, ``moved``.
-
-    The settings file's, of ``layer``, and the environment's, by a variable of the prefix
-    under ``MOVED``, a table's JSON read key by key; a variable at the top names no
-    setting, and is ignored as one. The advice names each by its path and its layer,
-    never its value, and the setting of each source that it moved to, as ``moved_to``
-    gives them: by its variable for one given by a variable, or for a secret, which a
-    variable alone gives; by its path for another; so one round of edits moves them all.
-    A table given empty names no key, and is said alone.
-    """
-    model = type(settings)
-    paths = setting_paths(model)
-    found = [
-        entry
-        for name, value in values.items()
-        for entry in entries_of(value, (name,), layer, model)
-        if moved(entry.path, model)
-    ]
-    for name, text in sorted(environ.items()):
-        path = tuple(name.lower().removeprefix(PREFIX.lower()).split(NESTING))
-        if text and name.lower().startswith(PREFIX.lower()) and path[0] == MOVED:
-            try:
-                value = json.loads(text) if text.startswith("{") else text
-            except ValueError:
-                value = text
-            found += entries_of(value, path, name, model)
-    said = [f"{'.'.join(entry.path)} ({entry.layer})" for entry in found]
-    lines = []
-    for entry, where in zip(found, said, strict=True):
-        under = entry.path[0] == MOVED
-        key = entry.path[-1] if len(entry.path) == (ACCOUNT_DEPTH if under else 1) else None
-        by_variable = entry.layer != layer
-        named = [
-            variable(path) if by_variable or paths.get(path) == "secret" else ".".join(path)
-            for path in (moved_to(key, settings.sources) if key else ())
-        ]
-        to = " and ".join(named) or (
-            "nowhere: delete it, as each source holds its own" if key else "each source's table"
-        )
-        lines.append(f"  {where} to {to}\n")
-    if lines:
-        error = SettingsError(f"{', '.join(said)}: moved into the table of each source")
-        error.advice = (
-            "Move each setting into the table of each source, or rename each variable"
-            " where it is set (a shell's profile, an MCP client, sops):\n" + "".join(lines)
-        )
-        raise error
-
-
 def file_entries(
     values: Mapping[str, object], layer: str, model: type[Settings]
 ) -> list[LayerValue]:
-    """Give the settings file's values as entries; refuse an unknown one, then a secret.
-
-    One where it was before, ``moved``, is left out: ``refuse_moved`` refuses it, once
-    the settings name the sources that it moved to.
-    """
+    """Give the settings file's values as entries; refuse an unknown one, then a secret."""
     entries = [
         entry
         for name, value in values.items()
         for entry in entries_of(value, (name,), layer, model)
-        if not moved(entry.path, model)
     ]
     paths = setting_paths(model)
     for entry in entries:
@@ -794,25 +594,12 @@ JSON_TYPES: dict[SettingKind, type] = {"table": dict, "list": list}
 
 
 def environment_entries(
-    environ: Mapping[str, str], parse: Callable[[], Mapping[str, object]], model: type[Settings]
+    environ: Mapping[str, str], model: type[Settings]
 ) -> tuple[list[LayerValue], list[Ignored]]:
-    """Give the settings' variables of an environment as entries, and those ignored.
+    """Give the variables of the prefix as entries, without regard to case, and those ignored.
 
-    Each variable of the prefix is first scanned by the paths of the model's settings,
-    without regard to case, as pydantic-settings reads it. One that names no setting, at
-    any depth, or that is empty, is ignored, since other tools and versions share the
-    environment; but one under ``sources`` of a source that the model does not hold, not
-    empty, is refused, as ``refuse_not_a_source`` says. A table is a JSON object, a
-    list a JSON array: else SettingsError names the variable, never its value, where
-    pydantic-settings would name none. So it does
-    for two variables of one setting, or of a table and of a path inside it:
-    pydantic-settings would merge them, below the top by the environment's order, and no
-    value would name its variable. Then ``parse``, pydantic-settings'
-    ``EnvSettingsSource`` of the model and of this environment, reads them, and each
-    value read is an entry of its variable; a table or a list is the JSON that the scan
-    decoded, its keys as written, since the source merges into it the variables below
-    it, those that name no setting included. A secret written in that JSON is refused,
-    as in the settings file: only a variable of its own gives one.
+    Ignored: one naming no setting, or empty. Refused: a table or a list not in JSON, two
+    variables of one setting, and a secret in JSON.
     """
     paths = setting_paths(model)
     scanned: list[tuple[tuple[str, ...], str]] = []
@@ -846,13 +633,10 @@ def environment_entries(
             setting = ".".join(path)
             message = f"{name}, {inner[0]}: both set {setting}, which one variable alone may set"
             raise SettingsError(message)
-    found = parse()
     entries = [
         entry
         for path, name in scanned
-        for entry in entries_of(
-            decoded[name] if name in decoded else reduce(getitem, path, found), path, name, model
-        )
+        for entry in entries_of(decoded.get(name, environ[name]), path, name, model)
     ]
     refuse_secrets((entry for entry in entries if entry.layer in decoded), paths)
     return entries, ignored
@@ -869,13 +653,9 @@ ENDPOINT = ("telemetry", "endpoint")
 def shared_entries(
     environ: Mapping[str, str],
 ) -> tuple[list[LayerValue], list[LayerValue], list[Ignored]]:
-    """Give OpenTelemetry's own variables of an environment as entries of telemetry's endpoint.
+    """Give OpenTelemetry's variables as entries of the endpoint: those below, above, ignored.
 
-    ``OTEL_EXPORTER_OTLP_ENDPOINT`` gives an entry of the layer below the settings file,
-    unless the setting would refuse its value: it is then ignored, with the rule that it
-    breaks. ``OTEL_SDK_DISABLED``, when true as the SDK reads it, gives one of the layer
-    above all, which leaves the endpoint unset: telemetry off. Give the entries below,
-    those above, then what was ignored.
+    The shared endpoint lies below the file, ignored if refused; ``true`` disables above all.
     """
     below: list[LayerValue] = []
     ignored: list[Ignored] = []
@@ -897,22 +677,10 @@ def shared_entries(
     )
 
 
-def at_home(path: Path, home: Path) -> Path:
-    """Give a path that begins with ``~`` with ``home`` in its place."""
-    return home.joinpath(*path.parts[1:])
-
-
 def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]) -> Loaded:
-    """Merge the layers' entries, weakest first, and build the model's settings from them.
+    """Merge the entries, weakest first, each replacing any at or under its path whole, and build.
 
-    An entry replaces any earlier one at its path, above it or below it, whole: a list is
-    never joined to another. A value replaced that a layer wrote is ignored, and its
-    setting is ``replaced``; a default, by no layer or implicit, is neither. ``~`` in a
-    path, a default's included, is ``home``: each path setting at its default is an
-    entry of no layer, the weakest. Raises
-    SettingsError naming each setting refused and the layers that gave it, never its
-    value: first an entry whose path names no setting, which ``BaseSettings`` could take
-    as an argument of its own, such as ``_env_file``.
+    ``~`` is ``home``. Raises SettingsError naming each refusal's setting and layers, never values.
     """
     paths = setting_paths(model)
     at_defaults = [
@@ -944,7 +712,7 @@ def settings_of(entries: Iterable[LayerValue], home: Path, model: type[Settings]
             and isinstance(value, str | Path)
             and Path(value).parts[:1] == ("~",)
         ):
-            value = at_home(Path(value), home)
+            value = home.joinpath(*Path(value).parts[1:])
         table[path[-1]] = value
     layers = {
         ".".join(path): entry.layer for path, entry in kept.items() if entry.layer is not None
@@ -991,9 +759,7 @@ def without_secrets(settings: Settings) -> dict[str, object]:
 def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
     """Build settings of the model of ``secrets`` from values without secrets, and its secrets.
 
-    ``values`` are as ``without_secrets`` gives them; each secret is the one that
-    ``secrets`` holds. Raises SettingsError naming each setting refused, never its value,
-    such as the table of a source that the model no longer holds.
+    Raises SettingsError naming each setting refused, never its value.
     """
     model = type(secrets)
     tree = copy.deepcopy(dict(values))
@@ -1008,12 +774,9 @@ def with_secrets(values: Mapping[str, object], secrets: Settings) -> Settings:
 
 
 def unsafe_location(path: Path, home: Path, git_root: Path | None) -> str | None:
-    """Return why company data must not live at this path, or None when it may.
+    """Say why company data must not live at a resolved path: in a git tree or synced; else None.
 
-    ``path`` and ``home`` must be resolved, without links or ``..``; names compare
-    without regard to case, as on the default file system of macOS. ``git_root`` is the
-    working tree that holds the path, if any: data there could be committed. A
-    synchronised folder would copy the data off the machine.
+    Names compare without regard to case, as on macOS.
     """
     if git_root is not None:
         return f"inside the git working tree {git_root}"

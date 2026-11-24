@@ -27,7 +27,7 @@ kb-mcp fetch --since 2026-01-01 && kb-mcp prepare && kb-mcp index && kb-mcp embe
 The space was never fetched: without `--since`, its first run would take its last 7
 days, and `--since` reaches back to the start of the year. The search settings
 keep their defaults: `search_mode` hybrid, `chunking` windows, and the model
-[`DEFAULT_MODEL`](../../src/kb_mcp/config/domain/settings.py).
+[`DEFAULT_MODEL`](../../src/kb_mcp/config/settings.py).
 
 ## Part 1: the chain
 
@@ -52,7 +52,7 @@ Nothing heavier is imported to parse: argcomplete runs the program at every Tab,
 answers before any run is imported ([why argparse and
 argcomplete](trade-offs.md#argparse-with-argcomplete)). With no arguments at all, `main`
 parses `serve`, which is how agents start it (part 2). Once parsed, `fetch` is observed:
-[`early`](../../src/kb_mcp/observability/app/observed.py) sends warnings
+[`early`](../../src/kb_mcp/observability/observed.py) sends warnings
 to stderr until the settings are read, and `main` imports the
 [`ENTRY_MODULE`](../../src/kb_mcp/cli/main.py) shared by every observed command.
 
@@ -60,26 +60,26 @@ to stderr until the settings are read, and `main` imports the
 
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) maps each flag given to
 its setting ([`Command.setting_flags`](../../src/kb_mcp/cli/domain/command.py))
-and calls [`load_settings`](../../src/kb_mcp/config/app/settings.py). Three
+and calls [`load_settings`](../../src/kb_mcp/config/load.py). Three
 layers, each stronger than the last: the file
-([`read_settings_file`](../../src/kb_mcp/config/adapters/settings_file.py)),
+([`read_settings_file`](../../src/kb_mcp/config/file.py)),
 the environment
-([`environment_entries`](../../src/kb_mcp/config/domain/settings.py)) and
-the flags. [`settings_of`](../../src/kb_mcp/config/domain/settings.py)
-merges their [`LayerValue`](../../src/kb_mcp/config/domain/settings.py) rows,
-weakest first, into one [`Settings`](../../src/kb_mcp/config/domain/settings.py),
+([`environment_entries`](../../src/kb_mcp/config/settings.py)) and
+the flags. [`settings_of`](../../src/kb_mcp/config/settings.py)
+merges their [`LayerValue`](../../src/kb_mcp/config/settings.py) rows,
+weakest first, into one [`Settings`](../../src/kb_mcp/config/settings.py),
 which Pydantic validates, and keeps each value's layer in a
-[`Loaded`](../../src/kb_mcp/config/domain/settings.py). A value refused is
-a [`SettingsError`](../../src/kb_mcp/config/domain/settings.py) that names
+[`Loaded`](../../src/kb_mcp/config/settings.py). A value refused is
+a [`SettingsError`](../../src/kb_mcp/config/settings.py) that names
 the setting and its layers, never the value.
 
 Then the guard. The data directory, each folder under it and the log folder are resolved,
 links followed, and judged by
-[`unsafe_location`](../../src/kb_mcp/config/domain/settings.py), given the
+[`unsafe_location`](../../src/kb_mcp/config/settings.py), given the
 git working tree that holds each, if any
-([`git_root`](../../src/kb_mcp/config/adapters/settings_file.py)). Under a
+([`git_root`](../../src/kb_mcp/config/file.py)). Under a
 synchronised folder, or inside a git tree, the run stops with
-[`UnsafeDataDirError`](../../src/kb_mcp/config/app/settings.py), exit 2,
+[`UnsafeDataDirError`](../../src/kb_mcp/config/load.py), exit 2,
 before anything is written.
 
 Then what fetch cannot run with. Its
@@ -111,7 +111,7 @@ each value ignored, and why; and the command to copy
 `--yes` skips the question, and with no terminal to answer it, the run is refused.
 
 Only now does the run begin.
-[`observed`](../../src/kb_mcp/observability/app/observed.py) opens its log
+[`observed`](../../src/kb_mcp/observability/observed.py) opens its log
 file, its telemetry when an endpoint is set, and the trace's root span, named after the
 command, and logs `run.start`; `enter` then imports `cli.commands.sources`, which `fetch` and
 `prepare` share, and calls its
@@ -148,7 +148,7 @@ starts there, here `given`; a `--since` that does not come before the fetch wind
 which fails that unit alone, naming both options. Each unit runs in turn, each source's fetcher or preparers within a span
 `fetch.source`, or `prepare.source` once the next command runs. A unit runs even when the
 one before it failed, as it reads what is on disk. The exit status folds the units'
-endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/exit_status.py)):
+endings, the most severe first ([`folded`](../../src/kb_mcp/kernel/names.py)):
 interrupted, then sign in again, then failed; else 0.
 
 ### 4. The source and the site's port
@@ -159,7 +159,7 @@ opens the [`RawStore`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_sto
 under `<data>/raw/` and takes its lock
 ([`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
 a second run stops at once with
-[`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py),
+[`StoreBusyError`](../../src/kb_mcp/kernel/names.py),
 and its unit fails while the next one runs.
 
 The sign-in comes from
@@ -172,7 +172,7 @@ that `login` saved. Either gives an httpx client built by
 by the system's certificates, plain http refused
 ([`refuse_plain_http`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)),
 no redirect followed by httpx itself, and each request observed by
-[`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py). A token's
+[`ObservedTransport`](../../src/kb_mcp/observability/http.py). A token's
 header goes to the site's host alone
 ([`ApiToken.authorise`](../../src/kb_mcp/sources/atlassian/fetch/adapters/sign_in.py));
 [credentials](credentials.md#on-the-wire) say why.
@@ -312,7 +312,7 @@ leaves out those confirmed gone, unless a listing taken since names them again, 
 page or a post in the space whose freshest listing names it, and names each one's file
 by [`confluence_path`](../../src/kb_mcp/sources/atlassian/prepare/domain/layout.py): the
 source's name, the space's key, then the id and the title's
-[`slug`](../../src/kb_mcp/kernel/slug.py).
+[`slug`](../../src/kb_mcp/kernel/names.py).
 
 [`document_file`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) then builds each
 document's file:
@@ -404,11 +404,11 @@ compares them with the index, to warn when they differ, and reads nothing else o
 Only then does it open the embedding endpoint, by
 [`open_endpoint`](../../src/kb_mcp/cli/commands/_embedding.py), then
 [`endpoint`](../../src/kb_mcp/search/adapters/model_api.py), the only way to
-a client: [`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py) refuses
+a client: [`refused_endpoint`](../../src/kb_mcp/kernel/names.py) refuses
 an address that is not a literal one of this machine
-([`loopback`](../../src/kb_mcp/kernel/endpoint.py)) unless the run allows
+([`loopback`](../../src/kb_mcp/kernel/names.py)) unless the run allows
 it, and plain http to one even then. The default,
-[`DEFAULT_EMBEDDING_URL`](../../src/kb_mcp/config/domain/settings.py), is
+[`DEFAULT_EMBEDDING_URL`](../../src/kb_mcp/config/settings.py), is
 Ollama's on `127.0.0.1`. An API key, if the environment gives one, goes as the bearer
 token of this client alone.
 
@@ -487,11 +487,11 @@ outcome has no problem.
 [`enter`](../../src/kb_mcp/cli/commands/_shared.py) writes it on stdout,
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
-its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/outcome.py). `index`
+its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/records.py). `index`
 and `embed` have one result each, written by their own `text`
 ([`text`](../../src/kb_mcp/cli/commands/index.py),
 [`text`](../../src/kb_mcp/cli/commands/embed.py)).
-[`observed`](../../src/kb_mcp/observability/app/observed.py) ends the run:
+[`observed`](../../src/kb_mcp/observability/observed.py) ends the run:
 `run.end`, the exit status on the root span, the run's duration.
 
 ## Part 2: a search
@@ -613,16 +613,16 @@ from each document fetched, and a call of a tool is one trace:
 
 | Span | Opened by |
 |---|---|
-| `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/app/observed.py), after the command's name |
+| `fetch`, `prepare`, `index`, `embed`, the run's root | [`observed`](../../src/kb_mcp/observability/observed.py), after the command's name |
 | `fetch.source`, `prepare.source`, one a unit | [`run_sources`](../../src/kb_mcp/cli/app/units.py) |
 | `fetch.space`, `fetch.probes`, `fetch.users` | [`Fetching.space`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.probe_absent`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py), [`Fetching.users`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
 | `fetch.document`, a trace of its own linked to the run's | [`Fetching.fetch_document`](../../src/kb_mcp/sources/atlassian/fetch/app/fetching.py) |
-| `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/adapters/http.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
+| `GET` and `POST`, one a request | [`ObservedTransport`](../../src/kb_mcp/observability/http.py), through [`client_span`](../../src/kb_mcp/observability/http.py) |
 | `prepare.read`, `prepare.build`, `prepare.write` | [`prepare_atlassian`](../../src/kb_mcp/sources/atlassian/prepare/app/prepare.py) |
 | `index.files` | [`change_of`](../../src/kb_mcp/search/app/indexing.py) |
 | `index.join` | [`Writer.join`](../../src/kb_mcp/search/adapters/sqlite_index.py) |
 | `index.embed` | [`filling`](../../src/kb_mcp/search/app/indexing.py) |
-| `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/adapters/http.py) |
+| `embeddings <model>`, one an embedding | [`embeddings`](../../src/kb_mcp/search/adapters/embedding.py), through [`client_span`](../../src/kb_mcp/observability/http.py) |
 | `tools/call search`, a call's root | the MCP SDK; [`Library.search`](../../src/kb_mcp/mcp/app/tools.py) adds the mode, the documents found and whether words stood in for meaning |
 | `search.lexical`, `search.semantic` | [`ranking`](../../src/kb_mcp/mcp/app/tools.py) |
 

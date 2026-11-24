@@ -788,7 +788,7 @@ joined ([`person`](../../src/kb_mcp/mcp/app/responses.py)).
   keyed on the relation `summary` and the role `participant`, never on the work log's
   types, so that any connector that links a record to its summary joins by attendance
   (058). The aliases are a file, since a setting cannot hold a free mapping of names
-  ([`kind_of`](../../src/kb_mcp/config/domain/settings.py)), and a file
+  ([`kind_of`](../../src/kb_mcp/config/settings.py)), and a file
   adds no setting to log, layer or document.
 - **Cost.** A first name outside a linked meeting, a nickname, a caption tool's `You`,
   or a colleague written two ways in the work log alone stays apart until the user
@@ -945,8 +945,7 @@ as a page or the reranker reads it
   instead lets the next prune delete the vectors that they alone read, which the next
   `eval` embeds again. The results of `embed` and `eval`, the event
   `index.chunk_refused`, the counter `kb_mcp.index.chunks` and eval's `indexes` break
-  the scripts and dashboards that read the former names
-  ([move to kb-mcp](../how-to/move-to-kb-mcp.md#8-what-runs-do-differently)). A search
+  the scripts and dashboards that read the former names. A search
   keeps each chunk's section and range in columns beside the matrix of vectors, not as
   a record per chunk, which would hold about 229 MB more for 200,000 chunks
   ([`ChunkVectors`](../../src/kb_mcp/search/domain/search.py)).
@@ -1046,7 +1045,7 @@ which is only the example: any such server works.
   so new weights call for new vectors; another server lists none, and vectors then
   follow the model's name alone. The text sent is the company's content: an address
   that is not a literal one of this machine needs `--allow-remote-embeddings` on every
-  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/endpoint.py)). Each
+  run, and https ([`refused_endpoint`](../../src/kb_mcp/kernel/names.py)). Each
   `eval-agents call` is such a run, which an agent makes: the person running the
   evaluation, and only they, tells each subagent to add the flag right after `call` in
   every bridge command, in a sentence that replaces the subagent's usual instruction
@@ -1136,10 +1135,10 @@ registers every declaration, and imports a run only once the arguments are parse
 ## File, then environment, then flags
 
 Settings come from one model,
-[`Settings`](../../src/kb_mcp/config/domain/settings.py), fed by three
+[`Settings`](../../src/kb_mcp/config/settings.py), fed by three
 layers, each stronger than the last: the settings file, the environment (the prefix
 `KB_MCP_`, `__` for nesting) and the flags.
-[`load_settings`](../../src/kb_mcp/config/app/settings.py) reads each layer,
+[`load_settings`](../../src/kb_mcp/config/load.py) reads each layer,
 merges them and keeps each value's layer.
 
 - **Why.** The Unix convention: the file holds what stays, the environment what a
@@ -1157,7 +1156,7 @@ merges them and keeps each value's layer.
 ## Records as Pydantic models
 
 Each value of the program, a document, a setting's layer or a run's outcome, is a
-[`Record`](../../src/kb_mcp/kernel/record.py): a Pydantic model built by keyword,
+[`Record`](../../src/kb_mcp/kernel/records.py): a Pydantic model built by keyword,
 checked where it is built, and frozen unless it accumulates. Fifteen classes stay
 dataclasses, each for the reason that [the code's layout](code-layout.md#records) gives.
 
@@ -1204,9 +1203,9 @@ only once an endpoint is set, and only to this machine.
 The data directory and the log folder are refused under a synchronised folder (iCloud,
 `~/Library/CloudStorage`, Dropbox, OneDrive, Google Drive, `~/Desktop`, `~/Documents`)
 or inside a git working tree
-([`unsafe_location`](../../src/kb_mcp/config/domain/settings.py)); a
+([`unsafe_location`](../../src/kb_mcp/config/settings.py)); a
 command then stops with
-[`UnsafeDataDirError`](../../src/kb_mcp/config/app/settings.py) before
+[`UnsafeDataDirError`](../../src/kb_mcp/config/load.py) before
 anything is written.
 
 - **Why.** The mirror is the company's content. A synchronised folder would copy it off

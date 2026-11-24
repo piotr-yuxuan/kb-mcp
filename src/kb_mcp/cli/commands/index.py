@@ -11,8 +11,8 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.cli.domain.rows import Ended
-    from kb_mcp.config.domain.settings import Loaded
-    from kb_mcp.kernel.exit_status import ExitStatus
+    from kb_mcp.config.settings import Loaded
+    from kb_mcp.kernel.names import ExitStatus
 
 
 def run(

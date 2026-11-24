@@ -20,7 +20,7 @@ from kb_mcp.kernel.names import (
     RefusedError,
     require,
 )
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 
 # The role of a meeting's participants and a transcript's speakers. A document that names
 # a participant names no other role, so that a read's front matter, which is never cut,

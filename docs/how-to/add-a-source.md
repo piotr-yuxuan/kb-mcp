@@ -50,11 +50,11 @@ The table is a Pydantic model of `[sources.notes]`. Its first setting names what
 covers: a source whose first setting is not set is left out, as not configured
 ([`chosen`](../../src/kb_mcp/cli/domain/sources.py)). `TABLE` refuses a misspelt key, and
 `LocalPath` reads a folder, absolute or under `~`
-([`TABLE`](../../src/kb_mcp/config/domain/settings.py),
-[`LocalPath`](../../src/kb_mcp/config/domain/settings.py)). A setting is text, a flag, a
+([`TABLE`](../../src/kb_mcp/config/settings.py),
+[`LocalPath`](../../src/kb_mcp/config/settings.py)). A setting is text, a flag, a
 number, a choice, a path, a secret, or a list of text, `tuple[str, ...]`; anything else,
 such as a list of paths or a table inside the table, is refused as the settings are
-composed, naming the source ([`kind_of`](../../src/kb_mcp/config/domain/settings.py)). Create
+composed, naming the source ([`kind_of`](../../src/kb_mcp/config/settings.py)). Create
 `src/kb_mcp/sources/notes/settings.py`:
 
 ```python
@@ -67,7 +67,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from kb_mcp.config.domain.settings import TABLE, LocalPath
+from kb_mcp.config.settings import TABLE, LocalPath
 
 
 class NotesTable(BaseModel):
@@ -127,7 +127,7 @@ NOTES = Connector(
 A preparer has two functions ([`Preparer`](../../src/kb_mcp/sources/stages.py)): `preflight`,
 what it cannot go on with, read as its unit begins, which fails that unit alone, naming the
 source, and `prepare`, which writes the
-documents through the mirror and gives an [`Outcome`](../../src/kb_mcp/kernel/outcome.py): how
+documents through the mirror and gives an [`Outcome`](../../src/kb_mcp/kernel/records.py): how
 it ended, its problems and warnings, and its counts, a record whose `text` writes them. Mind what the writer and the front matter ask:
 
 - **Write every document, each time.** The writer leaves a file whose bytes have not
@@ -178,7 +178,7 @@ from hashlib import sha256
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from kb_mcp.kernel.outcome import Outcome
+from kb_mcp.kernel.records import Outcome
 from kb_mcp.mirror.adapters.markdown import documents, dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, regular_files, write_changed
 from kb_mcp.mirror.domain.mirror import FrontMatter, scope_name
@@ -187,7 +187,7 @@ from kb_mcp.mirror.domain.mirror_text import one_line
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.sources.stages import SourceRun
 
 # The source's name, which is its folder of the mirror too, as the registry's rule has it.
@@ -262,7 +262,7 @@ CONNECTORS = (*atlassian.CONNECTORS, NOTES, WORKLOG)
 
 That one line gives it a source of its name, which makes `[sources.notes]` a setting,
 `notes` a choice of `prepare`, and its `preparers` part of each run that takes it
-([`settings_model`](../../src/kb_mcp/config/domain/settings.py),
+([`settings_model`](../../src/kb_mcp/config/settings.py),
 [`units_of`](../../src/kb_mcp/cli/domain/runs.py)).
 
 ## 7. Give it its place in the contracts
@@ -307,7 +307,7 @@ import json
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 
 if TYPE_CHECKING:
@@ -429,7 +429,7 @@ own table, read by `run.source_table`. [Confluence and Jira](../../src/kb_mcp/so
 are the worked example: one fetcher, reading the scope types of the connector of the source
 that it runs for from `run.source`. No other source keeps a store yet: its place under the data directory is a
 plan's to add, since the data guard judges each
-([`Settings.parts`](../../src/kb_mcp/config/domain/settings.py)).
+([`Settings.parts`](../../src/kb_mcp/config/settings.py)).
 
 ## What it does not get yet
 

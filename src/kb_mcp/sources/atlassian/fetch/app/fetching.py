@@ -26,9 +26,8 @@ from pydantic import ConfigDict, Field, model_serializer
 
 from kb_mcp.kernel.fields import Fields, RepresentationError
 from kb_mcp.kernel.names import IDENTIFIER
-from kb_mcp.kernel.outcome import Outcome, Problem
-from kb_mcp.kernel.record import Record
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.kernel.records import Outcome, Problem, Record
+from kb_mcp.observability.progress import task
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     SignInNeededError,
@@ -71,9 +70,8 @@ if TYPE_CHECKING:
 
     from pydantic import SerializerFunctionWrapHandler
 
-    from kb_mcp.config.domain.settings import Settings
-    from kb_mcp.kernel.exit_status import Ending
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.config.settings import Settings
+    from kb_mcp.kernel.names import Detail, Ending
     from kb_mcp.sources.atlassian.fetch.adapters.http import ReadPage, Request
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, FetchedDocument, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period

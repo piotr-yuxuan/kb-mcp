@@ -11,7 +11,7 @@ so.
 ## One record, three sinks
 
 Code logs with structlog, traces and measures with the OpenTelemetry API, and reports
-progress through `observability.adapters.progress`, wherever it is: all three do nothing
+progress through `observability.progress`, wherever it is: all three do nothing
 until the command line installs them for a run, so a use case takes no parameter for
 them, and a test that calls it directly runs it as it is. Each event, and each record
 of a library, passes the same processors, the redaction last, then goes to three sinks:

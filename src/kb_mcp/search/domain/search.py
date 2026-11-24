@@ -18,9 +18,8 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import ConfigDict
 
-from kb_mcp.kernel.chunking import Chunking
-from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, SOURCE_NAME
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import IDENTIFIER, ISSUE_KEY, SOURCE_NAME, Chunking
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, document_id
 from kb_mcp.search.domain.people import Person
 

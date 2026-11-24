@@ -14,18 +14,15 @@ import pytest
 from pydantic_core import to_jsonable_python
 from structlog.testing import capture_logs
 
-from kb_mcp.kernel.outcome import Problem
+from kb_mcp.kernel.names import StoreBusyError
+from kb_mcp.kernel.records import Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.http import (
     MAX_FAILED_IN_A_ROW,
     SiteClient,
     TooManyFailuresError,
 )
-from kb_mcp.sources.atlassian.fetch.adapters.raw_store import (
-    RawStore,
-    StoreBusyError,
-    StoredSnapshot,
-)
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore, StoredSnapshot
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import (
     COOKIES,
     folder_of,
@@ -56,7 +53,7 @@ if TYPE_CHECKING:
 
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
     from tests.conftest import InMemory
 
 SITE = "https://sandbox.example.invalid"

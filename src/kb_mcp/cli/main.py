@@ -21,9 +21,8 @@ from typing import TYPE_CHECKING, override
 import argcomplete
 
 from kb_mcp.cli import options
-from kb_mcp.config.adapters.settings_file import SETTINGS_PATH, named_sources
-from kb_mcp.kernel.exit_status import MEANINGS
-from kb_mcp.kernel.names import PROGRAM
+from kb_mcp.config.file import SETTINGS_PATH, named_sources
+from kb_mcp.kernel.names import MEANINGS, PROGRAM
 from kb_mcp.sources.registry import SOURCES, configured, refuse
 
 if TYPE_CHECKING:
@@ -34,7 +33,7 @@ if TYPE_CHECKING:
 # The entry that loads the settings and runs the chosen subcommand.
 ENTRY_MODULE = "kb_mcp.cli.commands._shared"
 # What observes a run: its logs, from the start on stderr, never on stdout.
-OBSERVED = "kb_mcp.observability.app.observed"
+OBSERVED = "kb_mcp.observability.observed"
 # The former commands, whose log files, which hold titles and queries, a run still
 # removes once past their 30 days.
 RETIRED = ("download", "mirror", "sync")

@@ -29,8 +29,8 @@ import structlog
 from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from kb_mcp.config.adapters.settings_file import git_root
-from kb_mcp.config.domain.settings import unsafe_location
+from kb_mcp.config.file import git_root
+from kb_mcp.config.settings import unsafe_location
 from kb_mcp.evaluation.adapters.mcp_client import ServerError, called, listed
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import (
@@ -42,14 +42,14 @@ from kb_mcp.evaluation.domain.grading import (
     grade,
     refusal,
 )
-from kb_mcp.kernel.endpoint import EMBEDDINGS
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import EMBEDDINGS
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.responses import tokens
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
 
-    from kb_mcp.kernel.tools import Tool
+    from kb_mcp.kernel.names import Tool
 
 # What each run's agent is told; its SHA-256 goes with the results.
 PROMPT = """\

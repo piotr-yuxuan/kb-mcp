@@ -23,12 +23,8 @@ import pytest
 
 from kb_mcp.cli.commands._embedding import open_endpoint
 from kb_mcp.cli.main import main, parser
-from kb_mcp.config.domain.settings import (
-    DEFAULT_EMBEDDING_URL,
-    Settings,
-    SettingsError,
-)
-from kb_mcp.kernel.endpoint import EMBEDDINGS, Service
+from kb_mcp.config.settings import DEFAULT_EMBEDDING_URL, Settings, SettingsError
+from kb_mcp.kernel.names import EMBEDDINGS, Service
 from kb_mcp.search.adapters import embedding
 from kb_mcp.search.adapters.embedding import (
     BATCH,

@@ -37,22 +37,20 @@ from kb_mcp.evaluation.app.agents import (
     readied,
 )
 from kb_mcp.evaluation.app.evaluation import GoldenError, read_golden
-from kb_mcp.kernel.endpoint import loopback
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.record import Record
-from kb_mcp.kernel.tools import TOOLS
+from kb_mcp.kernel.names import TOOLS, ExitStatus, loopback
+from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.mirror.adapters import markdown
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
     from kb_mcp.evaluation.domain.grading import AgentAnswer
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
 
 # The command line that reaches this program, from the agents and for the server.
 MODULE_COMMAND = (sys.executable, "-m", "kb_mcp")

@@ -11,11 +11,10 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 import pytest
 from pydantic import BaseModel, Field, SecretStr, ValidationError, create_model
-from pydantic_settings import EnvSettingsSource
 
 from kb_mcp.cli.main import main
-from kb_mcp.config.app.settings import UnsafeDataDirError, load_settings
-from kb_mcp.config.domain.settings import (
+from kb_mcp.config.load import UnsafeDataDirError, load_settings
+from kb_mcp.config.settings import (
     TABLE,
     Ignored,
     LayerValue,
@@ -24,21 +23,20 @@ from kb_mcp.config.domain.settings import (
     SettingsError,
     environment_entries,
     file_entries,
-    refuse_moved,
     setting_paths,
     settings_model,
     settings_of,
     unsafe_location,
 )
-from kb_mcp.kernel.endpoint import (
+from kb_mcp.kernel.names import (
     EMBEDDINGS,
     RERANKING,
     TELEMETRY,
+    ExitStatus,
     Service,
     loopback,
     refused_endpoint,
 )
-from kb_mcp.kernel.exit_status import ExitStatus
 from kb_mcp.sources.atlassian.settings import ConfluenceTable
 from kb_mcp.sources.worklog.settings import WorklogTable
 from tests.composed import MODEL
@@ -454,62 +452,6 @@ def test_a_value_replacing_an_empty_table_s_default_replaces_no_value_given() ->
     assert loaded.replaced == frozenset()
 
 
-@pytest.mark.parametrize(
-    ("key", "moved"),
-    [
-        ("spaces", "sources.confluence.spaces"),
-        ("projects", "sources.jira.projects"),
-        ("site", "sources.confluence.site and sources.jira.site"),
-        ("email", "sources.confluence.email and sources.jira.email"),
-        (
-            "api_token",
-            "KB_MCP_SOURCES__CONFLUENCE__API_TOKEN and KB_MCP_SOURCES__JIRA__API_TOKEN",
-        ),
-    ],
-)
-def test_the_old_keys_at_the_top_of_the_file_are_refused_naming_their_new_places(
-    key: str, moved: str
-) -> None:
-    """Plan 015 moved spaces and projects into their sources' tables, without an alias.
-
-    Plan 030 moved the site and the email into the Atlassian account's table alike, and
-    plan 059 into each Atlassian source's: the advice names each, a secret by its
-    variable. The file's entries leave them out, for the refusal once loaded.
-    """
-    assert file_entries({key: "x"}, FILE, MODEL) == []
-    with pytest.raises(SettingsError) as refused:
-        refuse_moved({key: "x"}, FILE, {}, MODEL(data_dir=HOME))
-    assert str(refused.value) == f"{key} ({FILE}): moved into the table of each source"
-    assert f"  {key} ({FILE}) to {moved}\n" in refused.value.advice
-
-
-@pytest.mark.parametrize(
-    ("sources", "to"),
-    [
-        ({}, "sources.confluence.site and sources.jira.site"),
-        ({"jira": {"projects": ["PRB"]}}, "sources.confluence.site and sources.jira.site"),
-        ({"confluence": {"site": "https://own.example.invalid"}}, "sources.jira.site"),
-        (
-            {"confluence": {"site": "https://a.invalid"}, "jira": {"site": "https://b.invalid"}},
-            "nowhere: delete it, as each source holds its own",
-        ),
-    ],
-    ids=["none configured", "one configured", "one with its own", "both with their own"],
-)
-def test_a_moved_key_goes_to_each_source_that_holds_no_value_of_its_own(
-    sources: dict[str, object], to: str
-) -> None:
-    """Review rounds 1 to 3: each source that read the account and holds no value of its own.
-
-    Configured or not: a flag may give a source what it covers, so that one configured by
-    flags alone read the account's site too, and the advice is the same whatever the run.
-    """
-    settings = MODEL(data_dir=HOME, sources=sources)
-    with pytest.raises(SettingsError) as refused:
-        refuse_moved({"accounts": {"atlassian": {"site": "x"}}}, FILE, {}, settings)
-    assert refused.value.advice.endswith(f"  accounts.atlassian.site ({FILE}) to {to}\n")
-
-
 def test_connector_at_the_top_is_not_a_setting_rather_than_moved() -> None:
     """Every source's table holds ``connector``, which no settings file held at its top."""
     with pytest.raises(SettingsError, match=re.escape(f"connector ({FILE}): not a setting")):
@@ -518,11 +460,7 @@ def test_connector_at_the_top_is_not_a_setting_rather_than_moved() -> None:
 
 @pytest.mark.parametrize("key", ["_cli_parse_args", "_env_file", "DATA_DIR", "unknown"])
 def test_the_model_refuses_a_key_that_names_no_setting_whatever_its_layer(key: str) -> None:
-    """A key that names no setting is refused, from any layer, never taken as an option.
-
-    pydantic-settings' model takes ``_cli_parse_args`` as one, which parses sys.argv,
-    ``_env_file``, which reads the file named, and ``DATA_DIR`` as ``data_dir``.
-    """
+    """A key that names no setting is refused, from any layer, never taken as an option."""
     with pytest.raises(SettingsError, match=re.escape(f"{key} (a layer):")):
         settings_of([LayerValue(path=(key,), value="/etc/passwd", layer="a layer")], HOME, MODEL)
 
@@ -909,11 +847,7 @@ def test_two_variables_of_one_setting_or_of_a_table_and_inside_it_are_refused(
     *,
     inner_first: bool,
 ) -> None:
-    """pydantic-settings merges them, by the environment's order below the top.
-
-    No value of the merge could name the variable that gave it: both are named, in
-    either order, never what they hold.
-    """
+    """Both are named, in either order, never what they hold: no merge could name its variable."""
     for name, value in [inner, outer] if inner_first else [outer, inner]:
         monkeypatch.setenv(name, value)
     with pytest.raises(SettingsError) as refused:
@@ -953,10 +887,7 @@ def test_a_variable_naming_no_setting_inside_another_s_setting_is_ignored_alone(
     *,
     unknown_first: bool,
 ) -> None:
-    """The other gives its value whole, in either order; this one is ignored, as alone.
-
-    pydantic-settings would merge it into the other's table or list.
-    """
+    """The other gives its value whole, in either order; this one is ignored, as alone."""
     named = (unknown, f'["{SENTINEL}"]')
     for name, value in [named, given] if unknown_first else [given, named]:
         monkeypatch.setenv(name, value)
@@ -982,7 +913,7 @@ def test_a_variable_naming_no_setting_below_a_value_is_ignored_alone(
 def test_a_variable_is_read_without_regard_to_case_and_named_as_written(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """As pydantic-settings reads it: the layer is the variable's own name."""
+    """The layer is the variable's own name, as written."""
     monkeypatch.setenv("kb_mcp_sources__jira__site", "https://lower.example.invalid")
     monkeypatch.setenv("Kb_Mcp_Spaces", '["X"]')
     loaded = loaded_from(tmp_path, "")
@@ -1019,7 +950,7 @@ def test_secrets_come_from_the_environment_and_are_never_shown(
     assert settings.embedding_api_key is not None
     assert settings.embedding_api_key.get_secret_value() == f"{SENTINEL}-key"
     assert SENTINEL not in f"{settings!r} {settings} {loaded!r}"
-    entries, _ = environment_entries(os.environ, EnvSettingsSource(MODEL), MODEL)
+    entries, _ = environment_entries(os.environ, MODEL)
     assert SENTINEL not in f"{entries!r} {entries}"
 
 
@@ -1125,11 +1056,7 @@ def test_an_empty_table_that_holds_a_secret_writes_none_and_loads(
 def test_a_list_or_a_table_not_in_json_is_refused_by_its_variable_never_its_value(
     tmp_path: Path, monkeypatch: MonkeyPatch, name: str, value: str
 ) -> None:
-    """PLAT,PRB is not JSON, nor an object a list, nor null a table: the variable is named.
-
-    pydantic-settings would refuse PLAT,PRB naming no variable, and drop a table's null
-    unread.
-    """
+    """PLAT,PRB is not JSON, nor an object a list, nor null a table: the variable is named."""
     monkeypatch.setenv(name, value)
     with pytest.raises(SettingsError) as refused:
         loaded_from(tmp_path, "")

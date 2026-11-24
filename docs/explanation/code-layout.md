@@ -22,9 +22,9 @@ side, never use each other:
 | `search` | The index of the mirror, by words and by meaning, and ranking |
 | `sources` | Where documents come from: the registry and the stages' interfaces, beside a package per source, nested by stage: `atlassian/`, Confluence and Jira, whose `fetch/` holds the sign-in (the saved session or an API token) and the raw store, and whose `prepare/` writes their documents from that store; `worklog/`, the user's work log, whose `fetch/` reads its folder in place into a copy store, and whose `prepare/` writes its documents |
 | `mirror` | What every source writes through and search reads: the front matter, which files are documents, the writer of the files that changed, pandoc and its cache of conversions, the instruments of documents built, the rules of text |
-| `config` | The settings, their file, and the guard on where data lives |
-| `observability` | What a run tells of itself: structured logs, progress on the terminal, traces and metrics |
-| `kernel` | What all share: the rules of the names of the mirror's sources, ids, keys and revisions, strict reading of JSON, exit statuses, how a run reports, whether an endpoint is this machine and how each service there is named and started, the bounds of a reranking, the names of the chunkings and of the server's tools, the slug of a title |
+| `config` | The settings: `settings`, their model, its tables and its layers merged, pure; `load`, which reads the file and the environment and guards where data lives; `file`, the settings file and the sources that it names, for the parser |
+| `observability` | What a run tells of itself: `observed`, an invocation's logs, on stderr and in its file, and its display; `progress`, tasks and their bars' protocols, without Rich; `http`, requests observed; `telemetry`, the SDK, traces, metrics and logs exported |
+| `kernel` | What all share, pure: `names`, the program's and the mirror's names and rules, the busy store, the chunkings, the tools, the bounds of a reranking, the services and their rule, the endings and exit statuses, how a result is written, the slug of a title, for the parser too; `fields`, strict reading of JSON; `records`, the records, a unit's outcome and an invocation |
 
 The order follows what each needs: `eval` ranks through the `Library` of `mcp`, which
 ranks with `search`, which indexes the mirror's front matter; each source writes its
@@ -32,8 +32,8 @@ documents through the mirror, which imports none of them, so that search and the
 sit side by side above it; a source's table and a fetch read the settings' rules, which
 check keys by the kernel's patterns. `observability` sits just above the kernel, so that
 every other context, the settings included, may log, trace and report progress through it,
-while it takes from the kernel only how a run reports: the command line hands it plain
-values, never the settings.
+while it takes from the kernel the invocation that the command line builds, never the
+settings.
 
 Some choices are not obvious:
 
@@ -41,8 +41,8 @@ Some choices are not obvious:
   to `sources/atlassian/fetch/`, the Markdown files to `mirror`, the index and the
   vectors to `search`.
 - **`kernel/` is small**, and holds only what contexts that cannot import one another
-  share. It has no layers. Its `fields` reads JSON already decoded and does no I/O, so
-  pure rules may use it; still, only the adapter of a representation reads a response.
+  share, in three pure modules. Its `fields` reads JSON already decoded and does no I/O,
+  so pure rules may use it; still, only the adapter of a representation reads a response.
 - **`evaluation/` is a context of its own**, above `mcp`, since it measures what agents
   get through `Library.ranked`; inside `search` it would make a cycle.
 - **`site_html.py` is in `sources/atlassian/prepare/adapters/`**, in the package it
@@ -78,7 +78,9 @@ Some choices are not obvious:
 
 ## The layers within a context
 
-Each context but the kernel holds the same layers, as sub-packages, from the top:
+Each context but `kernel`, `observability` and `config`, which hold modules as
+[where the layout is going](#where-the-layout-is-going) has it, holds the same layers, as
+sub-packages, from the top:
 
 | Layer | What it holds |
 |---|---|
@@ -157,13 +159,13 @@ checks the ids, in their order, against this table:
 | | What it protects |
 |---|---|
 | A | Contexts use those below them, never those above, and `search` and `sources`, side by side, never use each other. It is exhaustive: a new top-level package breaks it until it is placed in the order |
-| B | Within each context, and within each stage of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `stages` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
-| C | Pure rules, in any context (and the kernel), with the declarations and the modules beside the sources' packages, use no effect and no use case, nor structlog, OpenTelemetry or Rich: a rule neither logs, traces nor draws |
+| B | Within each context that holds layers, and within each stage of a source, the layers' order. It is exhaustive too: a module outside a layer breaks it. A module put directly in a source's package, but `declared` and `settings`, breaks J; one put directly in `sources/` is outside B and J: A still orders it with `sources`, and `declaration`, `registry` and `stages` are named under C, the first two under G too, so a new one joins their lists, or no contract checks its layer or its use of `httpx` |
+| C | Pure rules, in any context, the pure modules of `kernel` and `config` named, with the declarations and the modules beside the sources' packages, use no effect and no use case, nor any package of T2's list: a rule neither logs, traces nor draws, nor reaches the network, a file, a process or the environment |
 | D | Effects, in any context, use no use case |
 | E | Search, the server and the evaluation, with their commands, `index` and `embed` among them, read the mirror, never a source: the index is built from the mirror alone |
-| F | Use cases and commands reach the network through effects only (no `httpx`) |
-| G | Declaring the command, `cli.main` and `cli.options`, with the registry and each source's declaration, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
-| H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.adapters.progress`, through which they all report progress, so that it never imports the display that draws it |
+| F | Use cases and commands reach the network through effects only (no `httpx`), and of `kernel`, `config` and `observability`, `observability.http` alone imports it |
+| G | Declaring the command, `cli.main` and `cli.options`, with the registry, each source's declaration, and what they read of `kernel.names`, `kernel.fields` and `config.file`, imports none of the packages that runs need: the MCP SDK, Playwright, httpx, NumPy, lxml, PyYAML, Pydantic, Rich, OpenTelemetry, requests, structlog and platformdirs |
+| H | Only `observability` and `cli` use Rich, which draws on the terminal, and requests, which OpenTelemetry's exporters bring: the rest reaches the network by httpx. It counts indirect imports, so what the other contexts import of `observability` reaches neither. It names every other context, so a new one joins its list as it joins A's order, and `observability.progress`, through which they all report progress, so that it never imports the display that draws it |
 | I | No source imports another, `sources.atlassian` and `sources.worklog`: a list that a test holds to the packages of the registry's declarations, so a new source's package joins it |
 | J | Within each source, from the top: its declaration, preparing, fetching, its settings: the declaration names the fetcher and preparers by path and imports neither, and preparing may use fetching, never the reverse. It is exhaustive: a source's package holds these alone |
 | K | Only `sources.atlassian` uses lxml and Playwright, so that an extra can hold them later: every other context, the modules beside the sources' packages, `sources.worklog` and `sources.atlassian.settings`, which every command loads by its path, import neither, as `cli` loads what uses them by the declarations' paths. It names every other context, so a new one, or a new source, joins its list, as H's does |
@@ -181,7 +183,7 @@ the root of another package, which OpenTelemetry's API and SDK share: so
 ## Records
 
 A record is a value of the program: a document, a setting's layer, a run's outcome. Each
-is a `kernel.record.Record`, a Pydantic model built by keyword and checked at
+is a `kernel.records.Record`, a Pydantic model built by keyword and checked at
 construction, frozen unless it accumulates as a run goes (`model_config =
 ConfigDict(frozen=False)`). A record refuses a keyword it does not know, and its errors
 never print a value. Plan 028 made the program's dataclasses records. Their rules:
@@ -200,24 +202,23 @@ never print a value. Plan 028 made the program's dataclasses records. Their rule
   fields; one that accumulates has no hash, as a dataclass that was not frozen.
 - A protocol is never a record's base, as its metaclass and Pydantic's conflict: a
   record that implements one, such as `site_html.HtmlPart` a `Construct` or
-  `display.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
+  `observed.TaskBar` a `Bar`, has `Record` for its base and meets the protocol by its
   methods.
 - Pydantic reads a record's annotations, so the types they name are imported at run
   time, never under `TYPE_CHECKING`, and so is a `type` alias that they name. Ruff
-  knows records by their base, `kb_mcp.kernel.record.Record`, which `ruff.toml` names
+  knows records by their base, `kb_mcp.kernel.records.Record`, which `ruff.toml` names
   among its runtime-evaluated base classes, and reports an import to move as TC004; it
   does not report an alias. A record base defined in one module and subclassed in
   another joins that list.
 
-Seventeen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
+Fifteen classes stay dataclasses, each for its reason; `tests/test_code_layout.py` checks
 that every dataclass under `src/kb_mcp/` is in this table, and that every class of the
 table is one:
 
 | Class | Why it stays a dataclass |
 |---|---|
 | `cli.domain.command.Command` | G: `--help` imports it |
-| `kernel.endpoint.Service` | G: `--help` imports it |
-| `kernel.output.Output` | G: `--help` imports it |
+| `kernel.names.Service` | G: `--help` imports it |
 | `sources.atlassian.fetch.domain.period.Period` | G: `--help` imports it |
 | `sources.declaration.Connector` | G: `--help` imports it |
 | `sources.declaration.DocumentType` | G: `--help` imports it |
@@ -229,7 +230,7 @@ table is one:
 | `search.adapters.model_api.Endpoint` | It holds a live client, httpx's |
 | `sources.atlassian.fetch.app.fetching.Fetching` | It holds the raw store under its lock and the site's client |
 | `evaluation.app.evaluation.EvaluatedIndex` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
-| `observability.adapters.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
+| `observability.progress.Task` | Pydantic cannot build it: a field is typed by the protocol `Bar` |
 | `search.app.indexing.Embedding` | Pydantic cannot build it: a field is typed by the protocol `Embedder` |
 
 A new dataclass needs a row here with its reason, of these three kinds: a module that
@@ -281,7 +282,7 @@ which their targets then hold.
   `httpx`, `sqlite3`, `subprocess`, `socket`, `ssl`, `requests`, `truststore`,
   `certifi`, `anyio`, Playwright, the MCP SDK, structlog, `logging`, OpenTelemetry,
   Rich, `os`, `sys`, `time`, `fcntl`, `tempfile`, `shutil`, `threading`, `secrets`,
-  `uuid`, `random`, `importlib`, `platformdirs` or `pydantic_settings`. It may build
+  `uuid`, `random`, `importlib` or `platformdirs`. It may build
   paths with `pathlib`; reading or writing through them, `open`, and the clock through
   `datetime.now` are findings of the review.
 - **T3. A port only where it pays.** A `Protocol` only where two implementations exist,

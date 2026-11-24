@@ -21,14 +21,14 @@ from kb_mcp.cli.commands.reranker import (
     text,
 )
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import Rerank, Settings, SettingsError
-from kb_mcp.kernel.endpoint import RERANKING
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.reranking import (
+from kb_mcp.config.settings import Rerank, Settings, SettingsError
+from kb_mcp.kernel.names import (
     BOUND_S,
     LONGEST_QUERY,
     LONGEST_TEXT,
     MOST_TEXTS,
+    RERANKING,
+    ExitStatus,
 )
 from kb_mcp.search.adapters.model_api import Bounds, endpoint
 from kb_mcp.search.adapters.reranking import (

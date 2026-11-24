@@ -17,17 +17,14 @@ from typing import TYPE_CHECKING, Self
 from pydantic import AwareDatetime, Field, JsonValue, model_validator
 
 from kb_mcp.cli.domain.command import EMBED, FETCH, INDEX, PREPARE, STAGES, WHOLE, Stage
-from kb_mcp.kernel.endpoint import EMBEDDINGS, refused_endpoint
-from kb_mcp.kernel.exit_status import Ending
-from kb_mcp.kernel.names import RUN_ID, RefusedError
-from kb_mcp.kernel.outcome import OutcomeWarning, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.names import EMBEDDINGS, RUN_ID, Ending, RefusedError, refused_endpoint
+from kb_mcp.kernel.records import OutcomeWarning, Problem, Record
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Sequence
     from pathlib import Path
 
-    from kb_mcp.config.domain.settings import Settings
+    from kb_mcp.config.settings import Settings
 
 
 class Unit(Record):

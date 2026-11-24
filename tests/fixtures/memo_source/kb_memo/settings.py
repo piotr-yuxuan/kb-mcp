@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from kb_mcp.config.domain.settings import TABLE, LocalPath
+from kb_mcp.config.settings import TABLE, LocalPath
 
 
 class MemoTable(BaseModel):

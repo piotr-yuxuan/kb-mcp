@@ -38,11 +38,10 @@ from kb_mcp.cli.domain.runs import (
     units_of,
 )
 from kb_mcp.cli.main import main
-from kb_mcp.config.domain.settings import with_secrets, without_secrets
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.config.settings import with_secrets, without_secrets
 from kb_mcp.kernel.fields import RepresentationError
-from kb_mcp.kernel.names import RefusedError
-from kb_mcp.kernel.outcome import Outcome, Problem
+from kb_mcp.kernel.names import ExitStatus, RefusedError
+from kb_mcp.kernel.records import Outcome, Problem
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
@@ -1192,7 +1191,7 @@ def test_the_run_s_start_and_the_invocation_recorded_are_its_log_file_s_instant(
         def now(cls, _tz: tzinfo | None = None) -> datetime:
             return instant
 
-    monkeypatch.setattr("kb_mcp.observability.app.observed.datetime", Clock)
+    monkeypatch.setattr("kb_mcp.observability.observed.datetime", Clock)
     options = given(home, endpoint)
     assert main(["fetch", "--yes", "--format", "json", *options, "worklog"]) == ExitStatus.OK
     configured, entries = record_of(home, json.loads(capsys.readouterr().out)["run"])

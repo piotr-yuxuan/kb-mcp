@@ -80,9 +80,9 @@ choose among those that a command can take
   time, an end left to now made the start
   ([`fetch_options`](../../src/kb_mcp/cli/domain/sources.py)). It writes it under
   `<data>/runs/<run id>/`, every secret left out
-  ([`without_secrets`](../../src/kb_mcp/config/domain/settings.py)), then reads it back,
+  ([`without_secrets`](../../src/kb_mcp/config/settings.py)), then reads it back,
   takes the secrets from its environment
-  ([`with_secrets`](../../src/kb_mcp/config/domain/settings.py)), and runs its units from
+  ([`with_secrets`](../../src/kb_mcp/config/settings.py)), and runs its units from
   that alone ([`recorded`](../../src/kb_mcp/cli/commands/_runs.py)); each unit's entry is
   written as it ends ([`Progress`](../../src/kb_mcp/cli/app/units.py)), as [the data
   layout](../reference/data-layout.md#runs) says. A dry run records nothing.
@@ -111,7 +111,7 @@ choose among those that a command can take
   resume ([`run_units`](../../src/kb_mcp/cli/app/units.py)). The exit status folds how
   every unit last ended, whichever invocation ended it, and the run's own: interrupted,
   then sign in again, then failed
-  ([`folded`](../../src/kb_mcp/kernel/exit_status.py)).
+  ([`folded`](../../src/kb_mcp/kernel/names.py)).
 - **Offline**, all but `fetch`: `prepare`, `index` and `embed` read nothing from the site.
 
 ## Fetch: from the site to the raw store
@@ -147,7 +147,7 @@ being read whole anyway; a scope never fetched, its last 7 days. A catch-up that
   gone. One run at a time:
   [`RawStore.writing`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)
   holds a lock, and a second run stops at once with
-  [`StoreBusyError`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py).
+  [`StoreBusyError`](../../src/kb_mcp/kernel/names.py).
   A snapshot is written into a hidden folder and renamed into place
   ([`RawStore.put`](../../src/kb_mcp/sources/atlassian/fetch/adapters/raw_store.py)):
   complete or absent. Its responses are never written again; its record gains the files

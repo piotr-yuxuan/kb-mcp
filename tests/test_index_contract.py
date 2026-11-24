@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, get_protocol_members
 import numpy as np
 import pytest
 
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Record
 from kb_mcp.mirror.domain.mirror import FrontMatter, Mention
 from kb_mcp.search.adapters import sqlite_index
 from kb_mcp.search.domain import people
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
-    from kb_mcp.kernel.chunking import Chunking
+    from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.domain.indexes import SearchIndex
 
 # What writes documents, and a model if any, into a new index of a backend.

@@ -18,8 +18,7 @@ from kb_mcp.evaluation.domain.reranking import (
     Depthed,
     default_reranking,
 )
-from kb_mcp.kernel.exit_status import ExitStatus
-from kb_mcp.kernel.reranking import BAR_DEPTHS
+from kb_mcp.kernel.names import BAR_DEPTHS, ExitStatus
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex

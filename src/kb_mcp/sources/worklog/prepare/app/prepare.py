@@ -25,8 +25,7 @@ import structlog
 from opentelemetry import trace
 
 from kb_mcp.kernel.names import WORKLOG_SCOPE_TYPE
-from kb_mcp.kernel.outcome import Outcome, Problem
-from kb_mcp.kernel.record import Record
+from kb_mcp.kernel.records import Outcome, Problem, Record
 from kb_mcp.mirror.adapters.instruments import CONVERSION_DURATION, DOCUMENTS
 from kb_mcp.mirror.adapters.markdown import dump
 from kb_mcp.mirror.adapters.mirror_files import Changes, write_changed
@@ -41,7 +40,7 @@ from kb_mcp.mirror.domain.mirror import (
     scope_name,
 )
 from kb_mcp.mirror.domain.mirror_text import one_line
-from kb_mcp.observability.adapters.progress import task
+from kb_mcp.observability.progress import task
 from kb_mcp.sources.worklog.fetch.domain.worklog import TYPE_ROLES, WorklogFrontMatter
 from kb_mcp.sources.worklog.prepare.adapters.owned import worklog_owned
 from kb_mcp.sources.worklog.prepare.domain.layout import places, retired, worklog_path
@@ -49,7 +48,7 @@ from kb_mcp.sources.worklog.prepare.domain.layout import places, retired, worklo
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from kb_mcp.kernel.output import Detail
+    from kb_mcp.kernel.names import Detail
     from kb_mcp.mirror.adapters.conversions import Conversions
     from kb_mcp.mirror.domain.mirror import FrontMatter
     from kb_mcp.sources.worklog.fetch.domain.copies import Copies

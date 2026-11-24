@@ -18,12 +18,12 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, InstanceOf
 
-from kb_mcp.config.domain.settings import Settings
-from kb_mcp.kernel.record import Record
+from kb_mcp.config.settings import Settings
+from kb_mcp.kernel.records import Record
 from kb_mcp.sources.declaration import Source
 
 if TYPE_CHECKING:
-    from kb_mcp.kernel.outcome import Outcome
+    from kb_mcp.kernel.records import Outcome
 
 # What a check concludes: all is well, the user must sign in again, or something fails.
 type CheckState = Literal["well", "sign in again", "failed"]

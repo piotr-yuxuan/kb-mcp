@@ -23,8 +23,8 @@ from kb_mcp.cli.commands import model as model_command
 from kb_mcp.cli.commands._shared import enter
 from kb_mcp.cli.domain.command_line import command_line
 from kb_mcp.cli.main import main, parser
-from kb_mcp.config.domain.settings import DEFAULT_MODEL, values_of
-from kb_mcp.observability.app.observed import early
+from kb_mcp.config.settings import DEFAULT_MODEL, values_of
+from kb_mcp.observability.observed import early
 from kb_mcp.sources.atlassian.fetch.app import login as login_module
 from kb_mcp.sources.registry import SOURCES
 from tests.endpoint import nothing_listening
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
-    from kb_mcp.config.domain.settings import Loaded
+    from kb_mcp.config.settings import Loaded
 
 SITE = "https://sandbox.example.invalid"
 # The variables of Confluence's site, email and API token, and the embedding endpoint's

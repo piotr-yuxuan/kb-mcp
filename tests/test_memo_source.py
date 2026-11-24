@@ -26,7 +26,7 @@ import pytest
 
 import kb_mcp
 from kb_mcp.cli.main import main
-from kb_mcp.kernel.exit_status import ExitStatus
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.mirror.adapters.markdown import load
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
