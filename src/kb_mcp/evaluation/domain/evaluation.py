@@ -29,9 +29,11 @@ CUTOFF = 10
 EXPECTED, PARTIAL = 2, 1
 SAMPLES = 10_000
 SEED = 11
-# What evidence is compared without: a link's address, emphasis and code marks, and the
-# pipes of a table's cells, which plain text renders as spaces.
-LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+# What evidence is compared without: Markdown's backslash escapes, a link's or an image's
+# address and an image's mark, emphasis and code marks, and the pipes of a table's cells,
+# which plain text renders as spaces.
+ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
+LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 MARKS = re.compile(r"[*_`|]")
 # The level of an adjusted p-value; within how much of the best mean a default rule keeps
 # the cheapest challenger that qualifies.
@@ -205,8 +207,13 @@ RULES = {
 
 
 def plain(text: str) -> str:
-    """Write text as evidence is compared: links as their words, no marks, one case, spaced."""
-    return " ".join(MARKS.sub("", LINK.sub(r"\1", text)).casefold().split())
+    """Write text as evidence is compared: unescaped, links as their words, no marks, one case."""
+    return " ".join(MARKS.sub("", LINK.sub(r"\1", ESCAPE.sub(r"\1", text))).casefold().split())
+
+
+def holds(text: str, phrase: str) -> bool:
+    """Say whether a text holds a phrase: both ``plain``, the phrase as whole words."""
+    return re.search(rf"(?<!\w){re.escape(plain(phrase))}(?!\w)", plain(text)) is not None
 
 
 def measure(
@@ -227,7 +234,7 @@ def measure(
     best = sum(gain / math.log2(rank + 1) for rank, gain in enumerate(ideal, 1))
     texts = shown or {}
     held = [
-        plain(question.evidence[path]) in plain(texts.get(path, ""))
+        holds(texts.get(path, ""), question.evidence[path])
         for path in top
         if path in expected and path in question.evidence
     ]
@@ -244,7 +251,7 @@ def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
     """Measure the passages of ask's first answer, each a path and its text, for a question."""
     texts = dict(passages)
     held = [
-        plain(phrase) in plain(texts.get(path, ""))
+        holds(texts.get(path, ""), phrase)
         for path, phrase in question.evidence.items()
         if path in question.expected
     ]

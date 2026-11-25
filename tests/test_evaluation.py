@@ -17,6 +17,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     Quoted,
     Verdict,
     averages,
+    holds,
     holm,
     measure,
     paired_test,
@@ -24,6 +25,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     quoting,
     verdict,
 )
+from kb_mcp.evaluation.domain.grading import AgentAnswer, Quote, grade
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -122,6 +124,61 @@ def test_evidence_in_a_table_row_is_found_without_its_pipes() -> None:
     """Plain text renders a row's cells apart by spaces, as the evidence was taken."""
     question = Question(id="q", text="x", expected=("a",), evidence={"a": "SEV1 15 minutes"})
     assert measure(["a"], question, {"a": "| SEV1 | 15 minutes |"}).section == 1.0
+
+
+def held_everywhere(text: str, phrase: str) -> list[bool]:
+    """Say whether ``text`` holds ``phrase`` as each comparer of evidence finds it.
+
+    Section@10, Evidence@ask, an agent's evidence quoted, and an agent's quote grounded,
+    the text being the document's body and the phrase the quote.
+    """
+    question = Question(id="q", text="x", expected=("a",), evidence={"a": phrase})
+    graded = grade(
+        AgentAnswer(found=True, answer="x", quotes=(Quote(ref="a", text=text),)),
+        question,
+        str,
+        lambda _: text,
+    )
+    quote = AgentAnswer(found=True, answer="x", quotes=(Quote(ref="a", text=phrase),))
+    return [
+        holds(text, phrase),
+        measure(["a"], question, {"a": text}).section == 1.0,
+        quoting([("a", text)], question).evidence == 1.0,
+        graded.evidence,
+        grade(quote, question, str, lambda _: text).grounded,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase"),
+    [
+        (r"The plan costs \$5 a month.", "costs $5 a month"),
+        (r"1\. Install the agent", "1. install the agent"),
+        (r"a \[draft\] page", "a [draft] page"),
+        ("See ![the rollback diagram](rollback.png) below.", "see the rollback diagram below"),
+        ("See [the runbook](../x.md), **then** wait.", "the runbook, then wait"),
+    ],
+)
+def test_evidence_matches_through_escapes_and_images(text: str, phrase: str) -> None:
+    """D8, E14: Markdown's backslash escapes undone, an image's mark and address dropped."""
+    assert held_everywhere(text, phrase) == [True] * 5
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase", "held"),
+    [
+        ("Restart the service.", "art", False),
+        ("The art of it.", "art", True),
+        ("It costs $50.", "$5", False),
+        ("It costs $5.", "$5", True),
+        ("Blending in.", "the end", False),
+        ("At the end.", "the end", True),
+        ("Ninety days, then", "ninety days", True),
+    ],
+)
+def test_evidence_matches_whole_words_only(text: str, phrase: str, *, held: bool) -> None:
+    """D8, E14: a phrase within a word is not held, one between words or signs is."""
+    assert held_everywhere(text, phrase) == [held] * 5
 
 
 def test_two_equal_runs_do_not_differ() -> None:
