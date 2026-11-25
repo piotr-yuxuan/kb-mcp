@@ -883,6 +883,18 @@ class Library:
             found = self._find(reader, ref)
         return None if found is None else found.path
 
+    def cited(self, ref: str) -> str | None:
+        """Find the path of the document that a citation names, as ``resolve`` does.
+
+        None for a ref that names none, or several: a citation unresolved, for an evaluation.
+        """
+        with self._reading() as reader:
+            try:
+                found = self._find(reader, ref)
+            except UnanswerableError:  # a ref of several documents
+                return None
+        return None if found is None else found.path
+
     def ranked(self, query: str, mode: Mode, limit: int = SEARCH_LIMIT) -> tuple[list[Shown], str]:
         """Rank documents for a query as search does, in a mode, for an evaluation.
 

@@ -25,6 +25,7 @@ from mcp.client.stdio import StdioServerParameters
 from kb_mcp.cli.main import main
 from kb_mcp.evaluation.adapters.mcp_client import Answered
 from kb_mcp.evaluation.app import agents
+from kb_mcp.evaluation.domain.grading import ask_verdict
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
@@ -656,7 +657,7 @@ def test_runs_that_failed_broke_a_rule_or_lost_their_server_give_no_result(
 ) -> None:
     """Returned without an answer: a failure; failed, invalid, a call timed out: no result.
 
-    Their questions are out of the tests, and counted.
+    Each run without a result counts as a failure in its arm, counted: D7, E15.
     """
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "2") == 0
@@ -679,13 +680,98 @@ def test_runs_that_failed_broke_a_rule_or_lost_their_server_give_no_result(
         ("no result", "a call timeout"),
     ]
     assert results["counted"] == {"failure": 1, "no result": 3}
-    assert (results["pairs"], results["left_out"]) == (0, len(("q", "q")))
+    assert (results["pairs"], results["left_out"]) == (len(("q", "q")), 0)
+    assert results["no_result"] == {"A": 1, "B": 2}
+
+
+# The sentence of each question's document that answers it, and holds its evidence.
+SENTENCES = {
+    "q1": "Kafka keeps its logs for seven days.",
+    "q2": "The brokers move to 4.0 in May.",
+    "q3": "Ada is on call this week.",
+    "q4": "Leave for a meal.",
+}
+
+
+def test_a_run_without_result_counts_as_a_failure(
+    world: World, capsys: CaptureFixture[str]
+) -> None:
+    """D7, E15: A's run failed, B's succeeded; the pair is tested, A's run a failure.
+
+    The verdict says how many runs without a result it counted as failures, in each arm.
+    """
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    runs = {run["surface"]: run for run in runs_of(out)}
+    question = runs["B"]["question"]
+    ref, sentence = EXPECTED[question][0], SENTENCES[question]
+    answer = {"found": True, "answer": sentence, "sources": [ref]}
+    answer["quotes"] = [{"ref": ref, "text": sentence}]
+    assert answering(out, runs["B"]["id"], json.dumps(answer)) == 0
+    harness(out, runs["B"]["id"], status="returned")
+    harness(out, runs["A"]["id"], status="failed")
+    capsys.readouterr()
+    assert main(["eval-agents", "grade", str(out), "--yes"]) == 0
+    assert "runs without a result, counted as failures: A 1, B 0" in capsys.readouterr().out
+    results = json.loads((out / "results.json").read_text("utf-8"))
+    judged = {each["surface"]: each["result"] for each in results["outcomes"]}
+    assert judged == {"A": "no result", "B": "success"}
+    assert (results["pairs"], results["left_out"]) == (1, 0)
+    assert results["no_result"] == {"A": 1, "B": 0}
+    assert results["verdict"]["differences"]["success"]["difference"] == 1.0
+
+
+def test_no_graded_pair_gives_no_verdict(world: World, capsys: CaptureFixture[str]) -> None:
+    """D7, E12: no question has both its runs judged: no verdict on ask, nor "ask stays"."""
+    assert ask_verdict({"success": [], "calls": [], "tokens": []}).keeps_ask is None
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    harness(out, runs_of(out)[0]["id"], status="failed")
+    capsys.readouterr()
+    assert main(["eval-agents", "grade", str(out), "--yes"]) == 0
+    said = capsys.readouterr().out
+    assert "no verdict on ask" in said
+    assert "ask stays" not in said
+    results = json.loads((out / "results.json").read_text("utf-8"))
+    assert (results["pairs"], results["left_out"]) == (0, 1)
+    assert results["verdict"]["keeps_ask"] is None
+
+
+@pytest.mark.parametrize("ref", ["999999", "10007"], ids=["unknown", "ambiguous"])
+def test_an_unknown_or_ambiguous_ref_is_an_unresolved_citation(
+    world: World, capsys: CaptureFixture[str], ref: str
+) -> None:
+    """D7, E11: a ref that names no document, or several, grounds nothing and counts for none.
+
+    10007 is a page's id and PROJ-7's: read refuses it, naming both, but every run is
+    graded, never the grading refused.
+    """
+    docs = world.data / "docs"
+    write(docs, page("10007", "Namesake"), "# Namesake\n\nKafka keeps its logs for seven days.\n")
+    vectors = Embedding(tiny(), world.data / "vectors.sqlite")
+    build_index(docs, world.data / "index.sqlite", MOMENT, vectors)
+    out = world.root / "runs"
+    assert prepared(world, out, "--sample", "1") == 0
+    sentence = SENTENCES["q1"]
+    cited = {"found": True, "answer": sentence, "sources": [ref]}
+    cited["quotes"] = [{"ref": ref, "text": sentence}]
+    for run in runs_of(out):
+        assert answering(out, run["id"], json.dumps(cited)) == 0
+        harness(out, run["id"], status="returned")
+    capsys.readouterr()
+    assert main(["eval-agents", "--format", "json", "grade", str(out), "--yes"]) == 0
+    outcomes = json.loads(capsys.readouterr().out)["outcomes"]
+    assert [each["result"] for each in outcomes] == ["failure", "failure"]
+    graded = [each["graded"] for each in outcomes]
+    assert [(each["recall"], each["precision"], each["grounded"]) for each in graded] == [
+        (0.0, None, False)
+    ] * 2
 
 
 def test_a_call_without_the_consent_leaves_its_run_without_a_result(
     world: World, capsys: CaptureFixture[str]
 ) -> None:
-    """Logged, the forced "found": false is no honest failure: its question is left out."""
+    """Logged, the forced "found": false is no honest answer: no result, a failure in its arm."""
     remote(world)
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
@@ -703,7 +789,7 @@ def test_a_call_without_the_consent_leaves_its_run_without_a_result(
     results = json.loads(capsys.readouterr().out)
     judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
     assert judged[unconsented] == ("no result", "a call lacked the consent")
-    assert (results["pairs"], results["left_out"]) == (0, 1)
+    assert (results["pairs"], results["left_out"]) == (1, 0)
 
 
 def test_a_run_without_a_call_says_its_seconds_as_the_integer_0(
@@ -785,7 +871,7 @@ def test_runs_prepared_with_the_consent_in_their_server_s_command_are_refused(
     judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
     reason = "prepared before the consent was given per call"
     assert judged[outdated] == ("no result", reason)
-    assert (results["pairs"], results["left_out"]) == (0, 1)
+    assert (results["pairs"], results["left_out"]) == (1, 0)
 
 
 @pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])

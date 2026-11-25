@@ -153,8 +153,9 @@ def answered(
 def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Results | None]:
     """Grade the runs and judge ask; exit 2 for a refused file, 1 past twice the estimates.
 
-    Refs resolve as read resolves them, and quotes are sought in the mirror's bodies.
-    The task ``runs`` reports the runs judged, each by its id.
+    Refs resolve as read resolves them, one that names none or several unresolved, and
+    quotes are sought in the mirror's bodies. The task ``runs`` reports the runs judged,
+    each by its id.
     """
     settings = loaded.settings
     library = Library(SqliteIndex(settings.index), settings.docs)
@@ -167,7 +168,7 @@ def graded(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, R
         runs = readied(arguments.directory)
         with task("runs", len(runs.runs)) as judging:
             outcomes = [
-                judged(arguments.directory, run, runs.question(run.question), library.resolve, body)
+                judged(arguments.directory, run, runs.question(run.question), library.cited, body)
                 for run in judging.each(runs.runs, lambda one: one.id)
             ]
     except (AgentsError, UnanswerableError) as error:
@@ -206,7 +207,8 @@ def text(result: object, detail: Detail) -> str:
     """Write a step's result: the runs prepared, a tool's answer alone, an answer kept, a grading.
 
     A grading gives the runs counted, B against A on each measure, the verdict on ask,
-    and in detail each run.
+    or why there is none, with the runs without a result that it counts as failures, and
+    in detail each run.
     """
     match result:
         case RunsPrepared():
@@ -218,10 +220,16 @@ def text(result: object, detail: Detail) -> str:
             return "\n".join([said, *skipping(result.skipped), ""])
         case Results():
             counted = ", ".join(f"{name} {count}" for name, count in result.counted.items())
+            verdict = {
+                None: "no verdict on ask, since no question has both its runs judged",
+                True: "ask stays among the default tools",
+                False: "ask leaves the default tools: B's success is lower",
+            }[result.verdict.keeps_ask]
+            failures = ", ".join(f"{side} {count}" for side, count in result.no_result.items())
             lines = [
                 (
                     f"runs: {counted or 'none'}; questions in the tests: {result.pairs}; left"
-                    f" out, a run without a result: {result.left_out}"
+                    f" out, a run pending: {result.left_out}"
                 ),
                 *(
                     f"{name}, B with ask against A without: {each.difference:+.3f}"
@@ -229,9 +237,7 @@ def text(result: object, detail: Detail) -> str:
                     f" adjusted (Holm) {each.adjusted:.4f}"
                     for name, each in result.verdict.differences.items()
                 ),
-                "ask stays among the default tools"
-                if result.verdict.keeps_ask
-                else "ask leaves the default tools: B's success is lower",
+                f"{verdict}; runs without a result, counted as failures: {failures}",
             ]
             lines += [
                 f"{each.run} {each.question} {each.surface}: {each.result}"

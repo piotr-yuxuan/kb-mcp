@@ -136,7 +136,7 @@ class Difference(Record):
 class GradeVerdict(Record):
     """Whether ``ask`` stays among the default tools, and each measure's difference."""
 
-    keeps_ask: bool
+    keeps_ask: bool | None  # None: no verdict, no pair of runs to test
     differences: dict[str, Difference]
 
 
@@ -157,8 +157,10 @@ def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> GradeVerd
     ``pairs`` gives, for each measure (``success``, ``calls``, ``tokens``), A's and B's
     value question by question. Each is tested by ``paired_test``, Holm-adjusted over
     the measures. ``ask`` leaves the default tools only when B's success is lower with
-    an adjusted p-value below ALPHA.
+    an adjusted p-value below ALPHA. Without a pair, there is no verdict.
     """
+    if not pairs["success"]:
+        return GradeVerdict(keeps_ask=None, differences={})
     pvalues = {
         name: paired_test([a for a, _ in each], [b for _, b in each])
         for name, each in pairs.items()
