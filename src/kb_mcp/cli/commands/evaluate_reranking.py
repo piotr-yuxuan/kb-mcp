@@ -27,8 +27,8 @@ from kb_mcp.evaluation.app.reranked import (
     measured,
     recorded,
 )
-from kb_mcp.evaluation.domain.reranking import GROUPS, Decision
-from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S, RERANKING, STAMP, ExitStatus
+from kb_mcp.evaluation.domain.reranking import Decision
+from kb_mcp.kernel.names import BAR_DEPTHS, RERANKING, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
@@ -50,10 +50,10 @@ DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
 class DepthsEvaluated(Record):
-    """Each arm measured, the bar's decision, the mode, and the results file."""
+    """Each arm measured, the bar's verdict, the mode, and the results file."""
 
     arms: list[Arm]
-    decision: Decision | None
+    decision: Decision
     mode: str
     results: Path
 
@@ -128,10 +128,8 @@ def arm_row(arm: Arm, group: str) -> str:
 def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     """Write each arm's row, every group's in detail; the first ranking's recall; the bar.
 
-    The bar's verdicts come depth by depth, each clause said with the groups' losses,
-    then each qualifying depth's p-value against the best, then the depth at which to
-    turn reranking on, or that it is better left off, by this machine's times; with
-    depths other than the bar's, that there is no verdict.
+    The bar's verdict says the depth kept, or why there is none; then each depth's
+    clauses, by this machine's times, and the depths of the bar not run.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -144,33 +142,5 @@ def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     ]
     recall = ", ".join(f"@{size} {share:.3f}" for size, share in plain.recall.items())
     lines += ["", f"Recall of the order not reranked: {recall}", ""]
-    decision = evaluated.decision
-    if decision is None:
-        bar = ", ".join(map(str, BAR_DEPTHS))
-        lines.append(f"No verdict: the bar decides on depths {bar} alone.")
-    else:
-        losses = {
-            each.depth: ", ".join(
-                f"{name} {each.losses[name]:.3f}" if name in each.losses else f"{name} n/a"
-                for name in GROUPS
-            )
-            for each in decision.verdicts
-        }
-        lines += [
-            f"Depth {each.depth}: MRR@10 adjusted p = {each.adjusted:.4f}; gains"
-            f" {'yes' if each.beats else 'no'}; groups lose {losses[each.depth]},"
-            f" hold {'yes' if each.holds else 'no'};"
-            f" within {BOUND_S:g} s here {'yes' if each.fast else 'no'}"
-            for each in decision.verdicts
-        ]
-        lines += [
-            f"Depth {depth} against the best qualifying: MRR@10 p = {pvalue:.4f}"
-            for depth, pvalue in decision.against_best.items()
-        ]
-        chosen = decision.depth
-        lines.append(
-            f"By the bar, with this machine's times: turn reranking on, at depth {chosen}."
-            if chosen
-            else "By the bar, with this machine's times: leave reranking off."
-        )
+    lines += evaluated.decision.lines()
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

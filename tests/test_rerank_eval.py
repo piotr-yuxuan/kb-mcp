@@ -12,13 +12,8 @@ from kb_mcp.evaluation.app import reranked as measuring
 from kb_mcp.evaluation.app.evaluation import read_golden
 from kb_mcp.evaluation.app.reranked import Counted
 from kb_mcp.evaluation.domain import reranking as bar
-from kb_mcp.evaluation.domain.reranking import (
-    BarVerdict,
-    Decision,
-    Depthed,
-    default_reranking,
-)
-from kb_mcp.kernel.names import BAR_DEPTHS, ExitStatus
+from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
@@ -41,6 +36,9 @@ __all__ = ["data"]  # the fixture of test_evaluate, used here
 QUESTIONS = 30
 SAMPLE = 2  # of the golden file's three questions
 GROUPS = {"identifier": 0.600, "keyword": 0.800}
+# Plan 022's family, and the level of an adjusted p-value.
+FAMILY = ["10", "20", "30", "50"]
+ALPHA_LEVEL = 0.05
 
 
 def arm(score: float, tail_ms: int = 900, **groups: float) -> Depthed:
@@ -51,18 +49,17 @@ def arm(score: float, tail_ms: int = 900, **groups: float) -> Depthed:
 PLAIN = arm(0.0)
 
 
-def depths(**arms: Depthed) -> dict[int, Depthed]:
-    """Key arms by depth, given as ``d10=...``."""
-    return {int(name[1:]): each for name, each in arms.items()}
+def decided(plain: Depthed, **arms: Depthed) -> Decision:
+    """Apply the bar to the order not reranked and to depths given as ``d10=...``."""
+    return default_reranking({"none": plain, **{name[1:]: each for name, each in arms.items()}})
 
 
-def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_taken() -> None:
-    """A gain on all 30 questions is significant after Holm; equal arms: the cheapest."""
+def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_kept() -> None:
+    """A gain on all 30 questions is significant, times four; equal means: the smallest."""
     gaining = arm(1.0)
-    decision = default_reranking(PLAIN, depths(d10=gaining, d20=gaining, d30=gaining, d50=gaining))
-    assert decision is not None
-    assert [verdict.qualifies for verdict in decision.verdicts] == [True] * 4
-    assert decision.depth == BAR_DEPTHS[0]
+    found = decided(PLAIN, d10=gaining, d20=gaining, d30=gaining, d50=gaining)
+    assert found.failed == dict.fromkeys(FAMILY, ())
+    assert found.kept == "10"
 
 
 @pytest.mark.parametrize("group", sorted(GROUPS))
@@ -75,35 +72,27 @@ def test_a_group_may_lose_0_05_as_reported_and_no_more(
 ) -> None:
     """The loss between the means as the table shows them: 0.600 to 0.550, 0.601 to 0.550."""
     lost = arm(1.0, **{group: after})
-    decision = default_reranking(
-        arm(0.0, **{group: before}), depths(d10=lost, d20=lost, d30=lost, d50=lost)
-    )
-    assert decision is not None
-    assert [verdict.losses[group] for verdict in decision.verdicts] == [loss] * 4
-    assert [verdict.holds for verdict in decision.verdicts] == [holding] * 4
-    assert [verdict.qualifies for verdict in decision.verdicts] == [holding] * 4
-    assert decision.depth == (BAR_DEPTHS[0] if holding else None)
+    found = decided(arm(0.0, **{group: before}), d10=lost, d20=lost, d30=lost, d50=lost)
+    assert [found.losses[depth][group] for depth in FAMILY] == [loss] * 4
+    assert [("guards" in found.failed[depth]) for depth in FAMILY] == [not holding] * 4
+    assert found.kept == ("10" if holding else "none")
 
 
 def test_a_depth_shown_lower_does_not_gain() -> None:
     """Significantly different, but worse at every depth: no gain, so no depth."""
-    decision = default_reranking(arm(1.0), depths(d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN))
-    assert decision is not None
-    assert all(round(verdict.adjusted, 4) < bar.ALPHA for verdict in decision.verdicts)
-    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
-    assert decision.depth is None
+    found = decided(arm(1.0), d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN)
+    assert all(round(each, 4) < ALPHA_LEVEL for each in found.adjusted.values())
+    assert [found.failed[depth] for depth in FAMILY] == [("gain",)] * 4
+    assert found.kept == "none"
 
 
-@pytest.mark.parametrize(("tail_ms", "chosen"), [(5000, BAR_DEPTHS[0]), (5001, None)])
-def test_a_search_may_take_5_seconds_at_the_95th_percentile(
-    tail_ms: int, chosen: int | None
-) -> None:
-    """The user's bound, in whole milliseconds; slower at every depth, no depth is chosen."""
+@pytest.mark.parametrize(("tail_ms", "kept"), [(5000, "10"), (5001, "none")])
+def test_a_search_may_take_5_seconds_at_the_95th_percentile(tail_ms: int, kept: str) -> None:
+    """The user's bound, in whole milliseconds; slower at every depth, no depth is kept."""
     timed = arm(1.0, tail_ms)
-    decision = default_reranking(PLAIN, depths(d10=timed, d20=timed, d30=timed, d50=timed))
-    assert decision is not None
-    assert [verdict.fast for verdict in decision.verdicts] == [chosen is not None] * 4
-    assert decision.depth == chosen
+    found = decided(PLAIN, d10=timed, d20=timed, d30=timed, d50=timed)
+    assert [("bound" in found.failed[depth]) for depth in FAMILY] == [kept == "none"] * 4
+    assert found.kept == kept
 
 
 def scripted_tests(monkeypatch: MonkeyPatch, pvalues: dict[tuple[float, float], float]) -> None:
@@ -119,71 +108,58 @@ def scripted_tests(monkeypatch: MonkeyPatch, pvalues: dict[tuple[float, float], 
 def test_an_adjusted_p_of_0_05_is_no_gain(
     monkeypatch: MonkeyPatch, pvalue: float, *, gains: bool
 ) -> None:
-    """Holm multiplies the smallest of four by 4: 0.05 is no gain, 0.0496 is one."""
+    """Bonferroni multiplies each of the four by 4: 0.05 is no gain, 0.0496 is one."""
     scripted_tests(monkeypatch, {(0.0, 0.4): pvalue})
-    decision = default_reranking(
-        PLAIN, depths(d10=arm(0.4), d20=arm(0.0), d30=arm(0.0), d50=arm(0.0))
-    )
-    assert decision is not None
-    first = decision.verdicts[0]
-    assert round(first.adjusted, 4) == round(pvalue * len(BAR_DEPTHS), 4)
-    assert first.beats is gains
-    assert decision.depth == (BAR_DEPTHS[0] if gains else None)
+    found = decided(PLAIN, d10=arm(0.4), d20=arm(0.0), d30=arm(0.0), d50=arm(0.0))
+    assert round(found.adjusted["10"], 4) == round(pvalue * len(FAMILY), 4)
+    assert ("gain" not in found.failed["10"]) is gains
+    assert found.kept == ("10" if gains else "none")
 
 
-@pytest.mark.parametrize(("pvalue", "chosen"), [(0.2, 0), (0.04996, 0), (0.0499, 1)])
-def test_the_smallest_depth_not_shown_worse_than_the_best_is_taken(
-    monkeypatch: MonkeyPatch, pvalue: float, chosen: int
-) -> None:
-    """20 the best; 10, against it, not shown lower (p of 0.0500 as reported), or shown lower.
-
-    Each qualifying depth's p-value against the best is kept.
-    """
-    gains = {(0.0, 0.5): 0.001, (0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
-    arms = depths(d10=arm(0.5), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
-    scripted_tests(monkeypatch, gains | {(0.6, 0.5): pvalue})
-    decision = default_reranking(PLAIN, arms)
-    assert decision is not None
-    assert decision.depth == BAR_DEPTHS[chosen]
-    assert decision.against_best == dict(zip(BAR_DEPTHS, [pvalue, 1.0, 1.0, 1.0], strict=True))
-
-
-def test_a_depth_that_does_not_qualify_is_neither_the_best_nor_taken(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """10 ranks highest and gains, but is too slow: 20, the best qualifying, is taken."""
-    gains = {(0.0, 0.7): 0.001, (0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
-    scripted_tests(monkeypatch, gains | {(0.6, 0.55): 0.3})
-    decision = default_reranking(
-        PLAIN, depths(d10=arm(0.7, 5001), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
-    )
-    assert decision is not None
-    assert [verdict.qualifies for verdict in decision.verdicts] == [False, True, True, True]
-    assert decision.against_best == {20: 1.0, 30: 0.3, 50: 1.0}
-    assert decision.depth == BAR_DEPTHS[1]
+def test_a_depth_that_does_not_qualify_is_neither_the_best_nor_kept() -> None:
+    """10 ranks highest and gains, but is too slow: 20, the best qualifying, is kept."""
+    found = decided(PLAIN, d10=arm(0.7, 5001), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
+    assert [depth for depth in FAMILY if not found.failed[depth]] == ["20", "30", "50"]
+    assert found.kept == "20"
 
 
 def test_a_gain_too_small_to_show_is_no_gain(monkeypatch: MonkeyPatch) -> None:
     """Means of 0.0004 and 0 both read 0.000: no gain, however small the p-value."""
     scripted_tests(monkeypatch, {(0.0, 0.0004): 0.001})
     small = arm(0.0004)
-    decision = default_reranking(PLAIN, depths(d10=small, d20=small, d30=small, d50=small))
-    assert decision is not None
-    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
+    found = decided(PLAIN, d10=small, d20=small, d30=small, d50=small)
+    assert [found.failed[depth] for depth in FAMILY] == [("gain",)] * 4
 
 
-def test_another_set_of_depths_gets_no_verdict() -> None:
-    """The bar decides on its four depths alone."""
-    assert default_reranking(PLAIN, depths(d10=arm(1.0), d20=arm(1.0))) is None
+@pytest.mark.parametrize(
+    ("run", "kept", "untested"),
+    [
+        (("10", "20", "30"), "10", ("50",)),
+        (("20",), "20", ("10", "30", "50")),
+        (("30", "50"), "30", ("10", "20")),
+        (("10", "20", "30", "40", "50"), "10", ()),
+    ],
+)
+def test_a_subset_of_depths_gets_a_verdict(
+    run: tuple[str, ...], kept: str, untested: tuple[str, ...]
+) -> None:
+    """E1: the depths of the family run are weighed, any of them; one outside it is left out.
+
+    Every depth run gains alike: the smallest of the family run is kept, and the depths
+    of the family not run are named.
+    """
+    found = decided(PLAIN, **{f"d{depth}": arm(1.0) for depth in run})
+    assert found.kept == kept
+    assert found.untested == untested
+    assert set(found.means) == {"none", *run} - {"40"}
 
 
 def test_with_no_depth_qualifying_reranking_stays_off_each_clause_said() -> None:
-    """No gain anywhere: every verdict given, none qualifying, no depth."""
-    decision = default_reranking(PLAIN, depths(d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN))
-    assert decision is not None
-    assert [verdict.depth for verdict in decision.verdicts] == list(BAR_DEPTHS)
-    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
-    assert decision.depth is None
+    """No gain anywhere: every depth's clauses given, none qualifying; none is kept."""
+    found = decided(PLAIN, d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN)
+    assert list(found.failed) == FAMILY
+    assert [found.failed[depth] for depth in FAMILY] == [("gain",)] * 4
+    assert found.kept == "none"
 
 
 def test_counted_asks_a_query_s_texts_once_and_sums_the_tokens() -> None:
@@ -233,7 +209,10 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
         assert evaluated(data, url, rerank_url) == 0
     out, err = capsys.readouterr()
     assert "reranking: depths 2, 3, in the hybrid mode" in err
-    assert "No verdict: the bar decides on depths 10, 20, 30, 50 alone." in out
+    assert (
+        "Reranking depth, by the default rule: no verdict, since no challenger of its family"
+        " was run.\n  10, 20, 30, 50: not run, so cannot qualify\n"
+    ) in out
     sizes = [len(request["documents"]) for request in answers.asked]
     assert sizes == [2, 2, 2, 3, 3, 3]
     [results] = (data / "eval" / "results").glob("*-rerank.json")
@@ -243,7 +222,7 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
     record = json.loads(kept)
     assert [each["depth"] for each in record["arms"]] == [0, 2, 3]
     assert record["served"] == ["qwen3-reranker-0.6b"]
-    assert record["decision"] is None
+    assert record["decision"]["kept"] is None
     assert record["sample"] is None
     assert all(each["tokens"] for each in record["arms"][1:])
 
@@ -303,37 +282,49 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
 
 
 @pytest.mark.parametrize(
-    ("chosen", "said"), [(20, "turn reranking on, at depth 20."), (None, "leave reranking off.")]
+    ("kept", "said"), [("20", "20, in place of none."), ("none", "none stays.")]
 )
-def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
-    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, chosen: int | None, said: str
+def test_eval_rerank_prints_and_records_the_verdict(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, kept: str, said: str
 ) -> None:
-    """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
-    verdicts = (
-        BarVerdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
-        BarVerdict(
-            depth=20,
-            adjusted=0.004,
-            beats=True,
-            losses={"identifier": 0.0, "keyword": -0.012},
-            fast=True,
-        ),
+    """The depth kept; each depth's clauses, a group's loss or n/a; the depths not run.
+
+    The results file keeps the verdict as given.
+    """
+    decision = Decision(
+        rule="reranking depth",
+        fixed={},
+        control="none",
+        kept=kept,
+        untested=("30", "50"),
+        means={"none": 0.5, "10": 0.7, "20": 0.6},
+        adjusted={"10": 0.004, "20": 0.004},
+        losses={"10": {"keyword": 0.051}, "20": {"identifier": 0.0, "keyword": -0.012}},
+        spent={"none": 300, "10": 5001, "20": 4200},
+        failed={"10": ("guards", "bound"), "20": ()},
     )
-    decision = Decision(verdicts=verdicts, depth=chosen, against_best={20: 1.0, 30: 0.3})
-    monkeypatch.setattr(measuring, "default_reranking", lambda _plain, _arms: decision)
+    monkeypatch.setattr(measuring, "default_reranking", lambda _arms: decision)
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url) == 0
+    expected = [
+        f"Reranking depth, by the default rule: {said}",
+        (
+            "  10: MRR@10 0.700 against 0.500, adjusted p = 0.0040, gains yes; MRR@10 lost:"
+            " identifier n/a, keyword 0.051, holds no; 95th percentile 5,001 ms, at most"
+            " 5,000 ms, within no"
+        ),
+        (
+            "  20: MRR@10 0.600 against 0.500, adjusted p = 0.0040, gains yes; MRR@10 lost:"
+            " identifier 0.000, keyword -0.012, holds yes; 95th percentile 4,200 ms, at most"
+            " 5,000 ms, within yes"
+        ),
+        "  30, 50: not run, so cannot qualify",
+    ]
     lines = capsys.readouterr().out.splitlines()
-    assert (
-        "Depth 10: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier n/a,"
-        " keyword 0.051, hold no; within 5 s here no"
-    ) in lines
-    assert (
-        "Depth 20: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier 0.000,"
-        " keyword -0.012, hold yes; within 5 s here yes"
-    ) in lines
-    assert "Depth 30 against the best qualifying: MRR@10 p = 0.3000" in lines
-    assert f"By the bar, with this machine's times: {said}" in lines
+    assert lines[lines.index(expected[0]) :][: len(expected)] == expected
+    [results] = (data / "eval" / "results").glob("*-rerank.json")
+    kept_as = json.loads(results.read_text(encoding="utf-8"))["decision"]
+    assert kept_as == decision.model_dump(mode="json")
 
 
 def test_an_arm_that_falls_back_stops_the_run_naming_the_depth(

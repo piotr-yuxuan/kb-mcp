@@ -24,7 +24,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     percentile,
     quoting,
 )
-from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
+from kb_mcp.evaluation.domain.reranking import NONE, Decision, Depthed, default_reranking
 from kb_mcp.kernel.records import Record
 from kb_mcp.observability.progress import task
 from kb_mcp.search.app.reranking import Reranking
@@ -160,22 +160,22 @@ def measured(
     return found
 
 
-def decided(found: Sequence[Arm], questions: Sequence[Question]) -> Decision | None:
-    """Apply plan 022's bar to the arms measured: the first, not reranked, against the rest."""
-    read = {
-        arm.depth: Depthed(
-            reciprocal=tuple(arm.per[question.id].reciprocal_rank for question in questions),
-            groups={group: each.reciprocal_rank for group, each in arm.groups.items()},
-            tail_ms=round(arm.times[1] * 1000),
-        )
-        for arm in found
-    }
-    plain = read.pop(0)
-    return default_reranking(plain, read)
+def decided(found: Sequence[Arm], questions: Sequence[Question]) -> Decision:
+    """Apply plan 022's bar to the arms measured, each named by its depth, the first ``none``."""
+    return default_reranking(
+        {
+            str(arm.depth) if arm.depth else NONE: Depthed(
+                reciprocal=tuple(arm.per[question.id].reciprocal_rank for question in questions),
+                groups={group: each.reciprocal_rank for group, each in arm.groups.items()},
+                tail_ms=round(arm.times[1] * 1000),
+            )
+            for arm in found
+        }
+    )
 
 
 def recorded(
-    found: Sequence[Arm], decision: Decision | None, golden: str, about: dict[str, object]
+    found: Sequence[Arm], decision: Decision, golden: str, about: dict[str, object]
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text.
 
@@ -197,5 +197,5 @@ def recorded(
             }
             for arm in found
         ],
-        "decision": None if decision is None else decision.model_dump(),
+        "decision": decision.model_dump(),
     }
