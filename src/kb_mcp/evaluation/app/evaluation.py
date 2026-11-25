@@ -13,6 +13,7 @@ question is timed and logged, and each mode's scores measured, as
 from __future__ import annotations
 
 import hashlib
+import itertools
 from dataclasses import dataclass
 from statistics import median
 from typing import TYPE_CHECKING
@@ -188,7 +189,10 @@ class IndexMeasures(Record):
     chunking: str
     costs: Costs
     per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
-    groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
+    # By mode, then group; Section@10 of the questions whose expected document every arm,
+    # each index and mode, found: ``aligned`` of them, so that the arms average alike.
+    groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)
+    aligned: int = 0
     ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question
     times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th, in s
     asked: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, then question
@@ -257,13 +261,12 @@ def evaluate(
                             seconds=round(spent[-1], 3),
                             reciprocal_rank=of_index.per[mode][question.id].reciprocal_rank,
                         )
-                    of_index.groups[mode] = averages(of_index.per[mode], questions, Measures.mean)
                     of_index.asked_groups[mode] = averages(
                         of_index.asked[mode], questions, Quoted.mean
                     )
                     of_index.times[mode] = (median(spent), percentile(spent, TAIL))
                     of_index.ask_times[mode] = (median(asking), percentile(asking, TAIL))
-                    every = of_index.groups[mode]["all"]
+                    every = Measures.mean(list(of_index.per[mode].values()))
                     scored = {**named, "kb_mcp.mode": mode}
                     SCORE.set(every.recall, {**scored, "kb_mcp.measure": f"recall@{CUTOFF}"})
                     SCORE.set(every.reciprocal_rank, {**scored, "kb_mcp.measure": f"mrr@{CUTOFF}"})
@@ -282,6 +285,18 @@ def evaluate(
                 index_seconds=round(of_index.seconds, 3),
             )
         measured.append(of_index)
+    found = {
+        question.id
+        for question in questions
+        if all(of.per[mode][question.id].section is not None for of in measured for mode in MODES)
+    }
+    for of_index, mode in itertools.product(measured, MODES):
+        aligned = {
+            key: each if key in found else each.model_copy(update={"section": None})
+            for key, each in of_index.per[mode].items()
+        }
+        of_index.groups[mode] = averages(aligned, questions, Measures.mean)
+        of_index.aligned = len(found)
     return measured
 
 
@@ -407,6 +422,8 @@ def record(
                     for mode, groups in of_index.asked_groups.items()
                 },
                 "ranks": of_index.ranks,
+                **of_index.model_dump(include={"per", "aligned"}),
+                "asked_per": of_index.model_dump(include={"asked"})["asked"],
             }
             for of_index in measured
         ],

@@ -98,12 +98,14 @@ def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
     """Write each evaluated index's measures, the default rules' verdicts, the results file.
 
     Short gives each index's row of all the questions, mode by mode, for search and for
-    ask, and its costs; detailed, its tables of every group. Both end with the search
-    mode's verdict for each index and the chunking's for each model, each with its
-    clauses and the values not run, then the questions skipped. Lexical search's rows come
-    with the first index alone.
+    ask, and its costs; detailed, its tables of every group. Both end with the questions
+    that Section@10 reads, the search mode's verdict for each index and the chunking's for
+    each model, each with its clauses and the values not run, then the questions skipped.
+    Lexical search's rows come with the first index alone.
     """
-    said = [line for each in evaluated.verdicts for line in each.lines()]
+    aligned = evaluated.indexes[0].aligned
+    said = [f"Section@10 reads the questions whose expected document every arm found: {aligned}."]
+    said += [line for each in evaluated.verdicts for line in each.lines()]
     said += skipping(evaluated.skipped)
     closing = "\n".join([*said, f"Results: {evaluated.results}", ""])
     if detail == "detailed":

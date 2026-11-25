@@ -697,6 +697,65 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
     assert ranks["semantic"] != ranks["lexical"]
 
 
+# GOLDEN, its second question with evidence too: words find q2's, but not q1's.
+BOTH = GOLDEN.replace(
+    "  groups: [keyword]\n", '  groups: [keyword]\n  evidence: {"4003": "revert"}\n'
+)
+# What a results file keeps of each question, by mode: search's measures, then ask's.
+PER = {"recall", "reciprocal_rank", "ndcg", "success", "section"}
+ASKED_PER = {"found", "evidence"}
+
+
+def test_section_at_10_reads_the_questions_every_arm_found(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D4, E7: lexical misses q1, so Section@10 reads q2 alone, in every mode, and says so.
+
+    Each question's own Section@10 stays as it was measured.
+    """
+    (data / "golden.yaml").write_text(BOTH, encoding="utf-8")
+    with serving(Scripted()) as url:
+        command = ["eval", "--yes", str(data / "golden.yaml"), "--chunking", "windows"]
+        assert main([*command, *options(data, url)]) == 0
+    assert "Section@10 reads the questions whose expected document every arm found: 1." in (
+        capsys.readouterr().out.splitlines()
+    )
+    [results] = (data / "eval" / "results").glob("*.json")
+    [kept] = json.loads(results.read_text("utf-8"))["indexes"]
+    assert kept["aligned"] == 1
+    assert kept["per"]["lexical"]["q1"]["section"] is None
+    assert kept["per"]["semantic"]["q1"]["section"] == 1.0
+    for mode in ("lexical", "semantic", "hybrid"):
+        assert kept["groups"][mode]["all"]["section"] == kept["per"][mode]["q2"]["section"]
+        assert kept["groups"][mode]["keyword"]["section"] == kept["per"][mode]["q2"]["section"]
+        assert kept["groups"][mode]["paraphrase"]["section"] is None
+
+
+def test_results_hold_every_measure_per_question(data: Path, capsys: CaptureFixture[str]) -> None:
+    """D4, E10: each question's measures, search's and ask's, in each mode, as averaged.
+
+    Their means over the questions are the group all's, but Section@10's, which the
+    test above reads.
+    """
+    (data / "golden.yaml").write_text(BOTH, encoding="utf-8")
+    with serving(Scripted()) as url:
+        command = ["eval", "--yes", str(data / "golden.yaml"), "--chunking", "windows"]
+        assert main([*command, *options(data, url)]) == 0
+    capsys.readouterr()
+    [results] = (data / "eval" / "results").glob("*.json")
+    [kept] = json.loads(results.read_text("utf-8"))["indexes"]
+    for mode in ("lexical", "semantic", "hybrid"):
+        per, asked = kept["per"][mode], kept["asked_per"][mode]
+        assert set(per) == set(asked) == {"q1", "q2", "q3"}
+        assert all(set(each) >= PER for each in per.values())
+        assert all(set(each) >= ASKED_PER for each in asked.values())
+        for measure in PER - {"section"}:
+            mean = sum(each[measure] for each in per.values()) / len(per)
+            assert kept["groups"][mode]["all"][measure] == pytest.approx(mean)
+        found = sum(each["found"] for each in asked.values()) / len(asked)
+        assert kept["asked"][mode]["all"]["found"] == pytest.approx(found)
+
+
 def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     """The paraphrase: quoted with its evidence by meaning, missed by words; costs counted."""
     settings = Settings(data_dir=data, model="tiny")
