@@ -3,7 +3,8 @@
 Each evaluated index, a model connected and a chunking, gets its own file, built from the
 mirror like any other with the vector cache, so a second evaluation embeds nothing new.
 Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answered by
-``Library.quoted``, as ``ask`` answers, in each mode; the measures of
+``Library.quoted``, as ``ask`` answers, in each mode, whose answers ``Library.in_mode``
+gives as served, for their tokens; the measures of
 ``evaluation.domain.evaluation`` say how the modes compare, and its default rules which
 search mode and chunking to keep. Each evaluated index is a span; each
 question is timed and logged, and each mode's scores measured, as
@@ -73,11 +74,11 @@ UPDATE = "An index older than the mirror misses documents; kb-mcp index brings i
 # The share of queries faster than the slow time reported: its 95th percentile.
 TAIL = 0.95
 HEADER = (
-    "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 |"
+    "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Tokens |"
     " Query, median | Query, 95th |"
 )
 # The line under the header, one cell per column.
-DIVIDER = "|---|---|---|---|---|---|---|---|---|"
+DIVIDER = "|---|---|---|---|---|---|---|---|---|---|"
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
 # How long each question took to rank, by chunking and mode; each mode's measures on
@@ -89,8 +90,8 @@ QUESTION_DURATION = METER.create_histogram(
 SCORE = METER.create_gauge(
     "kb_mcp.eval.score", unit="1", description="A mode's measure on all the golden questions"
 )
-ASK_HEADER = "| Mode | Group | Found@ask | Evidence@ask | Ask, median | Ask, 95th |"
-ASK_DIVIDER = "|---|---|---|---|---|---|"
+ASK_HEADER = "| Mode | Group | Found@ask | Evidence@ask | Tokens | E/kT | Ask, median | Ask, 95th |"
+ASK_DIVIDER = "|---|---|---|---|---|---|---|---|"
 
 
 class GoldenError(ValueError):
@@ -230,7 +231,7 @@ def evaluate(
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
                     of_index.per[mode], of_index.ranks[mode], of_index.asked[mode] = {}, {}, {}
-                    spent, asking = [], []
+                    spent, asking, served = [], [], library.in_mode(mode)
                     for question in asked.each(questions, lambda one: one.id):
                         started = clock()
                         shown, note = library.ranked(question.text, mode, limit=CUTOFF)
@@ -242,17 +243,27 @@ def evaluate(
                             message = f"{name}, {mode}:{note}"
                             raise EvaluationError(message)
                         paths = [each.path for each in shown]
-                        texts = {each.path: each.text for each in shown}
-                        of_index.per[mode][question.id] = measure(paths, question, texts)
+                        started = clock()
+                        quoted = library.quoted(question.text, mode)
+                        asking.append(clock() - started)
+                        # The answers as the server writes them; their attributes are its own.
+                        with trace.use_span(trace.INVALID_SPAN):
+                            search, answer = served.search(question.text), served.ask(question.text)
+                        of_index.per[mode][question.id] = measure(
+                            paths,
+                            question,
+                            {each.path: each.text for each in shown},
+                            len(search) // CHARACTERS_PER_TOKEN,
+                        )
                         of_index.ranks[mode][question.id] = [
                             paths.index(path) + 1 if path in paths else None
                             for path in question.expected
                         ]
-                        started = clock()
-                        quoted = library.quoted(question.text, mode)
-                        asking.append(clock() - started)
-                        passages = [(each.path, each.text) for each in quoted]
-                        of_index.asked[mode][question.id] = quoting(passages, question)
+                        of_index.asked[mode][question.id] = quoting(
+                            [(each.path, each.text) for each in quoted],
+                            question,
+                            len(answer) // CHARACTERS_PER_TOKEN,
+                        )
                         log.debug(
                             "eval.question",
                             id=question.id,
@@ -437,7 +448,7 @@ def row(mode: str, group: str, each: Measures, times: tuple[float, float]) -> st
     section = "n/a" if each.section is None else f"{each.section:.3f}"
     return (
         f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
-        f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
+        f" {each.ndcg:.3f} | {each.success:.3f} | {section} | {each.tokens:,.0f} |"
         f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
     )
 
@@ -446,9 +457,10 @@ def ask_row(mode: str, group: str, each: Quoted, times: tuple[float, float]) -> 
     """Write a mode's ask measures of a group as a row under ``ASK_HEADER``, with its times."""
     median_s, tail_s = times
     evidence = "n/a" if each.evidence is None else f"{each.evidence:.3f}"
+    per_kilotoken = "n/a" if each.per_kilotoken is None else f"{each.per_kilotoken:.3f}"
     return (
-        f"| {mode} | {group} | {each.found:.3f} | {evidence} |"
-        f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
+        f"| {mode} | {group} | {each.found:.3f} | {evidence} | {each.tokens:,.0f} |"
+        f" {per_kilotoken} | {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
     )
 
 

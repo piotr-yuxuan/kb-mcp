@@ -929,7 +929,8 @@ One number of how a [ranking](#ranking) answers a golden question, or many on av
 such as MRR@10 or Section@10.
 
 - **In the code.** [`Measures`](../../src/kb_mcp/evaluation/domain/evaluation.py),
-  [`measure`](../../src/kb_mcp/evaluation/domain/evaluation.py) and
+  [`measure`](../../src/kb_mcp/evaluation/domain/evaluation.py),
+  [`Quoted`](../../src/kb_mcp/evaluation/domain/evaluation.py) and
   [`CUTOFF`](../../src/kb_mcp/evaluation/domain/evaluation.py).
 
 ### command

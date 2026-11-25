@@ -652,6 +652,10 @@ class Library:
         """Give a library over the same index, reranking through ``reranking``, for evaluations."""
         return Library(self._index, self._docs, self._meaning, self._mode, reranking)
 
+    def in_mode(self, mode: Mode) -> Library:
+        """Give a library over the same index, searching and asking in ``mode``, for evaluations."""
+        return Library(self._index, self._docs, self._meaning, mode, self._reranking)
+
     @contextmanager
     def _reading(self) -> Iterator[SearchReader]:
         try:

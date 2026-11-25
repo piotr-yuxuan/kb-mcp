@@ -66,6 +66,7 @@ class Measures(Record):
     # Of the expected documents with evidence found within CUTOFF, the share whose shown
     # section holds the evidence; None when there is none such.
     section: float | None = None
+    tokens: float = 0  # of search's first answer, as served
 
     @classmethod
     def mean(cls, many: Sequence[Measures]) -> Measures:
@@ -77,6 +78,7 @@ class Measures(Record):
             ndcg=fmean(each.ndcg for each in many),
             success=fmean(each.success for each in many),
             section=fmean(sections) if sections else None,
+            tokens=fmean(each.tokens for each in many),
         )
 
 
@@ -87,13 +89,23 @@ class Quoted(Record):
     # Evidence@ask: of the expected documents with evidence, the share whose evidence
     # their passage holds; None when none has evidence.
     evidence: float | None
+    tokens: float = 0  # of ask's first answer, as served
+    per_kilotoken: float | None = None  # E/kT: evidence held per thousand tokens
 
     @classmethod
     def mean(cls, many: Sequence[Quoted]) -> Quoted:
-        """Average over questions; Evidence@ask over those that have evidence."""
-        evidence = [each.evidence for each in many if each.evidence is not None]
+        """Average over questions; Evidence@ask over those that have evidence.
+
+        E/kT is a ratio of sums over the questions with evidence: the evidence held over
+        the thousands of tokens that their answers cost.
+        """
+        held = [each for each in many if each.evidence is not None]
+        spent = sum(each.tokens for each in held) / 1000
         return cls(
-            found=fmean(each.found for each in many), evidence=fmean(evidence) if evidence else None
+            found=fmean(each.found for each in many),
+            evidence=fmean(each.evidence for each in held) if held else None,
+            tokens=fmean(each.tokens for each in many),
+            per_kilotoken=sum(each.evidence for each in held) / spent if spent else None,
         )
 
 
@@ -217,13 +229,17 @@ def holds(text: str, phrase: str) -> bool:
 
 
 def measure(
-    ranked: Sequence[str], question: Question, shown: Mapping[str, str] | None = None
+    ranked: Sequence[str],
+    question: Question,
+    shown: Mapping[str, str] | None = None,
+    tokens: int = 0,
 ) -> Measures:
     """Measure one ranking against the documents of one question.
 
     nDCG takes each document's relevance as its gain, discounted by the logarithm of
     its rank, over the best ordering of the question's documents. ``shown`` gives the
-    text of the section shown for each ranked document, for Section@10.
+    text of the section shown for each ranked document, for Section@10; ``tokens``, those
+    of search's answer.
     """
     top = list(ranked[:CUTOFF])
     expected = set(question.expected)
@@ -244,11 +260,15 @@ def measure(
         ndcg=found / best,
         success=1.0 if top[:1] and top[0] in expected else 0.0,
         section=fmean(held) if held else None,
+        tokens=tokens,
     )
 
 
-def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
-    """Measure the passages of ask's first answer, each a path and its text, for a question."""
+def quoting(passages: Sequence[tuple[str, str]], question: Question, tokens: int = 0) -> Quoted:
+    """Measure the passages of ask's first answer, each a path and its text, for a question.
+
+    ``tokens`` are the answer's; one question's E/kT is reckoned as a group's.
+    """
     texts = dict(passages)
     held = [
         holds(texts.get(path, ""), phrase)
@@ -256,7 +276,7 @@ def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
         if path in question.expected
     ]
     found = sum(path in texts for path in question.expected) / len(question.expected)
-    return Quoted(found=found, evidence=fmean(held) if held else None)
+    return Quoted.mean([Quoted(found=found, evidence=fmean(held) if held else None, tokens=tokens)])
 
 
 def verdict(

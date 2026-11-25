@@ -260,6 +260,47 @@ def test_found_and_evidence_at_ask_are_shares_of_the_expected_documents() -> Non
     assert Quoted.mean(measured) == Quoted(found=0.5, evidence=0.5)
 
 
+@pytest.mark.parametrize(
+    ("many", "expected"),
+    [
+        # A mean of each question's ratio would give 0.5.
+        (
+            [Quoted(found=1, evidence=1, tokens=1000), Quoted(found=1, evidence=0, tokens=3000)],
+            0.25,
+        ),
+        # A question without evidence counts on neither side.
+        (
+            [
+                Quoted(found=1, evidence=1, tokens=1000),
+                Quoted(found=1, evidence=0, tokens=3000),
+                Quoted(found=0, evidence=None, tokens=500),
+            ],
+            0.25,
+        ),
+        ([Quoted(found=1, evidence=0.5, tokens=2000)], 0.25),
+        ([Quoted(found=0, evidence=None, tokens=500)], None),
+        ([Quoted(found=1, evidence=1, tokens=0)], None),
+    ],
+)
+def test_evidence_per_kilotoken_is_a_ratio_of_sums(
+    many: list[Quoted], expected: float | None
+) -> None:
+    """D4: the evidence held over the thousands of tokens, both summed over the group.
+
+    Of the questions with evidence; one question's is reckoned alike, from its answer's
+    tokens; a group's, from its own questions.
+    """
+    assert Quoted.mean(many).per_kilotoken == expected
+    questions = [
+        Question(id=f"q{number}", text="x", expected=("a",), groups=("g",))
+        for number in range(len(many))
+    ]
+    grouped = averages({f"q{n}": each for n, each in enumerate(many)}, questions, Quoted.mean)
+    assert grouped["g"].per_kilotoken == expected
+    question = Question(id="q", text="x", expected=("a",), evidence={"a": "pause"})
+    assert quoting([("a", "Pause.")], question, 2000).per_kilotoken == HALF
+
+
 QUESTIONS = 20
 TOKENS = 1000
 ALPHA_LEVEL = 0.05  # the plan's level for an adjusted p-value

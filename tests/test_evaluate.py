@@ -31,15 +31,23 @@ from kb_mcp.evaluation.app.evaluation import (
     verdicts,
 )
 from kb_mcp.evaluation.domain import evaluation as rules
-from kb_mcp.evaluation.domain.evaluation import Question, Quoted
+from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import AgentAnswer, grade
-from kb_mcp.kernel.names import CHUNKINGS
+from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN, CHUNKINGS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import DIGEST, Reranks, Scripted, nothing_listening, serving, tiny
+from tests.endpoint import (
+    DIGEST,
+    Reranks,
+    Scripted,
+    connect_scripted,
+    nothing_listening,
+    serving,
+    tiny,
+)
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
@@ -702,8 +710,8 @@ BOTH = GOLDEN.replace(
     "  groups: [keyword]\n", '  groups: [keyword]\n  evidence: {"4003": "revert"}\n'
 )
 # What a results file keeps of each question, by mode: search's measures, then ask's.
-PER = {"recall", "reciprocal_rank", "ndcg", "success", "section"}
-ASKED_PER = {"found", "evidence"}
+PER = {"recall", "reciprocal_rank", "ndcg", "success", "section", "tokens"}
+ASKED_PER = {"found", "evidence", "tokens", "per_kilotoken"}
 
 
 def test_section_at_10_reads_the_questions_every_arm_found(
@@ -752,16 +760,17 @@ def test_results_hold_every_measure_per_question(data: Path, capsys: CaptureFixt
         for measure in PER - {"section"}:
             mean = sum(each[measure] for each in per.values()) / len(per)
             assert kept["groups"][mode]["all"][measure] == pytest.approx(mean)
-        found = sum(each["found"] for each in asked.values()) / len(asked)
-        assert kept["asked"][mode]["all"]["found"] == pytest.approx(found)
+        for measure in ("found", "tokens"):
+            mean = sum(each[measure] for each in asked.values()) / len(asked)
+            assert kept["asked"][mode]["all"][measure] == pytest.approx(mean)
 
 
 def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     """The paraphrase: quoted with its evidence by meaning, missed by words; costs counted."""
     settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)
-    assert run.asked["semantic"]["q1"] == Quoted(found=1.0, evidence=1.0)
-    assert run.asked["lexical"]["q1"] == Quoted(found=0.0, evidence=0.0)
+    semantic, lexical = run.asked["semantic"]["q1"], run.asked["lexical"]["q1"]
+    assert (semantic.found, semantic.evidence, lexical.found, lexical.evidence) == (1, 1, 0, 0)
     assert run.asked["lexical"]["q3"].found == 1.0
     assert set(run.ask_times) == {"lexical", "semantic", "hybrid"}
     assert run.costs.chunks > 0
@@ -769,6 +778,26 @@ def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
     assert (
         run.costs.bytes == (data / "eval" / "indexes" / "sections" / "tiny.sqlite").stat().st_size
     )
+
+
+def test_answer_tokens_are_those_of_the_servers_answers(data: Path) -> None:
+    """D4: search's and ask's first answers, as a server in each mode writes them.
+
+    Their tokens are their characters at CHARACTERS_PER_TOKEN, the evaluation's estimate;
+    a group's are their mean.
+    """
+    questions = golden(data)
+    settings = Settings(data_dir=data, model="tiny")
+    [run] = evaluate(settings, questions, evaluated_indexes(tiny()), ticking(), MOMENT)
+    index = SqliteIndex(data / "eval" / "indexes" / "sections" / "tiny.sqlite")
+    for mode in ("lexical", "semantic", "hybrid"):
+        served = Library(index, data / "docs", Meaning(connect_scripted()), mode)
+        searched = [len(served.search(each.text)) // CHARACTERS_PER_TOKEN for each in questions]
+        asked = [len(served.ask(each.text)) // CHARACTERS_PER_TOKEN for each in questions]
+        assert [run.per[mode][each.id].tokens for each in questions] == searched
+        assert [run.asked[mode][each.id].tokens for each in questions] == asked
+        assert run.groups[mode]["all"].tokens == pytest.approx(sum(searched) / len(searched))
+        assert run.asked_groups[mode]["all"].tokens == pytest.approx(sum(asked) / len(asked))
 
 
 def test_the_characters_embedded_are_the_same_with_the_store_warm_or_cold(data: Path) -> None:
