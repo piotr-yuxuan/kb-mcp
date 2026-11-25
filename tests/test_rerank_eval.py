@@ -262,7 +262,7 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url, "--format", "json") == 0
     record = json.loads(capsys.readouterr().out)
-    questions = read_golden(
+    questions, _ = read_golden(
         GOLDEN, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve
     )
     index = data / "eval" / "indexes" / "windows" / "tiny.sqlite"

@@ -18,6 +18,7 @@ from kb_mcp.evaluation.app.evaluation import (
     EvaluationError,
     GoldenError,
     read_golden,
+    skipping,
 )
 from kb_mcp.evaluation.app.reranked import (
     Arm,
@@ -55,6 +56,7 @@ class DepthsEvaluated(Record):
     arms: list[Arm]
     verdicts: list[Verdict]
     mode: str
+    skipped: list[dict[str, str]]  # the golden questions left out, each with its ref and why
     results: Path
 
 
@@ -69,7 +71,8 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        read = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
+        index = Library(SqliteIndex(settings.index), settings.docs)
+        read, skipped = read_golden(golden, index.resolve)
         questions = chosen(read, arguments.sample, arguments.seed)
     except (GoldenError, OSError, UnanswerableError, AgentsError) as error:
         structlog.get_logger().error("eval.refused", reason=str(error))
@@ -96,6 +99,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
         "mode": settings.search_mode,
         "model": settings.model,
         "chunking": settings.chunking,
+        "skipped": skipped,
         "reranker": reranker.model,
         "served": listed,
         "sample": None
@@ -107,7 +111,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     kept = recorded(found, ruled, golden, about)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
     return ExitStatus.OK, DepthsEvaluated(
-        arms=found, verdicts=ruled, mode=settings.search_mode, results=results
+        arms=found, verdicts=ruled, mode=settings.search_mode, skipped=skipped, results=results
     )
 
 
@@ -129,7 +133,8 @@ def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     """Write each arm's row, every group's in detail; the first ranking's recall; the verdict.
 
     The default rule's verdict says the depth kept, or why there is none; then each
-    depth's clauses, by this machine's times, and the depths of its family not run.
+    depth's clauses, by this machine's times, and the depths of its family not run; then
+    the questions skipped.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -143,4 +148,5 @@ def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     recall = ", ".join(f"@{size} {share:.3f}" for size, share in plain.recall.items())
     lines += ["", f"Recall of the order not reranked: {recall}", ""]
     lines += [line for each in evaluated.verdicts for line in each.lines()]
+    lines += skipping(evaluated.skipped)
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

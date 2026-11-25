@@ -27,6 +27,7 @@ from kb_mcp.evaluation.app.evaluation import (
     read_golden,
     record,
     row,
+    skipping,
     table,
     verdicts,
 )
@@ -51,6 +52,7 @@ class IndexesEvaluated(Record):
 
     indexes: list[IndexMeasures]
     verdicts: list[Verdict]
+    skipped: list[dict[str, str]]  # the golden questions left out, each with its ref and why
     results: Path
 
 
@@ -65,7 +67,8 @@ def run(
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        questions = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
+        index = Library(SqliteIndex(settings.index), settings.docs)
+        questions, skipped = read_golden(golden, index.resolve)
     except (GoldenError, OSError, UnanswerableError) as error:
         structlog.get_logger().error("eval.refused", reason=str(error))
         return ExitStatus.REFUSED, None
@@ -84,9 +87,11 @@ def run(
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
     ruled = verdicts(measured, questions, settings)
-    kept = record(measured, golden, built_at, ruled)
+    kept = record(measured, golden, built_at, ruled, skipped)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, IndexesEvaluated(indexes=measured, verdicts=ruled, results=results)
+    return ExitStatus.OK, IndexesEvaluated(
+        indexes=measured, verdicts=ruled, skipped=skipped, results=results
+    )
 
 
 def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
@@ -95,9 +100,11 @@ def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
     Short gives each index's row of all the questions, mode by mode, for search and for
     ask, and its costs; detailed, its tables of every group. Both end with the search
     mode's verdict for each index and the chunking's for each model, each with its
-    clauses and the values not run. Lexical search's rows come with the first index alone.
+    clauses and the values not run, then the questions skipped. Lexical search's rows come
+    with the first index alone.
     """
     said = [line for each in evaluated.verdicts for line in each.lines()]
+    said += skipping(evaluated.skipped)
     closing = "\n".join([*said, f"Results: {evaluated.results}", ""])
     if detail == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"

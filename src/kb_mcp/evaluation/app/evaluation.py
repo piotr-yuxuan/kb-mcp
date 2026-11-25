@@ -47,7 +47,7 @@ from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from datetime import datetime
 
     from kb_mcp.config.settings import Settings
@@ -66,6 +66,9 @@ SAID = {
 }
 # The types of Pydantic's error for a field that a question does not have.
 UNKNOWN = frozenset({"extra_forbidden", "invalid_key"})
+# Why a golden question is skipped, and what to do about it.
+STALE = "an expected ref that names no document of the index"
+UPDATE = "An index older than the mirror misses documents; kb-mcp index brings it up to date."
 # The share of queries faster than the slow time reported: its 95th percentile.
 TAIL = 0.95
 HEADER = (
@@ -97,13 +100,16 @@ class EvaluationError(Exception):
     """An evaluation that would not measure what it says; the message says why."""
 
 
-def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Question]:
+def read_golden(
+    text: str, resolve: Callable[[str], str | None]
+) -> tuple[list[Question], list[dict[str, str]]]:
     """Read golden questions from YAML, each ref resolved to the path that it names.
 
     ``Golden`` reads the file, strictly. Its refusals are given by where each is, as
     ``golden[i]`` and the field, never by what was found there: an unknown or missing
-    field, one of another type, or a rule broken. A ref that the mirror does not hold is
-    refused too, by its question.
+    field, one of another type, or a rule broken. A question with an expected ref that
+    names no document is skipped, and given with its ref and why; a partial ref that names
+    none is dropped; refs of one document count once. Refused when no question is left.
     """
     try:
         golden = Golden.model_validate(yaml.safe_load(text))
@@ -120,29 +126,32 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
             refusals.append(f"golden{where}: {said or each['msg']}")
         message = "; ".join(refusals)
         raise GoldenError(message) from None
-    return [
-        Question(
-            id=given.id,
-            text=given.question,
-            expected=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.expected),
-            partial=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.partial),
-            groups=tuple(given.groups),
-            evidence={
-                path_of(ref, f"golden[{index}]", resolve): phrase
-                for ref, phrase in given.evidence.items()
-            },
+    questions, skipped = [], []
+    for given in golden.root:
+        paths = {ref: resolve(ref) for ref in (*given.expected, *given.partial)}
+        if stale := [ref for ref in given.expected if paths[ref] is None]:
+            skipped.append({"id": given.id, "ref": stale[0], "why": STALE})
+            continue
+        questions.append(
+            Question(
+                id=given.id,
+                text=given.question,
+                expected=tuple(dict.fromkeys(paths[ref] for ref in given.expected)),
+                partial=tuple(dict.fromkeys(paths[ref] for ref in given.partial if paths[ref])),
+                groups=tuple(given.groups),
+                evidence={paths[ref]: phrase for ref, phrase in given.evidence.items()},
+            )
         )
-        for index, given in enumerate(golden.root)
-    ]
-
-
-def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
-    """Resolve a golden file's ref to a path of the mirror, or refuse it, naming ``where`` it is."""
-    path = resolve(ref)
-    if path is None:
-        message = f"{where}: {ref!r} is not mirrored"
+    if not questions:
+        message = " ".join(["No question left to measure.", *skipping(skipped)])
         raise GoldenError(message)
-    return path
+    return questions, skipped
+
+
+def skipping(skipped: Sequence[Mapping[str, str]]) -> list[str]:
+    """Say each golden question skipped, by its ref and why, then how to bring the index up."""
+    said = [f"Skipped {each['id']}, for {each['ref']!r}: {each['why']}." for each in skipped]
+    return [*said, UPDATE] if said else []
 
 
 @dataclass(frozen=True)
@@ -371,11 +380,13 @@ def record(
     golden: str,
     built_at: datetime,
     ruled: Sequence[Verdict],
+    skipped: Sequence[Mapping[str, str]],
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text."""
     return {
         "golden_sha256": hashlib.sha256(golden.encode()).hexdigest(),
         "built_at": built_at.isoformat(),
+        "skipped": skipped,
         "test": {"kind": "paired randomisation, two-sided", "samples": SAMPLES, "seed": SEED},
         "indexes": [
             {

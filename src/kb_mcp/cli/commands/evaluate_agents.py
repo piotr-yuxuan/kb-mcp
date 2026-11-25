@@ -36,7 +36,7 @@ from kb_mcp.evaluation.app.agents import (
     prepare,
     readied,
 )
-from kb_mcp.evaluation.app.evaluation import GoldenError, read_golden
+from kb_mcp.evaluation.app.evaluation import GoldenError, read_golden, skipping
 from kb_mcp.kernel.names import TOOLS, ExitStatus, loopback
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
@@ -62,6 +62,7 @@ class RunsPrepared(Record):
     runs: int
     directory: Path
     written: bool
+    skipped: list[dict[str, str]]  # the golden questions left out, each with its ref and why
 
 
 def prepared(
@@ -74,14 +75,15 @@ def prepared(
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        questions = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
+        index = Library(SqliteIndex(settings.index), settings.docs)
+        questions, skipped = read_golden(golden, index.resolve)
         asked = chosen(questions, arguments.sample, arguments.seed)
     except (GoldenError, OSError, UnanswerableError, AgentsError) as error:
         structlog.get_logger().error("eval.agent.refused", reason=str(error))
         return ExitStatus.REFUSED, None
     if arguments.dry_run:
         return ExitStatus.OK, RunsPrepared(
-            runs=2 * len(asked), directory=arguments.out, written=False
+            runs=2 * len(asked), directory=arguments.out, written=False, skipped=skipped
         )
     # The server reads the settings as this run did: the same file, the same variables,
     # and the data directory given here, if one was.
@@ -114,7 +116,9 @@ def prepared(
             "eval.agent.not_prepared", reason=f"a surface's server listed nothing ({error!r})"
         )
         return ExitStatus.FAILED, None
-    return ExitStatus.OK, RunsPrepared(runs=len(runs.runs), directory=arguments.out, written=True)
+    return ExitStatus.OK, RunsPrepared(
+        runs=len(runs.runs), directory=arguments.out, written=True, skipped=skipped
+    )
 
 
 def bridged(arguments: argparse.Namespace, _loaded: Loaded) -> tuple[ExitStatus, Called | None]:
@@ -205,10 +209,13 @@ def text(result: object, detail: Detail) -> str:
     and in detail each run.
     """
     match result:
-        case RunsPrepared(written=True):
-            return f"{result.runs} runs prepared in {result.directory}: runs.json, prompts/\n"
         case RunsPrepared():
-            return f"{result.runs} runs would be prepared in {result.directory}\n"
+            said = (
+                f"{result.runs} runs prepared in {result.directory}: runs.json, prompts/"
+                if result.written
+                else f"{result.runs} runs would be prepared in {result.directory}"
+            )
+            return "\n".join([said, *skipping(result.skipped), ""])
         case Results():
             counted = ", ".join(f"{name} {count}" for name, count in result.counted.items())
             lines = [

@@ -192,7 +192,8 @@ options:
 With --format json: indexes, each model's and chunking's measures of search and ask by
 mode and group, with its ranks, times and costs; verdicts, the default rules'
 verdicts, the search mode's for each model and chunking, then the chunking's for each
-model; results, the file that keeps them.
+model; skipped, the golden questions left out, each with its ref and why; results, the
+file that keeps them.
 ```
 
 ## `eval-agents`
@@ -220,8 +221,8 @@ options:
                         write what matters of the result, or all of it
 
 Its options of output come before the step. With --format json: prepare, the runs
-written; call, the answer; answer, the answer kept; grade, each run's outcome, the
-verdict on ask and the runs counted.
+written and the golden questions skipped; call, the answer; answer, the answer kept;
+grade, each run's outcome, the verdict on ask and the runs counted.
 ```
 
 ## `eval-agents prepare`
@@ -342,7 +343,8 @@ options:
 
 With --format json: arms, each depth's measures of search and ask by group, with its
 ranks, times, tokens and Recall@N, depth 0 the order not reranked; verdicts, the
-default rule's verdict on the reranking depth; results, the file that keeps them.
+default rule's verdict on the reranking depth; skipped, the golden questions left out,
+each with its ref and why; results, the file that keeps them.
 ```
 
 ## `fetch`

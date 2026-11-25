@@ -32,13 +32,14 @@ from kb_mcp.evaluation.app.evaluation import (
 )
 from kb_mcp.evaluation.domain import evaluation as rules
 from kb_mcp.evaluation.domain.evaluation import Question, Quoted
+from kb_mcp.evaluation.domain.grading import AgentAnswer, grade
 from kb_mcp.kernel.names import CHUNKINGS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import build_index
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import DIGEST, Scripted, nothing_listening, serving, tiny
+from tests.endpoint import DIGEST, Reranks, Scripted, nothing_listening, serving, tiny
 from tests.mirrors import MOMENT, fillers, issue, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
@@ -97,8 +98,8 @@ def options(data: Path, url: str = "http://127.0.0.1:11434/v1") -> list[str]:
 
 
 def golden(data: Path, text: str = GOLDEN) -> list:
-    """Read golden questions against the data directory's mirror."""
-    return read_golden(text, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve)
+    """Read golden questions against the data directory's mirror, the skipped left aside."""
+    return read_golden(text, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve)[0]
 
 
 @pytest.mark.parametrize(
@@ -106,8 +107,6 @@ def golden(data: Path, text: str = GOLDEN) -> list:
     [
         ("- {id: q1, question: x, expected: ['4002'], weight: 2}", r"golden\[0\]: unknown field"),
         ("- {id: q1, question: x}", r"golden\[0\]\.expected"),
-        ("- {id: q1, question: x, expected: ['9999']}", r"golden\[0\]: '9999' is not mirrored"),
-        ("- {id: q1, question: x, expected: ['4002'], partial: [PROJ-8]}", "PROJ-8"),
         (f"- {{id: q1, question: {'x' * 501}, expected: ['4002']}}", r"question: at most 500"),
         ("- {id: q1, question: x, expected: ['4002']}\n" * 2, "an id given twice"),
         ("[]", "golden: no question"),
@@ -174,17 +173,20 @@ def test_the_sandbox_s_golden_set_reads_as_written() -> None:
         }
         for item in items
     ]
-    assert read_golden(yaml.safe_dump(written, allow_unicode=True), path) == [
-        Question(
-            id=item["id"],
-            text=item["question"],
-            expected=tuple(path(ref) for ref in item["expected"]),
-            partial=tuple(path(ref) for ref in item["partial"]),
-            groups=(item["overlap"], item["lang"]),
-            evidence={path(ref): phrase for ref, phrase in item["evidence"].items()},
-        )
-        for item in items
-    ]
+    assert read_golden(yaml.safe_dump(written, allow_unicode=True), path) == (
+        [
+            Question(
+                id=item["id"],
+                text=item["question"],
+                expected=tuple(path(ref) for ref in item["expected"]),
+                partial=tuple(path(ref) for ref in item["partial"]),
+                groups=(item["overlap"], item["lang"]),
+                evidence={path(ref): phrase for ref, phrase in item["evidence"].items()},
+            )
+            for item in items
+        ],
+        [],
+    )
 
 
 def test_refs_resolve_as_read_takes_them(data: Path) -> None:
@@ -194,6 +196,92 @@ def test_refs_resolve_as_read_takes_them(data: Path) -> None:
     assert q2.partial == q1.expected
     assert q3.expected == ("jira/PROJ/PROJ-7.md",)
     assert q1.evidence == {q1.expected[0]: "leave for a meal"}
+
+
+# GOLDEN, and a question whose expected ref names no document of the index.
+STALE = GOLDEN + "- {id: q4, question: lost, expected: ['4003', '9999'], partial: ['4002']}\n"
+# Each command that reads a golden file, and the results file that it writes, if any.
+READERS = [
+    (["eval", "--yes", "--chunking", "windows"], "eval/results/*.json"),
+    (["eval-rerank", "--yes", "--depth", "2"], "eval/results/*-rerank.json"),
+    (["eval-agents", "prepare", "--model", "haiku", "--out", "runs", "--dry-run"], None),
+]
+
+
+def read_by(data: Path, command: list[str], text: str) -> int:
+    """Run a command on golden questions, with an endpoint of embeddings and a reranker."""
+    (data / "golden.yaml").write_text(text, encoding="utf-8")
+    with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
+        given = options(data, url)
+        config = data.parent / "config.toml"
+        config.write_text(f'{config.read_text("utf-8")}[rerank]\nurl = "{rerank_url}"\n', "utf-8")
+        return main([*command, str(data / "golden.yaml"), *given])
+
+
+@pytest.mark.parametrize(("command", "results"), READERS)
+def test_a_stale_expected_ref_skips_its_question_and_names_it(
+    data: Path, capsys: CaptureFixture[str], command: list[str], results: str | None
+) -> None:
+    """D3: q4 expects a ref that names no document; the others are measured, as alone.
+
+    Each command names q4 by its ref and why, in its output and its results file.
+    """
+    resolve = Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve
+    questions, skipped = read_golden(STALE, resolve)
+    assert questions == read_golden(GOLDEN, resolve)[0]
+    assert [(each["id"], each["ref"]) for each in skipped] == [("q4", "9999")]
+    assert read_by(data, command, STALE) == 0
+    [line] = [line for line in capsys.readouterr().out.splitlines() if "q4" in line]
+    assert "'9999'" in line
+    assert "no document" in line
+    if results:
+        [kept] = data.glob(results)
+        assert json.loads(kept.read_text("utf-8"))["skipped"] == skipped
+
+
+def test_a_stale_partial_ref_is_dropped(data: Path) -> None:
+    """D3: a partial ref that names no document leaves its question, which is measured."""
+    [q1] = golden(data, "- {id: q1, question: x, expected: ['4002'], partial: [PROJ-8, '4003']}")
+    assert q1.partial == ("confluence/ENG/4003-words.md",)
+
+
+def test_a_skipped_question_says_how_to_bring_the_index_up_to_date(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D3: an index older than the mirror misses documents; ``kb-mcp index`` updates it."""
+    assert read_by(data, READERS[-1][0], STALE) == 0
+    out = capsys.readouterr().out
+    assert "older than the mirror misses documents" in out
+    assert "kb-mcp index brings it up to date" in out
+
+
+def test_two_refs_of_one_document_count_once(data: Path) -> None:
+    """D3, E16: a page's id and its address name one document, expected or helping, once.
+
+    Found, it is all that is expected: recall is whole, for search and for an agent alike.
+    """
+    address = "https://example.atlassian.net/wiki/spaces/ENG/pages"
+    [q1] = golden(
+        data,
+        f"- {{id: q1, question: x, expected: ['4002', '{address}/4002/x'],"
+        f" partial: ['4003', '{address}/4003/y']}}",
+    )
+    assert q1.expected == ("confluence/ENG/4002-holiday-canteen.md",)
+    assert q1.partial == ("confluence/ENG/4003-words.md",)
+    assert rules.measure(list(q1.expected), q1).recall == 1.0
+    answer = AgentAnswer(found=True, answer="x", sources=("4002",))
+    assert grade(answer, q1, {"4002": q1.expected[0]}.get, lambda _: "").recall == 1.0
+
+
+def test_no_question_left_refuses(data: Path, capsys: CaptureFixture[str]) -> None:
+    """D3: with every question skipped, the run refuses, naming each and what to run."""
+    text = "- {id: q1, question: x, expected: ['9999']}\n- {id: q2, question: y, expected: ['8']}"
+    with pytest.raises(GoldenError, match=r"No question left.*q1, for '9999'.*q2, for '8'.*index"):
+        golden(data, text)
+    (data / "golden.yaml").write_text(text, encoding="utf-8")
+    assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data)]) == REFUSED
+    assert "No question left to measure" in capsys.readouterr().err
+    assert not (data / "eval").exists()
 
 
 def test_meaning_answers_the_paraphrase_that_words_miss(data: Path) -> None:
@@ -459,7 +547,7 @@ def test_an_endpoint_elsewhere_without_the_flag_exits_2(
 
 def test_the_record_names_its_test_and_golden_file() -> None:
     """The seed and samples of the test, and the golden file by hash, are kept."""
-    kept = record([], "golden text", datetime(2026, 10, 21, tzinfo=UTC), [])
+    kept = record([], "golden text", datetime(2026, 10, 21, tzinfo=UTC), [], [])
     assert kept["test"] == {
         "kind": "paired randomisation, two-sided",
         "samples": 10_000,
