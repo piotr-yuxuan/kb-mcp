@@ -18,9 +18,9 @@ from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Reranks, Scripted, connect_scripted, serving
+from tests.endpoint import Reranks, Scripted, connect_scripted, serving, tiny
 from tests.reference import Emitted, undocumented
-from tests.test_evaluate import GOLDEN, data
+from tests.test_evaluate import GOLDEN, READERS, data, read_by
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -229,6 +229,28 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
     assert [verdict["kept"] for verdict in record["verdicts"]] == [None]
     assert record["sample"] is None
     assert all(each["tokens"] for each in record["arms"][1:])
+
+
+def test_rerank_results_hold_the_digest_costs_and_fingerprint(data: Path) -> None:
+    """D5, E5: as eval's results keep them of the same index, the model's connection given.
+
+    The documents indexed, by digest and by source and type; the index's costs, its bytes
+    those of its file; the fingerprint of the tiny model, as its connection gives it.
+    """
+    command, results = READERS[0]
+    assert read_by(data, command, GOLDEN) == 0
+    [index] = json.loads(max(data.glob(results)).read_text("utf-8"))["indexes"]
+    command, results = READERS[1]
+    assert read_by(data, command, GOLDEN) == 0
+    [kept] = [json.loads(path.read_text("utf-8")) for path in data.glob(results)]
+    assert kept["documents_sha256"] == index["documents_sha256"]
+    assert kept["documents"] == index["documents"]
+    assert kept["fingerprint"] == index["fingerprint"] == tiny().fingerprint
+    same = ("chunks", "characters", "estimated")
+    assert {key: kept["costs"][key] for key in same} == {key: index["costs"][key] for key in same}
+    built = data / "eval" / "indexes" / "windows" / "tiny.sqlite"
+    assert kept["costs"]["bytes"] == built.stat().st_size
+    assert "tokens" in kept["costs"]
 
 
 def test_a_sample_measures_that_many_questions_the_same_at_each_depth(

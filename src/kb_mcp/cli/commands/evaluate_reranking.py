@@ -89,7 +89,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
             score = Counted(functools.partial(rerank, server, reranker.model, bounds=EVALUATION))
             evaluated = EvaluatedIndex(connect(opened, settings.model), settings.chunking)
             arms = Arms(settings.search_mode, depths, score, built_at)
-            found = measured(evaluated, settings, questions, arms, time.perf_counter)
+            of_index, found = measured(evaluated, settings, questions, arms, time.perf_counter)
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
@@ -99,6 +99,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
         "mode": settings.search_mode,
         "model": settings.model,
         "chunking": settings.chunking,
+        **of_index.model_dump(include={"fingerprint", "costs", "documents", "documents_sha256"}),
         "skipped": skipped,
         "reranker": reranker.model,
         "served": listed,

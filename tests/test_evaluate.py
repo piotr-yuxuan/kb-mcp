@@ -49,7 +49,7 @@ from tests.endpoint import (
     serving,
     tiny,
 )
-from tests.mirrors import MOMENT, fillers, issue, page, write
+from tests.mirrors import FILLERS, MOMENT, fillers, issue, page, write
 from tests.test_cli import logged_as
 from tests.test_observed import said
 
@@ -853,6 +853,52 @@ def test_results_hold_the_passages_and_each_modes_first_30(
             assert len(set(ranking)) == len(ranking) <= RANKED
         assert len(raw[mode]["q4"]["ranking"]) == RANKED
     assert {each["ref"] for each in raw["semantic"]["q1"]["passages"]} >= {"confluence:4002"}
+
+
+def indexed(data: Path, command: list[str], results: str) -> dict:
+    """Run a command of READERS on GOLDEN; give what its results file keeps of its index."""
+    assert read_by(data, command, GOLDEN) == 0
+    kept = json.loads(max(data.glob(results)).read_text("utf-8"))
+    return kept["indexes"][0] if "indexes" in kept else kept
+
+
+@pytest.mark.parametrize(
+    ("change", "same"),
+    [
+        (None, True),
+        (("4003", "Words", "revert the release\n"), False),
+        (("4004", "New", None), False),
+    ],
+    ids=["unchanged", "a body edited", "a document added"],
+)
+def test_the_digest_changes_with_one_document(
+    data: Path, change: tuple[str, str, str | None] | None, *, same: bool
+) -> None:
+    """D5: the results keep a digest of the documents indexed, each path with its digest.
+
+    Two runs on the same mirror keep the same digest; with one document edited or added,
+    another.
+    """
+    command, results = READERS[0]
+    before = indexed(data, command, results)["documents_sha256"]
+    if change:
+        page_id, title, body = change
+        write(data / "docs", page(page_id, title), body)
+    after = indexed(data, command, results)["documents_sha256"]
+    assert re.fullmatch(r"[0-9a-f]{64}", before)
+    assert (after == before) is same
+
+
+@pytest.mark.parametrize(("command", "results"), READERS[:2])
+def test_counts_by_source_and_type(data: Path, command: list[str], results: str) -> None:
+    """D5: the results of eval and of eval-rerank count the documents indexed, by source and type.
+
+    The mirror's fillers and two pages, a post, and two issues.
+    """
+    write(data / "docs", page("4005", "News", type="blogpost"), "# News\n\nA post.\n")
+    write(data / "docs", issue("PROJ-8", "Kafka downgrade"))
+    expected = {"confluence": {"page": FILLERS + 2, "blogpost": 1}, "jira": {"issue": 2}}
+    assert indexed(data, command, results)["documents"] == expected
 
 
 def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:

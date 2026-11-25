@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.settings import SearchMode, Settings
-    from kb_mcp.evaluation.app.evaluation import EvaluatedIndex
+    from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, IndexMeasures
     from kb_mcp.evaluation.domain.evaluation import Question, Verdict
     from kb_mcp.search.adapters.reranking import Reranked
 
@@ -96,15 +96,16 @@ def measured(
     questions: Sequence[Question],
     arms: Arms,
     clock: Callable[[], float],
-) -> list[Arm]:
+) -> tuple[IndexMeasures, list[Arm]]:
     """Build the evaluated index as ``eval`` does; measure the arm not reranked, then each depth.
 
-    Every arm ranks as deep as the deepest, to give Recall@N, and measures its first ten.
-    Raises EvaluationError when a search falls back, by words or not reranked, which
-    would measure another arm, and ModelError for a model that fails. Each question in
-    each arm is the progress task ``questions``.
+    Give what the index holds and cost, and the arms. Every arm ranks as deep as the
+    deepest, to give Recall@N, and measures its first ten. Raises EvaluationError when a
+    search falls back, by words or not reranked, which would measure another arm, and
+    ModelError for a model that fails. Each question in each arm is the progress task
+    ``questions``.
     """
-    _, plain = prepared(evaluated, settings, questions, clock, arms.built_at)
+    of_index, plain = prepared(evaluated, settings, questions, clock, arms.built_at)
     deepest = max(arms.depths)
     found: list[Arm] = []
     with task("questions", (1 + len(arms.depths)) * len(questions)) as asking:
@@ -160,7 +161,7 @@ def measured(
                     recall=recall,
                 )
             )
-    return found
+    return of_index, found
 
 
 def depth_verdict(found: Sequence[Arm], questions: Sequence[Question]) -> Verdict:

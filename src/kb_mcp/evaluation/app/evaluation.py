@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import json
+from collections import Counter
 from dataclasses import dataclass
 from statistics import median
 from typing import TYPE_CHECKING
@@ -22,7 +24,7 @@ from typing import TYPE_CHECKING
 import structlog
 import yaml
 from opentelemetry import metrics, trace
-from pydantic import ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, computed_field
 
 from kb_mcp.evaluation.domain.evaluation import (
     CUTOFF,
@@ -174,6 +176,7 @@ class Costs(Record):
     tokens: int | None  # that the endpoint reported for the texts embedded for this index
     bytes: int  # of the index file
 
+    @computed_field
     @property
     def estimated(self) -> int:
         """The tokens of the texts that the chunks embed, at the characters of a token."""
@@ -191,6 +194,8 @@ class IndexMeasures(Record):
     seconds: float  # how long the index took to build, embedding included
     chunking: str
     costs: Costs
+    documents: dict[str, dict[str, int]]  # indexed, by source and type
+    documents_sha256: str  # of each document indexed, its path with its digest, sorted
     per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
     # By mode, then group; Section@10 of the questions whose expected document every arm,
     # each index and mode, found: ``aligned`` of them, so that the arms average alike.
@@ -367,6 +372,11 @@ def prepared(
         tokens=embedder.tokens,
         bytes=index.stat().st_size,
     )
+    with SqliteIndex(index).reading() as reader:
+        held = reader.held()
+    documents: dict[str, Counter[str]] = {}
+    for source, kind in held.typed.values():
+        documents.setdefault(source, Counter())[kind] += 1
     of_index = IndexMeasures(
         model=name,
         fingerprint=embedder.fingerprint,
@@ -374,6 +384,10 @@ def prepared(
         seconds=seconds,
         chunking=evaluated.chunking,
         costs=costs,
+        documents=documents,
+        documents_sha256=hashlib.sha256(
+            json.dumps(sorted(held.documents.items())).encode()
+        ).hexdigest(),
     )
     # The model that the index names is this embedder's.
     meaning = Meaning({name: embedder}.__getitem__)
@@ -449,7 +463,6 @@ def record(
                 "fingerprint": of_index.fingerprint,
                 "embedded": of_index.embedded,
                 "seconds": of_index.seconds,
-                "costs": of_index.costs.model_dump() | {"estimated": of_index.costs.estimated},
                 "times": of_index.times,
                 "ask_times": of_index.ask_times,
                 "groups": {
@@ -461,7 +474,9 @@ def record(
                     for mode, groups in of_index.asked_groups.items()
                 },
                 "ranks": of_index.ranks,
-                **of_index.model_dump(include={"per", "aligned"}),
+                **of_index.model_dump(
+                    include={"costs", "documents", "documents_sha256", "per", "aligned"}
+                ),
                 "asked_per": of_index.model_dump(include={"asked"})["asked"],
                 "raw": of_index.raw,
             }
