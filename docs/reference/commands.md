@@ -343,9 +343,10 @@ options:
   --seed SEED           the sample's seed
 
 With --format json: arms, each depth's measures of search and ask by group, with its
-ranks, times, tokens and Recall@N, depth 0 the order not reranked; verdicts, the
-default rule's verdict on the reranking depth; skipped, the golden questions left out,
-each with its ref and why; results, the file that keeps them.
+ranks, times, tokens and Recall@N, and the questions whose reranking failed, measured
+in their order not reranked, depth 0 that order; verdicts, the default rule's verdict
+on the reranking depth; skipped, the golden questions left out, each with its ref and
+why; results, the file that keeps them.
 ```
 
 ## `fetch`

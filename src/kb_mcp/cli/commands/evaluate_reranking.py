@@ -133,9 +133,9 @@ def arm_row(arm: Arm, group: str) -> str:
 def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     """Write each arm's row, every group's in detail; the first ranking's recall; the verdict.
 
-    The default rule's verdict says the depth kept, or why there is none; then each
-    depth's clauses, by this machine's times, and the depths of its family not run; then
-    the questions skipped.
+    Then the questions whose reranking failed, by depth, if any. The default rule's
+    verdict says the depth kept, or why there is none; then each depth's clauses, by this
+    machine's times, and the depths of its family not run; then the questions skipped.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -148,6 +148,8 @@ def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     ]
     recall = ", ".join(f"@{size} {share:.3f}" for size, share in plain.recall.items())
     lines += ["", f"Recall of the order not reranked: {recall}", ""]
+    if failed := ", ".join(f"{arm.failed} at depth {arm.depth}" for arm in arms if arm.failed):
+        lines.append(f"Questions not reranked, their reranking having failed: {failed}.")
     lines += [line for each in evaluated.verdicts for line in each.lines()]
     lines += skipping(evaluated.skipped)
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

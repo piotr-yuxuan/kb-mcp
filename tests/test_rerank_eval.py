@@ -2,28 +2,38 @@
 
 from __future__ import annotations
 
+import functools
 import json
 from typing import TYPE_CHECKING
 
 import pytest
 
 from kb_mcp.cli.main import main
+from kb_mcp.config.settings import Settings
 from kb_mcp.evaluation.app import reranked as measuring
-from kb_mcp.evaluation.app.evaluation import read_golden
+from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, read_golden
 from kb_mcp.evaluation.app.reranked import Counted
 from kb_mcp.evaluation.domain import evaluation as rules
-from kb_mcp.evaluation.domain.evaluation import RULES, Verdict, verdict
+from kb_mcp.evaluation.domain.evaluation import RULES, Measures, Question, Verdict, verdict
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.search.adapters.reranking import Reranked
+from kb_mcp.search.adapters.reranking import Reranked, RerankError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Reranks, Scripted, connect_scripted, serving, tiny
+from tests.endpoint import (
+    Reranks,
+    Scripted,
+    connect_scripted,
+    nothing_listening,
+    serving,
+    tiny,
+)
+from tests.mirrors import MOMENT
 from tests.reference import Emitted, undocumented
-from tests.test_evaluate import GOLDEN, READERS, data, read_by
+from tests.test_evaluate import GOLDEN, READERS, data, golden, read_by, ticking
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
@@ -187,6 +197,72 @@ def test_counted_asks_a_query_s_texts_once_and_sums_the_tokens() -> None:
     counted("r", ["a"])
     assert counted.tokens is None
     assert len(asked) == len(["a", "a b", "r"])
+
+
+def depth_arm(
+    depth: int, score: float, questions: Sequence[Question], failed: int = 0
+) -> measuring.Arm:
+    """Make a depth's arm whose every question scores ``score``, within the bound of time."""
+    each = Measures(recall=score, reciprocal_rank=score, ndcg=score, success=score)
+    return measuring.Arm(
+        depth=depth,
+        per={question.id: each for question in questions},
+        groups={"all": each},
+        asked={},
+        ranks={},
+        times=(0.1, 0.2),
+        tokens=None,
+        recall={},
+        failed=failed,
+    )
+
+
+@pytest.mark.parametrize(("failed", "kept"), [(0, "10"), (1, "10"), (2, None)])
+def test_too_many_failures_give_no_verdict(failed: int, kept: str | None) -> None:
+    """D6: a depth whose reranking failed on more than 5% of 20 questions gives no verdict.
+
+    One of 20 is 5%, which a verdict allows: every depth gains alike, and 10, the smallest,
+    is kept. Two are more: no verdict, and the reason names the depth and the count.
+    """
+    questions = [Question(id=f"q{number}", text="", expected=("a.md",)) for number in range(20)]
+    found = [
+        depth_arm(0, 0.0, questions),
+        depth_arm(10, 1.0, questions, failed),
+        *(depth_arm(depth, 1.0, questions) for depth in (20, 30, 50)),
+    ]
+    ruled = measuring.depth_verdict(found, questions)
+    assert ruled.kept == kept
+    if kept is None:
+        assert "more than 5% of the questions" in str(ruled.reason)
+        assert "2 of 20 at depth 10" in str(ruled.reason)
+        assert ruled.lines()[0].startswith("Reranking depth, by the default rule: no verdict")
+
+
+def test_a_failed_reranking_keeps_the_plain_order_and_is_counted(data: Path) -> None:
+    """D6, E9: q1's reranking refused at depth 2; it keeps its order not reranked, counted.
+
+    The others are reranked, here in reverse, so that q2's expected document moves; q1's
+    texts are asked once, its search, ranking and answer all kept in the order not reranked.
+    """
+    questions = golden(data)
+    asked: list[str] = []
+
+    def score(query: str, texts: Sequence[str]) -> Reranked:
+        asked.append(query)
+        if query == questions[0].text:
+            message = "the reranking server refused the request"
+            raise RerankError(message, "refused")
+        return Reranked(scores=[float(place) for place in range(len(texts))], tokens=len(texts))
+
+    settings = Settings(data_dir=data, model="tiny", search_mode="hybrid")
+    arms = measuring.Arms("hybrid", (2,), Counted(score), MOMENT)
+    index = EvaluatedIndex(tiny(), "windows")
+    _, (plain, reranked) = measuring.measured(index, settings, questions, arms, ticking())
+    assert (plain.failed, reranked.failed) == (0, 1)
+    assert reranked.per["q1"] == plain.per["q1"]
+    assert reranked.ranks["q1"] == plain.ranks["q1"]
+    assert reranked.ranks["q2"] != plain.ranks["q2"]
+    assert asked.count(questions[0].text) == 1
 
 
 def evaluated(data: Path, url: str, rerank_url: str, *more: str) -> int:
@@ -361,16 +437,84 @@ def test_eval_rerank_prints_and_records_the_verdict(
 def test_an_arm_that_falls_back_stops_the_run_naming_the_depth(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A refusal, which an evaluation does not retry, leaves a search not reranked."""
-    with serving(Scripted()) as url, serving(Reranks(statuses=[400])) as rerank_url:
+    """By words, which would measure another arm: the endpoint refuses to embed q2's query."""
+    with serving(Scripted(refused={"revert release"})) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url) == ExitStatus.FAILED
-    err = capsys.readouterr().err
-    assert "depth 2, q1" in err
-    assert "Not reranked" in err
+    assert "depth 0, q2: Ranked by words alone" in capsys.readouterr().err
+    assert not (data / "eval" / "results").exists()
+
+
+def test_a_run_whose_reranking_failed_keeps_its_results_and_says_how_many(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D6, E9: a refusal, which an evaluation does not retry, no longer stops the run.
+
+    q1 at depth 2 is counted, in the output and the results; one of three questions is
+    more than 5%, so there is no verdict, and the output says why.
+    """
+    with serving(Scripted()) as url, serving(Reranks(statuses=[400])) as rerank_url:
+        assert evaluated(data, url, rerank_url) == 0
+    out = capsys.readouterr().out
+    assert "Questions not reranked, their reranking having failed: 1 at depth 2." in out
+    assert (
+        "Reranking depth, by the default rule: no verdict, since the reranking failed on more"
+        " than 5% of the questions: 1 of 3 at depth 2."
+    ) in out
+    [results] = (data / "eval" / "results").glob("*-rerank.json")
+    record = json.loads(results.read_text(encoding="utf-8"))
+    assert [arm["failed"] for arm in record["arms"]] == [0, 1, 0]
+
+
+def rerank_times(data: Path, clock: Callable[[], float]) -> list[tuple[float, float]]:
+    """Measure GOLDEN at depth 2, in hybrid mode; give each arm's search times."""
+    settings = Settings(data_dir=data, model="tiny", search_mode="hybrid")
+    scores = Counted(lambda _query, texts: Reranked(scores=[0.0] * len(texts), tokens=None))
+    arms = measuring.Arms("hybrid", (2,), scores, MOMENT)
+    index = EvaluatedIndex(tiny(), "windows")
+    return [arm.times for arm in measuring.measured(index, settings, golden(data), arms, clock)[1]]
+
+
+# Seconds that a search takes by the test's clock, and a ranking read for the measures.
+SERVED_S, DEEP_S = 0.25, 7.0
+
+
+@pytest.mark.parametrize("timed", [rerank_times], ids=["eval-rerank"])
+def test_a_search_is_timed_as_served(
+    data: Path,
+    monkeypatch: MonkeyPatch,
+    timed: Callable[[Path, Callable[[], float]], list[tuple[float, float]]],
+) -> None:
+    """D6, E17: a search's time is the search tool's, given the question alone, as served.
+
+    So at its default limit; the deeper rankings read for the measures, Recall@N's and
+    the replay's, are not timed: by the clock here, a search takes a quarter of a second,
+    a ranking 7 s.
+    """
+    now = [0.0]
+    asked: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    search, ranked = Library.search, Library.ranked
+
+    @functools.wraps(search)
+    def served(library: Library, *given: object, **named: object) -> str:
+        asked.append((given, named))
+        now[0] += SERVED_S
+        return search(library, *given, **named)
+
+    @functools.wraps(ranked)
+    def deep(library: Library, *given: object, **named: object) -> object:
+        now[0] += DEEP_S
+        return ranked(library, *given, **named)
+
+    monkeypatch.setattr(Library, "search", served)
+    monkeypatch.setattr(Library, "ranked", deep)
+    times = timed(data, lambda: now[0])
+    assert times == [(SERVED_S, SERVED_S)] * len(times)
+    assert asked
+    assert all(len(given) == 1 and not named for given, named in asked)
 
 
 def test_eval_rerank_records_as_documented(telemetry: InMemory, data: Path) -> None:
-    """Measured; refused by the reranking server; a golden file refused."""
+    """Measured; a reranking refused, and counted; no reranking server; a golden file refused."""
     emitted = Emitted()
     with (
         serving(Scripted()) as url,
@@ -381,6 +525,12 @@ def test_eval_rerank_records_as_documented(telemetry: InMemory, data: Path) -> N
     with (
         serving(Scripted()) as url,
         serving(Reranks(statuses=[400])) as rerank_url,
+        emitted.gathering(telemetry, "eval-rerank"),
+    ):
+        assert evaluated(data, url, rerank_url) == 0
+    with (
+        serving(Scripted()) as url,
+        nothing_listening() as rerank_url,
         emitted.gathering(telemetry, "eval-rerank"),
     ):
         assert evaluated(data, url, rerank_url) == ExitStatus.FAILED

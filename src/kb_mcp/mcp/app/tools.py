@@ -150,6 +150,8 @@ def search_filters(sources: Sequence[str]) -> type[SearchFilters]:
 
 
 NOT_SET_UP = "this server searches by words alone"
+# What a search's note says, before why, when its reranking failed.
+UNRERANKED = " Not reranked: "
 
 
 class UnanswerableError(Exception):
@@ -372,7 +374,7 @@ def reranked(
             )
         reordering = reranking.reorder(asked.query, texts)
         if reordering.order is None:
-            return replace(ranked, note=f"{ranked.note} Not reranked: {reordering.reason}.")
+            return replace(ranked, note=f"{ranked.note}{UNRERANKED}{reordering.reason}.")
         order = reordering.order
     if len(ranked.paths) < start + len(order):
         message = "cursor: the ranking changed since; call again without the cursor"
