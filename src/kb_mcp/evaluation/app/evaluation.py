@@ -42,7 +42,7 @@ from kb_mcp.evaluation.domain.evaluation import (
 from kb_mcp.evaluation.domain.golden import Golden
 from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
 from kb_mcp.kernel.records import Record
-from kb_mcp.mcp.app.tools import Library
+from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library
 from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
@@ -73,6 +73,8 @@ STALE = "an expected ref that names no document of the index"
 UPDATE = "An index older than the mirror misses documents; kb-mcp index brings it up to date."
 # The share of queries faster than the slow time reported: its 95th percentile.
 TAIL = 0.95
+# The documents of each ranking that the results keep, by ref, to replay its fusion.
+RANKED = 30
 HEADER = (
     "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Tokens |"
     " Query, median | Query, 95th |"
@@ -199,6 +201,9 @@ class IndexMeasures(Record):
     asked: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, then question
     asked_groups: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, group
     ask_times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th
+    # By mode, then question, for the results alone: search's hits, with the tokens that
+    # reading each costs and whether it holds evidence; ask's passages; the ranking's refs.
+    raw: dict[str, dict[str, dict[str, list]]] = Field(default_factory=dict, exclude=True)
 
 
 def evaluate(
@@ -230,11 +235,12 @@ def evaluate(
             of_index, library = prepared(evaluated, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
-                    of_index.per[mode], of_index.ranks[mode], of_index.asked[mode] = {}, {}, {}
+                    of_index.per[mode], of_index.ranks[mode] = {}, {}
+                    of_index.asked[mode], of_index.raw[mode] = {}, {}
                     spent, asking, served = [], [], library.in_mode(mode)
                     for question in asked.each(questions, lambda one: one.id):
                         started = clock()
-                        shown, note = library.ranked(question.text, mode, limit=CUTOFF)
+                        shown, note = library.ranked(question.text, mode, limit=RANKED)
                         spent.append(clock() - started)
                         QUESTION_DURATION.record(
                             spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
@@ -242,7 +248,7 @@ def evaluate(
                         if note:
                             message = f"{name}, {mode}:{note}"
                             raise EvaluationError(message)
-                        paths = [each.path for each in shown]
+                        paths = [each.path for each in shown[:CUTOFF]]
                         started = clock()
                         quoted = library.quoted(question.text, mode)
                         asking.append(clock() - started)
@@ -264,6 +270,28 @@ def evaluate(
                             question,
                             len(answer) // CHARACTERS_PER_TOKEN,
                         )
+                        of_index.raw[mode][question.id] = {
+                            "hits": [
+                                {
+                                    "ref": each.ref,
+                                    "section": each.section,
+                                    "read_tokens": len(library.read(each.ref, each.section))
+                                    // CHARACTERS_PER_TOKEN,
+                                    "snippet_evidence": question.evidenced(each.path, each.snippet),
+                                    "section_evidence": question.evidenced(each.path, each.text),
+                                }
+                                for each in shown[:SEARCH_LIMIT]
+                            ],
+                            "passages": [
+                                {
+                                    "ref": each.ref,
+                                    "characters": len(each.text),
+                                    "evidence": question.evidenced(each.path, each.text),
+                                }
+                                for each in quoted
+                            ],
+                            "ranking": [each.ref for each in shown],
+                        }
                         log.debug(
                             "eval.question",
                             id=question.id,
@@ -435,6 +463,7 @@ def record(
                 "ranks": of_index.ranks,
                 **of_index.model_dump(include={"per", "aligned"}),
                 "asked_per": of_index.model_dump(include={"asked"})["asked"],
+                "raw": of_index.raw,
             }
             for of_index in measured
         ],

@@ -622,8 +622,10 @@ class Shown(Record):
     """A document ranked for a query, with the section a search shows for it."""
 
     path: str
+    ref: str
     section: int
     text: str  # the section's text, or the passage quoted, as the body holds it
+    snippet: str = ""  # what a search's hit shows of it
 
 
 class Library:
@@ -848,7 +850,7 @@ class Library:
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""
         return [
-            Shown(path=entry.path, section=passage.number, text=passage.text)
+            Shown(path=entry.path, ref=entry.front.ref, section=passage.number, text=passage.text)
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
@@ -882,8 +884,9 @@ class Library:
     def ranked(self, query: str, mode: Mode, limit: int = SEARCH_LIMIT) -> tuple[list[Shown], str]:
         """Rank documents for a query as search does, in a mode, for an evaluation.
 
-        Give the first ``limit``, each with the section that search shows for it, and
-        the note saying why meaning was not used, if it was asked for and was not.
+        Give the first ``limit``, each with its ref, the section that search shows for it
+        and its snippet, and the note saying why meaning was not used, if it was asked for
+        and was not.
         """
         planned = plan_query(query)
         with self._reading() as reader:
@@ -896,9 +899,17 @@ class Library:
             }
             shown = []
             for path in ranked.paths[:limit]:
-                number = snippet_of(reader, indexed[path], ranked, planned).number
-                start, end = reader.bounds(path)[number - 1]
-                shown.append(Shown(path=path, section=number, text=reader.text(path, start, end)))
+                passage = snippet_of(reader, indexed[path], ranked, planned)
+                start, end = reader.bounds(path)[passage.number - 1]
+                shown.append(
+                    Shown(
+                        path=path,
+                        ref=indexed[path].front.ref,
+                        section=passage.number,
+                        text=reader.text(path, start, end),
+                        snippet=responses.short(passage.text, responses.SNIPPET),
+                    )
+                )
         return shown, ranked.note
 
     def read(

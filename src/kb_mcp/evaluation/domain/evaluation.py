@@ -55,6 +55,10 @@ class Question(Record):
     groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
     evidence: Mapping[str, str] = Field(default_factory=dict)  # a phrase of an expected path
 
+    def evidenced(self, path: str, text: str) -> bool:
+        """Say whether a document's text holds its evidence; False for one without."""
+        return path in self.evidence and holds(text, self.evidence[path])
+
 
 class Measures(Record):
     """How one ranking answers one question, or many on average."""

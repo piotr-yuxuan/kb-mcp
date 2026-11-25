@@ -34,7 +34,8 @@ from kb_mcp.evaluation.domain import evaluation as rules
 from kb_mcp.evaluation.domain.evaluation import Question
 from kb_mcp.evaluation.domain.grading import AgentAnswer, grade
 from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN, CHUNKINGS
-from kb_mcp.mcp.app.tools import Library
+from kb_mcp.mcp.app import responses
+from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library
 from kb_mcp.search.adapters.model_api import ModelError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex, reading
 from kb_mcp.search.app.indexing import build_index
@@ -763,6 +764,95 @@ def test_results_hold_every_measure_per_question(data: Path, capsys: CaptureFixt
         for measure in ("found", "tokens"):
             mean = sum(each[measure] for each in asked.values()) / len(asked)
             assert kept["asked"][mode]["all"][measure] == pytest.approx(mean)
+
+
+# BOTH, and a question that words answer with more documents than a ranking keeps.
+ZEBRAS = BOTH + "- {id: q4, question: zebra, expected: ['4100']}\n"
+MODES = ("lexical", "semantic", "hybrid")
+# The refs of each mode's ranking that the results keep, as plan 085 says.
+RANKED = 30
+# The documents whose evidence each question of ZEBRAS gives.
+EVIDENCED = {"q1": {"confluence:4002"}, "q2": {"confluence:4003"}}
+
+
+def raw_records(data: Path, capsys: CaptureFixture[str]) -> tuple[dict, dict[str, Library]]:
+    """Evaluate ZEBRAS with windows, among 35 zebra pages; give the raw records, by mode.
+
+    And a library over the index evaluated in each mode, as a server in that mode answers.
+    """
+    for number in range(35):
+        write(data / "docs", page(str(4100 + number), f"Zebra {number}"), "zebra\n")
+    build_index(data / "docs", data / "index.sqlite", MOMENT)
+    (data / "golden.yaml").write_text(ZEBRAS, encoding="utf-8")
+    with serving(Scripted()) as url:
+        command = ["eval", "--yes", str(data / "golden.yaml"), "--chunking", "windows"]
+        assert main([*command, *options(data, url)]) == 0
+    capsys.readouterr()
+    [results] = (data / "eval" / "results").glob("*.json")
+    [kept] = json.loads(results.read_text("utf-8"))["indexes"]
+    index = SqliteIndex(data / "eval" / "indexes" / "windows" / "tiny.sqlite")
+    served = {
+        mode: Library(index, data / "docs", Meaning(connect_scripted()), mode) for mode in MODES
+    }
+    return kept["raw"], served
+
+
+def test_results_hold_the_hits_of_the_first_answer_with_read_tokens_and_evidence(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D4: each hit of search's first answer, 8 by default: its ref and section shown.
+
+    With the tokens of reading that section as read answers, and whether its snippet and
+    its section hold an expected document's evidence: q1's in 4002, q2's in 4003.
+    """
+    raw, served = raw_records(data, capsys)
+    for mode, library in served.items():
+        for question in golden(data, ZEBRAS):
+            answer = library.search(question.text)
+            hits = raw[mode][question.id]["hits"]
+            assert len(hits) == len(re.findall(r"^\d+\. ", answer, re.MULTILINE))
+            for hit in hits:
+                assert (
+                    responses.call(library.read, ref=hit["ref"], section=hit["section"]) in answer
+                )
+                read = library.read(hit["ref"], hit["section"])
+                assert hit["read_tokens"] == len(read) // CHARACTERS_PER_TOKEN
+            evidenced = {"q1": {"confluence:4002"}, "q2": {"confluence:4003"}}.get(
+                question.id, set()
+            )
+            for flag in ("snippet_evidence", "section_evidence"):
+                held = {hit["ref"] for hit in hits if hit[flag]}
+                assert held == evidenced & {hit["ref"] for hit in hits}
+    assert len(raw["semantic"]["q4"]["hits"]) == SEARCH_LIMIT
+    assert {hit["ref"] for hit in raw["semantic"]["q1"]["hits"]} >= {"confluence:4002"}
+
+
+def test_results_hold_the_passages_and_each_modes_first_30(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D4: each passage of ask's first answer, by ref, with its characters and evidence.
+
+    And the first 30 refs of each mode's ranking, which begins with the first answer's hits.
+    """
+    raw, served = raw_records(data, capsys)
+    for mode, library in served.items():
+        for question in golden(data, ZEBRAS):
+            answer = library.ask(question.text)
+            passages = raw[mode][question.id]["passages"]
+            assert len(passages) == len(re.findall(r"^\d+\. ", answer, re.MULTILINE))
+            assert all(f"| {each['ref']} | section" in answer for each in passages)
+            assert all(each["characters"] > 0 for each in passages)
+            held = {each["ref"] for each in passages if each["evidence"]}
+            evidenced = {"q1": {"confluence:4002"}, "q2": {"confluence:4003"}}.get(
+                question.id, set()
+            )
+            assert held == evidenced & {each["ref"] for each in passages}
+            ranking = raw[mode][question.id]["ranking"]
+            hits = [hit["ref"] for hit in raw[mode][question.id]["hits"]]
+            assert ranking[: len(hits)] == hits
+            assert len(set(ranking)) == len(ranking) <= RANKED
+        assert len(raw[mode]["q4"]["ranking"]) == RANKED
+    assert {each["ref"] for each in raw["semantic"]["q1"]["passages"]} >= {"confluence:4002"}
 
 
 def test_ask_is_measured_beside_search_in_each_mode(data: Path) -> None:
