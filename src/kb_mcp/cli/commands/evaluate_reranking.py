@@ -1,4 +1,4 @@
-"""``eval-rerank``: measure search reranked at each depth on golden questions, by the bar."""
+"""``eval-rerank``: measure search reranked at each depth, and the default rule's verdict."""
 
 from __future__ import annotations
 
@@ -50,10 +50,10 @@ DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
 class DepthsEvaluated(Record):
-    """Each arm measured, the bar's verdict, the mode, and the results file."""
+    """Each arm measured, the default rule's verdict, the mode, and the results file."""
 
     arms: list[Arm]
-    decision: Verdict
+    verdicts: list[Verdict]
     mode: str
     results: Path
 
@@ -90,7 +90,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
-    decision = depth_verdict(found, questions)
+    ruled = [depth_verdict(found, questions)]
     about: dict[str, object] = {
         "built_at": built_at.isoformat(),
         "mode": settings.search_mode,
@@ -104,10 +104,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     }
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}-rerank.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    kept = recorded(found, decision, golden, about)
+    kept = recorded(found, ruled, golden, about)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
     return ExitStatus.OK, DepthsEvaluated(
-        arms=found, decision=decision, mode=settings.search_mode, results=results
+        arms=found, verdicts=ruled, mode=settings.search_mode, results=results
     )
 
 
@@ -126,10 +126,10 @@ def arm_row(arm: Arm, group: str) -> str:
 
 
 def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
-    """Write each arm's row, every group's in detail; the first ranking's recall; the bar.
+    """Write each arm's row, every group's in detail; the first ranking's recall; the verdict.
 
-    The bar's verdict says the depth kept, or why there is none; then each depth's
-    clauses, by this machine's times, and the depths of the bar not run.
+    The default rule's verdict says the depth kept, or why there is none; then each
+    depth's clauses, by this machine's times, and the depths of its family not run.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -142,5 +142,5 @@ def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     ]
     recall = ", ".join(f"@{size} {share:.3f}" for size, share in plain.recall.items())
     lines += ["", f"Recall of the order not reranked: {recall}", ""]
-    lines += evaluated.decision.lines()
+    lines += [line for each in evaluated.verdicts for line in each.lines()]
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

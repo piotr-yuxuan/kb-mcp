@@ -225,7 +225,8 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
     record = json.loads(kept)
     assert [each["depth"] for each in record["arms"]] == [0, 2, 3]
     assert record["served"] == ["qwen3-reranker-0.6b"]
-    assert record["decision"]["kept"] is None
+    assert "decision" not in record
+    assert [verdict["kept"] for verdict in record["verdicts"]] == [None]
     assert record["sample"] is None
     assert all(each["tokens"] for each in record["arms"][1:])
 
@@ -292,7 +293,7 @@ def test_eval_rerank_prints_and_records_the_verdict(
 ) -> None:
     """The depth kept; each depth's clauses, a group's loss or n/a; the depths not run.
 
-    The results file keeps the verdict as given.
+    The results file and the output as JSON keep the verdict as given, among the verdicts.
     """
     decision = Verdict(
         rule="reranking depth",
@@ -326,8 +327,13 @@ def test_eval_rerank_prints_and_records_the_verdict(
     lines = capsys.readouterr().out.splitlines()
     assert lines[lines.index(expected[0]) :][: len(expected)] == expected
     [results] = (data / "eval" / "results").glob("*-rerank.json")
-    kept_as = json.loads(results.read_text(encoding="utf-8"))["decision"]
-    assert kept_as == decision.model_dump(mode="json")
+    kept_as = json.loads(results.read_text(encoding="utf-8"))["verdicts"]
+    assert kept_as == [decision.model_dump(mode="json")]
+    with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
+        assert evaluated(data, url, rerank_url, "--format", "json") == 0
+    document = json.loads(capsys.readouterr().out)
+    assert "decision" not in document
+    assert document["verdicts"] == [decision.model_dump(mode="json")]
 
 
 def test_an_arm_that_falls_back_stops_the_run_naming_the_depth(

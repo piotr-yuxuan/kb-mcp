@@ -181,7 +181,7 @@ def depth_verdict(found: Sequence[Arm], questions: Sequence[Question]) -> Verdic
 
 
 def recorded(
-    found: Sequence[Arm], decision: Verdict, golden: str, about: dict[str, object]
+    found: Sequence[Arm], ruled: Sequence[Verdict], golden: str, about: dict[str, object]
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text.
 
@@ -203,5 +203,5 @@ def recorded(
             }
             for arm in found
         ],
-        "decision": decision.model_dump(),
+        "verdicts": [each.model_dump() for each in ruled],
     }

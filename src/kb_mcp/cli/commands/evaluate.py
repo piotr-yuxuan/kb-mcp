@@ -47,10 +47,10 @@ if TYPE_CHECKING:
 
 
 class IndexesEvaluated(Record):
-    """What each evaluated index measured, each model's chunking, and the results file."""
+    """What each evaluated index measured, the default rules' verdicts, and the results file."""
 
     indexes: list[IndexMeasures]
-    choices: dict[str, Verdict]
+    verdicts: list[Verdict]
     results: Path
 
 
@@ -83,23 +83,22 @@ def run(
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    choices = verdicts(measured, questions, settings.chunking)
-    kept = record(measured, golden, built_at, choices)
+    ruled = verdicts(measured, questions, settings)
+    kept = record(measured, golden, built_at, ruled)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)
+    return ExitStatus.OK, IndexesEvaluated(indexes=measured, verdicts=ruled, results=results)
 
 
 def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
-    """Write each evaluated index's measures, each model's chunking, then the results file.
+    """Write each evaluated index's measures, the default rules' verdicts, the results file.
 
     Short gives each index's row of all the questions, mode by mode, for search and for
-    ask, and its costs; detailed, its tables of every group and the tests of each mode
-    against words. Both end with the verdict of plan 019's rule for each model, its
-    clauses, and the chunkings not run. Lexical search's rows come with the first index
-    alone.
+    ask, and its costs; detailed, its tables of every group. Both end with the search
+    mode's verdict for each index and the chunking's for each model, each with its
+    clauses and the values not run. Lexical search's rows come with the first index alone.
     """
-    choices = [line for choice in evaluated.choices.values() for line in choice.lines()]
-    closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
+    said = [line for each in evaluated.verdicts for line in each.lines()]
+    closing = "\n".join([*said, f"Results: {evaluated.results}", ""])
     if detail == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"
     lines = []

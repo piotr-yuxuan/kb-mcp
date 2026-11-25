@@ -3,9 +3,9 @@
 Each evaluated index, a model connected and a chunking, gets its own file, built from the
 mirror like any other with the vector cache, so a second evaluation embeds nothing new.
 Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answered by
-``Library.quoted``, as ``ask`` answers, in each mode; the measures and the paired tests
-of ``evaluation.domain.evaluation`` say how the modes compare, and its rule which
-chunking each model's index should be cut by. Each evaluated index is a span; each
+``Library.quoted``, as ``ask`` answers, in each mode; the measures of
+``evaluation.domain.evaluation`` say how the modes compare, and its default rules which
+search mode and chunking to keep. Each evaluated index is a span; each
 question is timed and logged, and each mode's scores measured, as
 ``docs/reference/telemetry/eval.md`` lists it.
 """
@@ -15,16 +15,16 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from statistics import median
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING
 
 import structlog
 import yaml
 from opentelemetry import metrics, trace
 from pydantic import ConfigDict, Field, ValidationError
 
-from kb_mcp.config.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
     CUTOFF,
+    MODES,
     RULES,
     SAMPLES,
     SEED,
@@ -32,9 +32,7 @@ from kb_mcp.evaluation.domain.evaluation import (
     Question,
     Quoted,
     averages,
-    holm,
     measure,
-    paired_test,
     percentile,
     quoting,
     verdict,
@@ -49,7 +47,7 @@ from kb_mcp.search.app.indexing import Embedding, build_index
 from kb_mcp.search.app.meaning import Meaning
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Sequence
     from datetime import datetime
 
     from kb_mcp.config.settings import Settings
@@ -57,7 +55,6 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
 
-MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)
 # What the refusal of a golden file says, by the type of Pydantic's error; of another
 # type, Pydantic's message, which holds no input, or the rule's.
 SAID = {
@@ -185,8 +182,6 @@ class IndexMeasures(Record):
     groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
     ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question
     times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th, in s
-    pvalues: dict[str, float] = Field(default_factory=dict)  # mode against lexical
-    adjusted: dict[str, float] = Field(default_factory=dict)  # by Holm, over every index
     asked: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, then question
     asked_groups: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, group
     ask_times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th
@@ -199,7 +194,7 @@ def evaluate(
     clock: Callable[[], float],
     built_at: datetime,
 ) -> list[IndexMeasures]:
-    """Rank and answer every question in every mode on each evaluated index; compare the modes.
+    """Rank and answer every question in every mode on each evaluated index.
 
     Each evaluated index is ``prepared``. Raises EvaluationError when a mode by meaning
     falls back to words, which would measure words twice, and ModelError for a model
@@ -259,14 +254,6 @@ def evaluate(
                     )
                     of_index.times[mode] = (median(spent), percentile(spent, TAIL))
                     of_index.ask_times[mode] = (median(asking), percentile(asking, TAIL))
-                    lexical = [
-                        of_index.per["lexical"][question.id].reciprocal_rank
-                        for question in questions
-                    ]
-                    moded = [
-                        of_index.per[mode][question.id].reciprocal_rank for question in questions
-                    ]
-                    of_index.pvalues[mode] = paired_test(lexical, moded)
                     every = of_index.groups[mode]["all"]
                     scored = {**named, "kb_mcp.mode": mode}
                     SCORE.set(every.recall, {**scored, "kb_mcp.measure": f"recall@{CUTOFF}"})
@@ -286,10 +273,6 @@ def evaluate(
                 index_seconds=round(of_index.seconds, 3),
             )
         measured.append(of_index)
-    tests = [(of_index, mode) for of_index in measured for mode in MODES[1:]]
-    adjusted = holm([of_index.pvalues[mode] for of_index, mode in tests])
-    for (of_index, mode), value in zip(tests, adjusted, strict=True):
-        of_index.adjusted[mode] = value
     return measured
 
 
@@ -347,9 +330,28 @@ def prepared(
 
 
 def verdicts(
-    measured: Sequence[IndexMeasures], questions: Sequence[Question], control: str
-) -> dict[str, Verdict]:
-    """Apply the chunking's default rule to each model's indexes, in hybrid mode, to ``control``."""
+    measured: Sequence[IndexMeasures], questions: Sequence[Question], settings: Settings
+) -> list[Verdict]:
+    """Apply the default rules against the settings, each by the indexes measured.
+
+    The search mode's to each index, then the chunking's to each model's, in hybrid mode.
+    """
+    found = [
+        verdict(
+            RULES["search mode"],
+            settings.search_mode,
+            {
+                mode: (
+                    [of_index.per[mode][question.id].reciprocal_rank for question in questions],
+                    {group: each.reciprocal_rank for group, each in of_index.groups[mode].items()},
+                    round(of_index.times[mode][1] * 1000),
+                )
+                for mode in MODES
+            },
+            {"model": of_index.model, "chunking": of_index.chunking},
+        )
+        for of_index in measured
+    ]
     arms: dict[str, dict[str, tuple[list[float], dict[str, float], int]]] = {}
     for of_index in measured:
         asked = (of_index.asked["hybrid"][question.id].evidence for question in questions)
@@ -358,17 +360,17 @@ def verdicts(
             {group: each.reciprocal_rank for group, each in of_index.groups["hybrid"].items()},
             of_index.costs.estimated,
         )
-    return {
-        model: verdict(RULES["chunking"], control, chunkings, {"model": model})
+    return found + [
+        verdict(RULES["chunking"], settings.chunking, chunkings, {"model": model})
         for model, chunkings in arms.items()
-    }
+    ]
 
 
 def record(
     measured: Sequence[IndexMeasures],
     golden: str,
     built_at: datetime,
-    choices: Mapping[str, Verdict],
+    ruled: Sequence[Verdict],
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text."""
     return {
@@ -385,8 +387,6 @@ def record(
                 "costs": of_index.costs.model_dump() | {"estimated": of_index.costs.estimated},
                 "times": of_index.times,
                 "ask_times": of_index.ask_times,
-                "pvalues": of_index.pvalues,
-                "adjusted": of_index.adjusted,
                 "groups": {
                     mode: {group: each.model_dump() for group, each in groups.items()}
                     for mode, groups in of_index.groups.items()
@@ -399,7 +399,7 @@ def record(
             }
             for of_index in measured
         ],
-        "chunking": {model: choice.model_dump() for model, choice in choices.items()},
+        "verdicts": [each.model_dump() for each in ruled],
     }
 
 
@@ -441,7 +441,7 @@ def built(of_index: IndexMeasures) -> str:
 
 
 def table(measured: Sequence[IndexMeasures]) -> str:
-    """Write the measures of each evaluated index as Markdown: search's, ask's, the tests.
+    """Write the measures of each evaluated index as Markdown: search's, then ask's.
 
     Lexical search ignores the model and the chunking: its rows come with the first index
     alone.
@@ -460,12 +460,6 @@ def table(measured: Sequence[IndexMeasures]) -> str:
             ask_row(mode, group, of_index.asked_groups[mode][group], of_index.ask_times[mode])
             for mode in modes
             for group in sorted(of_index.asked_groups[mode], key=lambda name: (name != "all", name))
-        ]
-        lines.append("")
-        lines += [
-            f"MRR@10, {mode} against lexical: p = {of_index.pvalues[mode]:.4f},"
-            f" adjusted (Holm) {of_index.adjusted[mode]:.4f}"
-            for mode in MODES[1:]
         ]
         lines.append("")
     return "\n".join(lines)

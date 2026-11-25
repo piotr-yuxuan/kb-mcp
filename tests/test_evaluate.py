@@ -28,8 +28,10 @@ from kb_mcp.evaluation.app.evaluation import (
     read_golden,
     record,
     table,
+    verdicts,
 )
-from kb_mcp.evaluation.domain.evaluation import Question, Quoted, holm
+from kb_mcp.evaluation.domain import evaluation as rules
+from kb_mcp.evaluation.domain.evaluation import Question, Quoted
 from kb_mcp.kernel.names import CHUNKINGS
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.model_api import ModelError
@@ -207,7 +209,6 @@ def test_meaning_answers_the_paraphrase_that_words_miss(data: Path) -> None:
     assert all(run.per[mode]["q3"].success == 1.0 for mode in ("lexical", "semantic", "hybrid"))
     assert set(run.groups["semantic"]) == {"all", "paraphrase", "en", "keyword"}
     assert run.embedded > 0
-    assert set(run.adjusted) == {"semantic", "hybrid"}
     assert "| semantic | paraphrase | 1.000 | 1.000 |" in table([run])
 
 
@@ -237,7 +238,7 @@ def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_
     """Under each run's model and chunking, search's and ask's rows of the group all alone.
 
     Lexical search, which ignores the chunking, comes with the first run alone; then the
-    verdict of plan 019's rule for each model, and the results file.
+    default rules' verdicts, and the results file.
     """
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     two = ["--chunking", "sections", "--chunking", "windows"]
@@ -261,7 +262,11 @@ def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_
 def test_the_command_in_detail_shows_every_group_how_the_index_was_built_and_the_tests(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """The model's whole table, as ``table`` writes it, then the results file."""
+    """The model's whole table, as ``table`` writes it, then the verdicts and the results file.
+
+    No mode is tested against lexical search: the search mode's rule tests each against
+    the setting's.
+    """
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     with serving(Scripted()) as url:
         options_given = [*options(data, url), "--detail", "detailed"]
@@ -270,7 +275,8 @@ def test_the_command_in_detail_shows_every_group_how_the_index_was_built_and_the
     out = capsys.readouterr().out
     assert "Index built in " in out
     assert "| semantic | paraphrase | 1.000 | 1.000 |" in out
-    assert "MRR@10, semantic against lexical: p = " in out
+    assert "against lexical" not in out
+    assert "Search mode for tiny, sections, by the default rule: " in out
     assert out.endswith(f"\nResults: {results}\n")
 
 
@@ -289,44 +295,63 @@ def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
     document = json.loads(out)
     assert document["results"] == str(results)
     assert "runs" not in document
+    assert "choices" not in document
     assert [run["chunking"] for run in document["indexes"]] == list(CHUNKINGS)
     run = document["indexes"][0]
     assert run["model"] == "tiny"
     assert run["ranks"]["semantic"]["q1"] == [1]
-    assert document["choices"]["tiny"]["kept"] in CHUNKINGS
+    [chunking] = [each for each in document["verdicts"] if each["rule"] == "chunking"]
+    assert chunking["kept"] in CHUNKINGS
 
 
-# The verdict's line of a chunking tried against the setting's, on GOLDEN: one question has
-# evidence, and one p-value of a single question is 1.
+# The verdicts' lines of a chunking tried against the setting's, and of a mode against
+# hybrid, on GOLDEN: one question has evidence, three have ranks, and no p-value of so few
+# questions is significant.
 TRIED = re.compile(
     r"  sections: Evidence@ask \d\.\d{3} against \d\.\d{3}, adjusted p = 1\.0000, gains no;"
     r" MRR@10 lost: all -?\d\.\d{3}, identifier n/a, keyword -?\d\.\d{3},"
     r" paraphrase -?\d\.\d{3}, holds (yes|no); [\d,]+ tokens embedded, at most [\d,]+,"
     r" within (yes|no)"
 )
+MODED = re.compile(
+    r"  (lexical|semantic): MRR@10 \d\.\d{3} against \d\.\d{3}, adjusted p = \d\.\d{4},"
+    r" gains no; MRR@10 lost: identifier n/a, keyword -?\d\.\d{3}, holds (yes|no);"
+    r" 95th percentile [\d,]+ ms, at most 500 ms, within (yes|no)"
+)
 
 
 def test_eval_prints_and_records_the_verdicts(data: Path, capsys: CaptureFixture[str]) -> None:
-    """Each model's verdict, the chunking kept, its clauses and the chunkings not run.
+    """The search mode's verdict for each index, then the chunking's for each model.
 
-    With the setting's chunking, windows by default, and sections: windows stays, since a
-    gain on one question cannot be shown. The results file keeps the verdict.
+    Each says the value kept, its challengers' clauses and the values not run. Against
+    the settings, hybrid and windows by default, on three questions: each stays, since
+    no gain can be shown. The results file keeps the verdicts, in the same order.
     """
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     two = ["--chunking", "sections", "--chunking", "windows"]
     with serving(Scripted()) as url:
         assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url), *two]) == 0
     [results] = (data / "eval" / "results").glob("*.json")
-    lines = capsys.readouterr().out.splitlines()
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    assert "against lexical" not in out
+    for chunking in ("sections", "windows"):
+        said = lines.index(f"Search mode for tiny, {chunking}, by the default rule: hybrid stays.")
+        assert [bool(MODED.fullmatch(line)) for line in lines[said + 1 : said + 3]] == [True] * 2
     said = lines.index("Chunking for tiny, by the default rule: windows stays.")
     assert TRIED.fullmatch(lines[said + 1])
     assert lines[said + 2 :] == [
         "  section-paths, small-to-big: not run, so cannot qualify",
         f"Results: {results}",
     ]
-    verdict = json.loads(results.read_text(encoding="utf-8"))["chunking"]["tiny"]
-    assert (verdict["control"], verdict["kept"]) == ("windows", "windows")
-    assert verdict["untested"] == ["section-paths", "small-to-big"]
+    kept = json.loads(results.read_text(encoding="utf-8"))
+    assert "chunking" not in kept
+    assert [(each["rule"], each["fixed"], each["kept"]) for each in kept["verdicts"]] == [
+        ("search mode", {"model": "tiny", "chunking": "sections"}, "hybrid"),
+        ("search mode", {"model": "tiny", "chunking": "windows"}, "hybrid"),
+        ("chunking", {"model": "tiny"}, "windows"),
+    ]
+    assert kept["verdicts"][2]["untested"] == ["section-paths", "small-to-big"]
 
 
 @pytest.mark.parametrize(
@@ -343,7 +368,8 @@ def test_the_chunking_control_is_the_setting(
         config = data.parent / "config.toml"
         config.write_text(config.read_text("utf-8") + setting, "utf-8")
         assert main(["eval", "--yes", str(data / "golden.yaml"), *given, *two]) == 0
-    verdict = json.loads(capsys.readouterr().out)["choices"]["tiny"]
+    document = json.loads(capsys.readouterr().out)
+    [verdict] = [each for each in document["verdicts"] if each["rule"] == "chunking"]
     assert verdict["control"] == control
     assert set(verdict["means"]) == {"sections", "windows"}
 
@@ -433,7 +459,7 @@ def test_an_endpoint_elsewhere_without_the_flag_exits_2(
 
 def test_the_record_names_its_test_and_golden_file() -> None:
     """The seed and samples of the test, and the golden file by hash, are kept."""
-    kept = record([], "golden text", datetime(2026, 10, 21, tzinfo=UTC), {})
+    kept = record([], "golden text", datetime(2026, 10, 21, tzinfo=UTC), [])
     assert kept["test"] == {
         "kind": "paired randomisation, two-sided",
         "samples": 10_000,
@@ -497,24 +523,6 @@ def test_a_mode_by_meaning_that_falls_back_is_refused(data: Path, monkeypatch: M
         evaluate(settings, golden(data), evaluated_indexes(tiny()), ticking(), MOMENT)
 
 
-def test_holm_adjusts_every_test_of_the_run(data: Path, monkeypatch: MonkeyPatch) -> None:
-    """Two models, two modes each against lexical: four tests, adjusted together.
-
-    The tests' p-values are set, small and distinct, so that adjusting per model (0.02,
-    0.04, 0.06, 0.06) differs from adjusting the run (0.04, 0.06, 0.06, 0.06).
-    """
-    answers = Scripted({"tiny:latest": DIGEST, "tiny2:latest": DIGEST})
-    given = iter([1.0, 0.01, 0.02, 1.0, 0.03, 0.04])  # lexical, semantic, hybrid, twice
-    monkeypatch.setattr(evaluation, "paired_test", lambda *_: next(given))
-    settings = Settings(data_dir=data, model="tiny")
-    embedders = evaluated_indexes(tiny(answers), tiny(answers, "tiny2"))
-    runs = evaluate(settings, golden(data), embedders, ticking(), MOMENT)
-    raw = [run.pvalues[mode] for run in runs for mode in ("semantic", "hybrid")]
-    adjusted = [run.adjusted[mode] for run in runs for mode in ("semantic", "hybrid")]
-    assert raw == [0.01, 0.02, 0.03, 0.04]
-    assert adjusted == holm(raw) == pytest.approx([0.04, 0.06, 0.06, 0.06])
-
-
 def test_a_partial_ref_missing_from_the_index_evaluated_is_refused(data: Path) -> None:
     """A document that only helps counts in nDCG: missing, it would lower it unseen."""
     write(data / "docs", page("4004", "Helper"), "revert\n")
@@ -569,9 +577,10 @@ def test_evaluation_leaves_the_served_index_and_builds_its_own(data: Path) -> No
 def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
     data: Path, monkeypatch: MonkeyPatch
 ) -> None:
-    """Tenth by words still counts within ten; the tests compare reciprocal ranks.
+    """Tenth by words still counts within ten; the search mode's tests compare reciprocal ranks.
 
-    Each mode is tested against lexical, question by question, on MRR@10's ranks.
+    Each other mode is tested against the setting's, hybrid, question by question, on
+    MRR@10's ranks.
     """
     for number in range(9):
         write(data / "docs", page(str(4100 + number), f"Zebra {number} zebra"), "zebra\n")
@@ -584,7 +593,7 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
         tested.append((list(before), list(after)))
         return 0.5
 
-    monkeypatch.setattr(evaluation, "paired_test", recorded)
+    monkeypatch.setattr(rules, "paired_test", recorded)
     settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, questions, evaluated_indexes(tiny()), ticking(), MOMENT)
     assert run.per["lexical"]["q4"].recall == 1.0
@@ -592,9 +601,10 @@ def test_documents_are_measured_to_the_tenth_and_tested_on_mrr(
     ranks = {
         mode: [run.per[mode][each.id].reciprocal_rank for each in questions] for mode in run.per
     }
-    assert tested[1:] == [
-        (ranks["lexical"], ranks["semantic"]),
-        (ranks["lexical"], ranks["hybrid"]),
+    verdicts([run], questions, settings)
+    assert tested == [
+        (ranks["hybrid"], ranks["lexical"]),
+        (ranks["hybrid"], ranks["semantic"]),
     ]
     assert ranks["semantic"] != ranks["lexical"]
 

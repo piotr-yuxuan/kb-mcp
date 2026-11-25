@@ -11,11 +11,12 @@ import math
 import re
 from collections.abc import Mapping
 from statistics import fmean
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, get_args
 
 import numpy as np
 from pydantic import Field
 
+from kb_mcp.config.settings import SearchMode
 from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S, CHUNKINGS
 from kb_mcp.kernel.records import Record
 
@@ -38,6 +39,8 @@ ALPHA = 0.05
 MARGIN = 0.01
 # The arm not reranked, the control of the reranking depth, as a verdict names it.
 NOT_RERANKED = "none"
+# The search modes, the cheapest first.
+MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)
 
 
 class Question(Record):
@@ -173,6 +176,14 @@ class Verdict(Record):
 RULES = {
     rule.name: rule
     for rule in (
+        DefaultRule(
+            name="search mode",
+            values=MODES,
+            decides="MRR@10",
+            guards={"identifier": 0.05, "keyword": 0.05},
+            spends="ms",
+            bound=500,
+        ),
         DefaultRule(
             name="chunking",
             values=CHUNKINGS,

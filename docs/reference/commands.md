@@ -32,8 +32,8 @@ positional arguments:
                  chunking
     eval-agents  evaluate ask through agents: prepare their runs, bridge their calls,
                  grade
-    eval-rerank  measure search reranked at each depth on golden questions, against
-                 the bar
+    eval-rerank  measure search reranked at each depth on golden questions, by the
+                 default rule
     fetch        bring what changed in each source into its store
     index        update the search index of the mirror's words to what changed
     login        sign in once, in a Chrome window, for a source or each one configured
@@ -190,8 +190,9 @@ options:
                         a chunking to evaluate; by default, every one
 
 With --format json: indexes, each model's and chunking's measures of search and ask by
-mode and group, with its ranks, times, costs and tests; choices, each model's default
-chunking by the rule; results, the file that keeps them.
+mode and group, with its ranks, times and costs; verdicts, the default rules'
+verdicts, the search mode's for each model and chunking, then the chunking's for each
+model; results, the file that keeps them.
 ```
 
 ## `eval-agents`
@@ -335,13 +336,13 @@ options:
                         let this run send the mirror's text to an embedding endpoint
                         off this machine
   --depth DEPTH         documents reranked, as one arm; by default 10, 20, 30, 50, the
-                        bar's
+                        default rule's family
   --sample SAMPLE       this many questions, chosen by the seed; else all
   --seed SEED           the sample's seed
 
 With --format json: arms, each depth's measures of search and ask by group, with its
-ranks, times, tokens and Recall@N, depth 0 the order not reranked; decision, the bar's
-verdicts and default depth; results, the file that keeps them.
+ranks, times, tokens and Recall@N, depth 0 the order not reranked; verdicts, the
+default rule's verdict on the reranking depth; results, the file that keeps them.
 ```
 
 ## `fetch`

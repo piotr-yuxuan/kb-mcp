@@ -40,8 +40,9 @@ def register(
         help="measure search and ask on golden questions, by mode, model and chunking",
         epilog=(
             "With --format json: indexes, each model's and chunking's measures of search and"
-            " ask by mode and group, with its ranks, times, costs and tests; choices, each"
-            " model's default chunking by the rule; results, the file that keeps them."
+            " ask by mode and group, with its ranks, times and costs; verdicts, the default"
+            " rules' verdicts, the search mode's for each model and chunking, then the"
+            " chunking's for each model; results, the file that keeps them."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -66,7 +67,14 @@ def register(
         command=Command(
             "eval",
             "kb_mcp.cli.commands.evaluate",
-            reads=("data_dir", "model", "chunking", "embedding_url", "embedding_api_key"),
+            reads=(
+                "data_dir",
+                "model",
+                "search_mode",
+                "chunking",
+                "embedding_url",
+                "embedding_api_key",
+            ),
             flags=flags,
             actions=(*actions, remote, golden, models, chunkings),
             writes=True,
