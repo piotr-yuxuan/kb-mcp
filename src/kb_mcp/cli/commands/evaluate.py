@@ -30,7 +30,7 @@ from kb_mcp.evaluation.app.evaluation import (
     row,
     table,
 )
-from kb_mcp.evaluation.domain.evaluation import CONTROL, Choice
+from kb_mcp.evaluation.domain.evaluation import Choice
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import CHUNKINGS, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
@@ -83,7 +83,7 @@ def run(
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    choices = compared(measured, questions)
+    choices = compared(measured, questions, settings.chunking)
     kept = record(measured, golden, built_at, choices)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
     return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)
@@ -94,22 +94,11 @@ def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
 
     Short gives each index's row of all the questions, mode by mode, for search and for
     ask, and its costs; detailed, its tables of every group and the tests of each mode
-    against words. Both end with each model's default chunking by the rule, and its
-    tests against the control. Lexical search's rows come with the first index alone.
+    against words. Both end with the verdict of plan 019's rule for each model, its
+    clauses, and the chunkings not run. Lexical search's rows come with the first index
+    alone.
     """
-    choices = [
-        line
-        for model, choice in evaluated.choices.items()
-        for line in (
-            f"Default chunking for {model}, by the rule: {choice.chunking}",
-            *(
-                f"  {name}, {measure} against {CONTROL}: p = {value:.4f},"
-                f" adjusted (Holm) {choice.adjusted[name][measure]:.4f}"
-                for name, tested in choice.pvalues.items()
-                for measure, value in tested.items()
-            ),
-        )
-    ]
+    choices = [line for choice in evaluated.choices.values() for line in choice.lines()]
     closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
     if detail == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"

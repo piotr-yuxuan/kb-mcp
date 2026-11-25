@@ -66,7 +66,7 @@ def register(
         command=Command(
             "eval",
             "kb_mcp.cli.commands.evaluate",
-            reads=("data_dir", "model", "embedding_url", "embedding_api_key"),
+            reads=("data_dir", "model", "chunking", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=(*actions, remote, golden, models, chunkings),
             writes=True,

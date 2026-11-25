@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from pydantic import Field
 
+from kb_mcp.kernel.names import CHUNKINGS
 from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
@@ -31,12 +32,11 @@ SEED = 11
 # pipes of a table's cells, which plain text renders as spaces.
 LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 MARKS = re.compile(r"[*_`|]")
-# Plan 019's rule: the chunking that a challenger must beat; the level of its adjusted
-# p-value on Evidence@ask; the MRR@10 it may lose; how many times the control's tokens
-# it may cost; and within how much Evidence@ask two are taken as equal.
-CONTROL = "sections"
+# Plan 019's rule: the level of a challenger's adjusted p-value on Evidence@ask; the MRR@10
+# that it may lose, by group, "all" the questions; how many times the control's tokens it
+# may cost; and within how much of the best Evidence@ask the cheapest is kept.
 ALPHA = 0.05
-MRR_LOSS = 0.02
+MRR_LOSS = {"all": 0.02, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05}
 COST = 3
 TIE = 0.01
 
@@ -96,20 +96,60 @@ class Quoted(Record):
 class Scored(Record):
     """What a chunking scored in hybrid mode, question by question, and what it costs."""
 
-    reciprocal_ranks: tuple[float, ...]  # MRR@10 of each question
     evidence: tuple[float, ...]  # Evidence@ask of each question with evidence
+    groups: Mapping[str, float]  # MRR@10 of each group, "all" the questions
     tokens: int  # of the texts that its index embeds, at the characters of a token
 
 
 class Choice(Record):
-    """The default chunking that the rule gives, and the tests that it read.
+    """The verdict of plan 019's rule on the chunkings run: the chunking kept, or why none.
 
-    Each test is a challenger's against the control, on ``mrr`` or ``evidence``.
+    Each challenger run has its clauses: its gain, the groups' losses, its tokens;
+    ``failed`` names those it fails, of ``gain``, ``guards`` and ``bound``.
     """
 
-    chunking: str
-    pvalues: dict[str, dict[str, float]]
-    adjusted: dict[str, dict[str, float]]  # by Holm, over every test
+    rule: str
+    fixed: Mapping[str, str]  # the settings that the arms share, such as the model
+    control: str
+    kept: str | None  # None: no verdict
+    reason: str | None = None  # why there is no verdict
+    untested: tuple[str, ...] = ()  # the family's chunkings not run, which cannot qualify
+    means: Mapping[str, float] = Field(default_factory=dict)  # Evidence@ask, to three decimals
+    adjusted: Mapping[str, float] = Field(default_factory=dict)  # times the family's size
+    losses: Mapping[str, Mapping[str, float]] = Field(default_factory=dict)  # by group
+    spent: Mapping[str, int] = Field(default_factory=dict)  # the tokens embedded
+    failed: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    def lines(self) -> list[str]:
+        """Say the verdict, then each challenger's clauses, then the chunkings not run."""
+        if self.kept is None:
+            said = f"no verdict, since {self.reason}"
+        elif self.kept == self.control:
+            said = f"{self.kept} stays"
+        else:
+            said = f"{self.kept}, in place of {self.control}"
+        held = f" for {', '.join(self.fixed.values())}" if self.fixed else ""
+        lines = [f"Chunking{held}, by the default rule: {said}."]
+        for name, failed in self.failed.items():
+            losses = ", ".join(
+                f"{group} {self.losses[name][group]:.3f}"
+                if group in self.losses[name]
+                else f"{group} n/a"
+                for group in MRR_LOSS
+            )
+            gains, holds, within = (
+                "no" if clause in failed else "yes" for clause in ("gain", "guards", "bound")
+            )
+            lines.append(
+                f"  {name}: Evidence@ask {self.means[name]:.3f} against"
+                f" {self.means[self.control]:.3f}, adjusted p = {self.adjusted[name]:.4f},"
+                f" gains {gains}; MRR@10 lost: {losses}, holds {holds};"
+                f" {self.spent[name]:,} tokens embedded, at most"
+                f" {COST * self.spent[self.control]:,.0f}, within {within}"
+            )
+        if self.untested:
+            lines.append(f"  {', '.join(self.untested)}: not run, so cannot qualify")
+        return lines
 
 
 def plain(text: str) -> str:
@@ -160,44 +200,81 @@ def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
     return Quoted(found=found, evidence=fmean(held) if held else None)
 
 
-def default_chunking(scored: Mapping[str, Scored]) -> Choice:
-    """Choose the default chunking among those scored, the control among them, by the rule.
+def default_chunking(
+    control: str, scored: Mapping[str, Scored], fixed: Mapping[str, str]
+) -> Choice:
+    """Apply plan 019's rule to the chunkings scored, each by its name, against the control.
 
-    A challenger qualifies when it beats the control on Evidence@ask, with a p-value
-    below ALPHA once adjusted by Holm over every test of every challenger, on MRR@10
-    and on Evidence@ask; loses at most MRR_LOSS of MRR@10; and costs at most COST times
-    the control's tokens. The best Evidence@ask wins, and within TIE of it the cheapest;
-    else the control stays.
+    Its family is every other chunking of CHUNKINGS; one not scored cannot qualify. Without
+    the control, a challenger, or a question with evidence, there is no verdict, and the
+    reason says why. A challenger qualifies when it beats the control on Evidence@ask, with
+    a p-value below ALPHA once multiplied by the family's size; loses at most MRR_LOSS of
+    MRR@10 in each group; and costs at most COST times the control's tokens. Of those, the
+    cheapest within TIE of the best Evidence@ask is kept. Values compare as reported: means
+    and losses to three decimals, p-values to four.
     """
-    control = scored[CONTROL]
-    pvalues = {
-        name: {
-            "mrr": paired_test(control.reciprocal_ranks, each.reciprocal_ranks),
-            "evidence": paired_test(control.evidence, each.evidence),
-        }
-        for name, each in scored.items()
-        if name != CONTROL
+    family = [name for name in CHUNKINGS if name != control]
+    run = [name for name in family if name in scored]
+    untested = tuple(name for name in family if name not in scored)
+    if control not in scored:
+        reason = f"its control, {control}, was not run"
+    elif not run:
+        reason = "no challenger of its family was run"
+    elif not scored[control].evidence:
+        reason = "no golden question has a measure of Evidence@ask"
+    else:
+        reason = None
+    if reason:
+        return Choice(
+            rule="chunking",
+            fixed=fixed,
+            control=control,
+            kept=None,
+            reason=reason,
+            untested=untested,
+        )
+    base = scored[control]
+    means = {name: round(fmean(scored[name].evidence), 3) for name in (control, *run)}
+    adjusted = {
+        name: min(1.0, len(family) * paired_test(base.evidence, scored[name].evidence))
+        for name in run
     }
-    tests = [(name, measure) for name, tested in pvalues.items() for measure in tested]
-    adjusted: dict[str, dict[str, float]] = {name: {} for name in pvalues}
-    for (name, measure), value in zip(
-        tests, holm([pvalues[name][measure] for name, measure in tests]), strict=True
-    ):
-        adjusted[name][measure] = value
-    evidence = {name: fmean(each.evidence or (0.0,)) for name, each in scored.items()}
-    mrr = {name: fmean(each.reciprocal_ranks or (0.0,)) for name, each in scored.items()}
-    qualified = [
-        name
-        for name in adjusted
-        if evidence[name] > evidence[CONTROL]
-        and adjusted[name]["evidence"] < ALPHA
-        and mrr[CONTROL] - mrr[name] <= MRR_LOSS
-        and scored[name].tokens <= COST * control.tokens
-    ]
-    best = max((evidence[name] for name in qualified), default=0.0)
-    close = [name for name in qualified if best - evidence[name] <= TIE]
-    chosen = min(close, key=lambda name: scored[name].tokens, default=CONTROL)
-    return Choice(chunking=chosen, pvalues=pvalues, adjusted=adjusted)
+    losses = {
+        name: {
+            group: round(round(base.groups[group], 3) - round(scored[name].groups[group], 3), 3)
+            for group in MRR_LOSS
+            if group in base.groups
+        }
+        for name in run
+    }
+    spent = {name: scored[name].tokens for name in (control, *run)}
+    failed = {
+        name: tuple(
+            clause
+            for clause, holds in (
+                ("gain", means[name] > means[control] and round(adjusted[name], 4) < ALPHA),
+                ("guards", all(loss <= MRR_LOSS[group] for group, loss in losses[name].items())),
+                ("bound", spent[name] <= COST * spent[control]),
+            )
+            if not holds
+        )
+        for name in run
+    }
+    qualified = [name for name in run if not failed[name]]
+    best = max((means[name] for name in qualified), default=0.0)
+    close = [name for name in qualified if round(best - means[name], 3) <= TIE]
+    return Choice(
+        rule="chunking",
+        fixed=fixed,
+        control=control,
+        kept=min(close, key=spent.__getitem__, default=control),
+        untested=untested,
+        means=means,
+        adjusted=adjusted,
+        losses=losses,
+        spent=spent,
+        failed=failed,
+    )
 
 
 def paired_test(before: Sequence[float], after: Sequence[float], seed: int = SEED) -> float:

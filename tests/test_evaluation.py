@@ -5,10 +5,14 @@ from __future__ import annotations
 import itertools
 import math
 from statistics import fmean
+from typing import TYPE_CHECKING
 
 import pytest
 
+from kb_mcp.evaluation.domain import evaluation as rules
+from kb_mcp.evaluation.domain import reranking
 from kb_mcp.evaluation.domain.evaluation import (
+    Choice,
     Measures,
     Question,
     Quoted,
@@ -21,6 +25,12 @@ from kb_mcp.evaluation.domain.evaluation import (
     percentile,
     quoting,
 )
+from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from _pytest.monkeypatch import MonkeyPatch
 
 QUESTION = Question(
     id="q1",
@@ -200,66 +210,236 @@ TOKENS = 1000
 ALPHA_LEVEL = 0.05  # the plan's level for an adjusted p-value
 
 
-def scored(
-    evidence: float, mrr: float, tokens: int = TOKENS, *, last: float | None = None
+def chunked(
+    evidence: float,
+    mrr: float = 0.5,
+    tokens: int = TOKENS,
+    *,
+    last: float | None = None,
+    **groups: float,
 ) -> Scored:
-    """Score a chunking on QUESTIONS questions, all alike unless ``last`` sets the last one."""
+    """Score a chunking on QUESTIONS questions, all alike unless ``last`` sets the last one.
+
+    Its MRR@10 is ``mrr`` on all of them and in each group that D2 guards, but those given.
+    """
     each = (evidence,) * (QUESTIONS - 1) + ((evidence if last is None else last),)
-    return Scored(reciprocal_ranks=(mrr,) * QUESTIONS, evidence=each, tokens=tokens)
+    guarded = dict.fromkeys(("all", "identifier", "keyword", "paraphrase"), mrr)
+    return Scored(evidence=each, groups=guarded | groups, tokens=tokens)
 
 
-def test_a_challenger_better_on_evidence_and_no_worse_otherwise_becomes_the_default() -> None:
-    """Evidence@ask from 0 to 1 on every question: significant once adjusted over its two."""
-    choice = default_chunking({"sections": scored(0.0, 0.5), "windows": scored(1.0, 0.5)})
-    assert choice.chunking == "windows"
-    assert choice.adjusted["windows"]["evidence"] < ALPHA_LEVEL
-    assert set(choice.pvalues["windows"]) == {"mrr", "evidence"}
+# A chunking scored on golden questions none of which has evidence.
+UNMEASURED = Scored(evidence=(), groups={"all": 0.5}, tokens=TOKENS)
 
 
-def test_the_control_stays_against_a_challenger_that_loses_0_03_of_mrr() -> None:
-    """It wins Evidence@ask, but MRR@10 may fall by 0.02 at most."""
-    choice = default_chunking({"sections": scored(0.0, 0.5), "windows": scored(1.0, 0.47)})
-    assert choice.chunking == "sections"
+def depthed(score: float, tail_ms: int = 900) -> Depthed:
+    """Measure a depth whose every question scores ``score`` on MRR@10, ``none`` included."""
+    return Depthed(reciprocal=(score,) * QUESTIONS, groups={"all": score}, tail_ms=tail_ms)
 
 
-def test_a_challenger_at_3_1_times_the_tokens_is_left_out() -> None:
-    """Three times the control's tokens at most: the costlier one is out, the other chosen."""
-    choice = default_chunking(
-        {
-            "sections": scored(0.0, 0.5),
-            "small-to-big": scored(1.0, 0.5, int(3.1 * TOKENS)),
-            "windows": scored(0.9, 0.5, 3 * TOKENS),
-        }
-    )
-    assert choice.chunking == "windows"
+def decide(rule: str, control: str, arms: Mapping[str, Scored | Depthed]) -> Choice | Decision:
+    """Apply the rule named, the chunking's or the reranking depth's, to the arms run."""
+    if rule == "chunking":
+        return default_chunking(control, arms, {})
+    return default_reranking(arms)
 
 
-def test_of_two_within_0_01_of_evidence_the_cheaper_wins() -> None:
-    """1.0 against 0.995: as good, so the one that embeds less is chosen."""
-    choice = default_chunking(
-        {
-            "sections": scored(0.0, 0.5),
-            "section-paths": scored(1.0, 0.5, 2 * TOKENS),
-            "windows": scored(1.0, 0.5, int(1.5 * TOKENS), last=0.9),
-        }
-    )
-    assert choice.chunking == "windows"
-    tested = {"mrr", "evidence"}
-    assert {name: set(each) for name, each in choice.adjusted.items()} == {
-        "section-paths": tested,
-        "windows": tested,
-    }
+def scripted(monkeypatch: MonkeyPatch, pvalue: float) -> None:
+    """Have every paired test of the rules give ``pvalue``."""
+    monkeypatch.setattr(rules, "paired_test", lambda *_: pvalue)
+    monkeypatch.setattr(reranking, "paired_test", lambda *_: pvalue)
+
+
+def test_a_challenger_better_on_evidence_and_no_worse_otherwise_is_kept() -> None:
+    """Evidence@ask from 0 to 1 on every question: significant once multiplied by three."""
+    found = decide("chunking", "windows", {"windows": chunked(0.0), "sections": chunked(1.0)})
+    assert found.kept == "sections"
+    assert found.adjusted["sections"] < ALPHA_LEVEL
+
+
+@pytest.mark.parametrize(
+    ("challenger", "kept"),
+    [
+        (chunked(1.0, 0.48), "sections"),
+        (chunked(1.0, 0.479), "windows"),
+        (chunked(1.0, paraphrase=0.45), "sections"),
+        (chunked(1.0, paraphrase=0.449), "windows"),
+        (chunked(1.0, identifier=0.449), "windows"),
+        (chunked(1.0, keyword=0.449), "windows"),
+    ],
+)
+def test_mrr_may_fall_0_02_overall_and_0_05_in_a_group(challenger: Scored, kept: str) -> None:
+    """D2's guards against 0.500 everywhere: 0.02 overall, 0.05 in each group that it names.
+
+    Losses of 0.020 and 0.050 hold; 0.021 and 0.051 do not.
+    """
+    found = decide("chunking", "windows", {"windows": chunked(0.0), "sections": challenger})
+    assert found.kept == kept
+
+
+@pytest.mark.parametrize(
+    ("tokens", "kept"), [(3 * TOKENS, "sections"), (3 * TOKENS + 1, "windows")]
+)
+def test_a_challenger_may_embed_three_times_the_control_s_tokens(tokens: int, kept: str) -> None:
+    """The bound is relative: three times the control's tokens, and no more."""
+    arms = {"windows": chunked(0.0), "sections": chunked(1.0, tokens=tokens)}
+    found = decide("chunking", "windows", arms)
+    assert ("bound" in found.failed["sections"]) is (kept == "windows")
+    assert found.kept == kept
 
 
 def test_a_gain_on_one_question_alone_is_no_reason_to_change() -> None:
     """Higher on average, by one question of twenty: not significant once adjusted."""
-    choice = default_chunking({"sections": scored(0.0, 0.5), "windows": scored(0.0, 0.5, last=1.0)})
-    assert choice.chunking == "sections"
-    assert choice.adjusted["windows"]["evidence"] >= ALPHA_LEVEL
+    arms = {"windows": chunked(0.0), "sections": chunked(0.0, last=1.0)}
+    found = decide("chunking", "windows", arms)
+    assert found.kept == "windows"
+    assert found.adjusted["sections"] >= ALPHA_LEVEL
 
 
 def test_a_challenger_significantly_worse_on_evidence_never_qualifies() -> None:
     """Different on every question, the wrong way: the control stays."""
-    choice = default_chunking({"sections": scored(1.0, 0.5), "windows": scored(0.0, 0.5)})
-    assert choice.adjusted["windows"]["evidence"] < ALPHA_LEVEL
-    assert choice.chunking == "sections"
+    found = decide("chunking", "windows", {"windows": chunked(1.0), "sections": chunked(0.0)})
+    assert found.adjusted["sections"] < ALPHA_LEVEL
+    assert found.kept == "windows"
+
+
+EVERY_CHUNKING = {
+    "windows": chunked(0.0),
+    "sections": chunked(0.3),
+    "section-paths": chunked(0.2),
+    "small-to-big": chunked(0.1),
+}
+EVERY_DEPTH = {
+    "none": depthed(0.0),
+    "10": depthed(0.3),
+    "20": depthed(0.2),
+    "30": depthed(0.1),
+    "50": depthed(0.1),
+}
+
+
+@pytest.mark.parametrize(
+    ("rule", "control", "run", "adjusted"),
+    [
+        ("chunking", "windows", ("windows", "sections"), 0.06),
+        ("chunking", "windows", tuple(EVERY_CHUNKING), 0.06),
+        ("reranking depth", "none", ("none", "10"), 0.08),
+        ("reranking depth", "none", tuple(EVERY_DEPTH), 0.08),
+    ],
+)
+def test_the_family_is_fixed_whatever_the_arms_run(
+    monkeypatch: MonkeyPatch, rule: str, control: str, run: tuple[str, ...], adjusted: float
+) -> None:
+    """E8: each p-value of 0.02 is multiplied by its family's size, 3 chunkings or 4 depths.
+
+    Whichever others were run: 0.06 or 0.08, which no challenger passes; adjusting over the
+    arms run alone would give 0.02 to a challenger run alone, which would pass.
+    """
+    scripted(monkeypatch, 0.02)
+    every = EVERY_CHUNKING if rule == "chunking" else EVERY_DEPTH
+    found = decide(rule, control, {name: every[name] for name in run})
+    assert found.adjusted == pytest.approx(dict.fromkeys(run[1:], adjusted))
+    assert found.kept == control
+
+
+@pytest.mark.parametrize(
+    ("rule", "control", "arms", "untested"),
+    [
+        (
+            "chunking",
+            "windows",
+            {"windows": chunked(0.0), "small-to-big": chunked(0.0)},
+            ("sections", "section-paths"),
+        ),
+        ("reranking depth", "none", {"none": depthed(0.0), "20": depthed(0.0)}, ("10", "30", "50")),
+    ],
+)
+def test_an_untested_challenger_cannot_qualify_and_is_named(
+    rule: str, control: str, arms: Mapping[str, Scored | Depthed], untested: tuple[str, ...]
+) -> None:
+    """A challenger of the family not run is named, in the family's order, and never judged.
+
+    The one run that does not qualify leaves the control in place.
+    """
+    found = decide(rule, control, arms)
+    assert found.untested == untested
+    assert set(found.failed) == set(arms) - {control}
+    assert found.kept == control
+
+
+@pytest.mark.parametrize(
+    ("rule", "control", "arms", "reason"),
+    [
+        (
+            "chunking",
+            "windows",
+            {"sections": chunked(1.0), "small-to-big": chunked(1.0)},
+            "its control, windows, was not run",
+        ),
+        ("chunking", "windows", {"windows": chunked(1.0)}, "no challenger of its family was run"),
+        (
+            "chunking",
+            "windows",
+            {"windows": UNMEASURED, "sections": UNMEASURED},
+            "no golden question has a measure of Evidence@ask",
+        ),
+        (
+            "reranking depth",
+            "none",
+            {"none": depthed(0.0), "2": depthed(1.0), "3": depthed(1.0)},
+            "no challenger of its family was run",
+        ),
+        ("reranking depth", "none", {"10": depthed(1.0)}, "its control, none, was not run"),
+    ],
+)
+def test_no_control_no_challenger_or_no_measure_gives_no_verdict(
+    rule: str, control: str, arms: Mapping[str, Scored | Depthed], reason: str
+) -> None:
+    """No verdict, and why: the control not run, no challenger of the family, no measure."""
+    found = decide(rule, control, arms)
+    assert found.kept is None
+    assert found.reason == reason
+
+
+@pytest.mark.parametrize(
+    ("rule", "control", "arms", "kept"),
+    [
+        (
+            "reranking depth",
+            "none",
+            {"none": depthed(0.0), "10": depthed(0.592), "20": depthed(0.6)},
+            "10",
+        ),
+        (
+            "reranking depth",
+            "none",
+            {"none": depthed(0.0), "10": depthed(0.589), "20": depthed(0.6)},
+            "20",
+        ),
+        (
+            "reranking depth",
+            "none",
+            {"none": depthed(0.0), "10": depthed(0.59), "20": depthed(0.6)},
+            "10",
+        ),
+        (
+            "chunking",
+            "windows",
+            {
+                "windows": chunked(0.0),
+                "sections": chunked(1.0, tokens=2 * TOKENS),
+                "section-paths": chunked(1.0, tokens=int(1.5 * TOKENS), last=0.9),
+                "small-to-big": chunked(1.0, tokens=TOKENS, last=0.6),
+            },
+            "section-paths",
+        ),
+    ],
+)
+def test_within_the_margin_the_cheapest_qualifier_wins(
+    rule: str, control: str, arms: Mapping[str, Scored | Depthed], kept: str
+) -> None:
+    """D2: of the challengers qualifying, the cheapest within 0.01 of the best mean is kept.
+
+    The smaller depth, or the chunking that embeds fewer tokens: 0.592 and 0.590 are within
+    0.01 of 0.600, and 0.589 is not; 0.995 is within 0.01 of 1.000, and 0.980 is not.
+    """
+    assert decide(rule, control, arms).kept == kept

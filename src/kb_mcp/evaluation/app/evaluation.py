@@ -24,7 +24,6 @@ from pydantic import ConfigDict, Field, ValidationError
 
 from kb_mcp.config.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
-    CONTROL,
     CUTOFF,
     SAMPLES,
     SEED,
@@ -347,25 +346,23 @@ def prepared(
     return of_index, library
 
 
-def compared(measured: Sequence[IndexMeasures], questions: Sequence[Question]) -> dict[str, Choice]:
-    """Choose each model's default chunking by the rule, by its indexes' hybrid measures.
-
-    Only a model with an index cut by the control gets a choice.
-    """
+def compared(
+    measured: Sequence[IndexMeasures], questions: Sequence[Question], control: str
+) -> dict[str, Choice]:
+    """Apply plan 019's rule to each model's indexes, in hybrid mode, against ``control``."""
     scored: dict[str, dict[str, Scored]] = {}
     for of_index in measured:
         asked = (of_index.asked["hybrid"][question.id].evidence for question in questions)
         scored.setdefault(of_index.model, {})[of_index.chunking] = Scored(
-            reciprocal_ranks=tuple(
-                of_index.per["hybrid"][question.id].reciprocal_rank for question in questions
-            ),
             evidence=tuple(each for each in asked if each is not None),
+            groups={
+                group: each.reciprocal_rank for group, each in of_index.groups["hybrid"].items()
+            },
             tokens=of_index.costs.estimated,
         )
     return {
-        model: default_chunking(chunkings)
+        model: default_chunking(control, chunkings, {"model": model})
         for model, chunkings in scored.items()
-        if CONTROL in chunkings
     }
 
 

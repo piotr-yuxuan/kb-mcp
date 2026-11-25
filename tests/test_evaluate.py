@@ -236,8 +236,8 @@ def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_
 ) -> None:
     """Under each run's model and chunking, search's and ask's rows of the group all alone.
 
-    Lexical search, which ignores the chunking, comes with the first run alone; then each
-    model's default chunking by the rule, and the results file.
+    Lexical search, which ignores the chunking, comes with the first run alone; then the
+    verdict of plan 019's rule for each model, and the results file.
     """
     (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
     two = ["--chunking", "sections", "--chunking", "windows"]
@@ -253,8 +253,8 @@ def test_the_command_in_short_shows_each_mode_on_all_questions_then_the_results_
     modes = [["| lexical", "all"], ["| semantic", "all"], ["| hybrid", "all"]]
     assert rows == [*modes, *modes, *modes[1:], *modes[1:]]
     assert "\n## tiny, windows\n" in out
-    assert "Default chunking for tiny, by the rule: " in out
-    assert "  windows, evidence against sections: p = " in out
+    assert "Chunking for tiny, by the default rule: " in out
+    assert "  sections: Evidence@ask " in out
     assert out.endswith(f"Results: {results}\n")
 
 
@@ -293,7 +293,59 @@ def test_the_command_gives_each_model_s_run_and_the_results_file_as_json(
     run = document["indexes"][0]
     assert run["model"] == "tiny"
     assert run["ranks"]["semantic"]["q1"] == [1]
-    assert document["choices"]["tiny"]["chunking"] in CHUNKINGS
+    assert document["choices"]["tiny"]["kept"] in CHUNKINGS
+
+
+# The verdict's line of a chunking tried against the setting's, on GOLDEN: one question has
+# evidence, and one p-value of a single question is 1.
+TRIED = re.compile(
+    r"  sections: Evidence@ask \d\.\d{3} against \d\.\d{3}, adjusted p = 1\.0000, gains no;"
+    r" MRR@10 lost: all -?\d\.\d{3}, identifier n/a, keyword -?\d\.\d{3},"
+    r" paraphrase -?\d\.\d{3}, holds (yes|no); [\d,]+ tokens embedded, at most [\d,]+,"
+    r" within (yes|no)"
+)
+
+
+def test_eval_prints_and_records_the_verdicts(data: Path, capsys: CaptureFixture[str]) -> None:
+    """Each model's verdict, the chunking kept, its clauses and the chunkings not run.
+
+    With the setting's chunking, windows by default, and sections: windows stays, since a
+    gain on one question cannot be shown. The results file keeps the verdict.
+    """
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    two = ["--chunking", "sections", "--chunking", "windows"]
+    with serving(Scripted()) as url:
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *options(data, url), *two]) == 0
+    [results] = (data / "eval" / "results").glob("*.json")
+    lines = capsys.readouterr().out.splitlines()
+    said = lines.index("Chunking for tiny, by the default rule: windows stays.")
+    assert TRIED.fullmatch(lines[said + 1])
+    assert lines[said + 2 :] == [
+        "  section-paths, small-to-big: not run, so cannot qualify",
+        f"Results: {results}",
+    ]
+    verdict = json.loads(results.read_text(encoding="utf-8"))["chunking"]["tiny"]
+    assert (verdict["control"], verdict["kept"]) == ("windows", "windows")
+    assert verdict["untested"] == ["section-paths", "small-to-big"]
+
+
+@pytest.mark.parametrize(
+    ("setting", "control"), [("", "windows"), ('chunking = "sections"\n', "sections")]
+)
+def test_the_chunking_control_is_the_setting(
+    data: Path, capsys: CaptureFixture[str], setting: str, control: str
+) -> None:
+    """E2: plan 019's rule weighs the chunkings against the setting's, windows by default."""
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    two = ["--chunking", "sections", "--chunking", "windows", "--format", "json"]
+    with serving(Scripted()) as url:
+        given = options(data, url)
+        config = data.parent / "config.toml"
+        config.write_text(config.read_text("utf-8") + setting, "utf-8")
+        assert main(["eval", "--yes", str(data / "golden.yaml"), *given, *two]) == 0
+    verdict = json.loads(capsys.readouterr().out)["choices"]["tiny"]
+    assert verdict["control"] == control
+    assert set(verdict["means"]) == {"sections", "windows"}
 
 
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:
