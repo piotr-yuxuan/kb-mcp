@@ -22,15 +22,15 @@ from kb_mcp.evaluation.app.evaluation import (
     IndexMeasures,
     ask_row,
     built,
-    compared,
     evaluate,
     heading,
     read_golden,
     record,
     row,
     table,
+    verdicts,
 )
-from kb_mcp.evaluation.domain.evaluation import Choice
+from kb_mcp.evaluation.domain.evaluation import Verdict
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import CHUNKINGS, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
@@ -50,7 +50,7 @@ class IndexesEvaluated(Record):
     """What each evaluated index measured, each model's chunking, and the results file."""
 
     indexes: list[IndexMeasures]
-    choices: dict[str, Choice]
+    choices: dict[str, Verdict]
     results: Path
 
 
@@ -83,7 +83,7 @@ def run(
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    choices = compared(measured, questions, settings.chunking)
+    choices = verdicts(measured, questions, settings.chunking)
     kept = record(measured, golden, built_at, choices)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
     return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)

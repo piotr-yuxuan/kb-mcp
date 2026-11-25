@@ -25,19 +25,19 @@ from pydantic import ConfigDict, Field, ValidationError
 from kb_mcp.config.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
     CUTOFF,
+    RULES,
     SAMPLES,
     SEED,
     Measures,
     Question,
     Quoted,
-    Scored,
     averages,
-    default_chunking,
     holm,
     measure,
     paired_test,
     percentile,
     quoting,
+    verdict,
 )
 from kb_mcp.evaluation.domain.golden import Golden
 from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.settings import Settings
-    from kb_mcp.evaluation.domain.evaluation import Choice
+    from kb_mcp.evaluation.domain.evaluation import Verdict
     from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
 
@@ -346,23 +346,21 @@ def prepared(
     return of_index, library
 
 
-def compared(
+def verdicts(
     measured: Sequence[IndexMeasures], questions: Sequence[Question], control: str
-) -> dict[str, Choice]:
-    """Apply plan 019's rule to each model's indexes, in hybrid mode, against ``control``."""
-    scored: dict[str, dict[str, Scored]] = {}
+) -> dict[str, Verdict]:
+    """Apply the chunking's default rule to each model's indexes, in hybrid mode, to ``control``."""
+    arms: dict[str, dict[str, tuple[list[float], dict[str, float], int]]] = {}
     for of_index in measured:
         asked = (of_index.asked["hybrid"][question.id].evidence for question in questions)
-        scored.setdefault(of_index.model, {})[of_index.chunking] = Scored(
-            evidence=tuple(each for each in asked if each is not None),
-            groups={
-                group: each.reciprocal_rank for group, each in of_index.groups["hybrid"].items()
-            },
-            tokens=of_index.costs.estimated,
+        arms.setdefault(of_index.model, {})[of_index.chunking] = (
+            [each for each in asked if each is not None],
+            {group: each.reciprocal_rank for group, each in of_index.groups["hybrid"].items()},
+            of_index.costs.estimated,
         )
     return {
-        model: default_chunking(control, chunkings, {"model": model})
-        for model, chunkings in scored.items()
+        model: verdict(RULES["chunking"], control, chunkings, {"model": model})
+        for model, chunkings in arms.items()
     }
 
 
@@ -370,7 +368,7 @@ def record(
     measured: Sequence[IndexMeasures],
     golden: str,
     built_at: datetime,
-    choices: Mapping[str, Choice],
+    choices: Mapping[str, Verdict],
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text."""
     return {

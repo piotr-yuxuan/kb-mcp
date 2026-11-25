@@ -12,18 +12,18 @@ import pytest
 from kb_mcp.evaluation.domain import evaluation as rules
 from kb_mcp.evaluation.domain import reranking
 from kb_mcp.evaluation.domain.evaluation import (
-    Choice,
+    RULES,
     Measures,
     Question,
     Quoted,
-    Scored,
+    Verdict,
     averages,
-    default_chunking,
     holm,
     measure,
     paired_test,
     percentile,
     quoting,
+    verdict,
 )
 from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
 
@@ -208,6 +208,9 @@ def test_found_and_evidence_at_ask_are_shares_of_the_expected_documents() -> Non
 QUESTIONS = 20
 TOKENS = 1000
 ALPHA_LEVEL = 0.05  # the plan's level for an adjusted p-value
+# An arm as a default rule reads it: its deciding measure question by question, its MRR@10
+# by group, and what it spends.
+type Arm = tuple[tuple[float, ...], dict[str, float], int]
 
 
 def chunked(
@@ -217,18 +220,18 @@ def chunked(
     *,
     last: float | None = None,
     **groups: float,
-) -> Scored:
+) -> Arm:
     """Score a chunking on QUESTIONS questions, all alike unless ``last`` sets the last one.
 
     Its MRR@10 is ``mrr`` on all of them and in each group that D2 guards, but those given.
     """
     each = (evidence,) * (QUESTIONS - 1) + ((evidence if last is None else last),)
     guarded = dict.fromkeys(("all", "identifier", "keyword", "paraphrase"), mrr)
-    return Scored(evidence=each, groups=guarded | groups, tokens=tokens)
+    return each, guarded | groups, tokens
 
 
 # A chunking scored on golden questions none of which has evidence.
-UNMEASURED = Scored(evidence=(), groups={"all": 0.5}, tokens=TOKENS)
+UNMEASURED: Arm = ((), {"all": 0.5}, TOKENS)
 
 
 def depthed(score: float, tail_ms: int = 900) -> Depthed:
@@ -236,10 +239,10 @@ def depthed(score: float, tail_ms: int = 900) -> Depthed:
     return Depthed(reciprocal=(score,) * QUESTIONS, groups={"all": score}, tail_ms=tail_ms)
 
 
-def decide(rule: str, control: str, arms: Mapping[str, Scored | Depthed]) -> Choice | Decision:
+def decide(rule: str, control: str, arms: Mapping[str, Arm | Depthed]) -> Verdict | Decision:
     """Apply the rule named, the chunking's or the reranking depth's, to the arms run."""
     if rule == "chunking":
-        return default_chunking(control, arms, {})
+        return verdict(RULES[rule], control, arms, {})
     return default_reranking(arms)
 
 
@@ -267,7 +270,7 @@ def test_a_challenger_better_on_evidence_and_no_worse_otherwise_is_kept() -> Non
         (chunked(1.0, keyword=0.449), "windows"),
     ],
 )
-def test_mrr_may_fall_0_02_overall_and_0_05_in_a_group(challenger: Scored, kept: str) -> None:
+def test_mrr_may_fall_0_02_overall_and_0_05_in_a_group(challenger: Arm, kept: str) -> None:
     """D2's guards against 0.500 everywhere: 0.02 overall, 0.05 in each group that it names.
 
     Losses of 0.020 and 0.050 hold; 0.021 and 0.051 do not.
@@ -354,7 +357,7 @@ def test_the_family_is_fixed_whatever_the_arms_run(
     ],
 )
 def test_an_untested_challenger_cannot_qualify_and_is_named(
-    rule: str, control: str, arms: Mapping[str, Scored | Depthed], untested: tuple[str, ...]
+    rule: str, control: str, arms: Mapping[str, Arm | Depthed], untested: tuple[str, ...]
 ) -> None:
     """A challenger of the family not run is named, in the family's order, and never judged.
 
@@ -392,7 +395,7 @@ def test_an_untested_challenger_cannot_qualify_and_is_named(
     ],
 )
 def test_no_control_no_challenger_or_no_measure_gives_no_verdict(
-    rule: str, control: str, arms: Mapping[str, Scored | Depthed], reason: str
+    rule: str, control: str, arms: Mapping[str, Arm | Depthed], reason: str
 ) -> None:
     """No verdict, and why: the control not run, no challenger of the family, no measure."""
     found = decide(rule, control, arms)
@@ -435,7 +438,7 @@ def test_no_control_no_challenger_or_no_measure_gives_no_verdict(
     ],
 )
 def test_within_the_margin_the_cheapest_qualifier_wins(
-    rule: str, control: str, arms: Mapping[str, Scored | Depthed], kept: str
+    rule: str, control: str, arms: Mapping[str, Arm | Depthed], kept: str
 ) -> None:
     """D2: of the challengers qualifying, the cheapest within 0.01 of the best mean is kept.
 

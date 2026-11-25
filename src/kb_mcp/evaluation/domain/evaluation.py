@@ -2,7 +2,7 @@
 
 Pure: rankings come in as lists of document paths, best first, and questions name the
 paths that answer them; so do the passages that ask quotes, with their texts. Nothing
-here runs a search. ``default_chunking`` holds plan 019's rule for the default chunking.
+here runs a search. ``RULES`` holds the default rules as data, and ``verdict`` applies one.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import math
 import re
 from collections.abc import Mapping
 from statistics import fmean
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from pydantic import Field
@@ -32,13 +32,10 @@ SEED = 11
 # pipes of a table's cells, which plain text renders as spaces.
 LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 MARKS = re.compile(r"[*_`|]")
-# Plan 019's rule: the level of a challenger's adjusted p-value on Evidence@ask; the MRR@10
-# that it may lose, by group, "all" the questions; how many times the control's tokens it
-# may cost; and within how much of the best Evidence@ask the cheapest is kept.
+# The level of an adjusted p-value; within how much of the best mean a default rule keeps
+# the cheapest challenger that qualifies.
 ALPHA = 0.05
-MRR_LOSS = {"all": 0.02, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05}
-COST = 3
-TIE = 0.01
+MARGIN = 0.01
 
 
 class Question(Record):
@@ -93,35 +90,48 @@ class Quoted(Record):
         )
 
 
-class Scored(Record):
-    """What a chunking scored in hybrid mode, question by question, and what it costs."""
+class DefaultRule(Record):
+    """The rule that keeps a setting's value unless a challenger qualifies on the same questions.
 
-    evidence: tuple[float, ...]  # Evidence@ask of each question with evidence
-    groups: Mapping[str, float]  # MRR@10 of each group, "all" the questions
-    tokens: int  # of the texts that its index embeds, at the characters of a token
-
-
-class Choice(Record):
-    """The verdict of plan 019's rule on the chunkings run: the chunking kept, or why none.
-
-    Each challenger run has its clauses: its gain, the groups' losses, its tokens;
-    ``failed`` names those it fails, of ``gain``, ``guards`` and ``bound``.
+    Its family is ``values`` but the control. A challenger qualifies when its mean on
+    ``decides`` is higher than the control's, with a p-value below ALPHA once multiplied
+    by the family's size; when no group of ``guards`` loses more of MRR@10 than it allows;
+    and when it spends at most ``bound``: tokens embedded, as a multiple of the control's,
+    or a search's 95th percentile, in milliseconds. Of those qualifying, the cheapest
+    within MARGIN of the best mean is kept: the fewest tokens, or the first of ``values``.
     """
 
-    rule: str
+    name: str  # the decision, as a verdict says it
+    values: tuple[str, ...]  # cheapest first, when what it spends is time
+    decides: Literal["MRR@10", "Evidence@ask"]
+    guards: Mapping[str, float]  # the most MRR@10 that each group may lose, "all" of them
+    spends: Literal["tokens", "ms"]
+    bound: float
+
+
+class Verdict(Record):
+    """What a default rule gave on the arms run: the value kept, or why there is none.
+
+    Each arm is named by its value. Each challenger run has its clauses, its gain, the
+    groups' losses and what it spends; ``failed`` names those that it fails, of ``gain``,
+    ``guards`` and ``bound``.
+    """
+
+    rule: str  # its name
     fixed: Mapping[str, str]  # the settings that the arms share, such as the model
     control: str
     kept: str | None  # None: no verdict
     reason: str | None = None  # why there is no verdict
-    untested: tuple[str, ...] = ()  # the family's chunkings not run, which cannot qualify
-    means: Mapping[str, float] = Field(default_factory=dict)  # Evidence@ask, to three decimals
+    untested: tuple[str, ...] = ()  # the family's values not run, which cannot qualify
+    means: Mapping[str, float] = Field(default_factory=dict)  # on decides, to three decimals
     adjusted: Mapping[str, float] = Field(default_factory=dict)  # times the family's size
     losses: Mapping[str, Mapping[str, float]] = Field(default_factory=dict)  # by group
-    spent: Mapping[str, int] = Field(default_factory=dict)  # the tokens embedded
+    spent: Mapping[str, int] = Field(default_factory=dict)  # as the bound reads it
     failed: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
 
     def lines(self) -> list[str]:
-        """Say the verdict, then each challenger's clauses, then the chunkings not run."""
+        """Say the verdict, then each challenger's clauses, then the values not run."""
+        rule = RULES[self.rule]
         if self.kept is None:
             said = f"no verdict, since {self.reason}"
         elif self.kept == self.control:
@@ -129,27 +139,48 @@ class Choice(Record):
         else:
             said = f"{self.kept}, in place of {self.control}"
         held = f" for {', '.join(self.fixed.values())}" if self.fixed else ""
-        lines = [f"Chunking{held}, by the default rule: {said}."]
+        lines = [f"{rule.name.capitalize()}{held}, by the default rule: {said}."]
         for name, failed in self.failed.items():
             losses = ", ".join(
                 f"{group} {self.losses[name][group]:.3f}"
                 if group in self.losses[name]
                 else f"{group} n/a"
-                for group in MRR_LOSS
+                for group in rule.guards
             )
             gains, holds, within = (
                 "no" if clause in failed else "yes" for clause in ("gain", "guards", "bound")
             )
+            if rule.spends == "tokens":
+                most = rule.bound * self.spent[self.control]
+                spent = f"{self.spent[name]:,} tokens embedded, at most {most:,.0f}"
+            else:
+                spent = f"95th percentile {self.spent[name]:,} ms, at most {rule.bound:,.0f} ms"
             lines.append(
-                f"  {name}: Evidence@ask {self.means[name]:.3f} against"
+                f"  {name}: {rule.decides} {self.means[name]:.3f} against"
                 f" {self.means[self.control]:.3f}, adjusted p = {self.adjusted[name]:.4f},"
-                f" gains {gains}; MRR@10 lost: {losses}, holds {holds};"
-                f" {self.spent[name]:,} tokens embedded, at most"
-                f" {COST * self.spent[self.control]:,.0f}, within {within}"
+                f" gains {gains}; MRR@10 lost: {losses}, holds {holds}; {spent}, within {within}"
             )
         if self.untested:
             lines.append(f"  {', '.join(self.untested)}: not run, so cannot qualify")
         return lines
+
+
+# The default rules, by name. A guard of 0.05 is about one standard error of a group's
+# mean difference at some 32 questions: one of 0.02 would refuse a harmless challenger
+# about one time in three.
+RULES = {
+    rule.name: rule
+    for rule in (
+        DefaultRule(
+            name="chunking",
+            values=CHUNKINGS,
+            decides="Evidence@ask",
+            guards={"all": 0.02, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05},
+            spends="tokens",
+            bound=3,
+        ),
+    )
+}
 
 
 def plain(text: str) -> str:
@@ -200,61 +231,65 @@ def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
     return Quoted(found=found, evidence=fmean(held) if held else None)
 
 
-def default_chunking(
-    control: str, scored: Mapping[str, Scored], fixed: Mapping[str, str]
-) -> Choice:
-    """Apply plan 019's rule to the chunkings scored, each by its name, against the control.
+def verdict(
+    rule: DefaultRule,
+    control: str,
+    arms: Mapping[str, tuple[Sequence[float], Mapping[str, float], int]],
+    fixed: Mapping[str, str],
+) -> Verdict:
+    """Apply a default rule to the arms run, each named by its value, against the control.
 
-    Its family is every other chunking of CHUNKINGS; one not scored cannot qualify. Without
-    the control, a challenger, or a question with evidence, there is no verdict, and the
-    reason says why. A challenger qualifies when it beats the control on Evidence@ask, with
-    a p-value below ALPHA once multiplied by the family's size; loses at most MRR_LOSS of
-    MRR@10 in each group; and costs at most COST times the control's tokens. Of those, the
-    cheapest within TIE of the best Evidence@ask is kept. Values compare as reported: means
-    and losses to three decimals, p-values to four.
+    Each arm gives the measure that the rule decides on, question by question, of the
+    questions that it measures, in the same order for all; its MRR@10 by group, "all" the
+    questions; and what it spends. An arm outside the rule's values is left out. Without
+    the control, a challenger, or a question measured, there is no verdict, and the reason
+    says why. Values compare as reported: means and losses to three decimals, p-values to
+    four, times in whole milliseconds. A group that the golden file does not name has no
+    loss, and holds.
     """
-    family = [name for name in CHUNKINGS if name != control]
-    run = [name for name in family if name in scored]
-    untested = tuple(name for name in family if name not in scored)
-    if control not in scored:
+    family = [value for value in rule.values if value != control]
+    run = [value for value in family if value in arms]
+    untested = tuple(value for value in family if value not in arms)
+    if control not in arms:
         reason = f"its control, {control}, was not run"
     elif not run:
         reason = "no challenger of its family was run"
-    elif not scored[control].evidence:
-        reason = "no golden question has a measure of Evidence@ask"
+    elif not arms[control][0]:
+        reason = f"no golden question has a measure of {rule.decides}"
     else:
         reason = None
     if reason:
-        return Choice(
-            rule="chunking",
+        return Verdict(
+            rule=rule.name,
             fixed=fixed,
             control=control,
             kept=None,
             reason=reason,
             untested=untested,
         )
-    base = scored[control]
-    means = {name: round(fmean(scored[name].evidence), 3) for name in (control, *run)}
+    scores = {name: arms[name][0] for name in (control, *run)}
+    groups = {name: arms[name][1] for name in (control, *run)}
+    spent = {name: arms[name][2] for name in (control, *run)}
+    means = {name: round(fmean(each), 3) for name, each in scores.items()}
     adjusted = {
-        name: min(1.0, len(family) * paired_test(base.evidence, scored[name].evidence))
-        for name in run
+        name: min(1.0, len(family) * paired_test(scores[control], scores[name])) for name in run
     }
     losses = {
         name: {
-            group: round(round(base.groups[group], 3) - round(scored[name].groups[group], 3), 3)
-            for group in MRR_LOSS
-            if group in base.groups
+            group: round(round(groups[control][group], 3) - round(groups[name][group], 3), 3)
+            for group in rule.guards
+            if group in groups[control]
         }
         for name in run
     }
-    spent = {name: scored[name].tokens for name in (control, *run)}
+    most = rule.bound * (spent[control] if rule.spends == "tokens" else 1)
     failed = {
         name: tuple(
             clause
             for clause, holds in (
                 ("gain", means[name] > means[control] and round(adjusted[name], 4) < ALPHA),
-                ("guards", all(loss <= MRR_LOSS[group] for group, loss in losses[name].items())),
-                ("bound", spent[name] <= COST * spent[control]),
+                ("guards", all(loss <= rule.guards[group] for group, loss in losses[name].items())),
+                ("bound", spent[name] <= most),
             )
             if not holds
         )
@@ -262,12 +297,13 @@ def default_chunking(
     }
     qualified = [name for name in run if not failed[name]]
     best = max((means[name] for name in qualified), default=0.0)
-    close = [name for name in qualified if round(best - means[name], 3) <= TIE]
-    return Choice(
-        rule="chunking",
+    close = [name for name in qualified if round(best - means[name], 3) <= MARGIN]
+    cheaper = spent.__getitem__ if rule.spends == "tokens" else rule.values.index
+    return Verdict(
+        rule=rule.name,
         fixed=fixed,
         control=control,
-        kept=min(close, key=spent.__getitem__, default=control),
+        kept=min(close, key=cheaper, default=control),
         untested=untested,
         means=means,
         adjusted=adjusted,
