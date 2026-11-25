@@ -11,7 +11,7 @@ import pytest
 from kb_mcp.cli.main import main
 from kb_mcp.config.settings import Settings
 from kb_mcp.evaluation.app import reranked as measuring
-from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, read_golden
+from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate, read_golden
 from kb_mcp.evaluation.app.reranked import Counted
 from kb_mcp.evaluation.domain import evaluation as rules
 from kb_mcp.evaluation.domain.evaluation import RULES, Measures, Question, Verdict, verdict
@@ -465,6 +465,13 @@ def test_a_run_whose_reranking_failed_keeps_its_results_and_says_how_many(
     assert [arm["failed"] for arm in record["arms"]] == [0, 1, 0]
 
 
+def eval_times(data: Path, clock: Callable[[], float]) -> list[tuple[float, float]]:
+    """Evaluate GOLDEN with windows; give each mode's search times, median and 95th."""
+    settings = Settings(data_dir=data, model="tiny")
+    [run] = evaluate(settings, golden(data), [EvaluatedIndex(tiny(), "windows")], clock, MOMENT)
+    return list(run.times.values())
+
+
 def rerank_times(data: Path, clock: Callable[[], float]) -> list[tuple[float, float]]:
     """Measure GOLDEN at depth 2, in hybrid mode; give each arm's search times."""
     settings = Settings(data_dir=data, model="tiny", search_mode="hybrid")
@@ -478,7 +485,7 @@ def rerank_times(data: Path, clock: Callable[[], float]) -> list[tuple[float, fl
 SERVED_S, DEEP_S = 0.25, 7.0
 
 
-@pytest.mark.parametrize("timed", [rerank_times], ids=["eval-rerank"])
+@pytest.mark.parametrize("timed", [eval_times, rerank_times], ids=["eval", "eval-rerank"])
 def test_a_search_is_timed_as_served(
     data: Path,
     monkeypatch: MonkeyPatch,

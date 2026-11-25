@@ -244,12 +244,7 @@ def evaluate(
                     of_index.asked[mode], of_index.raw[mode] = {}, {}
                     spent, asking, served = [], [], library.in_mode(mode)
                     for question in asked.each(questions, lambda one: one.id):
-                        started = clock()
                         shown, note = library.ranked(question.text, mode, limit=RANKED)
-                        spent.append(clock() - started)
-                        QUESTION_DURATION.record(
-                            spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
-                        )
                         if note:
                             message = f"{name}, {mode}:{note}"
                             raise EvaluationError(message)
@@ -257,9 +252,15 @@ def evaluate(
                         started = clock()
                         quoted = library.quoted(question.text, mode)
                         asking.append(clock() - started)
-                        # The answers as the server writes them; their attributes are its own.
+                        # As the server answers, the search timed; their attributes are its own.
                         with trace.use_span(trace.INVALID_SPAN):
-                            search, answer = served.search(question.text), served.ask(question.text)
+                            started = clock()
+                            search = served.search(question.text)
+                            spent.append(clock() - started)
+                            answer = served.ask(question.text)
+                        QUESTION_DURATION.record(
+                            spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
+                        )
                         of_index.per[mode][question.id] = measure(
                             paths,
                             question,
