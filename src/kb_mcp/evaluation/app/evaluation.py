@@ -13,6 +13,7 @@ question is timed and logged, and each mode's scores measured, as
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import itertools
 import json
@@ -160,6 +161,25 @@ def skipping(skipped: Sequence[Mapping[str, str]]) -> list[str]:
     return [*said, UPDATE] if said else []
 
 
+def running(
+    question: Question,
+    arm: str,
+    per: Mapping[str, Measures],
+    asked: Mapping[str, Quoted] | None = None,
+) -> str:
+    """Name a question as progress shows it: its arm and id, then the results of those done.
+
+    The running MRR@10 of the arm's questions done, and their Evidence@ask, when ``asked``
+    has any with evidence.
+    """
+    if not per:
+        return f"{arm} {question.id}"
+    held = Quoted.mean(list(asked.values())).evidence if asked else None
+    evidence = "" if held is None else f", Evidence@ask {held:.3f}"
+    rank = Measures.mean(list(per.values())).reciprocal_rank
+    return f"{arm} {question.id}: MRR@10 {rank:.3f}{evidence}"
+
+
 @dataclass(frozen=True)
 class EvaluatedIndex:
     """What one index under evaluation is built with: a model connected, and a chunking."""
@@ -223,7 +243,7 @@ def evaluate(
     Each evaluated index is ``prepared``. Raises EvaluationError when a mode by meaning
     falls back to words, which would measure words twice, and ModelError for a model
     that fails. For each, its index's build reports its own tasks, then the task
-    ``questions`` every question in every mode, each by its id.
+    ``questions`` every question in every mode, each named by ``running``.
 
     Each is the span ``eval.model``; each question, timed in
     ``kb_mcp.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
@@ -243,7 +263,12 @@ def evaluate(
                     of_index.per[mode], of_index.ranks[mode] = {}, {}
                     of_index.asked[mode], of_index.raw[mode] = {}, {}
                     spent, asking, served = [], [], library.in_mode(mode)
-                    for question in asked.each(questions, lambda one: one.id):
+                    for question in asked.each(
+                        questions,
+                        functools.partial(
+                            running, arm=mode, per=of_index.per[mode], asked=of_index.asked[mode]
+                        ),
+                    ):
                         shown, note = library.ranked(question.text, mode, limit=RANKED)
                         if note:
                             message = f"{name}, {mode}:{note}"

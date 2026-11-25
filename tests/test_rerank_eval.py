@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import json
+from statistics import fmean
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +18,7 @@ from kb_mcp.evaluation.domain import evaluation as rules
 from kb_mcp.evaluation.domain.evaluation import RULES, Measures, Question, Verdict, verdict
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
+from kb_mcp.observability.progress import drawn
 from kb_mcp.search.adapters.reranking import Reranked, RerankError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
@@ -31,14 +33,16 @@ from tests.endpoint import (
 from tests.mirrors import MOMENT
 from tests.reference import Emitted, undocumented
 from tests.test_evaluate import GOLDEN, READERS, data, golden, read_by, ticking
+from tests.test_progress import Recorded
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+    from kb_mcp.evaluation.domain.evaluation import Quoted
     from tests.conftest import InMemory
 
 __all__ = ["data"]  # the fixture of test_evaluate, used here
@@ -51,6 +55,8 @@ FAMILY = ["10", "20", "30", "50"]
 ALPHA_LEVEL = 0.05
 # An arm as the default rule reads it: MRR@10 question by question, by group, and its time.
 type Arm = tuple[tuple[float, ...], dict[str, float], int]
+# Each arm that a command measured: search's and ask's measures by question, its times.
+type ByArm = list[tuple[Mapping[str, Measures], Mapping[str, Quoted], tuple[float, float]]]
 
 
 def arm(score: float, tail_ms: int = 900, **groups: float) -> Arm:
@@ -465,31 +471,32 @@ def test_a_run_whose_reranking_failed_keeps_its_results_and_says_how_many(
     assert [arm["failed"] for arm in record["arms"]] == [0, 1, 0]
 
 
-def eval_times(data: Path, clock: Callable[[], float]) -> list[tuple[float, float]]:
-    """Evaluate GOLDEN with windows; give each mode's search times, median and 95th."""
+def eval_arms(data: Path, clock: Callable[[], float]) -> ByArm:
+    """Evaluate GOLDEN with windows; give each mode's measures, ask's and search's times."""
     settings = Settings(data_dir=data, model="tiny")
     [run] = evaluate(settings, golden(data), [EvaluatedIndex(tiny(), "windows")], clock, MOMENT)
-    return list(run.times.values())
+    return [(run.per[mode], run.asked[mode], run.times[mode]) for mode in run.per]
 
 
-def rerank_times(data: Path, clock: Callable[[], float]) -> list[tuple[float, float]]:
-    """Measure GOLDEN at depth 2, in hybrid mode; give each arm's search times."""
+def rerank_arms(data: Path, clock: Callable[[], float]) -> ByArm:
+    """Measure GOLDEN at depth 2, in hybrid mode; give each arm's measures and times."""
     settings = Settings(data_dir=data, model="tiny", search_mode="hybrid")
     scores = Counted(lambda _query, texts: Reranked(scores=[0.0] * len(texts), tokens=None))
     arms = measuring.Arms("hybrid", (2,), scores, MOMENT)
     index = EvaluatedIndex(tiny(), "windows")
-    return [arm.times for arm in measuring.measured(index, settings, golden(data), arms, clock)[1]]
+    _, found = measuring.measured(index, settings, golden(data), arms, clock)
+    return [(arm.per, {}, arm.times) for arm in found]
 
 
 # Seconds that a search takes by the test's clock, and a ranking read for the measures.
 SERVED_S, DEEP_S = 0.25, 7.0
+# Each command that measures questions arm by arm.
+COMMANDS = pytest.mark.parametrize("measured_by", [eval_arms, rerank_arms], ids=["eval", "rerank"])
 
 
-@pytest.mark.parametrize("timed", [eval_times, rerank_times], ids=["eval", "eval-rerank"])
+@COMMANDS
 def test_a_search_is_timed_as_served(
-    data: Path,
-    monkeypatch: MonkeyPatch,
-    timed: Callable[[Path, Callable[[], float]], list[tuple[float, float]]],
+    data: Path, monkeypatch: MonkeyPatch, measured_by: Callable[[Path, Callable[[], float]], ByArm]
 ) -> None:
     """D6, E17: a search's time is the search tool's, given the question alone, as served.
 
@@ -514,10 +521,41 @@ def test_a_search_is_timed_as_served(
 
     monkeypatch.setattr(Library, "search", served)
     monkeypatch.setattr(Library, "ranked", deep)
-    times = timed(data, lambda: now[0])
+    times = [times for _, _, times in measured_by(data, lambda: now[0])]
     assert times == [(SERVED_S, SERVED_S)] * len(times)
     assert asked
     assert all(len(given) == 1 and not named for given, named in asked)
+
+
+@COMMANDS
+def test_the_progress_names_carry_the_running_results(
+    data: Path, measured_by: Callable[[Path, Callable[[], float]], ByArm]
+) -> None:
+    """D9: each question's name on the bar carries the results of the arm's questions done.
+
+    Their MRR@10 and, in eval, their Evidence@ask, of those with evidence; before the
+    first question of an arm is done, none.
+    """
+    recorded = Recorded()
+    with drawn(recorded):
+        arms = measured_by(data, ticking())
+    begun = max(at for at, call in enumerate(recorded.calls) if call[:2] == ("begin", "questions"))
+    shown = [call[2] for call in recorded.calls[begun:] if call[0] == "show"]
+    questions = golden(data)
+    names = iter(dict.fromkeys(shown))
+    for per, asked, _ in arms:
+        for done, question in enumerate(questions):
+            name = next(names)
+            ranks = [per[each.id].reciprocal_rank for each in questions[:done]]
+            held = [
+                evidence
+                for each in questions[:done]
+                if each.id in asked and (evidence := asked[each.id].evidence) is not None
+            ]
+            assert question.id in name
+            assert f"MRR@10 {fmean(ranks):.3f}" in name if ranks else "MRR@10" not in name
+            assert f"Evidence@ask {fmean(held):.3f}" in name if held else "Evidence" not in name
+    assert next(names, None) is None
 
 
 def test_eval_rerank_records_as_documented(telemetry: InMemory, data: Path) -> None:

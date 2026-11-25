@@ -8,6 +8,7 @@ the arms.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 from dataclasses import dataclass
 from statistics import fmean, median
@@ -15,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from opentelemetry import trace
 
-from kb_mcp.evaluation.app.evaluation import TAIL, EvaluationError, prepared
+from kb_mcp.evaluation.app.evaluation import TAIL, EvaluationError, prepared, running
 from kb_mcp.evaluation.domain.evaluation import (
     CUTOFF,
     NOT_RERANKED,
@@ -123,7 +124,8 @@ def measured(
     untimed, to give Recall@N, and measures its first ten. A question whose reranking
     fails keeps its order not reranked, and is counted. Raises EvaluationError when a
     search falls back by words, which would measure another arm, and ModelError for a
-    model that fails. Each question in each arm is the progress task ``questions``.
+    model that fails. Each question in each arm is the progress task ``questions``, each
+    named by ``running``.
     """
     of_index, plain = prepared(evaluated, settings, questions, clock, arms.built_at)
     deepest = max(arms.depths)
@@ -136,7 +138,8 @@ def measured(
             library = plain.in_mode(arms.mode).rerank_with(reranking)
             tokens = arms.score.tokens
             per, quoted, ranked, spent, failed = {}, {}, {}, [], 0
-            for question in asking.each(questions, lambda one: one.id):
+            naming = functools.partial(running, arm=f"depth {depth}", per=per)
+            for question in asking.each(questions, naming):
                 started = clock()
                 with trace.use_span(served):
                     library.search(question.text)
