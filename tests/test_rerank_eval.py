@@ -11,8 +11,8 @@ from kb_mcp.cli.main import main
 from kb_mcp.evaluation.app import reranked as measuring
 from kb_mcp.evaluation.app.evaluation import read_golden
 from kb_mcp.evaluation.app.reranked import Counted
-from kb_mcp.evaluation.domain import reranking as bar
-from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
+from kb_mcp.evaluation.domain import evaluation as rules
+from kb_mcp.evaluation.domain.evaluation import RULES, Verdict, verdict
 from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
 from kb_mcp.search.adapters.reranking import Reranked
@@ -39,19 +39,22 @@ GROUPS = {"identifier": 0.600, "keyword": 0.800}
 # Plan 022's family, and the level of an adjusted p-value.
 FAMILY = ["10", "20", "30", "50"]
 ALPHA_LEVEL = 0.05
+# An arm as the default rule reads it: MRR@10 question by question, by group, and its time.
+type Arm = tuple[tuple[float, ...], dict[str, float], int]
 
 
-def arm(score: float, tail_ms: int = 900, **groups: float) -> Depthed:
+def arm(score: float, tail_ms: int = 900, **groups: float) -> Arm:
     """Make an arm whose every question scores ``score``, its groups as given or as GROUPS."""
-    return Depthed(reciprocal=(score,) * QUESTIONS, groups=GROUPS | groups, tail_ms=tail_ms)
+    return (score,) * QUESTIONS, GROUPS | groups, tail_ms
 
 
 PLAIN = arm(0.0)
 
 
-def decided(plain: Depthed, **arms: Depthed) -> Decision:
+def decided(plain: Arm, **arms: Arm) -> Verdict:
     """Apply the bar to the order not reranked and to depths given as ``d10=...``."""
-    return default_reranking({"none": plain, **{name[1:]: each for name, each in arms.items()}})
+    depths = {"none": plain, **{name[1:]: each for name, each in arms.items()}}
+    return verdict(RULES["reranking depth"], "none", depths, {})
 
 
 def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_kept() -> None:
@@ -101,7 +104,7 @@ def scripted_tests(monkeypatch: MonkeyPatch, pvalues: dict[tuple[float, float], 
     def test(before: Sequence[float], after: Sequence[float]) -> float:
         return pvalues.get((before[0], after[0]), 1.0)
 
-    monkeypatch.setattr(bar, "paired_test", test)
+    monkeypatch.setattr(rules, "paired_test", test)
 
 
 @pytest.mark.parametrize(("pvalue", "gains"), [(0.0125, False), (0.0124, True)])
@@ -291,7 +294,7 @@ def test_eval_rerank_prints_and_records_the_verdict(
 
     The results file keeps the verdict as given.
     """
-    decision = Decision(
+    decision = Verdict(
         rule="reranking depth",
         fixed={},
         control="none",
@@ -303,7 +306,7 @@ def test_eval_rerank_prints_and_records_the_verdict(
         spent={"none": 300, "10": 5001, "20": 4200},
         failed={"10": ("guards", "bound"), "20": ()},
     )
-    monkeypatch.setattr(measuring, "default_reranking", lambda _arms: decision)
+    monkeypatch.setattr(measuring, "verdict", lambda *_: decision)
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url) == 0
     expected = [

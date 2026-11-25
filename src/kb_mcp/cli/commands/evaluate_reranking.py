@@ -23,11 +23,11 @@ from kb_mcp.evaluation.app.reranked import (
     Arm,
     Arms,
     Counted,
-    decided,
+    depth_verdict,
     measured,
     recorded,
 )
-from kb_mcp.evaluation.domain.reranking import Decision
+from kb_mcp.evaluation.domain.evaluation import Verdict
 from kb_mcp.kernel.names import BAR_DEPTHS, RERANKING, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
@@ -53,7 +53,7 @@ class DepthsEvaluated(Record):
     """Each arm measured, the bar's verdict, the mode, and the results file."""
 
     arms: list[Arm]
-    decision: Decision
+    decision: Verdict
     mode: str
     results: Path
 
@@ -90,7 +90,7 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
-    decision = decided(found, questions)
+    decision = depth_verdict(found, questions)
     about: dict[str, object] = {
         "built_at": built_at.isoformat(),
         "mode": settings.search_mode,

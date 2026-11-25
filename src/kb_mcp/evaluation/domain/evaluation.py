@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 from pydantic import Field
 
-from kb_mcp.kernel.names import CHUNKINGS
+from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S, CHUNKINGS
 from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
@@ -36,6 +36,8 @@ MARKS = re.compile(r"[*_`|]")
 # the cheapest challenger that qualifies.
 ALPHA = 0.05
 MARGIN = 0.01
+# The arm not reranked, the control of the reranking depth, as a verdict names it.
+NOT_RERANKED = "none"
 
 
 class Question(Record):
@@ -178,6 +180,14 @@ RULES = {
             guards={"all": 0.02, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05},
             spends="tokens",
             bound=3,
+        ),
+        DefaultRule(
+            name="reranking depth",
+            values=(NOT_RERANKED, *(str(depth) for depth in BAR_DEPTHS)),
+            decides="MRR@10",
+            guards={"identifier": 0.05, "keyword": 0.05},
+            spends="ms",
+            bound=BOUND_S * 1000,
         ),
     )
 }

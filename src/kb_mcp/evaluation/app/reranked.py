@@ -2,7 +2,8 @@
 
 Each arm searches every question as ``search`` does, timed, then asks it as ``ask``
 does; the arm not reranked gives the first ranking, whose Recall@N says the most that a
-depth of N could bring into the first ten. Plan 022's bar then reads the arms.
+depth of N could bring into the first ten. The reranking depth's default rule then reads
+the arms.
 """
 
 from __future__ import annotations
@@ -15,6 +16,8 @@ from typing import TYPE_CHECKING
 from kb_mcp.evaluation.app.evaluation import TAIL, EvaluationError, prepared
 from kb_mcp.evaluation.domain.evaluation import (
     CUTOFF,
+    NOT_RERANKED,
+    RULES,
     SAMPLES,
     SEED,
     Measures,
@@ -23,8 +26,8 @@ from kb_mcp.evaluation.domain.evaluation import (
     measure,
     percentile,
     quoting,
+    verdict,
 )
-from kb_mcp.evaluation.domain.reranking import NONE, Decision, Depthed, default_reranking
 from kb_mcp.kernel.records import Record
 from kb_mcp.observability.progress import task
 from kb_mcp.search.app.reranking import Reranking
@@ -35,7 +38,7 @@ if TYPE_CHECKING:
 
     from kb_mcp.config.settings import SearchMode, Settings
     from kb_mcp.evaluation.app.evaluation import EvaluatedIndex
-    from kb_mcp.evaluation.domain.evaluation import Question
+    from kb_mcp.evaluation.domain.evaluation import Question, Verdict
     from kb_mcp.search.adapters.reranking import Reranked
 
 
@@ -160,22 +163,25 @@ def measured(
     return found
 
 
-def decided(found: Sequence[Arm], questions: Sequence[Question]) -> Decision:
-    """Apply plan 022's bar to the arms measured, each named by its depth, the first ``none``."""
-    return default_reranking(
+def depth_verdict(found: Sequence[Arm], questions: Sequence[Question]) -> Verdict:
+    """Apply the reranking depth's default rule to the arms measured, each named by its depth."""
+    return verdict(
+        RULES["reranking depth"],
+        NOT_RERANKED,
         {
-            str(arm.depth) if arm.depth else NONE: Depthed(
-                reciprocal=tuple(arm.per[question.id].reciprocal_rank for question in questions),
-                groups={group: each.reciprocal_rank for group, each in arm.groups.items()},
-                tail_ms=round(arm.times[1] * 1000),
+            str(arm.depth) if arm.depth else NOT_RERANKED: (
+                [arm.per[question.id].reciprocal_rank for question in questions],
+                {group: each.reciprocal_rank for group, each in arm.groups.items()},
+                round(arm.times[1] * 1000),
             )
             for arm in found
-        }
+        },
+        {},
     )
 
 
 def recorded(
-    found: Sequence[Arm], decision: Decision, golden: str, about: dict[str, object]
+    found: Sequence[Arm], decision: Verdict, golden: str, about: dict[str, object]
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text.
 

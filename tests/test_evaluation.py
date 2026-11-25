@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from kb_mcp.evaluation.domain import evaluation as rules
-from kb_mcp.evaluation.domain import reranking
 from kb_mcp.evaluation.domain.evaluation import (
     RULES,
     Measures,
@@ -25,7 +24,6 @@ from kb_mcp.evaluation.domain.evaluation import (
     quoting,
     verdict,
 )
-from kb_mcp.evaluation.domain.reranking import Decision, Depthed, default_reranking
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -234,22 +232,19 @@ def chunked(
 UNMEASURED: Arm = ((), {"all": 0.5}, TOKENS)
 
 
-def depthed(score: float, tail_ms: int = 900) -> Depthed:
+def depthed(score: float, tail_ms: int = 900) -> Arm:
     """Measure a depth whose every question scores ``score`` on MRR@10, ``none`` included."""
-    return Depthed(reciprocal=(score,) * QUESTIONS, groups={"all": score}, tail_ms=tail_ms)
+    return (score,) * QUESTIONS, {"all": score}, tail_ms
 
 
-def decide(rule: str, control: str, arms: Mapping[str, Arm | Depthed]) -> Verdict | Decision:
+def decide(rule: str, control: str, arms: Mapping[str, Arm]) -> Verdict:
     """Apply the rule named, the chunking's or the reranking depth's, to the arms run."""
-    if rule == "chunking":
-        return verdict(RULES[rule], control, arms, {})
-    return default_reranking(arms)
+    return verdict(RULES[rule], control, arms, {})
 
 
 def scripted(monkeypatch: MonkeyPatch, pvalue: float) -> None:
     """Have every paired test of the rules give ``pvalue``."""
     monkeypatch.setattr(rules, "paired_test", lambda *_: pvalue)
-    monkeypatch.setattr(reranking, "paired_test", lambda *_: pvalue)
 
 
 def test_a_challenger_better_on_evidence_and_no_worse_otherwise_is_kept() -> None:
@@ -357,7 +352,7 @@ def test_the_family_is_fixed_whatever_the_arms_run(
     ],
 )
 def test_an_untested_challenger_cannot_qualify_and_is_named(
-    rule: str, control: str, arms: Mapping[str, Arm | Depthed], untested: tuple[str, ...]
+    rule: str, control: str, arms: Mapping[str, Arm], untested: tuple[str, ...]
 ) -> None:
     """A challenger of the family not run is named, in the family's order, and never judged.
 
@@ -395,7 +390,7 @@ def test_an_untested_challenger_cannot_qualify_and_is_named(
     ],
 )
 def test_no_control_no_challenger_or_no_measure_gives_no_verdict(
-    rule: str, control: str, arms: Mapping[str, Arm | Depthed], reason: str
+    rule: str, control: str, arms: Mapping[str, Arm], reason: str
 ) -> None:
     """No verdict, and why: the control not run, no challenger of the family, no measure."""
     found = decide(rule, control, arms)
@@ -438,7 +433,7 @@ def test_no_control_no_challenger_or_no_measure_gives_no_verdict(
     ],
 )
 def test_within_the_margin_the_cheapest_qualifier_wins(
-    rule: str, control: str, arms: Mapping[str, Arm | Depthed], kept: str
+    rule: str, control: str, arms: Mapping[str, Arm], kept: str
 ) -> None:
     """D2: of the challengers qualifying, the cheapest within 0.01 of the best mean is kept.
 
