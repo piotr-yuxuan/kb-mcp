@@ -90,7 +90,7 @@ def measures(mrr: float, tokens: float = 0.0) -> dict:
 def verdict(rule: str, fixed: dict, control: str, kept: str | None, reason: str = "") -> dict:
     """Give a default rule's verdict as a results file keeps it."""
     found = {"rule": rule, "fixed": fixed, "control": control, "kept": kept}
-    clauses = {key: {} for key in ("means", "adjusted", "losses", "spent", "failed", "modes")}
+    clauses = {key: {} for key in ("means", "adjusted", "losses", "spent", "failed")}
     return found | {"reason": reason or None, "untested": []} | clauses
 
 
@@ -599,8 +599,18 @@ def test_a_failed_step_is_reported_and_the_next_runs(mac: Mac) -> None:
     [
         (
             MODELS,
-            [verdict("embedding model", {"chunking": "windows"}, MODELS[0], MODELS[1])],
-            "Embedding model for windows: embeddinggemma:300m, in place of qwen3-embedding:0.6b.",
+            [
+                verdict(
+                    "embedding model",
+                    {"chunking": "windows"},
+                    f"{MODELS[0]}, hybrid",
+                    f"{MODELS[1]}, semantic",
+                )
+            ],
+            (
+                "Embedding model for windows: embeddinggemma:300m, semantic, in place of"
+                " qwen3-embedding:0.6b, hybrid."
+            ),
         ),
         # A kb-mcp older than the embedding model's rule records no verdict of it.
         (MODELS, [], "no verdict recorded"),

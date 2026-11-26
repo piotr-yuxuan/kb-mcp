@@ -468,7 +468,7 @@ guards and by spending less than the control.
 | search mode | the setting `search_mode` | the two other modes | MRR@10 | asked | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 500 ms | 0.01 | `lexical`, then `semantic`, then `hybrid` |
 | chunking | the setting `chunking` | the three other chunkings | Evidence@ask, in hybrid mode | asked | 0.02 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase`, in hybrid mode | tokens embedded within three times the control's | 0.01 | fewer tokens embedded |
 | reranking depth | the order not reranked | depths 10, 20, 30 and 50 | MRR@10 | asked | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 5 s | 0.01 | a smaller depth |
-| embedding model | the setting `model` | the models measured but the control | MRR@10, each model in its mode | none asked | 0.03 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase` | a search's 95th percentile less than the control's | 0.01 | the faster search |
+| embedding model | the setting `model`, in its mode | every other model measured, in each mode by meaning | MRR@10, each arm in its mode | none asked | 0.03 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase` | a search's 95th percentile less than the control's | 0.01 | the faster search |
 
 - **The search mode's default rule** applies to each model and chunking that `eval`
   measures, the three modes being measured on each. Words cost an index alone; meaning
@@ -491,14 +491,15 @@ guards and by spending less than the control.
 - **The embedding model's default rule** applies to each chunking over which `eval`
   measures two models or more; over one, it says nothing. A leaderboard chooses the
   candidates ([choosing a model](#choosing-a-model-from-published-results)); the golden
-  questions only check that one, in its best mode, loses at most 0.03 of MRR@10 over all
-  the questions and 0.05 on each of `identifier`, `keyword` and `paraphrase`, and
-  searches faster. The current model is weighed as it is served, in the setting
-  `search_mode` when that reads a model, else in its best mode by meaning; a candidate
-  in its best of `semantic` and `hybrid`, a tie going to `semantic`. Every model's search
-  is timed in the current model's mode, so that faster compares models, not modes.
-  Lexical search reads no model. Its verdict is advice, as every
-  verdict is. It leaves out the time to build an index: the vector cache that `eval`
+  questions only check that one, in a mode by meaning, loses at most 0.03 of MRR@10 over
+  all the questions and 0.05 on each of `identifier`, `keyword` and `paraphrase`, and
+  searches faster. Each arm is a model in one mode, named `<model>, <mode>`, its scores,
+  groups and search time all that mode's, so that a candidate is weighed on the quality
+  and the cost of one mode together. The current model is weighed as it is served, in
+  the setting `search_mode` when that reads a model, else in its best mode by meaning, a
+  tie going to `semantic`; every other model gives an arm in each of `semantic` and
+  `hybrid`, and may qualify in either. Lexical search reads no model. Its verdict is
+  advice, as every verdict is. It leaves out the time to build an index: the vector cache that `eval`
   shares with `embed` always holds the current model's vectors, so its index would be
   timed reading the cache while a candidate's is timed embedding. A candidate truly
   equal to the current model fails the overall guard about one time in seven, at a
@@ -550,12 +551,13 @@ first line says `<value> stays` when the control is kept, `<value>, in place of
 <control>` when a challenger replaces it, or `no verdict, since <why>`.
 
 A rule that asks no gain gives no p-value nor `gains`; one without a bound gives each
-cost against the control's, and `cheaper`; the embedding model's verdict names each
-model's mode, and the control's, in which every search was timed:
+cost against the control's, and `cheaper`; the embedding model's verdict names each arm,
+the control's too, by its model and mode:
 
 ```
-Embedding model for windows, by the default rule: qwen3-embedding:0.6b stays.
-  embeddinggemma:300m, in hybrid: MRR@10 <mean> against <control's mean> in hybrid; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; 95th percentile <ms> ms against <control's ms> ms in hybrid, cheaper <yes or no>
+Embedding model for windows, by the default rule: qwen3-embedding:0.6b, hybrid stays.
+  embeddinggemma:300m, semantic: MRR@10 <mean> against <control's mean>; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; 95th percentile <ms> ms against <control's ms> ms, cheaper <yes or no>
+  embeddinggemma:300m, hybrid: MRR@10 <mean> against <control's mean>; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; 95th percentile <ms> ms against <control's ms> ms, cheaper <yes or no>
 ```
 
 ### Query time

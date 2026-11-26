@@ -389,10 +389,16 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
     assert record["arms"][0]["recall"] == pytest.approx(expected)
 
 
-def test_eval_rerank_s_verdicts_have_no_modes(data: Path, capsys: CaptureFixture[str]) -> None:
-    """093's D2: each verdict of the results file and the JSON keeps ``modes``, empty here.
+# The keys of a default rule's verdict, as its results file and its JSON keep it.
+KEYS = {"rule", "fixed", "control", "kept", "reason", "untested", "means", "adjusted", "losses"}
+KEYS |= {"spent", "failed"}
 
-    The reranking's rule weighs every depth in one mode, hybrid.
+
+def test_eval_rerank_s_verdicts_have_no_modes(data: Path, capsys: CaptureFixture[str]) -> None:
+    """093: each verdict of the results file and the JSON keeps its keys, ``modes`` not one.
+
+    The embedding model's rule names each arm by its model and mode, so no verdict has a
+    key of modes; the reranking's weighs every depth in one mode, hybrid.
     """
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url, "--format", "json") == 0
@@ -400,7 +406,7 @@ def test_eval_rerank_s_verdicts_have_no_modes(data: Path, capsys: CaptureFixture
     [results] = (data / "eval" / "results").glob("*-rerank.json")
     record = json.loads(results.read_text(encoding="utf-8"))
     for verdicts in (record["verdicts"], document["verdicts"]):
-        assert [verdict["modes"] for verdict in verdicts] == [{}]
+        assert [set(verdict) for verdict in verdicts] == [KEYS]
 
 
 @pytest.mark.parametrize(

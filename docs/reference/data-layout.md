@@ -1385,7 +1385,7 @@ Each of `verdicts`:
 |---|---|
 | `rule` | the rule's name: `search mode`, `chunking`, `reranking depth` or `embedding model` |
 | `fixed` | what the arms share: the `model` and the `chunking` for the search mode, the `model` for the chunking, nothing for the depth, the `chunking` for the embedding model |
-| `control` | the control's value |
+| `control` | the control's value; for the embedding model, `<model>, <mode>`, as each of its values, or the setting's model alone when it was not measured |
 | `kept` | the value kept, the control's when no challenger qualifies; null when there is no verdict |
 | `reason` | why there is no verdict; else null |
 | `untested` | the values of the rule's family that the run did not measure |
@@ -1394,7 +1394,6 @@ Each of `verdicts`:
 | `losses` | by challenger, then guarded group: the MRR@10 that it loses against the control |
 | `spent` | by value measured: the tokens that its index embeds, or a search's 95th percentile in whole milliseconds |
 | `failed` | by challenger: the clauses that it fails, of `gain`, `guards` and `bound` |
-| `modes` | by value measured: the search mode in which it was scored, for the embedding model, whose `spent` are all in the control's; else empty |
 
 `eval-rerank`'s file:
 

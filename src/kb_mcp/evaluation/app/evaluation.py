@@ -435,13 +435,13 @@ def prepared(
 
 
 def arm(
-    of_index: IndexMeasures, mode: str, timed: str, questions: Sequence[Question]
+    of_index: IndexMeasures, mode: str, questions: Sequence[Question]
 ) -> tuple[list[float], dict[str, float], int]:
-    """Give an index's arm as a rule on MRR@10 reads it: ranks, groups in a mode, tail in ms."""
+    """Give an index's arm in a mode as a rule on MRR@10 reads it: ranks, groups, tail in ms."""
     return (
         [of_index.per[mode][question.id].reciprocal_rank for question in questions],
         {group: each.reciprocal_rank for group, each in of_index.groups[mode].items()},
-        round(of_index.times[timed][1] * 1000),
+        round(of_index.times[mode][1] * 1000),
     )
 
 
@@ -451,15 +451,16 @@ def verdicts(
     """Apply the default rules against the settings, each by the indexes measured.
 
     The search mode's to each index, then the chunking's to each model's, in hybrid mode,
-    then the embedding model's to each chunking of two models or more: the setting's model
-    in the setting's mode if it reads a model, every other in its best mode by meaning,
-    each model's time in the setting's model's mode.
+    then the embedding model's to each chunking of two models or more, each arm a model in
+    a mode, named "<model>, <mode>": the control, the setting's model in the setting's mode
+    if it reads a model, else in its best mode by meaning; every other model, in each mode
+    by meaning.
     """
     found = [
         verdict(
             RULES["search mode"],
             settings.search_mode,
-            {mode: arm(of_index, mode, mode, questions) for mode in MODES},
+            {mode: arm(of_index, mode, questions) for mode in MODES},
             {"model": of_index.model, "chunking": of_index.chunking},
         )
         for of_index in measured
@@ -478,27 +479,23 @@ def verdicts(
         verdict(RULES["chunking"], settings.chunking, chunkings, {"model": model})
         for model, chunkings in arms.items()
     ]
+    meaning = [mode for mode in MODES if mode != "lexical"]  # lexical search reads no model
     for chunking, indexes in models.items():
         if len(indexes) == 1:  # its family is the other models run: none
             continue
-        modes: dict[str, str] = {}
+        control, weighed = settings.model, {}  # unmeasured, the control is named by its model
         for model, of_index in indexes.items():
-            # Lexical search reads no model; of a tie, the cheaper mode, the first.
-            mrr = {
-                mode: round(of_index.groups[mode]["all"].reciprocal_rank, 3)
-                for mode in MODES
-                if mode != "lexical"
-            }
-            modes[model] = max(mrr, key=mrr.__getitem__)
-            if model == settings.model and settings.search_mode in mrr:
-                modes[model] = settings.search_mode
-        timed = modes.get(settings.model, "hybrid")  # without the control, no verdict
-        weighed = {
-            model: arm(of_index, modes[model], timed, questions)
-            for model, of_index in indexes.items()
-        }
-        ruled = verdict(RULES["embedding model"], settings.model, weighed, {"chunking": chunking})
-        found.append(ruled.model_copy(update={"modes": modes}))
+            modes = meaning
+            if model == settings.model:
+                mrr = {
+                    mode: round(of_index.groups[mode]["all"].reciprocal_rank, 3) for mode in modes
+                }
+                best = max(mrr, key=mrr.__getitem__)  # of a tie, the cheaper mode, the first
+                if settings.search_mode in mrr:
+                    best = settings.search_mode
+                control, modes = f"{model}, {best}", [best]
+            weighed |= {f"{model}, {mode}": arm(of_index, mode, questions) for mode in modes}
+        found.append(verdict(RULES["embedding model"], control, weighed, {"chunking": chunking}))
     return found
 
 

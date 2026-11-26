@@ -584,47 +584,83 @@ def by_meaning(semantic: float, hybrid: float) -> dict[str, float]:
 
 
 @pytest.mark.parametrize(
-    ("search_mode", "current", "candidate", "weighed"),
+    ("search_mode", "current", "control", "mean"),
     [
-        # The current model in the setting's mode, though better in the other; the
-        # candidate in its best.
-        ("hybrid", (0.7, 0.6), (0.62, 0.65), (("hybrid", 0.6), ("hybrid", 0.65))),
-        ("semantic", (0.6, 0.7), (0.65, 0.62), (("semantic", 0.6), ("semantic", 0.65))),
+        # The current model in the setting's mode, though better in the other.
+        ("hybrid", (0.7, 0.6), "hybrid", 0.6),
+        ("semantic", (0.6, 0.7), "semantic", 0.6),
         # The setting reads no model: the current model in its best mode by meaning.
-        ("lexical", (0.7, 0.6), (0.62, 0.65), (("semantic", 0.7), ("hybrid", 0.65))),
+        ("lexical", (0.6, 0.7), "hybrid", 0.7),
         # A tie, as reported, goes to semantic, the cheaper.
-        ("hybrid", (0.7, 0.6), (0.65, 0.6504), (("hybrid", 0.6), ("semantic", 0.65))),
+        ("lexical", (0.65, 0.6504), "semantic", 0.65),
     ],
 )
 def test_each_model_is_weighed_in_its_mode(
-    tmp_path: Path,
-    search_mode: str,
-    current: tuple[float, float],
-    candidate: tuple[float, float],
-    weighed: tuple[tuple[str, float], tuple[str, float]],
+    tmp_path: Path, search_mode: str, current: tuple[float, float], control: str, mean: float
 ) -> None:
-    """D3: one verdict for the chunking, after the others, its control the setting's model.
+    """D3: one verdict for the chunking, after the others, each arm a model in one mode.
 
-    Each model's arm is its reciprocal ranks and groups in its mode: the current model's,
-    the setting's mode if it reads a model; a candidate's, its best. Every model's 95th
-    percentile is its own index's in the current model's mode, so that the cost compares
-    models, not modes. Each row scores semantic then hybrid search, and gives each model's
-    mode and mean.
+    The control is the current model, in the setting's mode if it reads a model, else in
+    its best; a candidate gives an arm in each mode by meaning. Each arm's reciprocal
+    ranks, groups and 95th percentile are its index's in its mode. Each row scores the
+    current model's semantic then hybrid search, and gives the control's mode and mean.
     """
     settings = Settings(data_dir=tmp_path, model="current", search_mode=search_mode)
     measured = [indexed("current", by_meaning(*current), TAILS)]
-    measured.append(indexed("candidate", by_meaning(*candidate), CANDIDATE_TAILS))
+    measured.append(indexed("candidate", by_meaning(0.62, 0.65), CANDIDATE_TAILS))
     ruled = verdicts(measured, ASKED, settings)
     rules_run = ["search mode", "search mode", "chunking", "chunking", "embedding model"]
     assert [each.rule for each in ruled] == rules_run
     found = ruled[-1]
-    assert (found.fixed, found.control) == ({"chunking": "windows"}, "current")
-    names = ("current", "candidate")
-    assert found.modes == {name: mode for name, (mode, _) in zip(names, weighed, strict=True)}
-    assert found.means == {name: mean for name, (_, mean) in zip(names, weighed, strict=True)}
-    timed = found.modes["current"]
-    assert found.spent == {"current": TAILS[timed], "candidate": CANDIDATE_TAILS[timed]}
+    named = f"current, {control}"
+    assert (found.fixed, found.control) == ({"chunking": "windows"}, named)
+    weighed = {named: mean, "candidate, semantic": 0.62, "candidate, hybrid": 0.65}
+    assert found.means == weighed
+    tails = {"candidate, semantic": 120, "candidate, hybrid": 160}
+    assert found.spent == {named: TAILS[control]} | tails
     assert found.adjusted == {}
+
+
+@pytest.mark.parametrize(
+    ("search_mode", "candidate", "failed", "kept"),
+    [
+        # Within the guards and faster in semantic; in hybrid, it loses too much and is slower.
+        (
+            "hybrid",
+            {"semantic": (0.59, 120), "hybrid": (0.5, 200)},
+            {"candidate, semantic": (), "candidate, hybrid": ("guards", "bound")},
+            "candidate, semantic",
+        ),
+        # Faster in semantic but too poor; better in hybrid but slower: it fails in both.
+        (
+            "semantic",
+            {"semantic": (0.4, 140), "hybrid": (0.62, 400)},
+            {"candidate, semantic": ("guards",), "candidate, hybrid": ("bound",)},
+            "current, semantic",
+        ),
+    ],
+)
+def test_a_candidate_qualifies_in_one_mode_or_none(
+    tmp_path: Path,
+    search_mode: str,
+    candidate: Mapping[str, tuple[float, int]],
+    failed: Mapping[str, tuple[str, ...]],
+    kept: str,
+) -> None:
+    """The lane's ruling of round 2: each mode's quality and cost are weighed together.
+
+    A candidate's quality in one mode never joins its search time in another. The current
+    model scores 0.6 in both modes, at TAILS; each row gives the candidate's MRR@10 and
+    95th percentile in each mode by meaning.
+    """
+    settings = Settings(data_dir=tmp_path, model="current", search_mode=search_mode)
+    measured = [indexed("current", by_meaning(0.6, 0.6), TAILS)]
+    scores = by_meaning(candidate["semantic"][0], candidate["hybrid"][0])
+    tails = {"lexical": 12} | {mode: tail for mode, (_, tail) in candidate.items()}
+    measured.append(indexed("candidate", scores, tails))
+    found = verdicts(measured, ASKED, settings)[-1]
+    assert found.failed == failed
+    assert found.kept == kept
 
 
 @pytest.mark.parametrize(

@@ -211,18 +211,6 @@ def test_a_rule_without_values_has_no_bound_and_spends_time() -> None:
     assert {rule.spends for rule in RULES.values() if not rule.values} == {"ms"}
 
 
-@pytest.mark.usefixtures("kinds")
-def test_a_verdict_with_modes_names_each_value_s_mode() -> None:
-    """D2, D4: ``verdict`` gives no modes; once set, a challenger's line names each value's."""
-    found = verdict(OPEN, "current", {"current": mode(0.6, 188), "x": mode(0.6, 150)}, {})
-    assert found.modes == {}
-    moded = found.model_copy(update={"modes": {"current": "semantic", "x": "hybrid"}})
-    assert moded.lines()[1] == (
-        "  x, in hybrid: MRR@10 0.600 against 0.600 in semantic; MRR@10 lost: identifier"
-        " 0.000, holds yes; 95th percentile 150 ms against 188 ms in semantic, cheaper yes"
-    )
-
-
 def model(score: float, tail_ms: int, **groups: float) -> Arm:
     """Measure a model in its mode: every question at ``score``, as is all; its groups 0.6."""
     guarded = {"all": score} | dict.fromkeys(GUARDED, 0.6)
@@ -265,20 +253,20 @@ def test_the_embedding_model_rule_holds_its_clauses(
 
 
 def test_the_embedding_model_verdict_names_each_mode_and_cost() -> None:
-    """D4's example: each model in its mode, its losses, its search time in the control's."""
+    """D4's example: each arm a model in a mode, its losses, its time against the control's."""
     current = model(0.608, 188, identifier=0.7, keyword=0.5)
     candidate = model(0.633, 156, identifier=0.69, keyword=0.58, paraphrase=0.592)
-    arms = {"qwen3-embedding:0.6b": current, "embeddinggemma:300m": candidate}
-    found = verdict(RULES["embedding model"], "qwen3-embedding:0.6b", arms, {"chunking": "windows"})
-    moded = found.model_copy(update={"modes": dict.fromkeys(arms, "hybrid")})
-    assert moded.lines() == [
+    arms = {"qwen3-embedding:0.6b, hybrid": current, "embeddinggemma:300m, hybrid": candidate}
+    control = "qwen3-embedding:0.6b, hybrid"
+    found = verdict(RULES["embedding model"], control, arms, {"chunking": "windows"})
+    assert found.lines() == [
         (
-            "Embedding model for windows, by the default rule: embeddinggemma:300m, in place"
-            " of qwen3-embedding:0.6b."
+            "Embedding model for windows, by the default rule: embeddinggemma:300m, hybrid,"
+            " in place of qwen3-embedding:0.6b, hybrid."
         ),
         (
-            "  embeddinggemma:300m, in hybrid: MRR@10 0.633 against 0.608 in hybrid; MRR@10"
-            " lost: all -0.025, identifier 0.010, keyword -0.080, paraphrase 0.008, holds yes;"
-            " 95th percentile 156 ms against 188 ms in hybrid, cheaper yes"
+            "  embeddinggemma:300m, hybrid: MRR@10 0.633 against 0.608; MRR@10 lost: all"
+            " -0.025, identifier 0.010, keyword -0.080, paraphrase 0.008, holds yes; 95th"
+            " percentile 156 ms against 188 ms, cheaper yes"
         ),
     ]

@@ -145,8 +145,7 @@ class Verdict(Record):
 
     Each arm is named by its value. Each challenger run has its clauses, its gain, the
     groups' losses and what it spends; ``failed`` names those that it fails, of ``gain``,
-    ``guards`` and ``bound``; ``modes``, if any, the search mode of each value's scores,
-    every time being taken in the control's.
+    ``guards`` and ``bound``.
     """
 
     rule: str  # its name
@@ -160,13 +159,12 @@ class Verdict(Record):
     losses: Mapping[str, Mapping[str, float]] = Field(default_factory=dict)  # by group
     spent: Mapping[str, int] = Field(default_factory=dict)  # as the bound reads it
     failed: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
-    modes: Mapping[str, str] = Field(default_factory=dict)
 
     def lines(self) -> list[str]:
         """Say the verdict, then each challenger's clauses, then the values not run.
 
         No p-value for a rule that asks no gain; without a bound, each cost against the
-        control's; with modes, each value's, and the control's for the times.
+        control's.
         """
         rule = RULES[self.rule]
         if self.kept is None:
@@ -187,18 +185,13 @@ class Verdict(Record):
             gains, holds, within = (
                 "no" if clause in failed else "yes" for clause in ("gain", "guards", "bound")
             )
-            named, against, timed = name, f"{self.means[self.control]:.3f}", ""
-            if self.modes:  # each value's time in the control's mode
-                named = f"{name}, in {self.modes[name]}"
-                timed = f" in {self.modes[self.control]}"
-                against = f"{against}{timed}"
             tested = ""
             if rule.gains:
                 tested = f", adjusted p = {self.adjusted[name]:.4f}, gains {gains}"
             if rule.bound is None:
                 spent = (
                     f"95th percentile {self.spent[name]:,} ms against"
-                    f" {self.spent[self.control]:,} ms{timed}, cheaper {within}"
+                    f" {self.spent[self.control]:,} ms, cheaper {within}"
                 )
             elif rule.spends == "tokens":
                 most = rule.bound * self.spent[self.control]
@@ -211,7 +204,8 @@ class Verdict(Record):
                     f" within {within}"
                 )
             lines.append(
-                f"  {named}: {rule.decides} {self.means[name]:.3f} against {against}{tested};"
+                f"  {name}: {rule.decides} {self.means[name]:.3f} against"
+                f" {self.means[self.control]:.3f}{tested};"
                 f" MRR@10 lost: {losses}, holds {holds}; {spent}"
             )
         if self.untested:

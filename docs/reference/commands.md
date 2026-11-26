@@ -193,9 +193,9 @@ With --format json: indexes, each model's and chunking's measures of search and 
 mode and group, with its ranks, times and costs, and the documents that it indexed, by
 source and type, and their digest; verdicts, the default rules' verdicts, the search
 mode's for each model and chunking, then the chunking's for each model, then the
-embedding model's for each chunking of two models or more, each in its mode; skipped,
-the golden questions left out, each with its ref and why; results, the file that keeps
-them.
+embedding model's for each chunking of two models or more, each arm a model in a mode;
+skipped, the golden questions left out, each with its ref and why; results, the file
+that keeps them.
 ```
 
 ## `eval-agents`

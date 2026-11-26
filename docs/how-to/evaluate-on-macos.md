@@ -68,9 +68,9 @@ red line, and logs the outputs of `kb-mcp doctor --detail detailed` and
    of the models that `--compare` names, over the setting's chunking. Published
    benchmarks choose the candidates, as
    [evaluating search](../explanation/search-evaluation.md#choosing-a-model-from-published-results)
-   says; the embedding model's default rule weighs each, in its best mode, against the
-   setting `model`, timing every search in the setting's model's mode: a candidate that
-   loses little and searches faster would replace it. When it measured one model alone,
+   says; the embedding model's default rule weighs each, in each mode by meaning,
+   against the setting `model` in its mode: a candidate that, in one mode, loses little
+   and searches faster would replace it. When it measured one model alone,
    as when `--compare` names the setting's, the step says `no verdict: one model
    measured; name another with --compare`; a kb-mcp older than that rule records no
    verdict, and the step says `no verdict recorded`.
