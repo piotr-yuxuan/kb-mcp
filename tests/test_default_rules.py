@@ -23,6 +23,8 @@ QUESTIONS = 30
 SIGNIFICANT = 0.001
 # An arm as the default rule reads it: MRR@10 question by question, by group, and its time.
 type Arm = tuple[tuple[float, ...], dict[str, float], int]
+# The groups that the embedding model's rule guards, beside all the questions.
+GUARDED = ("identifier", "keyword", "paraphrase")
 
 
 def mode(score: float, tail_ms: int = 100, **groups: float) -> Arm:
@@ -177,3 +179,64 @@ def test_a_verdict_with_modes_names_each_value_s_mode(monkeypatch: MonkeyPatch) 
         "  x, in hybrid: MRR@10 0.600 against 0.600 in semantic; MRR@10 lost: identifier"
         " 0.000, holds yes; 95th percentile 150 ms against 188 ms, cheaper yes"
     )
+
+
+def model(score: float, tail_ms: int, **groups: float) -> Arm:
+    """Measure a model in its mode: every question at ``score``, as is all; its groups 0.6."""
+    guarded = {"all": score} | dict.fromkeys(GUARDED, 0.6)
+    return (score,) * QUESTIONS, guarded | groups, tail_ms
+
+
+@pytest.mark.parametrize(
+    ("candidates", "kept"),
+    [
+        # It may lose 0.03 of MRR@10 over all the questions, and no more.
+        ({"candidate": model(0.57, 187)}, "candidate"),
+        ({"candidate": model(0.569, 187)}, "current"),
+        # It may lose 0.05 on each of identifier, keyword and paraphrase, and no more.
+        *(({"candidate": model(0.6, 187, **{group: 0.55})}, "candidate") for group in GUARDED),
+        *(({"candidate": model(0.6, 187, **{group: 0.549})}, "current") for group in GUARDED),
+        # Better on MRR@10, but its search as slow as the control's, or slower: no change.
+        ({"candidate": model(0.7, 188)}, "current"),
+        ({"candidate": model(0.7, 189)}, "current"),
+        # Worse, within the guards, and 1 ms faster: it replaces the current model.
+        ({"candidate": model(0.59, 187)}, "candidate"),
+        # Of two that pass, the faster within 0.01 of the better mean; else the better.
+        ({"slower": model(0.605, 170), "faster": model(0.6, 150)}, "faster"),
+        ({"slower": model(0.62, 170), "faster": model(0.6, 150)}, "slower"),
+    ],
+)
+def test_the_embedding_model_rule_holds_its_clauses(
+    candidates: Mapping[str, Arm], kept: str
+) -> None:
+    """D1, the owner's bar: no gain asked, a little lost, and a faster search.
+
+    A candidate may lose 0.03 of MRR@10 over all the questions and 0.05 on each of
+    identifier, keyword and paraphrase; its search's 95th percentile must be less than the
+    current model's, 188 ms.
+    """
+    arms = {"current": model(0.6, 188), **candidates}
+    found = verdict(RULES["embedding model"], "current", arms, {"chunking": "windows"})
+    assert found.adjusted == {}
+    assert found.untested == ()
+    assert found.kept == kept
+
+
+def test_the_embedding_model_verdict_names_each_mode_and_cost() -> None:
+    """D4's example: each model in its mode, its losses, its search time against the control's."""
+    current = model(0.608, 188, identifier=0.7, keyword=0.5)
+    candidate = model(0.633, 156, identifier=0.69, keyword=0.58, paraphrase=0.592)
+    arms = {"qwen3-embedding:0.6b": current, "embeddinggemma:300m": candidate}
+    found = verdict(RULES["embedding model"], "qwen3-embedding:0.6b", arms, {"chunking": "windows"})
+    moded = found.model_copy(update={"modes": dict.fromkeys(arms, "hybrid")})
+    assert moded.lines() == [
+        (
+            "Embedding model for windows, by the default rule: embeddinggemma:300m, in place"
+            " of qwen3-embedding:0.6b."
+        ),
+        (
+            "  embeddinggemma:300m, in hybrid: MRR@10 0.633 against 0.608 in hybrid; MRR@10"
+            " lost: all -0.025, identifier 0.010, keyword -0.080, paraphrase 0.008, holds yes;"
+            " 95th percentile 156 ms against 188 ms, cheaper yes"
+        ),
+    ]

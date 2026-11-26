@@ -214,7 +214,8 @@ class Verdict(Record):
 
 # The default rules, by name. A guard of 0.05 is about one standard error of a group's
 # mean difference at some 32 questions: one of 0.02 would refuse a harmless challenger
-# about one time in three.
+# about one time in three. The embedding model's asks no gain: a leaderboard chooses the
+# candidates, and the golden questions check that one loses little and searches faster.
 RULES = {
     rule.name: rule
     for rule in (
@@ -241,6 +242,15 @@ RULES = {
             guards={"identifier": 0.05, "keyword": 0.05},
             spends="ms",
             bound=BOUND_S * 1000,
+        ),
+        DefaultRule(
+            name="embedding model",
+            values=(),
+            decides="MRR@10",
+            guards={"all": 0.03, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05},
+            spends="ms",
+            bound=None,
+            gains=False,
         ),
     )
 }
