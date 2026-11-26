@@ -158,7 +158,7 @@ allows one, so that the mirror's text stays here.
 Plan 022 fixed a bar before any run: reranking at a depth is worth it if it
 significantly improves the first answer (MRR@10), loses little on questions that name
 things, and keeps a search within 5 seconds at the 95th percentile on the machine that
-serves agents. The [explanation](../explanation/reranking.md#the-bar-fixed-before-the-run)
+serves agents. The [explanation](../explanation/reranking.md#the-default-rule-fixed-before-the-run)
 gives the bar in full, and
 [evaluating search](../explanation/search-evaluation.md#the-measures-on-one-worked-example)
 what each measure means. Two measures, of different cost, tell how reranking does on

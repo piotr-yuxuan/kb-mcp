@@ -116,10 +116,11 @@ the command and those who change its code, unless it is marked for contributors.
 - [Chunking](explanation/chunking.md): how documents are cut into chunks for search by
   meaning, and how the four chunkings were compared.
 - [Evaluating search](explanation/search-evaluation.md): how the embedding model was
-  chosen, and how ranking by words, by meaning or by both is measured.
+  chosen, how ranking by words, by meaning or by both is measured and read, what an
+  answer costs, and the default rules that keep a setting unless a challenger qualifies.
 - [Reranking](explanation/reranking.md): how a server on this machine reorders the first
   documents found, why only those, what a search does when it fails, why it is off by
-  default, and the bar that says whether to turn it on.
+  default, and the default rule that says whether to turn it on.
 
 ## Elsewhere in the repository
 
