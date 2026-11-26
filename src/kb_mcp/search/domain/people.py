@@ -71,6 +71,7 @@ def person_id(anchor: str, value: str) -> str:
     """Give the opaque id of the person that an identity, or a name's key, anchors.
 
     ``anchor`` is IDENTITY_ANCHOR or NAME_ANCHOR; the id is stable while what anchors it is.
+    It serves no identity, yet hides none: hashing a known identity finds it again.
     """
     issuer, _, bare = value.partition(":")
     legacy = anchor == IDENTITY_ANCHOR and issuer in LEGACY_BARE_ISSUERS
