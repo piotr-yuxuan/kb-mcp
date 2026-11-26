@@ -495,8 +495,9 @@ guards and by spending less than the control.
   the questions and 0.05 on each of `identifier`, `keyword` and `paraphrase`, and
   searches faster. The current model is weighed as it is served, in the setting
   `search_mode` when that reads a model, else in its best mode by meaning; a candidate
-  in its best of `semantic` and `hybrid`, a tie going to `semantic`, and its search
-  timed in that mode. Lexical search reads no model. Its verdict is advice, as every
+  in its best of `semantic` and `hybrid`, a tie going to `semantic`. Every model's search
+  is timed in the current model's mode, so that faster compares models, not modes.
+  Lexical search reads no model. Its verdict is advice, as every
   verdict is. It leaves out the time to build an index: the vector cache that `eval`
   shares with `embed` always holds the current model's vectors, so its index would be
   timed reading the cache while a candidate's is timed embedding. A candidate truly
@@ -550,11 +551,11 @@ first line says `<value> stays` when the control is kept, `<value>, in place of
 
 A rule that asks no gain gives no p-value nor `gains`; one without a bound gives each
 cost against the control's, and `cheaper`; the embedding model's verdict names each
-model's mode:
+model's mode, and the control's, in which every search was timed:
 
 ```
 Embedding model for windows, by the default rule: qwen3-embedding:0.6b stays.
-  embeddinggemma:300m, in hybrid: MRR@10 <mean> against <control's mean> in hybrid; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; 95th percentile <ms> ms against <control's ms> ms, cheaper <yes or no>
+  embeddinggemma:300m, in hybrid: MRR@10 <mean> against <control's mean> in hybrid; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; 95th percentile <ms> ms against <control's ms> ms in hybrid, cheaper <yes or no>
 ```
 
 ### Query time

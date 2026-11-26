@@ -219,7 +219,7 @@ def test_a_verdict_with_modes_names_each_value_s_mode() -> None:
     moded = found.model_copy(update={"modes": {"current": "semantic", "x": "hybrid"}})
     assert moded.lines()[1] == (
         "  x, in hybrid: MRR@10 0.600 against 0.600 in semantic; MRR@10 lost: identifier"
-        " 0.000, holds yes; 95th percentile 150 ms against 188 ms, cheaper yes"
+        " 0.000, holds yes; 95th percentile 150 ms against 188 ms in semantic, cheaper yes"
     )
 
 
@@ -265,7 +265,7 @@ def test_the_embedding_model_rule_holds_its_clauses(
 
 
 def test_the_embedding_model_verdict_names_each_mode_and_cost() -> None:
-    """D4's example: each model in its mode, its losses, its search time against the control's."""
+    """D4's example: each model in its mode, its losses, its search time in the control's."""
     current = model(0.608, 188, identifier=0.7, keyword=0.5)
     candidate = model(0.633, 156, identifier=0.69, keyword=0.58, paraphrase=0.592)
     arms = {"qwen3-embedding:0.6b": current, "embeddinggemma:300m": candidate}
@@ -279,6 +279,6 @@ def test_the_embedding_model_verdict_names_each_mode_and_cost() -> None:
         (
             "  embeddinggemma:300m, in hybrid: MRR@10 0.633 against 0.608 in hybrid; MRR@10"
             " lost: all -0.025, identifier 0.010, keyword -0.080, paraphrase 0.008, holds yes;"
-            " 95th percentile 156 ms against 188 ms, cheaper yes"
+            " 95th percentile 156 ms against 188 ms in hybrid, cheaper yes"
         ),
     ]

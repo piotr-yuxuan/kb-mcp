@@ -69,8 +69,8 @@ red line, and logs the outputs of `kb-mcp doctor --detail detailed` and
    benchmarks choose the candidates, as
    [evaluating search](../explanation/search-evaluation.md#choosing-a-model-from-published-results)
    says; the embedding model's default rule weighs each, in its best mode, against the
-   setting `model`: a candidate that loses little and searches faster would replace
-   it. A kb-mcp older than that rule gives no verdict, and the step says so.
+   setting `model`, timing every search in the setting's model's mode: a candidate that
+   loses little and searches faster would replace it. A kb-mcp older than that rule gives no verdict, and the step says so.
 
 `eval-agents` is not run: it needs agents' runs, which call a model.
 

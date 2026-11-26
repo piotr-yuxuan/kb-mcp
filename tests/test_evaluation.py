@@ -572,8 +572,10 @@ def indexed(
     return of_index
 
 
-# Each mode's 95th percentile, in milliseconds, of every index built by hand.
+# Each mode's 95th percentile, in milliseconds, of every index built by hand but the
+# candidate's, and of the candidate's.
 TAILS = {"lexical": 10, "semantic": 150, "hybrid": 188}
+CANDIDATE_TAILS = {"lexical": 12, "semantic": 120, "hybrid": 160}
 
 
 def by_meaning(semantic: float, hybrid: float) -> dict[str, float]:
@@ -603,13 +605,15 @@ def test_each_model_is_weighed_in_its_mode(
 ) -> None:
     """D3: one verdict for the chunking, after the others, its control the setting's model.
 
-    Each model's arm is its reciprocal ranks, groups and 95th percentile in its mode: the
-    current model's, the setting's mode if it reads a model; a candidate's, its best. Each
-    row scores semantic then hybrid search, and gives each model's mode and mean.
+    Each model's arm is its reciprocal ranks and groups in its mode: the current model's,
+    the setting's mode if it reads a model; a candidate's, its best. Every model's 95th
+    percentile is its own index's in the current model's mode, so that the cost compares
+    models, not modes. Each row scores semantic then hybrid search, and gives each model's
+    mode and mean.
     """
     settings = Settings(data_dir=tmp_path, model="current", search_mode=search_mode)
     measured = [indexed("current", by_meaning(*current), TAILS)]
-    measured.append(indexed("candidate", by_meaning(*candidate), TAILS))
+    measured.append(indexed("candidate", by_meaning(*candidate), CANDIDATE_TAILS))
     ruled = verdicts(measured, ASKED, settings)
     rules_run = ["search mode", "search mode", "chunking", "chunking", "embedding model"]
     assert [each.rule for each in ruled] == rules_run
@@ -618,7 +622,8 @@ def test_each_model_is_weighed_in_its_mode(
     names = ("current", "candidate")
     assert found.modes == {name: mode for name, (mode, _) in zip(names, weighed, strict=True)}
     assert found.means == {name: mean for name, (_, mean) in zip(names, weighed, strict=True)}
-    assert found.spent == {name: TAILS[mode] for name, mode in found.modes.items()}
+    timed = found.modes["current"]
+    assert found.spent == {"current": TAILS[timed], "candidate": CANDIDATE_TAILS[timed]}
     assert found.adjusted == {}
 
 

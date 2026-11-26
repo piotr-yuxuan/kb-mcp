@@ -472,11 +472,12 @@ def test_the_chunking_control_is_the_setting(
 
 
 # The embedding model's verdict on GOLDEN, a second model weighed against the setting's,
-# tiny, in hybrid mode: each model's mode, its losses, and its search time against tiny's.
+# tiny, in hybrid mode: each model's mode, its losses, and its search time against tiny's,
+# both in tiny's mode.
 WEIGHED = re.compile(
     r"  small, in (semantic|hybrid): MRR@10 \d\.\d{3} against \d\.\d{3} in hybrid; MRR@10"
     r" lost: all -?\d\.\d{3}, identifier n/a, keyword -?\d\.\d{3}, paraphrase -?\d\.\d{3},"
-    r" holds (yes|no); 95th percentile [\d,]+ ms against [\d,]+ ms, cheaper (yes|no)"
+    r" holds (yes|no); 95th percentile [\d,]+ ms against [\d,]+ ms in hybrid, cheaper (yes|no)"
 )
 
 

@@ -1394,7 +1394,7 @@ Each of `verdicts`:
 | `losses` | by challenger, then guarded group: the MRR@10 that it loses against the control |
 | `spent` | by value measured: the tokens that its index embeds, or a search's 95th percentile in whole milliseconds |
 | `failed` | by challenger: the clauses that it fails, of `gain`, `guards` and `bound` |
-| `modes` | by value measured: the search mode in which it was, for the embedding model; else empty |
+| `modes` | by value measured: the search mode in which it was scored, for the embedding model, whose `spent` are all in the control's; else empty |
 
 `eval-rerank`'s file:
 

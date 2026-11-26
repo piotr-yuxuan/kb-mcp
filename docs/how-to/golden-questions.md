@@ -63,7 +63,7 @@ each in a line with its challengers' clauses below it
   more: another model, in its best mode by meaning, replaces the setting `model`, in the
   setting's mode, when it loses at most 0.03 of MRR@10 over all the questions and 0.05
   on `identifier`, `keyword` and `paraphrase`, and searches faster at the 95th
-  percentile; it need not rank better.
+  percentile, both timed in the setting's model's mode; it need not rank better.
 
 Of the challengers that qualify, those within 0.01 of the best are as good, and the
 cheapest is kept: words, then meaning, then hybrid search for the mode, the chunking

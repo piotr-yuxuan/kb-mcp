@@ -145,7 +145,8 @@ class Verdict(Record):
 
     Each arm is named by its value. Each challenger run has its clauses, its gain, the
     groups' losses and what it spends; ``failed`` names those that it fails, of ``gain``,
-    ``guards`` and ``bound``; ``modes``, if any, the search mode of each value measured.
+    ``guards`` and ``bound``; ``modes``, if any, the search mode of each value's scores,
+    every time being taken in the control's.
     """
 
     rule: str  # its name
@@ -165,7 +166,7 @@ class Verdict(Record):
         """Say the verdict, then each challenger's clauses, then the values not run.
 
         No p-value for a rule that asks no gain; without a bound, each cost against the
-        control's; with modes, each value's.
+        control's; with modes, each value's, and the control's for the times.
         """
         rule = RULES[self.rule]
         if self.kept is None:
@@ -186,17 +187,18 @@ class Verdict(Record):
             gains, holds, within = (
                 "no" if clause in failed else "yes" for clause in ("gain", "guards", "bound")
             )
-            named, against = name, f"{self.means[self.control]:.3f}"
-            if self.modes:
+            named, against, timed = name, f"{self.means[self.control]:.3f}", ""
+            if self.modes:  # each value's time in the control's mode
                 named = f"{name}, in {self.modes[name]}"
-                against = f"{against} in {self.modes[self.control]}"
+                timed = f" in {self.modes[self.control]}"
+                against = f"{against}{timed}"
             tested = ""
             if rule.gains:
                 tested = f", adjusted p = {self.adjusted[name]:.4f}, gains {gains}"
             if rule.bound is None:
                 spent = (
                     f"95th percentile {self.spent[name]:,} ms against"
-                    f" {self.spent[self.control]:,} ms, cheaper {within}"
+                    f" {self.spent[self.control]:,} ms{timed}, cheaper {within}"
                 )
             elif rule.spends == "tokens":
                 most = rule.bound * self.spent[self.control]
