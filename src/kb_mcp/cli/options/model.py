@@ -5,13 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import (
-    add_embedding_options,
-    add_output_options,
-    add_settings_options,
-    endpoint_elsewhere,
-    model_name,
-)
+from kb_mcp.cli.options._common import add_run_options, endpoint_elsewhere, model_name
 
 if TYPE_CHECKING:
     import argparse
@@ -38,9 +32,7 @@ def register(
             " digest, the model's, empty when the endpoint reports none."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    remote = add_embedding_options(parser)
+    actions, flags = add_run_options(parser, remote=True)
     action = parser.add_argument("action", choices=("check",))
     name = parser.add_argument(
         "name", nargs="?", type=model_name, help="the model to check; by default, the setting"
@@ -51,7 +43,7 @@ def register(
             "kb_mcp.cli.commands.model",
             reads=("model", "embedding_url", "embedding_api_key"),
             flags=flags,
-            actions=(*actions, remote, action, name),
+            actions=(*actions, action, name),
             unapplied=model_named,
             refused=endpoint_elsewhere,
         )

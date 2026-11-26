@@ -144,6 +144,22 @@ def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:
     )
 
 
+def add_run_options(
+    parser: argparse.ArgumentParser, *, yes: bool = False, remote: bool = False, result: bool = True
+) -> tuple[tuple[argparse.Action, ...], dict[str, str]]:
+    """Add the settings' and the output's options, then --yes and the embedding's, if asked.
+
+    Return the actions, the embedding's last, and each flag's setting.
+    """
+    actions, flags = add_settings_options(parser)
+    add_output_options(parser, result=result)
+    if yes:
+        add_yes_option(parser)
+    if remote:
+        actions = (*actions, add_embedding_options(parser))
+    return actions, flags
+
+
 def model_name(value: str) -> str:
     """Take a model's name given on the command line as the setting takes it."""
     if not MODEL_NAME.fullmatch(value):

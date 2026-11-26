@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.cli.options._common import add_run_options
 
 if TYPE_CHECKING:
     import argparse
@@ -64,8 +64,7 @@ def register(
             " its state: well, failed, or sign in again."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
+    actions, flags = add_run_options(parser)
     parser.set_defaults(
         command=Command(
             "doctor",

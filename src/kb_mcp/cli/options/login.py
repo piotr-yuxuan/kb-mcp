@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
+from kb_mcp.cli.options._common import add_run_options
 
 if TYPE_CHECKING:
     import argparse
@@ -131,9 +131,7 @@ def register(
             " the folder that keeps its session."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
+    actions, flags = add_run_options(parser, yes=True)
     signed = [each for each in sources if each.connector.login is not None]
     names = [each.name for each in signed]
     source = parser.add_argument(

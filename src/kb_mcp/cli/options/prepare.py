@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import PREPARE, Command
 from kb_mcp.cli.domain.sources import prepare_described
-from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
+from kb_mcp.cli.options._common import add_run_options
 from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_groups
 
 if TYPE_CHECKING:
@@ -51,9 +51,7 @@ def register(
             " would remove, what pandoc would convert not counted."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
+    actions, flags = add_run_options(parser, yes=True)
     source = parser.add_argument(
         "source",
         nargs="*",

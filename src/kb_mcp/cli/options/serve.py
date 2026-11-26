@@ -6,12 +6,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import (
-    add_embedding_options,
-    add_output_options,
-    add_settings_options,
-    endpoint_by_meaning,
-)
+from kb_mcp.cli.options._common import add_run_options, endpoint_by_meaning
 from kb_mcp.kernel.names import TOOLS, Tool
 
 if TYPE_CHECKING:
@@ -42,9 +37,7 @@ def register(
 ) -> None:
     """Add ``serve`` to the command."""
     parser = subparsers.add_parser("serve", help="serve the mirror over MCP on stdio")
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser, result=False)
-    remote = add_embedding_options(parser)
+    actions, flags = add_run_options(parser, remote=True, result=False)
     tools = parser.add_argument(
         "--tools",
         type=tool_names,
@@ -80,7 +73,7 @@ def register(
                 "rerank.depth",
             ),
             flags={**flags, "rerank": "rerank.enabled", "no_rerank": "rerank.enabled"},
-            actions=(*actions, remote, tools, rerank, no_rerank),
+            actions=(*actions, tools, rerank, no_rerank),
             unapplied=reranking_off,
             refused=endpoint_by_meaning,
             traced=False,

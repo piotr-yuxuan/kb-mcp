@@ -6,7 +6,7 @@ import argparse
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.cli.options._common import add_run_options
 from kb_mcp.kernel.names import MODEL_NAME
 
 if TYPE_CHECKING:
@@ -44,8 +44,7 @@ def register(
             " seconds, a request of rerank.depth texts as long as a search sends, timed."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
+    actions, flags = add_run_options(parser)
     action = parser.add_argument("action", choices=("check",))
     name = parser.add_argument(
         "name", nargs="?", type=reranker_name, help="the model to check; by default, the setting"

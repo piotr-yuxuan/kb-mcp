@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.cli.options._common import add_run_options
 from kb_mcp.kernel.names import CONNECTOR
 
 if TYPE_CHECKING:
@@ -47,8 +47,7 @@ def register(
             " that one gave; ignored, each value ignored, with its setting, layer and why."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
+    actions, flags = add_run_options(parser)
     parser.set_defaults(
         command=Command(
             "check",

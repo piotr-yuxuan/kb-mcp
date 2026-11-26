@@ -15,13 +15,7 @@ from kb_mcp.cli.domain.sources import (
     refusals,
 )
 from kb_mcp.cli.options import fetch
-from kb_mcp.cli.options._common import (
-    add_embedding_options,
-    add_output_options,
-    add_settings_options,
-    add_yes_option,
-    endpoint_elsewhere,
-)
+from kb_mcp.cli.options._common import add_embedding_options, add_run_options, endpoint_elsewhere
 from kb_mcp.cli.options._sources import add_source_options
 from kb_mcp.kernel.names import RUN_ID
 
@@ -102,9 +96,7 @@ def register(
             " it started."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
+    actions, flags = add_run_options(parser, yes=True)
     source = parser.add_argument(
         "source",
         nargs="*",
