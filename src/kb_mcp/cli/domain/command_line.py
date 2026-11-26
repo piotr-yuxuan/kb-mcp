@@ -1,10 +1,4 @@
-"""The command to copy: a run written as the command line that runs it again.
-
-Pure: the entry gives it the arguments, the settings' values, the layers of those that a
-layer gave and the settings whose value a stronger layer replaced, and writes the command
-it returns, so that it can be copied, or kept in the shell's history, with the lines said
-around it.
-"""
+"""The command to copy: a run written as the command line that runs it again."""
 
 from __future__ import annotations
 
@@ -28,9 +22,8 @@ CONTINUED = " \\\n  "
 class Copy(Record):
     """The command to copy, and the lines that name what it cannot carry, said around it.
 
-    ``command`` is the command alone, an option to a line, then a newline. ``emptied``,
-    said before it, and ``unflagged``, said after it, hold their lines, each ended by a
-    newline, or nothing.
+    ``command`` holds an option to a line; ``emptied``, said before it, and ``unflagged``,
+    after it, hold their lines or nothing; every line ends with a newline.
     """
 
     emptied: str
@@ -47,19 +40,13 @@ def command_line(
 ) -> Copy:
     """Write the command that runs this run again, and what it cannot carry.
 
-    The program and the subcommand come first, then each option among the command's
-    ``actions``, its repeats on its line, then the positionals. A flag carries its
-    setting's value, from ``values`` by the setting's path, when the command reads the
-    setting and a layer gave it, the file included (``given``, by the layer's name, for
-    each value that the run applies); another option carries its value when it is not
-    its default. A path is made ``absolute``; each value is quoted for the shell. What
-    is not among the actions is never written: the output's options, the question's, and
-    the settings that no flag sets, such as the model or the secrets. No flag says an
-    empty list: when its layer ``replaced`` a weaker one's value, which the command, run
-    again, would read, a line of ``emptied`` names the setting and its layer. A line of
-    ``unflagged`` names each setting that the command reads, that a layer gave and that
-    no flag of it sets, with its layer, never its value. The command, run again, takes
-    these from the settings file, the environment or their defaults.
+    The program and the subcommand come first, then each option of the command's
+    ``actions`` in order, its repeats on its line, then the positionals. A flag carries
+    its setting's value only when the command reads the setting and a layer gave it;
+    another option, when it is not its default. Paths are made ``absolute``, and values
+    quoted for the shell; what is not among the actions is never written. A list that a
+    layer emptied, which no flag says, is named in ``emptied``; each setting read and
+    given that no flag sets, in ``unflagged``, with its layer, never its value.
     """
     command: Command = arguments.command
     settings = {dest: setting for dest, (_, setting) in command.setting_flags(arguments).items()}

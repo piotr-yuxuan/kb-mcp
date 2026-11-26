@@ -1,17 +1,4 @@
-"""What ``fetch`` and ``prepare`` choose and say, as pure functions of arguments and settings.
-
-The sources are those that the settings configure, which the arguments hold
-(``sources``), and those named among them (``source``). A source is configured when its
-first setting, which names what it covers, is set. ``fetch`` takes every source that has
-a fetcher and is configured, or those named. ``prepare`` takes every source whose store
-keeps scopes by key, whatever the store holds, and each other when it is configured, as
-``Source.prepared_by_default`` says, or those named. Each is taken once, in the sources'
-order, whatever the order typed. A source's options and light checks are its connector's
-fetch's: each source taken says what the echo says of it, by its connector, and one whose
-settings its light check refuses, that it will not run, and why; an option that no
-setting holds, given, is said ignored by each source taken whose connector does not
-declare it.
-"""
+"""What ``fetch`` and ``prepare`` choose and say, as pure functions of arguments and settings."""
 
 from __future__ import annotations
 
@@ -50,10 +37,8 @@ def fetch_options(
 ) -> dict[str, object]:
     """Give each option of the sources ``taken`` that no setting holds, by flag, as recorded.
 
-    As of the run's ``start`` where its declaration says how, such as --since 7d, a time,
-    and --until not given, that start; else as given, None when not given. An option
-    that replaces a setting, such as --space, is in the settings that the run records.
-    No source's options are read unless it is taken, as ``fetch``'s refusals read them.
+    Made absolute as of the run's ``start`` where its declaration says how; else as given,
+    None when not given. No source's options are read unless it is taken.
     """
     return {
         flag: getattr(arguments, flag)
@@ -88,11 +73,7 @@ def chosen(
 
 
 def refusals(sources: Iterable[Source], settings: Mapping[str, object]) -> dict[str, str]:
-    """Give why each of ``sources`` cannot run, by its settings, by its name.
-
-    As its connector's light check of its settings says (``Source.refusal``), such as a
-    site not set; a source that it lets run is not given.
-    """
+    """Give why each of ``sources`` that its light check refuses cannot run, by its name."""
     return {each.name: why for each in sources if (why := each.refusal(settings)) is not None}
 
 
@@ -114,14 +95,10 @@ def fetch_described(
 ) -> tuple[str, ...]:
     """Say each source taken, with its settings, each that will not run or is left out and why.
 
-    A source taken that will not run is one whose settings its light check refuses
-    (``refusals``), as ``refused`` gives it when the caller asked it already, such as a
-    refresh, whose prepare says those too: its unit fails, and the others run. The lines
-    that each other source taken says follow, each once, as its connector's
-    ``described`` gives them; then the options ignored. An option that no setting holds,
-    given, is ignored by each source taken whose connector does not declare it, as is one
-    that replaces a setting of no source named (``Command.narrowed``); another that
-    replaces a setting is said by ``unapplied``, as for any setting.
+    Then the lines that each source that runs says by its connector, each once, then each
+    option given that a source taken does not declare, but one that replaces a setting of
+    a source named, which ``unapplied`` says. ``refused``, when the caller asked it
+    already, names the sources taken that their light check refuses.
     """
     taken, left = chosen(arguments, settings, FETCH)
     refused = refusals(taken, settings) if refused is None else refused
@@ -154,11 +131,8 @@ def prepare_described(
 ) -> tuple[str, ...]:
     """Say each source taken, each left out and why, and each one's location not set.
 
-    A source read in place is said by its settings; one that keeps a store gives all that
-    its store holds, whatever its settings cover. Without its location, such as its site
-    (``Source.unlocated``), a prepare still runs, its documents without an address there.
-    A source ``unfetched``, whose fetch will not run before, as in a refresh, is said
-    alone not to run.
+    A source without its location still runs, its documents without an address there; one
+    ``unfetched``, whose fetch will not run before, is said alone not to run.
     """
     taken, left = chosen(arguments, settings, PREPARE)
     unset = [

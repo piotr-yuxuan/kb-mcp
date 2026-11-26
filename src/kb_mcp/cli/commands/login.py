@@ -25,13 +25,11 @@ def run(
 ) -> tuple[ExitStatus, tuple[Record, ...] | None]:
     """Sign in each source that ``to_sign_in`` gives; exit as their endings fold: 3, then 1.
 
-    A source whose location is not set (``unlocated``), which the entry refused when it
-    is named, is not signed in: an error, ``login.refused``, names it and why, and the
-    run exits 1 at least. The sources of one connector's login are signed in by the run
-    that it names, loaded by that path, so that this module imports neither the browser's
-    adapter nor Playwright, in the order of their first source; the run says why a
-    sign-in did not complete, the next is tried, and the run exits 3. The result holds
-    the places signed in: none when the run exits 1 or 3 having signed in none.
+    A source whose location is not set is not signed in, and the run exits 1 at least.
+    Each connector's login is loaded by its path, so that this module never imports the
+    browser's adapter, in the order of its first source; one that does not complete makes
+    the run exit 3, and the next is tried. The result is the places signed in, None when
+    the run fails having signed in none.
     """
     values = values_of(loaded.settings)
     taken = to_sign_in(arguments, values)

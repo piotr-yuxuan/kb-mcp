@@ -15,19 +15,14 @@ if TYPE_CHECKING:
 
 
 def run(_arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Loaded]:
-    """Give the effective settings, which the entry checked, the data directory included.
-
-    With them come the layer of each and the values ignored.
-    """
+    """Give the settings, which the entry checked, with the layer of each and those ignored."""
     return ExitStatus.OK, loaded
 
 
 def text(loaded: Loaded, detail: Detail) -> str:
     """Write each setting that a layer gave, and its value; in detail, every one and its layer.
 
-    A setting is named by its path, its names joined by dots; a secret is said to be set
-    or not, never shown. The layer is the settings file's name, a variable's, a flag, or
-    default.
+    A secret is said to be set or not, never shown.
     """
     lines = []
     for path, kind in loaded.paths.items():

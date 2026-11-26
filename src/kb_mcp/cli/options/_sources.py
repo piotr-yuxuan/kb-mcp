@@ -29,8 +29,7 @@ def source_groups(
     """Add a group per source to the help: what it is, its scope types and how each is read.
 
     Give each group by its source's name. Raises ValueError, naming the source, for a scope
-    type enumerated in a way that ``READ`` has no words for, the first found, as the
-    registry's rules do.
+    type enumerated in a way that ``READ`` has no words for.
     """
     unknown = [
         f"source {source.name!r}: scope type {each.name!r}: enumerated {each.enumeration!r}:"
@@ -61,14 +60,11 @@ def add_source_options(
 ) -> tuple[tuple[argparse.Action, ...], dict[str, dict[str, str]]]:
     """Add a group per source, with the options that it alone declares; then the others.
 
-    An option that several sources declare is added once, in a group of its own, naming
-    them. None has a default, so that one given is told from one not given; one that
-    replaces a setting of its source's table repeats. Its value is kept under its flag
-    itself, so that no flag that a source declares takes a name that the program holds,
-    such as ``sources``; help names its value as it would by the flag alone. Give the
-    actions, and each flag's setting by source, by its path, for ``Command.scoped``.
-    Raises ValueError, naming the source, for an option that takes a flag of the
-    command's own, as the registry's rules do.
+    An option that several sources declare is added once, in a group of its own. None has
+    a default, so that one given is told from one not given; one that replaces a setting
+    repeats. Each value is kept under its flag itself. Give the actions, and each flag's
+    setting by source, by its path. Raises ValueError, naming the source, for an option
+    that takes a flag of the command's own.
     """
     groups = source_groups(parser, sources)
     options = {
@@ -123,11 +119,7 @@ def choice_refused(arguments: argparse.Namespace, settings: Mapping[str, object]
 
 
 def left_unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Name what the run does not apply of the sources left out, and why.
-
-    The settings that the command reads of those left out, but the first of one not
-    configured, which holds nothing to apply.
-    """
+    """Name each setting read of those left out, but the first of one not configured, and why."""
     _, left = chosen(arguments, settings, arguments.command.name)
     reads = arguments.command.reads
     return {

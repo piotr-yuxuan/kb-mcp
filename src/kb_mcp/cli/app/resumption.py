@@ -31,9 +31,8 @@ class Resumption(Record):
 def require_configured(configuration: Configuration, configured: Mapping[str, Source]) -> None:
     """Refuse a run's configuration that the sources ``configured`` no longer run, by its field.
 
-    Raises RefusedError for a source of its units no longer among them, by its name, and
-    for an option that a source of its fetch declares, which no setting holds, missing
-    from its fetch's options, which its fetch would read as not given.
+    Raises RefusedError for a source of its units no longer among them, and for an option
+    of its fetch that no setting holds, missing from its fetch's options.
     """
     gone = [
         name for names in configuration.sources.values() for name in names if name not in configured
@@ -56,13 +55,10 @@ def resumption(
 ) -> Resumption:
     """Read a run's record, under the data directory that ``loaded`` names, to resume it.
 
-    It may not be resumed when no record of it is there, its record does not read, its
-    configuration is one that ``sources`` no longer run (``require_configured``), its
-    settings no longer build with the secrets that ``loaded`` holds, or
-    ``resume_refused`` says so; each refusal names the run, and the file at fault. Else
-    the resume says what it will do, as ``resume_said`` gives it, and which source's
-    fetch will not run, by the light check of the settings that the run recorded, which
-    are those it runs by (``refusals``).
+    It may not be resumed when no record of it is there, its record or its settings do not
+    read, ``sources`` no longer run its configuration, or ``resume_refused`` says so; each
+    refusal names the run. Else the resume says what it will do, and which source's fetch
+    will not run, by the light check of the settings that the run recorded.
     """
     runs = loaded.settings.runs
     record = RunRecord(runs / run)

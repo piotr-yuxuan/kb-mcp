@@ -21,11 +21,9 @@ if TYPE_CHECKING:
 def doctor(settings: Settings, sources: Sequence[Source]) -> list[Check]:
     """Check the machine, then the sources by the checks that their connectors name.
 
-    The sources of one checks' function are checked by one call, in the order of the
-    first of them, so that sources that share a sign-in are checked once. A source whose
-    settings its light check refuses (``Source.refusal``), such as one without its site,
-    is not: a check of its own, by its name, fails, saying why, after the others
-    (``refusals``).
+    The sources of one checks' function are checked once, by one call, in the order of the
+    first of them; one that its light check refuses fails a check of its own instead, after
+    the others.
     """
     found = shutil.which("pandoc")  # The mirror needs it.
     checks = [

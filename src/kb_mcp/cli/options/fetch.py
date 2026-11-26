@@ -19,13 +19,10 @@ if TYPE_CHECKING:
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse what no fetch can run with, before anything is asked: the first found.
 
-    An option of a setting of several sources given when the sources named leave more
-    than one of them, as ``Command.narrowed`` says, naming them; a source named but not
-    configured, or none left; then what the settings of each source named refuse, by its
-    connector's light check (``refusals``), such as a site not set: one taken by default
-    fails its unit instead, as the echo says; then what each source taken refuses of its
-    options, such as one that does not read. No source's options are read unless it is
-    taken.
+    In order: an option of a setting of several sources, given when those named leave more
+    than one; a source named but not configured, or none left; what the light check
+    refuses of a source named, one taken by default failing its unit instead; what each
+    source taken refuses of its options. No source's options are read unless it is taken.
     """
     taken, _ = chosen(arguments, settings, FETCH)
     faults = [
@@ -46,12 +43,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 
 
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
-    """Name what the run does not apply, and why.
-
-    What it does not apply of the sources left out; then what each source taken does not
-    apply, by its connector's ``unapplied``, such as an email without the API token that
-    it signs in with.
-    """
+    """Name what the run does not apply, and why: of the sources left out, then of each taken."""
     taken, _ = chosen(arguments, settings, FETCH)
     unused = left_unapplied(arguments, settings)
     for source in taken:
@@ -67,9 +59,7 @@ def register(
 ) -> None:
     """Add ``fetch`` to the command, for the sources that have a fetcher.
 
-    The settings read are the data directory and each of those sources'. A source named
-    comes with the others, after the options or before them: its ``dest`` is ``source``,
-    as ``sources`` holds the sources.
+    A source named has the ``dest`` ``source``, as ``sources`` holds the sources.
     """
     fetched = [each for each in sources if each.connector.fetcher is not None]
     parser = subparsers.add_parser(

@@ -36,10 +36,9 @@ def run_id(text: str) -> str:
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse what no refresh can run with, before anything is asked: the first found.
 
-    A resume runs the configuration that its run recorded: a source named, or an option
-    of a source, which would change it, is refused, naming it. Else what a fetch
-    refuses, as ``fetch``'s declaration says, then an embedding endpoint off this machine
-    without the run's word.
+    A resume refuses a source named, or an option of a source, which would change the
+    configuration that its run recorded. Else what a fetch refuses, then an embedding
+    endpoint off this machine without the run's word.
     """
     if arguments.resume is None:
         return fetch.refused(arguments, settings) or endpoint_elsewhere(arguments, settings)
@@ -56,8 +55,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work.
 
-    A source whose fetch will not run, by its light check (``refusals``), asked once for
-    both stages' lines, is not prepared either, and its prepare's line says that alone.
+    A source whose fetch will not run, by its light check, is not prepared either.
     """
     taken, _ = chosen(arguments, settings, FETCH)
     unfetched = refusals(taken, settings)
@@ -75,9 +73,7 @@ def register(
 ) -> None:
     """Add ``refresh`` to the command, for the sources that have a fetcher.
 
-    The settings read are fetch's, prepare's and embed's. A source named comes with the
-    others, after the options or before them: its ``dest`` is ``source``, as ``sources``
-    holds the sources.
+    A source named has the ``dest`` ``source``, as ``sources`` holds the sources.
     """
     fetched = [each for each in sources if each.connector.fetcher is not None]
     parser = subparsers.add_parser(

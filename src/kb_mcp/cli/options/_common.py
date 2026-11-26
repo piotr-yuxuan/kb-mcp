@@ -75,11 +75,9 @@ class Quiet(argparse.Action):
 def add_output_options(parser: argparse.ArgumentParser, *, result: bool = True) -> None:
     """Add -q, -v and --log-level, which exclude one another, then --format and --detail.
 
-    Each of the three sets ``level``: warning by default, info with -v, debug with -vv,
-    error with -q. -q alone also sets ``quiet``, which leaves a result as text unwritten,
-    as Unix has it; a level leaves stdout alone. Without ``result``, for a command whose
-    output is its own, such as a protocol, --format and --detail are not offered, and
-    take their defaults.
+    -q also sets ``quiet``, which leaves a result as text unwritten; a level leaves stdout
+    alone. Without ``result``, --format and --detail are not offered, and take their
+    defaults.
     """
     parser.set_defaults(level=VERBOSITY[0], quiet=False, format=FORMATS[0], detail=DETAILS[0])
     levels = parser.add_mutually_exclusive_group()
@@ -133,10 +131,7 @@ def add_settings_options(
 
 
 def add_embedding_options(parser: argparse.ArgumentParser) -> argparse.Action:
-    """Add --allow-remote-embeddings, never a setting, so that it is given on every run.
-
-    Return its action.
-    """
+    """Add and return --allow-remote-embeddings, never a setting, so that each run gives it."""
     return parser.add_argument(
         "--allow-remote-embeddings",
         action="store_true",

@@ -21,18 +21,12 @@ def run(
 ) -> tuple[ExitStatus, Ended | None]:
     """Run the command's stage over the whole, as a run recorded; exit as its outcome ends.
 
-    ``index`` updates the index by words alone, never asking an endpoint, and its
-    configuration records whether --rebuild was given. Nothing built is an error, and the
-    index in place stays; each file skipped is a problem at each run, even when nothing
-    changed, which exits 1. ``vectors.sqlite`` stays as it is.
-
-    ``embed`` fills the index's chunks, then prunes the vector cache. The endpoint must
-    answer with the setting's model, whatever ``search_mode`` says, which this run does
-    not read; when it does not, the index in place stays, with its vectors. Nothing filled
-    is an error; each document with a chunk that the endpoint refused, and each file that
-    the index lacks, is a problem. A mirror changed since the index is a warning, whose
-    exit status stays. The consent to an endpoint off this machine is this invocation's,
-    never recorded.
+    ``index`` never asks an endpoint, and leaves ``vectors.sqlite`` as it is; each file
+    skipped is a problem at each run, even when nothing changed, which exits 1. ``embed``
+    fills the index's chunks by the setting's model, whatever ``search_mode`` says, then
+    prunes the vector cache; a mirror changed since the index is a warning, whose exit
+    status stays, and its consent to an endpoint off this machine is never recorded.
+    Nothing built or filled is an error, and the index in place stays.
     """
     options = {"--rebuild": arguments.rebuild} if arguments.command.name == INDEX else {}
     return whole_run(arguments, loaded, run, started, options)

@@ -33,8 +33,7 @@ def checked(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tu
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
     """Name what each sign-in does not apply, by its connector's ``unapplied``, and the unchecked.
 
-    The settings of a source not in use are not checked, whatever they say, so that a
-    token and an email without a site do not read as a sign-in that holds.
+    The settings of a source not in use are never checked, whatever they say.
     """
     taken = checked(arguments, settings)
     unused: dict[str, str] = {}
@@ -51,11 +50,7 @@ def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     sources: Sequence[Source],
 ) -> None:
-    """Add ``doctor`` to the command.
-
-    It reads the data folder and the settings of each source of a connector with checks,
-    whose first says whether it is checked.
-    """
+    """Add ``doctor`` to the command."""
     parser = subparsers.add_parser(
         "doctor",
         help="check the machine and each sign-in",

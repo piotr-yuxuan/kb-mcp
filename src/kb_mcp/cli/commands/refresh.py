@@ -26,12 +26,10 @@ def run(
 ) -> tuple[ExitStatus, Refreshed | None]:
     """Run every stage as a run recorded, or resume the run that --resume names; exit as it folds.
 
-    A refresh records its configuration, resolved as of this invocation's start,
-    ``started``: the sources that a fetch would take and those that a prepare would, each
-    in their order, the fetch's options as of then, and an index not rebuilt. A resume
-    runs the configuration that its run recorded, whichever command started it: each
-    unit not last ended done, and each that follows one of those. The status folds every
-    unit's last ending and this invocation's own.
+    A refresh records its configuration as of ``started``, its index not rebuilt. A resume
+    runs the configuration that its run recorded, whichever command started it: each unit
+    not last ended done, and each that follows one of those. The status folds every unit's
+    last ending and this invocation's own.
     """
     configuration = None
     if arguments.resume is None:

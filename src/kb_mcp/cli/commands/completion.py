@@ -17,9 +17,7 @@ def run(arguments: argparse.Namespace) -> ExitStatus:
     """Write argcomplete's script, one for both shells, which runs the command at each Tab.
 
     It registers the command by name, as installed tools have no executable of
-    argcomplete's own on the path. Shells run this at each start, so it is not observed,
-    as --version is not: it writes the script itself, which is its result, left
-    unwritten by -q, as any result as text is.
+    argcomplete's own on the path; -q leaves it unwritten, as any result as text.
     """
     if not arguments.quiet:
         sys.stdout.write(argcomplete.shellcode([PROGRAM]))
