@@ -134,9 +134,12 @@ def replace_synced(path: Path, data: bytes) -> None:
     """Write a file whole, through a hidden file, the user's alone (0600), renamed over it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, hidden = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    os.close(handle)
     try:
-        _write_synced(Path(hidden), data)
+        # Through mkstemp's descriptor: a name reopened could be swapped for a link.
+        with os.fdopen(handle, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
         Path(hidden).replace(path)
     finally:
         Path(hidden).unlink(missing_ok=True)
