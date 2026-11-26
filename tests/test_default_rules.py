@@ -187,6 +187,7 @@ def test_a_family_of_the_values_run() -> None:
     ("arms", "kept"),
     [
         ({"y": mode(0.595, 150), "x": mode(0.6, 150)}, "x"),
+        ({"x": mode(0.595, 150), "y": mode(0.6, 150)}, "y"),
         ({"y": mode(0.6, 150), "x": mode(0.6, 150)}, "x"),
     ],
 )
