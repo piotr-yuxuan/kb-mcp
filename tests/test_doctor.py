@@ -14,15 +14,13 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, model_of, sourced
-from tests.test_fetching import FakeSite
+from tests.test_fetching import FakeSite, settings
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
-
-    from kb_mcp.config.settings import Settings
 
 SITE = "https://sandbox.example.invalid"
 HOST = "sandbox.example.invalid"
@@ -47,14 +45,6 @@ def states(checks: list[object]) -> dict[str, str]:
     return {each.name: each.state for each in checks}  # type: ignore[attr-defined]
 
 
-def configured(tmp_path: Path) -> Settings:
-    """Give settings whose Confluence and Jira sources are of the site, with a data folder."""
-    return MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=tmp_path / "data",
-    )
-
-
 def test_a_missing_pandoc_fails_its_check(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """The mirror needs pandoc; its absence is said plainly."""
     monkeypatch.setenv("PATH", str(tmp_path))
@@ -67,7 +57,7 @@ def test_tls_inspection_is_reported_and_only_no_answer_fails(
 ) -> None:
     """Inspected TLS works through the OS trust store; a site that does not answer fails."""
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: verified)
-    found = states(doctor(configured(tmp_path), sourced(CONFLUENCE, JIRA)))
+    found = states(doctor(settings(tmp_path), sourced(CONFLUENCE, JIRA)))
     assert found[f"tls {HOST}"] == state
 
 
@@ -82,7 +72,7 @@ def test_without_a_saved_session_the_doctor_exits_3(
     assert main(options) == NOT_SIGNED_IN
     out = capsys.readouterr().out
     assert "sign-in jira: no session saved: run kb-mcp login jira" in out
-    found = states(doctor(configured(tmp_path), sourced(JIRA)))
+    found = states(doctor(settings(tmp_path), sourced(JIRA)))
     assert found["sign-in jira"] == "sign in again"
 
 
