@@ -392,15 +392,16 @@ def verdict(
     qualified = [name for name in run if not failed[name]]
     best = max((means[name] for name in qualified), default=0.0)
     close = [name for name in qualified if round(best - means[name], 3) <= MARGIN]
-    cheaper = spent.__getitem__ if rule.spends == "tokens" else rule.values.index
-    if not rule.values:  # the least spent, of equal times the higher mean, then the name
-        close.sort(key=lambda name: (-means[name], name))
-        cheaper = spent.__getitem__
+    if rule.values:  # the fewest tokens, or the first of the values
+        cheaper = spent.__getitem__ if rule.spends == "tokens" else rule.values.index
+        kept = min(close, key=cheaper, default=control)
+    else:  # the least spent, of equal times the higher mean, then the name
+        kept = min(close, key=lambda name: (spent[name], -means[name], name), default=control)
     return Verdict(
         rule=rule.name,
         fixed=fixed,
         control=control,
-        kept=min(close, key=cheaper, default=control),
+        kept=kept,
         untested=untested,
         means=means,
         adjusted=adjusted,
