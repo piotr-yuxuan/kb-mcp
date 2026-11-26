@@ -421,13 +421,6 @@ def reranker_check(home: Path, url: str, *arguments: str) -> int:
     return main(["reranker", "check", *arguments, *options])
 
 
-@pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give a scratch home, for the settings' checks."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    return tmp_path
-
-
 def test_the_check_gives_the_probe_s_scores_and_times_a_request_at_the_depth(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:

@@ -1,8 +1,7 @@
 """The pure rules of reranking: the text a document is scored by, and an order in a cursor.
 
-A search's next page must follow the order of its first without scoring again, so the
-cursor that continues a reranked page carries that order, one character for each
-document reranked: its place among the documents that the first ranking gave.
+A cursor carries a reranked page's order, one character a document, so that its next
+pages are not scored again.
 """
 
 from __future__ import annotations
@@ -28,10 +27,9 @@ def written(order: tuple[int, ...]) -> str:
 def split_order(cursor: str | None) -> tuple[str | None, tuple[int, ...] | None]:
     """Part a cursor into what every cursor holds, offset and build, and the order it carries.
 
-    No cursor gives no order, ``None``: a first page, which reranks. A cursor without an
-    order gives an empty one: a page continuing a first that was not reranked, and is
-    not now. Raises ValueError for an order that is not one: a character not a place, or
-    a place repeated or past the others.
+    No cursor gives None, for a first page, which reranks; a cursor without an order, an
+    empty one, as its first page was not reranked. Raises ValueError for an order that is
+    not one: a character not a place, or a place repeated or past the others.
     """
     if cursor is None:
         return None, None

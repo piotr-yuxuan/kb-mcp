@@ -1,9 +1,7 @@
 """``serve``: the MCP server over stdio, answering from the index and the embedding endpoint.
 
-This module alone knows the MCP SDK. The tools are the methods of
-``mcp.app.tools.Library``, registered as they are, so that their signatures are the
-tools' schemas. The SDK traces each message of the protocol; each tool call is measured
-here, as the SDK measures none, as ``docs/reference/telemetry/serve.md`` lists it.
+This module alone knows the MCP SDK. The tools are ``Library``'s methods, registered as
+they are, so that their signatures are the tools' schemas.
 """
 
 from __future__ import annotations
@@ -69,13 +67,8 @@ def served(method: Callable[..., str], filters: type) -> Callable[..., str]:
     """Wrap a tool so that an unanswerable call reaches the agent with its message, measured.
 
     Its parameter ``filters``, if it has one, takes ``filters``, which the SDK writes in
-    its schema. The SDK shows the agent the message of a ``ToolError`` alone; any other exception
-    becomes a bare "Error executing tool". Each call's duration goes in
-    ``mcp.server.operation.duration``, an unanswerable one's with the ``error.type``
-    ``tool_error``, as the MCP conventions have it, and one that raises any other
-    exception, which goes on, with its class, qualified by its module; each answer's
-    size, in ``kb_mcp.serve.answer.size``; and ``serve.call`` says at DEBUG the tool, its
-    arguments, the error, the seconds and the size.
+    its schema. The SDK shows the agent the message of a ``ToolError`` alone; any other
+    exception goes on, measured with its class.
     """
     name = method.__name__
 
@@ -135,13 +128,9 @@ def checking(render: Callable[..., str]) -> Callable[..., str]:
 def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, None]:
     """Serve the tools named, and the prompts that they allow, until the client closes stdin.
 
-    Their filter ``source`` takes the sources that a prepare takes by default, those that
-    keep a store and those configured, then those that the index holds, if it exists. The
-    lexical mode
-    never opens the embedding endpoint, nor does a server not reranking
-    open the reranking server's. The protocol is the output:
-    no result is given. ``kb_mcp.serve.fallbacks`` is 0 from the start, so that a chart of
-    it has data before any search falls back.
+    Their filter ``source`` takes the sources that a prepare takes by default, then those
+    that the index holds. The lexical mode never opens the embedding endpoint, nor a
+    server not reranking the reranking server's. The protocol is the output: no result.
     """
     settings = loaded.settings
     FALLBACKS.add(0, {"kb_mcp.mode": settings.search_mode})

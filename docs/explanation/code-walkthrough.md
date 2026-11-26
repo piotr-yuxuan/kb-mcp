@@ -391,7 +391,7 @@ indexes its sections by words
 digest ([`differences`](../../src/kb_mcp/search/app/indexing.py)): only those added or
 changed are read, and with none, nothing is written.
 
-`embed`'s [`run`](../../src/kb_mcp/cli/commands/embed.py) takes the same
+`embed`'s [`run`](../../src/kb_mcp/cli/commands/index.py) takes the same
 [`Indexing`](../../src/kb_mcp/search/app/indexing.py), with the means to open the
 endpoint, and [`fill_and_prune`](../../src/kb_mcp/search/app/indexing.py) calls
 [`filling`](../../src/kb_mcp/search/app/indexing.py). It reads the index first, in one
@@ -488,9 +488,8 @@ outcome has no problem.
 as one JSON document with `--format json`, else as
 [`text`](../../src/kb_mcp/cli/commands/sources.py) writes it: each row, then
 its outcome, by its [`Outcome.text`](../../src/kb_mcp/kernel/records.py). `index`
-and `embed` have one result each, written by their own `text`
-([`text`](../../src/kb_mcp/cli/commands/index.py),
-[`text`](../../src/kb_mcp/cli/commands/embed.py)).
+and `embed` have one result each, written by one
+[`text`](../../src/kb_mcp/cli/commands/index.py).
 [`observed`](../../src/kb_mcp/observability/observed.py) ends the run:
 `run.end`, the exit status on the root span, the run's duration.
 

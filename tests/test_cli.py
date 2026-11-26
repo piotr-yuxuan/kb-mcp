@@ -138,19 +138,6 @@ SECRETS = {
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give each test a scratch home directory, so that none reads or writes the user's.
-
-    The user's log folder is under it, as ``XDG_STATE_HOME`` is removed.
-    """
-    scratch = tmp_path / "home"
-    scratch.mkdir()
-    monkeypatch.setenv("HOME", str(scratch))
-    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
-    return scratch
-
-
-@pytest.fixture
 def extra(tmp_path: Path, monkeypatch: MonkeyPatch) -> Iterator[Path]:
     """Declare ``extra`` among the options, with its run to be written in the folder given.
 
@@ -208,7 +195,7 @@ def test_each_subcommand_s_command_carries_its_name_and_a_run_that_imports(name:
     package, _, module = command.run.rpartition(".")
     assert package == commands.__name__
     assert callable(importlib.import_module(command.run).run)
-    declaration = name if module == "sources" else module
+    declaration = name if module in {"sources", "index"} else module
     assert callable(importlib.import_module(f"{options.__name__}.{declaration}").register)
 
 

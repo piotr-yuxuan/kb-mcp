@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import STAGES, Command
+from kb_mcp.cli.domain.command import FETCH, STAGES, Command
 from kb_mcp.cli.domain.sources import (
-    chosen_to_fetch,
+    chosen,
     fetch_described,
     fetch_flags,
     given,
@@ -15,13 +15,7 @@ from kb_mcp.cli.domain.sources import (
     refusals,
 )
 from kb_mcp.cli.options import fetch
-from kb_mcp.cli.options._common import (
-    add_embedding_options,
-    add_output_options,
-    add_settings_options,
-    add_yes_option,
-    endpoint_elsewhere,
-)
+from kb_mcp.cli.options._common import add_embedding_options, add_run_options, endpoint_elsewhere
 from kb_mcp.cli.options._sources import add_source_options
 from kb_mcp.kernel.names import RUN_ID
 
@@ -42,10 +36,9 @@ def run_id(text: str) -> str:
 def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse what no refresh can run with, before anything is asked: the first found.
 
-    A resume runs the configuration that its run recorded: a source named, or an option
-    of a source, which would change it, is refused, naming it. Else what a fetch
-    refuses, as ``fetch``'s declaration says, then an embedding endpoint off this machine
-    without the run's word.
+    A resume refuses a source named, or an option of a source, which would change the
+    configuration that its run recorded. Else what a fetch refuses, then an embedding
+    endpoint off this machine without the run's word.
     """
     if arguments.resume is None:
         return fetch.refused(arguments, settings) or endpoint_elsewhere(arguments, settings)
@@ -62,10 +55,9 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
 def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tuple[str, ...]:
     """Say what each stage takes: fetch's and prepare's sources, then index's and embed's work.
 
-    A source whose fetch will not run, by its light check (``refusals``), asked once for
-    both stages' lines, is not prepared either, and its prepare's line says that alone.
+    A source whose fetch will not run, by its light check, is not prepared either.
     """
-    taken, _ = chosen_to_fetch(arguments, settings)
+    taken, _ = chosen(arguments, settings, FETCH)
     unfetched = refusals(taken, settings)
     return (
         *(f"fetch: {line}" for line in fetch_described(arguments, settings, unfetched)),
@@ -81,9 +73,7 @@ def register(
 ) -> None:
     """Add ``refresh`` to the command, for the sources that have a fetcher.
 
-    The settings read are fetch's, prepare's and embed's. A source named comes with the
-    others, after the options or before them: its ``dest`` is ``source``, as ``sources``
-    holds the sources.
+    A source named has the ``dest`` ``source``, as ``sources`` holds the sources.
     """
     fetched = [each for each in sources if each.connector.fetcher is not None]
     parser = subparsers.add_parser(
@@ -102,9 +92,7 @@ def register(
             " it started."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
+    actions, flags = add_run_options(parser, yes=True)
     source = parser.add_argument(
         "source",
         nargs="*",

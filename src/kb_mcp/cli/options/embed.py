@@ -1,17 +1,11 @@
-"""``embed``'s declaration; ``cli.commands.embed`` runs it."""
+"""``embed``'s declaration; ``cli.commands.index`` runs it."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import EMBED, Command
-from kb_mcp.cli.options._common import (
-    add_embedding_options,
-    add_output_options,
-    add_settings_options,
-    add_yes_option,
-    endpoint_elsewhere,
-)
+from kb_mcp.cli.options._common import add_run_options, endpoint_elsewhere
 
 if TYPE_CHECKING:
     import argparse
@@ -53,17 +47,14 @@ def register(
             " changed since the index, each with its `where` and `reason`."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
-    remote = add_embedding_options(parser)
+    actions, flags = add_run_options(parser, yes=True, remote=True)
     parser.set_defaults(
         command=Command(
             EMBED,
-            "kb_mcp.cli.commands.embed",
+            "kb_mcp.cli.commands.index",
             reads=("data_dir", "model", "chunking", "embedding_url", "embedding_api_key"),
             flags=flags,
-            actions=(*actions, remote),
+            actions=actions,
             writes=True,
             refused=endpoint_elsewhere,
             described=pruning_said,

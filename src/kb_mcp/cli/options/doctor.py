@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import Command
-from kb_mcp.cli.options._common import add_output_options, add_settings_options
+from kb_mcp.cli.options._common import add_run_options
 
 if TYPE_CHECKING:
     import argparse
@@ -33,8 +33,7 @@ def checked(arguments: argparse.Namespace, settings: Mapping[str, object]) -> tu
 def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> dict[str, str]:
     """Name what each sign-in does not apply, by its connector's ``unapplied``, and the unchecked.
 
-    The settings of a source not in use are not checked, whatever they say, so that a
-    token and an email without a site do not read as a sign-in that holds.
+    The settings of a source not in use are never checked, whatever they say.
     """
     taken = checked(arguments, settings)
     unused: dict[str, str] = {}
@@ -51,11 +50,7 @@ def register(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
     sources: Sequence[Source],
 ) -> None:
-    """Add ``doctor`` to the command.
-
-    It reads the data folder and the settings of each source of a connector with checks,
-    whose first says whether it is checked.
-    """
+    """Add ``doctor`` to the command."""
     parser = subparsers.add_parser(
         "doctor",
         help="check the machine and each sign-in",
@@ -64,8 +59,7 @@ def register(
             " its state: well, failed, or sign in again."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
+    actions, flags = add_run_options(parser)
     parser.set_defaults(
         command=Command(
             "doctor",

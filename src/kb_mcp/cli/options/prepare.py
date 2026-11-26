@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import PREPARE, Command
 from kb_mcp.cli.domain.sources import prepare_described
-from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
+from kb_mcp.cli.options._common import add_run_options
 from kb_mcp.cli.options._sources import choice_refused, left_unapplied, source_groups
 
 if TYPE_CHECKING:
@@ -22,12 +22,8 @@ def register(
 ) -> None:
     """Add ``prepare`` to the command, for every source.
 
-    The settings read are the data directory, each source's location, such as its site,
-    which links resolve by, and the first setting of each source that keeps no scopes by
-    key, which says whether it is taken, every setting of one without a fetcher, which its
-    preparer reads: a source that keeps a store is prepared from what it holds, whatever
-    its settings cover. A source named comes with the others, after the options or before
-    them: its ``dest`` is ``source``, as ``sources`` holds the sources.
+    A source that keeps a store is prepared from what it holds, whatever its settings
+    cover. A source named has the ``dest`` ``source``, as ``sources`` holds the sources.
     """
     parser = subparsers.add_parser(
         "prepare",
@@ -51,9 +47,7 @@ def register(
             " would remove, what pandoc would convert not counted."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
+    actions, flags = add_run_options(parser, yes=True)
     source = parser.add_argument(
         "source",
         nargs="*",

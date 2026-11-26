@@ -101,8 +101,7 @@ def endpoint(
     Raises SettingsError for an address that is not a literal address of this machine,
     unless ``remote_allowed``, and for plain http to one even then. On this machine the
     environment's proxies are ignored, since one would carry the text away; redirects
-    are never followed. Each request sent is observed, as ``ObservedTransport`` has it.
-    ``transport`` replaces the network, for tests.
+    are never followed.
     """
     refusal = refused_endpoint(url, service, remote_allowed=remote_allowed)
     if refusal is not None:
@@ -128,11 +127,10 @@ def send(
 ) -> tuple[int, bytes]:
     """Make a request within its bounds; give the status and body of its last answer.
 
-    httpx bounds each phase of an attempt by the deadline (connecting, sending, the
-    answer's first byte), and the body must end by the deadline itself, checked at every
-    read, within MAX_ANSWER_BYTES. A transport error, a passed deadline, an answer too
-    large or a status of RETRIED is tried again, after a wait, while attempts remain.
-    Raises ModelError when no attempt got a whole answer.
+    Each phase of an attempt, and its whole body of at most MAX_ANSWER_BYTES, ends by the
+    deadline. A transport error, a passed deadline, an answer too large or a status of
+    RETRIED is tried again, after a wait, while attempts remain. Raises ModelError when no
+    attempt got a whole answer.
     """
     reason = "no attempt"
     for attempt in range(bounds.attempts):

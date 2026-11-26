@@ -1,7 +1,7 @@
 """A source's part in a stage per source, as a unit: its fetcher, or one of its preparers.
 
-A connector names its fetcher and its preparers by module path, which this module loads
-for the run that uses it, never ``--help``.
+Each is loaded by the module path that its connector names, for the run that uses it,
+never for ``--help``.
 """
 
 from __future__ import annotations
@@ -25,9 +25,7 @@ def loaded[R: (Fetcher, Preparer)](source: Source, path: str, interface: type[R]
     """Load a fetcher or a preparer by the module path that its source's connector names.
 
     Raises ``SourcesRefusedError``, naming the source and the path, for a path that does
-    not load, whatever its import raises, such as a syntax error in a module of the
-    source's or its own error at import, or for what it names that lacks the interface's
-    methods.
+    not load, whatever its import raises, or that names what lacks the interface's methods.
     """
     stage = FETCH if interface is Fetcher else PREPARE
     try:
@@ -44,13 +42,10 @@ def loaded[R: (Fetcher, Preparer)](source: Source, path: str, interface: type[R]
 def source_planned(unit: Unit, run: SourceRun) -> Planned:
     """Give a unit per source as its source's fetcher, or its preparer of the unit's part, does it.
 
-    A fetch is refused by its source's light check of the run's settings
-    (``Source.refusal``), else by its fetcher's preflight: either fails the unit alone.
-    What the check refuses of the settings without their secrets, such as a site not set,
-    is the unit's ``refused``, as every invocation of the run would refuse it; what it
-    refuses only with this invocation's secrets, such as an API token without its email,
-    begins its preflight, as a resume takes its secrets from its own environment. Raises
-    ``SourcesRefusedError`` as ``loaded`` does.
+    A fetch's light check, like its preflight, fails the unit alone: what it refuses of the
+    settings without their secrets is the unit's ``refused``; what it refuses only with
+    this invocation's secrets begins its preflight, as a resume takes its secrets from its
+    own environment. Raises ``SourcesRefusedError`` as ``loaded`` does.
     """
     connector = run.source.connector
     if unit.stage == FETCH:

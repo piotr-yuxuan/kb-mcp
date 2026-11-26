@@ -126,7 +126,7 @@ def test_names_choose_among_the_sources_each_once_in_the_registry_s_order(
     stage: str, given: tuple[str, ...], taken: list[str]
 ) -> None:
     """No name takes every one that the command can run; a name, those named alone."""
-    found, _ = chosen(arguments(stage, *given), CONFIGURED)
+    found, _ = chosen(arguments(stage, *given), CONFIGURED, stage)
     assert [source.name for source in found] == taken
 
 
@@ -137,19 +137,19 @@ def test_what_each_command_leaves_out_says_why() -> None:
     nothing to fetch.
     """
     settings = CONFIGURED | {"sources.jira.projects": (), "sources.worklog.path": None}
-    found, left = chosen(arguments("fetch"), settings)
+    found, left = chosen(arguments("fetch"), settings, "fetch")
     assert [source.name for source in found] == ["confluence"]
     assert left == {"jira": "not configured", "worklog": "not configured"}
     memo = sourced(CONFLUENCE, replace(WORKLOG, name="memo", fetcher=None))
-    found, left = chosen(parser(sources=memo).parse_args(["fetch"]), settings)
+    found, left = chosen(parser(sources=memo).parse_args(["fetch"]), settings, "fetch")
     assert ([source.name for source in found], left) == (
         ["confluence"],
         {"memo": "read in place, it has nothing to fetch"},
     )
-    found, left = chosen(arguments("prepare"), settings)
+    found, left = chosen(arguments("prepare"), settings, "prepare")
     assert [source.name for source in found] == ["confluence", "jira"]
     assert left == {"worklog": "not configured"}
-    found, left = chosen(arguments("prepare", "confluence"), CONFIGURED)
+    found, left = chosen(arguments("prepare", "confluence"), CONFIGURED, "prepare")
     assert [source.name for source in found] == ["confluence"]
     assert left == {"jira": "not named", "worklog": "not named"}
 

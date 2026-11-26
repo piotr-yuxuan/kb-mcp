@@ -1,12 +1,7 @@
 """Embeddings from an OpenAI-compatible API: Ollama on this machine, by default.
 
-Only this module knows the API: its requests and answers, the one part of Ollama's own
-API used (its list of models, for a model's digest), and the prefixes that each known
-model asks for. The rest of the code sees an ``Embedder``: a name, a fingerprint, its
-dimensions, and texts in, unit vectors of float32 out.
-
-The mirror's text leaves this machine only when the run's command line allows it:
-``model_api.endpoint`` is the only way to a client, and refuses any other address.
+Only this module knows the API. The mirror's text leaves this machine only when the run's
+command line allows it: ``model_api.endpoint`` is the only way to a client.
 """
 
 from __future__ import annotations
@@ -87,10 +82,7 @@ PREFIXES = {
 
 
 def prefixes(model: str) -> Prefixes | None:
-    """Give the prefixes that a model's card asks for, or None for a model not known.
-
-    The family is the name before its tag, as Ollama resolves the name.
-    """
+    """Give the prefixes that a model's card asks for, or None for a model not known."""
     return PREFIXES.get(ollama_name(model).partition(":")[0])
 
 
@@ -148,14 +140,9 @@ def embeddings(
     """Embed texts with a model, each to a unit vector, in the order given.
 
     ``dimensions``, when not 0, is the length that every vector must have. The tokens are
-    the answer's ``usage.prompt_tokens``, None when it gives none or null; a ``usage``
-    that is not an object, or any value there but an integer of 0 or more, refuses the
-    answer. Raises RefusedError when the answer points at what was sent, and ModelError
-    otherwise.
-
-    The embedding is a span ``embeddings <model>`` that holds its attempts and the
-    tokens counted, if any; its duration and those tokens are measured, as the GenAI
-    conventions have them.
+    ``usage.prompt_tokens``, None when it gives none; a usage that is no count of 0 or more
+    refuses the answer. Raises EmbeddingRefusedError when the answer points at what was
+    sent, and ModelError otherwise.
     """
     measured = {
         "gen_ai.operation.name": "embeddings",
@@ -216,8 +203,7 @@ def embeddings(
 def ollama_name(name: str) -> str:
     """Write a model's name as Ollama resolves it, to compare two.
 
-    In lower case, with its tag (``latest`` when none is given), and without the default
-    registry and namespace.
+    In lower case, tagged ``latest`` when untagged, without the default registry and namespace.
     """
     lower = name.lower()
     tagged = lower if ":" in lower.rpartition("/")[2] else f"{lower}:latest"
@@ -229,10 +215,9 @@ def ollama_name(name: str) -> str:
 def digest(endpoint: Endpoint, model: str) -> str:
     """Give the digest that Ollama lists for a model, or "" from a server that lists none.
 
-    Names compare as Ollama resolves them; the digests of every row of the name are
-    joined, as Ollama has listed one model twice. Raises ModelError when the list
-    cannot be read, when Ollama's list lacks the model, and for a model that Ollama
-    serves from elsewhere (a cloud model) unless the run allows it.
+    The digests of every row of the name are joined, as Ollama has listed one model twice.
+    Raises ModelError when the list cannot be read, lacks the model, or serves it from
+    elsewhere (a cloud model) unless the run allows it.
     """
     root = str(endpoint.http.base_url).removesuffix("/").removesuffix("/v1")
     status, body = send(endpoint, "GET", f"{root}/api/tags", SINGLE)
@@ -301,10 +286,9 @@ class ApiEmbedder:
     def documents(self, texts: Sequence[str]) -> list[NDArray[np.float32] | None]:
         """Embed texts to be found, BATCH at a time; None for a text the endpoint refuses.
 
-        A batch refused goes again text by text. Every text of several refused alone is
-        the endpoint's fault, a limit of its own; one text refused alone is the text's
-        unless the probe fails too. The digest is read before and after, so that no
-        vector of other weights is given under this fingerprint. Raises ModelError.
+        A batch refused goes again text by text; every text of several refused alone, or
+        one and the probe, raises ModelError, as any other failure does. The digest is read
+        before and after, so that no vector of other weights is given under this fingerprint.
         """
         self.check()
         found: list[NDArray[np.float32] | None] = []

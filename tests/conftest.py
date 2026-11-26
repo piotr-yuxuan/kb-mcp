@@ -28,6 +28,8 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from tests.endpoint import REACHABLE
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from _pytest.monkeypatch import MonkeyPatch
     from _pytest.tmpdir import TempPathFactory
     from opentelemetry.sdk.metrics.export import Metric
@@ -75,14 +77,22 @@ def settings_environment(monkeypatch: MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def scratch_home(tmp_path_factory: TempPathFactory, monkeypatch: MonkeyPatch) -> None:
+def scratch_home(tmp_path_factory: TempPathFactory, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a home of its own, so that no run writes the user's log folder.
 
     The platform's log folder is under the home: ``~/Library/Logs`` on macOS, and on
     Linux ``~/.local/state`` once ``XDG_STATE_HOME`` is removed.
     """
-    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    return home
+
+
+@pytest.fixture
+def home(scratch_home: Path) -> Path:
+    """Give the test's scratch home, which a module may override with a home of its own."""
+    return scratch_home
 
 
 @dataclass(frozen=True)

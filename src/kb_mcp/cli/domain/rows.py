@@ -1,11 +1,4 @@
-"""What a recorded run writes as its result: its run id first, then its units' outcomes.
-
-``fetch`` and ``prepare`` give a row per source; ``index`` and ``embed``, the outcome of
-their one unit; ``refresh``, each unit's last entry. They are records, and an outcome is
-its stage's, so not in ``cli.domain.sources``, which ``--help`` imports, nor in the use
-case, which loads what fetchers and preparers need, so that a command writes its result
-without importing what it does not run.
-"""
+"""What a recorded run writes as its result: its run id first, then its units' outcomes."""
 
 from __future__ import annotations
 
@@ -37,8 +30,7 @@ class Row(Outcome):
 class Ran(Record):
     """What a run of sources did: its run id, its exit status, then a row per source, in order.
 
-    ``recorded``, which its text says and JSON leaves out, is whether the run is recorded,
-    so that refresh --resume takes its id: a dry run is not.
+    ``recorded``, which JSON leaves out, is false for a dry run, whose id no resume takes.
     """
 
     run: str
@@ -50,8 +42,7 @@ class Ran(Record):
 class Ended(Outcome):
     """What a run of one unit over the whole did: its run id, then its unit's outcome.
 
-    ``recorded``, which its text says and JSON leaves out, is whether the run is recorded,
-    so that refresh --resume takes its id: not on a data directory that does not exist.
+    ``recorded``, which JSON leaves out, is false when the data directory does not exist.
     """
 
     run: str
@@ -67,9 +58,8 @@ class Ended(Outcome):
 class Refreshed(Record):
     """What an invocation of a refresh, or of a resume, did: its run id, status and units.
 
-    ``units`` are each unit's last entry, in their order, those of earlier invocations
-    included; ``outcomes``, this invocation's, by unit, which its text writes and JSON
-    leaves out, as its entries hold them.
+    ``units`` are each unit's last entry, in order, earlier invocations' included;
+    ``outcomes``, which JSON leaves out, this invocation's, by unit.
     """
 
     run: str

@@ -1,16 +1,8 @@
 """The vectors embedded so far, kept across index builds, in one SQLite file.
 
-A vector is keyed by the SHA-256 of its model's fingerprint and the text embedded, so a
-text is embedded once per model however often the index is rebuilt, and a vector is
-never reused for another model or another version of one. Each ``put`` commits, so an
-interrupted build keeps what it embedded, until a prune finds that no index reads it.
-Deleting the file costs no embedding while the index holds its chunks, each with its
-vector; once the index is rebuilt whole, the next ``embed`` embeds the mirror again by
-the model, and downloads nothing.
-
-Its lock, beside it, keeps a prune from deleting what a build in progress embeds: each
-build holds it shared, a prune exclusive. ``flock`` locks an open file, so the kernel
-releases the lock when the file is closed or its process ends, killed included.
+A vector is keyed by its model's fingerprint and its text, never reused for another model.
+Its lock, beside it, is held shared by each build and exclusive by a prune; ``flock``
+releases it when its file is closed or its process ends, killed included.
 """
 
 from __future__ import annotations
@@ -63,10 +55,8 @@ def as_bytes(vector: NDArray[np.float32]) -> bytes:
 class Swept(Record):
     """What a prune of the store did: the vectors deleted and those left, and its size.
 
-    ``shrinks`` says whether the store gives freed pages back to the file system, as one
-    made before plan 023 does only once converted; ``converted``, whether this prune
-    converted it; ``unreclaimed``, why this prune's pages stayed in the file, empty when
-    they did not.
+    ``shrinks`` says whether the store gives freed pages back at all; ``unreclaimed``, why
+    this prune's stayed in the file, empty when they did not.
     """
 
     deleted: int
@@ -107,10 +97,8 @@ class VectorCache:
     ) -> tuple[dict[str, bytes], int]:
         """Give the vector of each text, by key, embedding and keeping those the store lacks.
 
-        Texts are embedded BATCH at a time, those of like length together, each batch
-        committed before the next, as the task ``texts to embed`` reports.
-        A text that ``embed`` gives None for has no vector, here or in the store, so the
-        next build asks again. Also return how many texts were embedded.
+        Texts are embedded BATCH at a time, each batch committed before the next; a text
+        that ``embed`` gives None for has no vector. Also return how many were embedded.
         """
         found = self.get(texts)
         missing = sorted((each for each in texts if each not in found), key=lambda k: len(texts[k]))
@@ -133,14 +121,11 @@ class VectorCache:
     def prune(self, kept: Iterable[str]) -> Swept:
         """Delete every vector whose key is not kept, then give the pages freed back.
 
-        The deletions are one transaction, committed first, as the vacuum refuses to run
-        in one; when they fail, sqlite3.Error is raised, and nothing is deleted. Then
-        ``incremental_vacuum`` gives back every free page, those an earlier prune left
-        included, read to its end in one call, as each of its steps frees one page. A
-        store made before plan 023 is first converted, once: its mode set, then one
-        ``VACUUM``, which rewrites the vectors kept and needs about their size free, in
-        SQLite's temporary folder and beside the store. A vacuum that fails leaves the
-        deletions standing, and says why; the next prune tries again.
+        The deletions commit first, as no vacuum runs in a transaction: when they fail,
+        sqlite3.Error is raised and nothing is deleted. A store of another mode is converted
+        once, by a ``VACUUM`` that needs about the kept vectors' size free.
+        ``incremental_vacuum`` is read to its end, as each of its steps frees one page. A
+        vacuum that fails leaves the deletions standing, and says why.
         """
         connection = self._connection
         before = connection.execute(SIZE).fetchone()[0]
@@ -183,14 +168,10 @@ class VectorCache:
 def opened(path: Path) -> Iterator[VectorCache]:
     """Open the store at ``path``, creating it when there is none; close it after use.
 
-    Two runs may use the store at once, an index and an evaluation: in WAL mode, reads
-    hold no lock and leave no transaction open, and a write waits for the other's. A new
-    store can give the pages that a prune frees back to the file system; one made before
-    plan 023 can only once converted, as only a ``VACUUM`` changes its mode, which its
-    first prune runs.
-    Setting the mode on an existing store in that mode takes the write lock, so that
-    opening it waits for another run's write, and a read-only file is refused: every run
-    that opens the store writes to it anyway.
+    In WAL mode two runs may use it at once, a write waiting for the other's. Setting its
+    mode takes the write lock: opening waits for another run's write, and refuses a
+    read-only file, which every run that opens the store writes to anyway. Only a
+    ``VACUUM`` changes an existing store's mode, which its first prune runs.
     """
     connection = sqlite3.connect(path, timeout=WAIT_S)
     try:
@@ -213,9 +194,8 @@ def lock_of(store: Path) -> Path:
 def locked(lock: Path, operation: int, event: str, holder: str) -> Iterator[None]:
     """Hold a lock file by ``flock``'s ``operation``, shared or exclusive, waiting for it.
 
-    A run that finds it held says so once, ``event`` naming the lock, then waits, and
-    raises TimeoutError, naming the lock and its ``holder``, once WAIT_S seconds have
-    passed.
+    A lock found held is logged once as ``event``; raise TimeoutError, naming the lock and
+    ``holder``, after WAIT_S seconds.
     """
     with lock.open("a") as file:
         for attempt in itertools.count():
@@ -237,9 +217,7 @@ def locked(lock: Path, operation: int, event: str, holder: str) -> Iterator[None
 def shared(store: Path) -> Iterator[None]:
     """Hold the store's lock shared, as a build does from its start until its index is in.
 
-    A prune holds it exclusive for seconds: a build that starts meanwhile says so,
-    ``vectors.lock_wait``, then waits, and raises TimeoutError, naming the lock, once
-    WAIT_S seconds have passed.
+    Wait for a prune; raise TimeoutError, naming the lock, after WAIT_S seconds.
     """
     with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector cache"):
         yield
@@ -249,8 +227,7 @@ def shared(store: Path) -> Iterator[None]:
 def exclusive(store: Path) -> Iterator[bool]:
     """Hold the store's lock exclusive, as a prune does, unless a build holds it.
 
-    Never waits: say whether the lock is held, so that a prune that finds a build in
-    progress can be deferred.
+    Never wait: say whether the lock is held.
     """
     with lock_of(store).open("a") as file:
         try:

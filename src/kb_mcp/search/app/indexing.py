@@ -40,7 +40,7 @@ from kb_mcp.search.adapters import sqlite_index, vector_cache
 from kb_mcp.search.adapters.aliases import AliasFileError, read_aliases
 from kb_mcp.search.adapters.embedding import connect, prefixes
 from kb_mcp.search.adapters.model_api import Endpoint, ModelError
-from kb_mcp.search.app.pruning import Pruned, Written, prune
+from kb_mcp.search.app.pruning import Pruned, prune
 from kb_mcp.search.domain.chunking import CHUNKERS
 from kb_mcp.search.domain.indexes import (
     Change,
@@ -818,6 +818,5 @@ def fill_and_prune(indexing: Indexing) -> Outcome[Filled]:
         not_built = Problem(where=str(indexing.index), reason=str(error))
         return Outcome.of(problems=(not_built,))
     filled = outcome.counts
-    written = Written(skipped=filled.skipped, documents=filled.documents, keys=filled.kept)
-    pruned = prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, written)
+    pruned = prune(indexing.vectors, indexing.index, indexing.evaluation_indexes, filled)
     return replace(outcome, counts=replace(filled, pruned=pruned))

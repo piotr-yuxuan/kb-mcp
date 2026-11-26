@@ -50,7 +50,7 @@ SECRETS = {CREDENTIAL: "token-sentinel-4d1c", KEY: "key-sentinel-9a7e"}
 UNKNOWN = "KB_MCP_UNKNOWN"
 WAIT = 30  # seconds for the server to answer and stop
 # The modules that run the commands that write, by plan 015.
-WRITING = ("embed", "evaluate", "index", "login", "sources")
+WRITING = ("evaluate", "index", "login", "sources")
 # Each command that writes, with options of its own, as given on its command line.
 OWN_OPTIONS = {
     "fetch": ["--space", "ENG", "--space", "OPS", "--since", "7d", "--max-file-mb", "5"],

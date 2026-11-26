@@ -30,8 +30,8 @@ type Target = tuple[int, int, int, int]  # lines, files, types, largest
 # bound, so that they fall as the context shrinks; a plan raises one on the user's word.
 CEILINGS = {
     "sources/atlassian": (5_150, 35, 81, 1_050, 190),
-    "search": (4_500, 20, 78, 1_250, 220),
-    "cli": (4_450, 56, 33, 300, 80),
+    "search": (4_400, 20, 77, 1_250, 220),
+    "cli": (4_250, 55, 33, 300, 70),
     "sources/worklog": (2_150, 23, 23, 750, 90),
     "evaluation": (1_950, 12, 35, 600, 60),
     "mcp": (1_450, 6, 11, 950, 50),

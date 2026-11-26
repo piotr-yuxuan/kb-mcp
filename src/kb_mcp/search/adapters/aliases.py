@@ -1,10 +1,7 @@
 """The alias file: names as some source writes them, or identities, and whom each means.
 
-The user may write ``<data>/aliases.toml``, each line a name or an identity, then a
-name, an identity or a person's id; the program never writes it. Each build of the
-index reads it again, so a change takes effect at the next. Only this module reads the
-file, and only to check it: ``people.joined`` decides what each alias joins, and which
-change nothing.
+Only this module reads the file, which the program never writes, and only to check it;
+each build of the index reads it again, so that a change takes effect at the next.
 """
 
 from __future__ import annotations
@@ -37,12 +34,10 @@ class AliasFileError(ValueError):
 def read_aliases(path: Path) -> dict[str, str]:
     """Read each alias's name and value as the file writes them, in its order.
 
-    No file holds no alias. Raises AliasFileError, naming the file and the alias, for a
-    file that is not UTF-8 TOML; a value that is a table, or not text; a name or a
-    value of an empty key, such as white space or accents alone, or that holds a line
-    break or is longer than LONGEST; and two names of one key, which the join would take
-    for one name. Raises OSError for a file that cannot be read, such as a folder. A
-    name is quoted as Python writes it, so that a refusal is one line.
+    No file holds no alias. Raises AliasFileError, naming the file and the alias, quoted
+    as Python writes it, for a file that is not UTF-8 TOML; a value that is a table or not
+    text; a name or a value of an empty key, that holds a line break or is longer than
+    LONGEST; and two names of one key. Raises OSError for a file that cannot be read.
     """
     try:
         values = tomllib.loads(path.read_text(encoding="utf-8"))

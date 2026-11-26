@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import INDEX, Command
-from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
+from kb_mcp.cli.options._common import add_run_options
 
 if TYPE_CHECKING:
     import argparse
@@ -44,9 +44,7 @@ def register(
             " each alias that changed nothing, each with its `where` and `reason`."
         ),
     )
-    actions, flags = add_settings_options(parser)
-    add_output_options(parser)
-    add_yes_option(parser)
+    actions, flags = add_run_options(parser, yes=True)
     rebuild = parser.add_argument(
         "--rebuild", action="store_true", help="build the index whole, keeping nothing of it"
     )

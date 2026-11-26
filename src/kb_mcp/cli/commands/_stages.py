@@ -1,8 +1,4 @@
-"""How the units of any configuration are done, each as its stage does it, with its sources.
-
-What ``fetch``, ``prepare`` and ``refresh`` share: per source, by its fetcher or its
-preparers; over the whole, as ``_runs`` says.
-"""
+"""How the units of any configuration are done, each as its stage does it, with its sources."""
 
 from __future__ import annotations
 
@@ -30,12 +26,8 @@ def planned(
 ) -> list[Planned]:
     """Give each unit of a configuration as its stage does it, with the run's settings.
 
-    A unit per source is a run of its source, of those that the settings configure, with
-    its table, its options as the configuration records them, by flag, in a fetch, and
-    the configuration's dry run; a unit over the whole, as ``whole_planned`` says. Raises
-    RefusedError, as ``require_configured`` does, for a configuration that the sources
-    configured no longer run, and ``SourcesRefusedError`` for a fetcher or a preparer
-    that does not load.
+    Raises RefusedError for a configuration that the sources configured no longer run,
+    and ``SourcesRefusedError`` for a fetcher or a preparer that does not load.
     """
     by_name = {each.name: each for each in arguments.sources}
     require_configured(configuration, by_name)
