@@ -33,8 +33,10 @@ type CommandRefused = Callable[[argparse.Namespace, Mapping[str, object]], str |
 class Command:
     """A subcommand as its parser declares it, by ``set_defaults(command=...)``.
 
-    ``run`` names the module whose ``run(arguments, loaded)`` runs it, imported only once
-    it is chosen. ``reads`` names each setting that the run reads, by its path
+    ``name`` is the subcommand as typed, which its run's module need not match: ``embed``
+    is run by ``cli.commands.index``. ``run`` names the module whose ``run(arguments,
+    loaded)`` runs it, imported only once it is chosen. ``reads`` names each setting that
+    the run reads, by its path
     (``sources.confluence.spaces``); the entry also reads those of ``OBSERVING`` for every
     command that it observes. ``flags`` maps each option that overrides a setting, by its
     ``dest``, to that setting's path; ``scoped``, each that overrides a setting of one

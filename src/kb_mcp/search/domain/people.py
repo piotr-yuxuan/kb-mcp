@@ -103,7 +103,8 @@ class PersonRow(Record):
 class Ambiguity(Record):
     """A name that could be several persons, which rule 5 gives the person by name of its key.
 
-    Or a key whose annotations part its names among persons by name alone.
+    Or, beyond the concepts page, a key whose annotations part its names among persons by
+    name alone.
     """
 
     name: str  # as the first of its rows in order writes it

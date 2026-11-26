@@ -54,14 +54,14 @@ def fetch_options(
 
 
 def chosen(
-    arguments: argparse.Namespace, settings: Mapping[str, object], stage: str
+    arguments: argparse.Namespace, settings: Mapping[str, object], command: str
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
-    """Return the sources that a stage takes, in their order, and why each other is left out.
+    """Return the sources that a command takes, in their order, and why each other is left out.
 
-    A prepare takes each source that ``Source.prepared_by_default``; any other stage, as a
-    fetch, each that has a fetcher and is configured; either, only those named, if any.
+    ``prepare`` takes each source that ``Source.prepared_by_default``; ``fetch`` and
+    ``refresh``, each that has a fetcher and is configured; each, only those named, if any.
     """
-    preparing = stage == PREPARE
+    preparing = command == PREPARE
     named = set(arguments.source)
     taken: list[Source] = []
     left: dict[str, str] = {}
