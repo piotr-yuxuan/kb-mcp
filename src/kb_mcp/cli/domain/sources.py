@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
     from datetime import datetime
 
-    from kb_mcp.cli.domain.command import Stage
     from kb_mcp.sources.declaration import Option, Source
 
 
@@ -66,14 +65,13 @@ def fetch_options(
 
 
 def chosen(
-    arguments: argparse.Namespace, settings: Mapping[str, object], stage: Stage | None = None
+    arguments: argparse.Namespace, settings: Mapping[str, object], stage: str
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
     """Return the sources that a stage takes, in their order, and why each other is left out.
 
-    ``stage`` is the command's by default: ``PREPARE`` takes what a prepare takes, any
-    other what a fetch takes.
+    ``PREPARE`` takes what a prepare takes; any other stage, what a fetch takes.
     """
-    preparing = (stage or arguments.command.name) == PREPARE
+    preparing = stage == PREPARE
     named = set(arguments.source)
     taken: list[Source] = []
     left: dict[str, str] = {}

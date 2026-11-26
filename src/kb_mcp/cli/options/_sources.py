@@ -111,7 +111,7 @@ def add_source_options(
 
 def choice_refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> str | None:
     """Refuse a source named but not configured, or a run left with none: the first found."""
-    taken, left = chosen(arguments, settings)
+    taken, left = chosen(arguments, settings, arguments.command.name)
     faults = [
         f"{source.name}: not configured; set {source.paths[0]}"
         for source in arguments.sources
@@ -128,7 +128,7 @@ def left_unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]
     The settings that the command reads of those left out, but the first of one not
     configured, which holds nothing to apply.
     """
-    _, left = chosen(arguments, settings)
+    _, left = chosen(arguments, settings, arguments.command.name)
     reads = arguments.command.reads
     return {
         path: f"{source.name} {left[source.name]}"

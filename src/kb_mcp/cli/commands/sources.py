@@ -35,7 +35,7 @@ def run(
     content.
     """
     stage = arguments.command.name
-    taken, _ = chosen(arguments, values_of(loaded.settings))
+    taken, _ = chosen(arguments, values_of(loaded.settings), stage)
     configuration = Configuration(
         run=run,
         command=stage,
