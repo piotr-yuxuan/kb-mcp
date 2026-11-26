@@ -146,7 +146,7 @@ def _write_synced(path: Path, data: bytes) -> None:
         os.fsync(file.fileno())
 
 
-def _replace_synced(path: Path, data: bytes) -> None:
+def replace_synced(path: Path, data: bytes) -> None:
     """Write a file whole, through a hidden file renamed over it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, hidden = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -322,7 +322,7 @@ class RawStore:
         if not blobs:
             return
         fetched_at, stored = self._read_record(folder)
-        _replace_synced(folder / RECORD, self._record(fetched_at, {**stored, **blobs}))
+        replace_synced(folder / RECORD, self._record(fetched_at, {**stored, **blobs}))
 
     @staticmethod
     def _record(fetched_at: datetime, blobs: Mapping[str, str]) -> bytes:
@@ -405,17 +405,17 @@ class RawStore:
             if type(value) is not list:
                 message = f"{name}: expected a list"
                 raise ValueError(message)
-            _replace_synced(space_folder / f"{name}.json", _encode(value))
-        _replace_synced(space_folder / "space.json", _encode(space))
+            replace_synced(space_folder / f"{name}.json", _encode(value))
+        replace_synced(space_folder / "space.json", _encode(space))
         if listed_at is not None:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
-            _replace_synced(space_folder / LISTED_AT, _encode(moment))
+            replace_synced(space_folder / LISTED_AT, _encode(moment))
 
     def _put_ids(self, path: Path, ids: Collection[str]) -> None:
         # A record of ids, sorted; none removes it.
         self._check_writing()
         if ids:
-            _replace_synced(path, _encode(sorted(ids)))
+            replace_synced(path, _encode(sorted(ids)))
         else:
             path.unlink(missing_ok=True)
 
@@ -504,7 +504,7 @@ class RawStore:
         if type(issues) is not list:
             message = "issues: expected a list"
             raise ValueError(message)
-        _replace_synced(self._listing(project, Issue), _encode(issues))
+        replace_synced(self._listing(project, Issue), _encode(issues))
 
     def put_searched(self, project: str, searched: Collection[str]) -> None:
         """Keep the ids of the issues that a project's searches found since its last whole read.
@@ -536,7 +536,7 @@ class RawStore:
         for name, entries in (("users.json", kept), ("users", users)):
             for index, user in enumerate(entries):
                 merged[Fields(user, f"{name}[{index}]").text("accountId")] = user
-        _replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
+        replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
 
     def users(self) -> list[SiteUser | Problem]:
         """Read every site user kept."""
@@ -634,7 +634,7 @@ class RawStore:
                 key=lambda scope: (scope.source, scope.type.name, scope.key),
             )
         ]
-        _replace_synced(self.root / COVERAGE, _encode(entries))
+        replace_synced(self.root / COVERAGE, _encode(entries))
 
     def tombstones(self) -> dict[DocumentKey, Tombstone]:
         """Read the documents that answered as gone, by source, document type and id.
@@ -698,7 +698,7 @@ class RawStore:
             }
             for stone in sorted(tombstones, key=lambda each: each.key)
         ]
-        _replace_synced(self.root / TOMBSTONES, _encode(entries))
+        replace_synced(self.root / TOMBSTONES, _encode(entries))
 
     def blob(self, digest: str) -> Path:
         """Return where the file with this SHA-256 is, or would be."""
@@ -713,5 +713,5 @@ class RawStore:
         digest = hashlib.sha256(data).hexdigest()
         path = self.blob(digest)
         if not path.exists():
-            _replace_synced(path, data)
+            replace_synced(path, data)
         return digest
