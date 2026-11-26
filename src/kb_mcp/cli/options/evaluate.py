@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 
 def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
-    """Evaluate the models that --model names, if any, in place of the setting."""
-    return {"model": "replaced by --model"} if arguments.model else {}
+    """Evaluate one model that --model names in place of the setting; of two, it is the control."""
+    return {"model": "replaced by --model"} if len(set(arguments.model or ())) == 1 else {}
 
 
 def register(

@@ -231,6 +231,28 @@ def test_a_model_named_on_the_command_line_replaces_the_setting(
 
 
 @pytest.mark.usefixtures("runs")
+def test_eval_of_two_models_applies_the_setting_as_the_control(
+    home: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch
+) -> None:
+    """093's D3: two models named, the setting's model is the embedding verdict's control.
+
+    It is applied, so neither ignored nor marked unapplied; one model named replaces it.
+    """
+    monkeypatch.chdir(home)
+    (home / "golden.yaml").write_text("", "utf-8")
+    config = home / "config.toml"
+    config.write_text('model = "tiny"\n', "utf-8")
+    given = ["eval", "--yes", "golden.yaml", "--config", str(config), "--detail", "detailed"]
+    assert main([*given, "--model", "tiny", "--model", "other:1b"]) == 0
+    err = capsys.readouterr().err
+    assert "ignored: model" not in err
+    assert "\n  model: tiny [config.toml]\n" in err
+    assert "not applied" not in err
+    assert main([*given, "--model", "other:1b", "--model", "other:1b"]) == 0
+    assert "ignored: model (config.toml): replaced by --model\n" in capsys.readouterr().err
+
+
+@pytest.mark.usefixtures("runs")
 def test_the_echo_says_why_the_run_does_not_apply_a_setting_whatever_its_layer(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
