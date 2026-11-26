@@ -46,18 +46,15 @@ INTERRUPTED = 130
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+def home(home: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, no waiting between requests, and the sites.
 
     Confluence's source and Jira's are of the scripted site.
     """
-    scratch = tmp_path / "home"
-    scratch.mkdir()
-    monkeypatch.setenv("HOME", str(scratch))
     monkeypatch.setattr(time, "sleep", lambda _: None)
     for source in ("CONFLUENCE", "JIRA"):
         monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
-    return scratch
+    return home
 
 
 def command(home: Path, *options: str) -> list[str]:

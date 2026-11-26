@@ -122,19 +122,16 @@ class Interrupting(Terminal):
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+def home(home: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, so that none reads or writes the user's.
 
     Its work log is the home itself, so that prepare has a source to take; each Atlassian
     source has its site.
     """
-    scratch = tmp_path / "home"
-    scratch.mkdir()
-    monkeypatch.setenv("HOME", str(scratch))
-    monkeypatch.setenv(WORKLOG_PATH, str(scratch))
+    monkeypatch.setenv(WORKLOG_PATH, str(home))
     for name, value in SITES.items():
         monkeypatch.setenv(name, value)
-    return scratch
+    return home
 
 
 @pytest.fixture
