@@ -130,7 +130,7 @@ def measured(
     of_index, plain = prepared(evaluated, settings, questions, clock, arms.built_at)
     deepest = max(arms.depths)
     # The search's own attributes stay off the run's span; its spans stay in its trace.
-    served = trace.NonRecordingSpan(trace.get_current_span().get_span_context())
+    hidden = trace.NonRecordingSpan(trace.get_current_span().get_span_context())
     found: list[Arm] = []
     with task("questions", (1 + len(arms.depths)) * len(questions)) as asking:
         for depth in (0, *arms.depths):
@@ -141,7 +141,7 @@ def measured(
             naming = functools.partial(running, arm=f"depth {depth}", per=per)
             for question in asking.each(questions, naming):
                 started = clock()
-                with trace.use_span(served):
+                with trace.use_span(hidden):
                     library.search(question.text)
                 spent.append(clock() - started)
                 shown, note = library.ranked(question.text, arms.mode, limit=deepest)
