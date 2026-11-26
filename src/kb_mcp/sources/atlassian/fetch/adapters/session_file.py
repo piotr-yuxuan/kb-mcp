@@ -1,8 +1,4 @@
-"""The saved session: a site's cookies, in a file that the user alone can read.
-
-Each site's session is a folder of the session's place, named after its host: its
-cookies and the browser profile that signed it in.
-"""
+"""The saved session: a site's cookies, in a file that the user alone can read."""
 
 from __future__ import annotations
 
@@ -70,12 +66,8 @@ def kept_why(root: Path, source: str, sites: Mapping[str, str]) -> str | None:
 def adopt_former_session(root: Path, source: str, sites: Mapping[str, str]) -> None:
     """Move the session kept before sessions were a site's into a source's site's folder, once.
 
-    That is ``root/cookies.json`` and the profile beside it, as ``kept_why`` judges,
-    under a lock of ``root``, which another run holding skips the move: it makes it. The
-    profile goes first, unless the site has one, then the cookies, whose place says that
-    the move is done: ``session.moved``, at INFO. Else, or when the lock or a move fails,
-    they stay, with a warning, ``session.not_moved``, saying why. With none, nothing is
-    said.
+    As ``kept_why`` judges, under a lock of ``root`` that a run finding it held leaves the
+    move to; the cookies go last, so that their place says the move is done.
     """
     former, folder = root / COOKIES, folder_of(root, sites[source])
     if not former.exists():
