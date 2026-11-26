@@ -693,12 +693,12 @@ SENTENCES = {
 }
 
 
-def test_a_run_without_result_counts_as_a_failure(
-    world: World, capsys: CaptureFixture[str]
-) -> None:
-    """D7, E15: A's run failed, B's succeeded; the pair is tested, A's run a failure.
+def graded_beside_b(
+    world: World, capsys: CaptureFixture[str], status: str, call: str | None
+) -> tuple[dict, str]:
+    """Grade A's run ended as told, by its harness's status and a call's, beside B's success.
 
-    The verdict says how many runs without a result it counted as failures, in each arm.
+    Give the results file and what grade wrote.
     """
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1") == 0
@@ -709,16 +709,52 @@ def test_a_run_without_result_counts_as_a_failure(
     answer["quotes"] = [{"ref": ref, "text": sentence}]
     assert answering(out, runs["B"]["id"], json.dumps(answer)) == 0
     harness(out, runs["B"]["id"], status="returned")
-    harness(out, runs["A"]["id"], status="failed")
+    harness(out, runs["A"]["id"], status=status)
+    if call:
+        (out / "calls").mkdir(exist_ok=True)
+        line = json.loads(LOGGED) | {"status": call}
+        (out / "calls" / f"{runs['A']['id']}.jsonl").write_text(json.dumps(line) + "\n", "utf-8")
     capsys.readouterr()
     assert main(["eval-agents", "grade", str(out), "--yes"]) == 0
-    assert "runs without a result, counted as failures: A 1, B 0" in capsys.readouterr().out
-    results = json.loads((out / "results.json").read_text("utf-8"))
+    said = capsys.readouterr().out
+    return json.loads((out / "results.json").read_text("utf-8")), said
+
+
+@pytest.mark.parametrize(
+    ("status", "call"), [("failed", None), ("returned", "timeout")], ids=["failed", "timed out"]
+)
+def test_a_run_without_result_counts_as_a_failure(
+    world: World, capsys: CaptureFixture[str], status: str, call: str | None
+) -> None:
+    """D7, E15: A's run, attempted, gave no result; B's succeeded: the pair is tested.
+
+    A's run is a failure, and the verdict says how many runs without a result it counted
+    as failures, in each arm.
+    """
+    results, said = graded_beside_b(world, capsys, status, call)
+    assert "runs without a result, counted as failures: A 1, B 0" in said
     judged = {each["surface"]: each["result"] for each in results["outcomes"]}
     assert judged == {"A": "no result", "B": "success"}
     assert (results["pairs"], results["left_out"]) == (1, 0)
     assert results["no_result"] == {"A": 1, "B": 0}
     assert results["verdict"]["differences"]["success"]["difference"] == 1.0
+
+
+@pytest.mark.parametrize("call", ["unconsented", "outdated"])
+def test_an_unattempted_run_leaves_its_pair(
+    world: World, capsys: CaptureFixture[str], call: str
+) -> None:
+    """D7: a run whose calls were refused unsent was never attempted: no failure of its arm.
+
+    Its question leaves the tests, in both arms, said as left out; no failure is counted.
+    """
+    results, said = graded_beside_b(world, capsys, "returned", call)
+    judged = {each["surface"]: each["result"] for each in results["outcomes"]}
+    assert judged == {"A": "no result", "B": "success"}
+    assert (results["pairs"], results["left_out"]) == (0, 1)
+    assert results["no_result"] == {"A": 0, "B": 0}
+    assert "left out, a run never attempted: 1" in said
+    assert "counted as failures: A 0, B 0" in said
 
 
 def test_no_graded_pair_gives_no_verdict(world: World, capsys: CaptureFixture[str]) -> None:
@@ -733,7 +769,7 @@ def test_no_graded_pair_gives_no_verdict(world: World, capsys: CaptureFixture[st
     assert "no verdict on ask" in said
     assert "ask stays" not in said
     results = json.loads((out / "results.json").read_text("utf-8"))
-    assert (results["pairs"], results["left_out"]) == (0, 1)
+    assert (results["pairs"], results["left_out"]) == (0, 0)
     assert results["verdict"]["keeps_ask"] is None
 
 
@@ -771,7 +807,7 @@ def test_an_unknown_or_ambiguous_ref_is_an_unresolved_citation(
 def test_a_call_without_the_consent_leaves_its_run_without_a_result(
     world: World, capsys: CaptureFixture[str]
 ) -> None:
-    """Logged, the forced "found": false is no honest answer: no result, a failure in its arm."""
+    """Logged, the forced "found": false is no honest failure: its question is left out."""
     remote(world)
     out = world.root / "runs"
     assert prepared(world, out, "--sample", "1", "--allow-remote-embeddings") == 0
@@ -789,7 +825,7 @@ def test_a_call_without_the_consent_leaves_its_run_without_a_result(
     results = json.loads(capsys.readouterr().out)
     judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
     assert judged[unconsented] == ("no result", "a call lacked the consent")
-    assert (results["pairs"], results["left_out"]) == (1, 0)
+    assert (results["pairs"], results["left_out"]) == (0, 1)
 
 
 def test_a_run_without_a_call_says_its_seconds_as_the_integer_0(
@@ -871,7 +907,7 @@ def test_runs_prepared_with_the_consent_in_their_server_s_command_are_refused(
     judged = {each["run"]: (each["result"], each["reason"]) for each in results["outcomes"]}
     reason = "prepared before the consent was given per call"
     assert judged[outdated] == ("no result", reason)
-    assert (results["pairs"], results["left_out"]) == (1, 0)
+    assert (results["pairs"], results["left_out"]) == (0, 1)
 
 
 @pytest.mark.parametrize("given", [[], ["--data-dir", "DATA"]])

@@ -221,7 +221,7 @@ def text(result: object, detail: Detail) -> str:
         case Results():
             counted = ", ".join(f"{name} {count}" for name, count in result.counted.items())
             verdict = {
-                None: "no verdict on ask, since no question has both its runs judged",
+                None: "no verdict on ask, since no question is in the tests",
                 True: "ask stays among the default tools",
                 False: "ask leaves the default tools: B's success is lower",
             }[result.verdict.keeps_ask]
@@ -229,7 +229,7 @@ def text(result: object, detail: Detail) -> str:
             lines = [
                 (
                     f"runs: {counted or 'none'}; questions in the tests: {result.pairs}; left"
-                    f" out, a run pending: {result.left_out}"
+                    f" out, a run never attempted: {result.left_out}"
                 ),
                 *(
                     f"{name}, B with ask against A without: {each.difference:+.3f}"
