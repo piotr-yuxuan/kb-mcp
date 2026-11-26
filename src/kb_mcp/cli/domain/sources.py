@@ -1,4 +1,8 @@
-"""What ``fetch`` and ``prepare`` choose and say, as pure functions of arguments and settings."""
+"""What ``fetch`` and ``prepare`` choose and say, as pure functions of arguments and settings.
+
+A source is configured when its first setting, which names what it covers, is set; each
+source is taken once, in the sources' order, whatever the order typed.
+"""
 
 from __future__ import annotations
 
@@ -54,7 +58,8 @@ def chosen(
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
     """Return the sources that a stage takes, in their order, and why each other is left out.
 
-    ``PREPARE`` takes what a prepare takes; any other stage, what a fetch takes.
+    A prepare takes each source that ``Source.prepared_by_default``; any other stage, as a
+    fetch, each that has a fetcher and is configured; either, only those named, if any.
     """
     preparing = stage == PREPARE
     named = set(arguments.source)

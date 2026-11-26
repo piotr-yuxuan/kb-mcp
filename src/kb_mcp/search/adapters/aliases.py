@@ -1,6 +1,7 @@
 """The alias file: names as some source writes them, or identities, and whom each means.
 
-Only this module reads the file, which the program never writes, and only to check it.
+Only this module reads the file, which the program never writes, and only to check it;
+each build of the index reads it again, so that a change takes effect at the next.
 """
 
 from __future__ import annotations

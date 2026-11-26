@@ -1,7 +1,8 @@
 """Pruning the vector cache to what the indexes on disk read, after an index by meaning.
 
-A prune holds the store's lock exclusive, which no build in progress holds, so that it
-never deletes what a build embeds.
+The files are the truth: deleting an evaluation's index lets the next prune drop its
+vectors. A prune holds the store's lock exclusive, which no build in progress holds, so
+that it never deletes what a build embeds.
 """
 
 from __future__ import annotations
