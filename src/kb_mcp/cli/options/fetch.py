@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from kb_mcp.cli.domain.command import FETCH, Command
-from kb_mcp.cli.domain.sources import chosen_to_fetch, fetch_described, given, refusals
+from kb_mcp.cli.domain.sources import chosen, fetch_described, given, refusals
 from kb_mcp.cli.options._common import add_output_options, add_settings_options, add_yes_option
 from kb_mcp.cli.options._sources import add_source_options, choice_refused, left_unapplied
 
@@ -27,7 +27,7 @@ def refused(arguments: argparse.Namespace, settings: Mapping[str, object]) -> st
     options, such as one that does not read. No source's options are read unless it is
     taken.
     """
-    taken, _ = chosen_to_fetch(arguments, settings)
+    taken, _ = chosen(arguments, settings)
     faults = [
         *(
             f"{flag}: overrides a setting of one source; name one of {', '.join(left)}"
@@ -52,7 +52,7 @@ def unapplied(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     apply, by its connector's ``unapplied``, such as an email without the API token that
     it signs in with.
     """
-    taken, _ = chosen_to_fetch(arguments, settings)
+    taken, _ = chosen(arguments, settings)
     unused = left_unapplied(arguments, settings)
     for source in taken:
         connector = source.connector

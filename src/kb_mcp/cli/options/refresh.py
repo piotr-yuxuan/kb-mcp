@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import STAGES, Command
+from kb_mcp.cli.domain.command import FETCH, STAGES, Command
 from kb_mcp.cli.domain.sources import (
-    chosen_to_fetch,
+    chosen,
     fetch_described,
     fetch_flags,
     given,
@@ -65,7 +65,7 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     A source whose fetch will not run, by its light check (``refusals``), asked once for
     both stages' lines, is not prepared either, and its prepare's line says that alone.
     """
-    taken, _ = chosen_to_fetch(arguments, settings)
+    taken, _ = chosen(arguments, settings, FETCH)
     unfetched = refusals(taken, settings)
     return (
         *(f"fetch: {line}" for line in fetch_described(arguments, settings, unfetched)),

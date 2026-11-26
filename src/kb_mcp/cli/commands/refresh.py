@@ -10,7 +10,7 @@ from kb_mcp.cli.commands._stages import planned
 from kb_mcp.cli.domain.command import FETCH, INDEX, PREPARE, STAGES
 from kb_mcp.cli.domain.rows import Refreshed
 from kb_mcp.cli.domain.runs import Configuration, keyed
-from kb_mcp.cli.domain.sources import chosen_to_fetch, chosen_to_prepare, fetch_options
+from kb_mcp.cli.domain.sources import chosen, fetch_options
 from kb_mcp.config.settings import values_of, without_secrets
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ def run(
     configuration = None
     if arguments.resume is None:
         values = values_of(loaded.settings)
-        fetched, _ = chosen_to_fetch(arguments, values)
+        fetched, _ = chosen(arguments, values, FETCH)
         configuration = Configuration(
             run=run,
             command="refresh",
@@ -44,7 +44,7 @@ def run(
             stages=STAGES,
             sources={
                 FETCH: tuple(each.name for each in fetched),
-                PREPARE: tuple(each.name for each in chosen_to_prepare(arguments, values)[0]),
+                PREPARE: tuple(each.name for each in chosen(arguments, values, PREPARE)[0]),
             },
             options={
                 FETCH: fetch_options(arguments, fetched, started),

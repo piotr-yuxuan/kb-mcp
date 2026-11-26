@@ -17,13 +17,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from kb_mcp.cli.domain.command import PREPARE
+from kb_mcp.cli.domain.command import FETCH, PREPARE
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Collection, Iterable, Mapping
     from datetime import datetime
 
+    from kb_mcp.cli.domain.command import Stage
     from kb_mcp.sources.declaration import Option, Source
 
 
@@ -64,19 +65,24 @@ def fetch_options(
     }
 
 
-def chosen_to_fetch(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
+def chosen(
+    arguments: argparse.Namespace, settings: Mapping[str, object], stage: Stage | None = None
 ) -> tuple[tuple[Source, ...], dict[str, str]]:
-    """Return the sources that a fetch takes, in their order, and why each other is left out."""
+    """Return the sources that a stage takes, in their order, and why each other is left out.
+
+    ``stage`` is the command's by default: ``PREPARE`` takes what a prepare takes, any
+    other what a fetch takes.
+    """
+    preparing = (stage or arguments.command.name) == PREPARE
     named = set(arguments.source)
     taken: list[Source] = []
     left: dict[str, str] = {}
     for source in arguments.sources:
-        if source.connector.fetcher is None:
+        if not preparing and source.connector.fetcher is None:
             left[source.name] = "read in place, it has nothing to fetch"
         elif named and source.name not in named:
             left[source.name] = "not named"
-        elif not settings[source.paths[0]]:
+        elif not (source.prepared_by_default(settings) if preparing else settings[source.paths[0]]):
             left[source.name] = "not configured"
         else:
             taken.append(source)
@@ -90,34 +96,6 @@ def refusals(sources: Iterable[Source], settings: Mapping[str, object]) -> dict[
     site not set; a source that it lets run is not given.
     """
     return {each.name: why for each in sources if (why := each.refusal(settings)) is not None}
-
-
-def chosen_to_prepare(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> tuple[tuple[Source, ...], dict[str, str]]:
-    """Return the sources that a prepare takes, in their order, and why each other is left out."""
-    named = set(arguments.source)
-    taken: list[Source] = []
-    left: dict[str, str] = {}
-    for source in arguments.sources:
-        if named and source.name not in named:
-            left[source.name] = "not named"
-        elif not source.prepared_by_default(settings):
-            left[source.name] = "not configured"
-        else:
-            taken.append(source)
-    return tuple(taken), left
-
-
-def chosen(
-    arguments: argparse.Namespace, settings: Mapping[str, object]
-) -> tuple[tuple[Source, ...], dict[str, str]]:
-    """Return what the command that the arguments name takes, and why each other is left out.
-
-    ``prepare`` takes what a prepare takes; ``fetch`` and ``refresh``, what a fetch takes.
-    """
-    choose = chosen_to_prepare if arguments.command.name == PREPARE else chosen_to_fetch
-    return choose(arguments, settings)
 
 
 def source_line(source: Source, settings: Mapping[str, object]) -> str:
@@ -147,7 +125,7 @@ def fetch_described(
     that replaces a setting of no source named (``Command.narrowed``); another that
     replaces a setting is said by ``unapplied``, as for any setting.
     """
-    taken, left = chosen_to_fetch(arguments, settings)
+    taken, left = chosen(arguments, settings, FETCH)
     refused = refusals(taken, settings) if refused is None else refused
     lines = [source_line(source, settings) for source in taken]
     said: list[str] = []
@@ -184,7 +162,7 @@ def prepare_described(
     A source ``unfetched``, whose fetch will not run before, as in a refresh, is said
     alone not to run.
     """
-    taken, left = chosen_to_prepare(arguments, settings)
+    taken, left = chosen(arguments, settings, PREPARE)
     unset = [
         source
         for source in taken
