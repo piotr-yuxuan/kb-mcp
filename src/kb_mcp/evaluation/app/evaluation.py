@@ -256,7 +256,9 @@ def evaluate(
     for evaluated in indexes:
         name = evaluated.embedder.name
         named = {"gen_ai.request.model": name, "kb_mcp.chunking": evaluated.chunking}
-        with TRACER.start_as_current_span("eval.model", attributes=named):
+        with TRACER.start_as_current_span("eval.model", attributes=named) as span:
+            # The served answers' attributes stay off this span, and their spans in its trace.
+            hidden = trace.NonRecordingSpan(span.get_span_context())
             of_index, library = prepared(evaluated, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
@@ -277,8 +279,8 @@ def evaluate(
                         started = clock()
                         quoted = library.quoted(question.text, mode)
                         asking.append(clock() - started)
-                        # As the server answers, the search timed; their attributes are its own.
-                        with trace.use_span(trace.INVALID_SPAN):
+                        # As the server answers, the search timed.
+                        with trace.use_span(hidden):
                             started = clock()
                             search = served.search(question.text)
                             spent.append(clock() - started)

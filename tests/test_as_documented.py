@@ -545,7 +545,7 @@ def test_eval_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None
 
     The mirror holds the golden questions' documents and fillers, indexed by words. The
     endpoint refuses to embed the second question, which a search by meaning then ranks
-    by words.
+    by words. The searches that it times as the server answers stay in the run's trace.
     """
     data = tmp_path / "data"
     docs = data / "docs"
@@ -561,6 +561,9 @@ def test_eval_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None
     emitted = Emitted()
     with serving(Scripted()) as url, emitted.gathering(telemetry, "eval"):
         assert main(["eval", "--yes", str(golden), *by_meaning(data, url)]) == 0
+    (root,) = (span for span in emitted.spans if span.name == "eval")
+    assert "search.semantic" in {span.name for span in emitted.spans}
+    assert {span.trace_id for span in emitted.spans} == {root.trace_id}
     with emitted.gathering(telemetry, "eval"):
         assert main(["eval", "--yes", str(refused), *by_meaning(data, URL)]) == ExitStatus.REFUSED
     answers = Scripted(refused={"revert release"})
