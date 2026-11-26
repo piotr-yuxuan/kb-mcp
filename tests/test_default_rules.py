@@ -183,6 +183,20 @@ def test_a_family_of_the_values_run() -> None:
     assert found.kept == "y"
 
 
+@pytest.mark.parametrize(
+    ("arms", "kept"),
+    [
+        ({"y": mode(0.595, 150), "x": mode(0.6, 150)}, "x"),
+        ({"y": mode(0.6, 150), "x": mode(0.6, 150)}, "x"),
+    ],
+)
+def test_without_values_equal_times_go_to_the_higher_mean_then_the_name(
+    arms: Mapping[str, Arm], kept: str
+) -> None:
+    """D2, T4: of qualifiers within the margin that spend the same, not the order run."""
+    assert verdict(OPEN, "current", {"current": mode(0.6, 188)} | arms, {}).kept == kept
+
+
 def test_a_rule_without_values_asks_no_gain() -> None:
     """D2: no Bonferroni correction runs over a family that the run sets."""
     assert (GAIN.gains, OPEN.gains) == (True, False)
