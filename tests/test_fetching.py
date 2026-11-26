@@ -497,7 +497,7 @@ def purview(spaces: list[str], projects: list[str]) -> Purview:
     )
 
 
-def save_session(data_dir: Path) -> Settings:
+def signed_in_settings(data_dir: Path) -> Settings:
     """Save a session of the scripted site in a data folder; give the settings over it."""
     chosen = MODEL(
         sources={"confluence": {"site": SITE}, "jira": {"site": SITE}}, data_dir=data_dir
@@ -510,7 +510,7 @@ def save_session(data_dir: Path) -> Settings:
 
 def saved_session(tmp_path: Path, monkeypatch: MonkeyPatch, fake: FakeSite) -> Settings:
     """Save a session, and let the run's client reach the fake site."""
-    chosen = save_session(tmp_path / "data")
+    chosen = signed_in_settings(tmp_path / "data")
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     return chosen
 

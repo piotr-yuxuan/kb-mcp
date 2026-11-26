@@ -23,7 +23,7 @@ from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from tests.endpoint import Scripted, serving
 from tests.recorded import unrun
-from tests.test_fetching import SITE, FakeSite, save_session
+from tests.test_fetching import SITE, FakeSite, signed_in_settings
 from tests.test_observed import said as said_on
 
 if TYPE_CHECKING:
@@ -357,7 +357,7 @@ def test_a_fetch_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
-    save_session((home / "kb-mcp").resolve())
+    signed_in_settings((home / "kb-mcp").resolve())
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     before = tree(home)
