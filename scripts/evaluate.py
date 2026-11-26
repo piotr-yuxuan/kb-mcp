@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from contextlib import AbstractContextManager
 
-OLDEST = (0, 1, 13)  # the release of kb-mcp whose results this script reads
+OLDEST = (0, 1, 14)  # the release of kb-mcp whose results this script reads
 # The reranker that llama-server serves when none answers, pinned, and the server's flags,
 # as docs/how-to/reranking.md gives them.
 MODEL_FILE = ".local/share/llama.cpp/qwen3-reranker-0.6b-q8_0.gguf"  # in the home

@@ -265,7 +265,7 @@ def mac(tmp_path: Path) -> Iterator[Mac]:
             root,
             {
                 "uname": "Darwin",
-                "version": "kb-mcp 0.1.13",
+                "version": "kb-mcp 0.1.14",
                 "settings": settings,
                 "models": list(MODELS),
                 "statuses": {},
@@ -386,13 +386,13 @@ def test_the_settings_come_from_kb_mcp_check(
 
 
 def test_an_older_kb_mcp_is_refused(mac: Mac) -> None:
-    """D10: a kb-mcp older than this plan's release, 0.1.13, is refused, saying how to upgrade."""
-    mac.plan["version"] = "kb-mcp 0.1.12"
+    """D10: a kb-mcp older than this plan's release, 0.1.14, is refused, saying how to upgrade."""
+    mac.plan["version"] = "kb-mcp 0.1.13"
     done = mac.run()
     assert done.returncode == REFUSED
     refusal = said(done.stdout)
-    assert "kb-mcp 0.1.12" in refusal
-    assert "0.1.13 or later" in refusal
+    assert "kb-mcp 0.1.13" in refusal
+    assert "0.1.14 or later" in refusal
     assert "uv tool install --force" in refusal
     assert mac.calls("kb-mcp") == [["--version"]]
 
@@ -578,7 +578,7 @@ def test_the_archive_holds_logs_results_and_analyses_not_the_golden_file(mac: Ma
         ]
         assert files[f"analyses/{step}.txt"]
     assert len([name for name in files if name.startswith("results/")]) == len(STEPS)
-    assert json.loads(files["manifest.json"])["versions"]["kb-mcp"] == "kb-mcp 0.1.13"
+    assert json.loads(files["manifest.json"])["versions"]["kb-mcp"] == "kb-mcp 0.1.14"
     logs = [text for name, text in files.items() if name.startswith("logs/")]
     assert b"questions 2/2, MRR@10 0.860\n" in b"".join(logs)
     assert not [text for text in logs if b"\x1b" in text]
