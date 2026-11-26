@@ -1,7 +1,7 @@
 """Confluence's and Jira's names and types, each declared once: connectors, documents, scopes.
 
-A connector's name is also its one source's. Standard library alone, as the declaration,
-which ``--help`` imports, reads it too (contract G).
+A connector's name is also that of the source declared for it. Standard library alone,
+as the declaration, which ``--help`` imports, reads it too (contract G).
 """
 
 from __future__ import annotations

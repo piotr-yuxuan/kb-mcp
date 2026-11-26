@@ -102,7 +102,8 @@ def answer_of(found: str, status: str | None, kept: Collection[str], *, named: b
     """Say what a probe that the site answered found.
 
     ``found`` is the scope that holds the document now; ``kept``, those whose whole reads
-    the raw store keeps; ``named``, whether the found scope's last whole read names it.
+    the raw store keeps, each as its listings are kept; ``named``, whether the found
+    scope's last whole read names it.
     """
     if status in GONE_STATUSES or found not in kept:
         return ProbeAnswer.GONE

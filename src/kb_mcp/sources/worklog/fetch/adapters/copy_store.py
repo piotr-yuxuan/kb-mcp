@@ -32,7 +32,8 @@ class CopyStore:
     """One work log's copy store: the folder ``<root>/<source>/``, its file and its lock.
 
     The file is replaced whole, through a hidden file renamed into place, so that a reader
-    finds the last write whole or the one before it.
+    finds the last write whole or the one before it. One run at a time writes, inside
+    ``writing``.
     """
 
     def __init__(self, root: Path, source: str) -> None:

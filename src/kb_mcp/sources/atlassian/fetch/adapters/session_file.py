@@ -66,8 +66,8 @@ def kept_why(root: Path, source: str, sites: Mapping[str, str]) -> str | None:
 def adopt_former_session(root: Path, source: str, sites: Mapping[str, str]) -> None:
     """Move the session kept before sessions were a site's into a source's site's folder, once.
 
-    As ``kept_why`` judges, under a lock of ``root`` that a run finding it held leaves the
-    move to; the cookies go last, so that their place says the move is done.
+    As ``kept_why`` judges, under a lock of ``root``: a run that finds it held leaves the
+    move to the run that holds it. The cookies go last, so that their place says it is done.
     """
     former, folder = root / COOKIES, folder_of(root, sites[source])
     if not former.exists():
