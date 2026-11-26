@@ -752,13 +752,6 @@ def check(home: Path, url: str, *arguments: str) -> int:
     )
 
 
-@pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
-    """Give a scratch home, for the settings' checks."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    return tmp_path
-
-
 def test_model_check_says_the_dimensions_and_whether_the_prefixes_are_known(
     home: Path, capsys: CaptureFixture[str]
 ) -> None:
