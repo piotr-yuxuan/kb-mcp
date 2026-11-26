@@ -59,10 +59,9 @@ MODEL_URL = (
 )
 MODEL_SHA256 = "22c9979ce4fbcdc5acdc310c6641c32797eff1aa980b8f7a2db8a8ea23429a48"
 LLAMA_FLAGS = ("--reranking", "--alias", "qwen3-reranker-0.6b", "-c", "8192")
-# Each step, in the default rules' order, with the rule that gives its verdict; embedding
-# models have none, being chosen from public benchmarks.
+# Each step, in the default rules' order, with the rule that gives its verdict.
 STEPS = {"search-mode": "search mode", "chunking": "chunking", "reranking": "reranking depth"}
-STEPS |= {"embedding-model": None}
+STEPS |= {"embedding-model": "embedding model"}
 # The chunkings that the chunking step compares, and the models that the last step compares
 # with the setting's, unless options name others: the user's, since another's first run
 # embeds the whole mirror anew, for hours.
@@ -505,7 +504,7 @@ def step(
     console.print(f"{name}: done in {seconds / 60:.1f} min{since}.", style="green")
     for line in lines:
         console.print(line)
-    return Done(name, "ok", seconds, verdict or "no default rule", written[-1], lines, found)
+    return Done(name, "ok", seconds, verdict or "no verdict recorded", written[-1], lines, found)
 
 
 def tables(ended: list[Done], settings: Settings, *first: Table, colour: bool) -> str:

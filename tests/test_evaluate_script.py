@@ -594,6 +594,39 @@ def test_a_failed_step_is_reported_and_the_next_runs(mac: Mac) -> None:
     assert re.search(r"embedding-model\W+ok", done.stdout)
 
 
+@pytest.mark.parametrize(
+    ("weighed", "said"),
+    [
+        (
+            [verdict("embedding model", {"chunking": "windows"}, MODELS[0], MODELS[1])],
+            "Embedding model for windows: embeddinggemma:300m, in place of qwen3-embedding:0.6b.",
+        ),
+        # A kb-mcp older than the embedding model's rule records no verdict of it.
+        ([], "no verdict recorded"),
+    ],
+)
+def test_the_embedding_model_step_reports_its_verdict(
+    mac: Mac, weighed: list[dict], said: str
+) -> None:
+    """093's D5: the steps' table and the manifest give the embedding model's verdict.
+
+    Its analysis says it with the others, when its results hold it.
+    """
+    results = eval_results()
+    results["verdicts"] += weighed
+    mac.plan["runs"]["eval"][2] = {"results": results}
+    done = mac.run()
+    assert done.returncode == 0
+    [step] = [
+        each
+        for each in json.loads(mac.archived("manifest.json"))["steps"]
+        if each["name"] == "embedding-model"
+    ]
+    assert step["verdict"] == said
+    analysis = mac.archived("analyses/embedding-model.txt")
+    assert (f"{said}\n" in analysis) is bool(weighed)
+
+
 def test_eval_agents_is_not_run(mac: Mac) -> None:
     """D10: no eval-agents; --yes is given to eval and eval-rerank alone."""
     mac.run()
