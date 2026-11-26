@@ -1,11 +1,4 @@
-"""Fetching the documents of spaces and projects updated in a period.
-
-Each space, project, round of probes and merge of site users is a span of the run's trace;
-each document fetched is a trace of its own, ``fetch.document``, linked to the run's,
-since Tempo drops a trace past 5 MB, which one trace of all a run's requests could pass.
-What is fetched, failed or skipped is counted and logged, as
-``docs/reference/telemetry/fetch.md`` lists it.
-"""
+"""Fetching the documents of spaces and projects updated in a period."""
 
 from __future__ import annotations
 
@@ -86,8 +79,7 @@ HTTP_NOT_FOUND = 404
 # Jira reads JQL dates in the signed-in site user's time zone, up to 14 hours off UTC, and
 # a date stands for its midnight: two days on each side always cover the period.
 JQL_MARGIN = timedelta(days=2)
-# The counts that a short result shows: the documents fetched, or to fetch, of each type,
-# and the files downloaded, or to download; then how the fetch stopped, if it did.
+# The counts that a short result shows, then how the fetch stopped, if it did.
 SHORT_COUNTS = (": fetched", ": to fetch", "files: downloaded", "files: to download")
 STOPPED = "runs: "
 
@@ -112,18 +104,14 @@ PROBES: dict[
     BlogPost: (partial(confluence_v2.probe_request, BLOGPOST.plural), confluence_v2.whereabouts),
     Issue: (jira_v3.probe_request, jira_v3.whereabouts),
 }
-# Each document class by its document type's name, as a tombstone names it.
 CLASSES = {each.document_type.name: each for each in DOCUMENT_CLASSES}
-# What says, of each scope type by name, whether its source still signs in: the request of
-# the signed-in site user, and how to read the answer.
+# Of each scope type by name, the request of the signed-in site user, and how to read it.
 SIGNED_IN: dict[str, tuple[Callable[[], Request], Callable[[Fields], bool]]] = {
     SPACE.name: (confluence_v2.current_user_request, confluence_v2.is_signed_in),
     PROJECT.name: (jira_v3.myself_request, jira_v3.is_signed_in),
 }
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
-# What a fetch did, by outcome: documents fetched or failed; files downloaded, failed or
-# skipped; the bytes of the files downloaded.
 DOCUMENTS = METER.create_counter(
     "kb_mcp.fetch.documents", unit="{document}", description="Documents fetched, by outcome"
 )
@@ -139,8 +127,8 @@ class FetchCounts(Record):
     """What a fetch did, by count, and each scope's window; it names nothing that the site served.
 
     ``windows`` holds each scope's window, and what became of its coverage, once the
-    fetch ends; ``dry_run`` says whether the fetch only planned. Written, each count is a
-    key beside them, its name holding a colon, which theirs do not.
+    fetch ends. Written, each count is a key beside them, its name holding a colon, which
+    theirs do not.
     """
 
     model_config = ConfigDict(frozen=False)
@@ -169,10 +157,8 @@ class FetchCounts(Record):
     def text(self, detail: Detail) -> str:
         """Write the documents fetched by type and the files, or a dry run's.
 
-        Detailed, and a dry run, begin with each scope's window, why it starts there, and
-        what became of its coverage. Short also says how the fetch stopped, if it did;
-        detailed gives every count of what the fetch did, or would do, failures by kind
-        included.
+        Detailed, and a dry run, begin with each scope's window. Short also says how the
+        fetch stopped, if it did; detailed gives every count, failures by kind included.
         """
         windows = self.windows if detail == "detailed" or self.dry_run else ()
         said = [
@@ -199,19 +185,15 @@ class FetchCounts(Record):
 class Fetching:
     """One fetch of a source over its site, into its view of the store: each scope's window.
 
-    And a cap on attached files. Its counts name each thing by the source, as
-    ``confluence pages``. Each scope named has a window, or none when it is skipped, after
-    --until. With
+    Each scope named has a window, or none when it is skipped, after --until. With
     ``plan``, the fetch lists and decides, and fetches and writes nothing. ``covered``
     names the scopes whose listing was read whole, with the period fetched, so that
     their coverage can grow, and ``first_failed`` the update time of each one's earliest
     document found and not stored whole; ``held``, the scopes skipped and those read
-    whole whose coverage stays as it was, and why. ``problems`` holds each failure by its
-    place, a scope, a document or a file, and its reason, as ``failed`` keeps it.
-    ``due`` names the scopes searched by update time that this fetch also reads whole,
-    and ``read_whole`` gathers every scope read whole. ``peers`` are the views of the
-    other sources of the site, whose whole reads say, as the source's own do, which scopes
-    are kept. ``snapshot_ids`` holds the ids of each document type that have a snapshot,
+    whole whose coverage stays as it was, and why. ``due`` names the scopes searched by
+    update time that this fetch also reads whole. ``peers`` are the views of the other
+    sources of the site, whose whole reads say, as the source's own do, which scopes are
+    kept. ``snapshot_ids`` holds the ids of each document type that have a snapshot,
     read once a fetch, as the store held them when the fetch first tracked a scope of that
     type.
     """
@@ -238,10 +220,7 @@ class Fetching:
     snapshot_ids: dict[type[FetchedDocument], set[str]] = field(default_factory=dict)
 
     def label(self, what: str | type[FetchedDocument]) -> str:
-        """Name something of the source in the counts, a document type by its plural.
-
-        As ``confluence pages`` or ``confluence spaces``.
-        """
+        """Name something of the source in the counts, a document type by its plural."""
         named = what if isinstance(what, str) else what.document_type.plural
         return f"{self.store.source} {named}"
 
@@ -249,12 +228,11 @@ class Fetching:
         """Fetch every space and project named, after checking that the session holds.
 
         Raises SignInNeededError, before anything is written, when the session no longer
-        holds. A source that does not answer at all (a site without Jira) is counted as a
-        failure, by its name, and its scopes skipped. A scope without a window is skipped
-        too, and asked nothing. The task ``scopes`` reports those of the sources that
-        answer, each by its key. What the scopes' whole reads no longer name is probed
-        once every scope is read; Confluence's site users follow its spaces alone, so
-        that a fetch of projects alone does and counts nothing of Confluence's.
+        holds. A source that does not answer at all is counted as a failure, by its name,
+        and its scopes skipped. A scope without a window is skipped too, and asked nothing.
+        The task ``scopes`` reports those of the sources that answer, each by its key. What
+        the scopes' whole reads no longer name is probed once every scope is read;
+        Confluence's site users follow its spaces alone.
         """
         self.held |= {scope: "after --until" for scope, w in self.windows.items() if w is None}
         by_type: dict[str, list[Scope]] = {}
@@ -292,10 +270,7 @@ class Fetching:
         return problem
 
     def scope_failed(self, what: str, scope: str, error: Exception | str) -> None:
-        """Fail a space or a project named, as ``failed`` does; a warning says it.
-
-        The warning, ``fetch.scope_failed``, names the scope and the reason.
-        """
+        """Fail a space or a project named, as ``failed`` does; a warning names it and why."""
         failed = self.failed(what, scope, error)
         structlog.get_logger().warning(
             "fetch.scope_failed", scope=f"{failed.where}: {failed.reason}"
@@ -354,16 +329,10 @@ class Fetching:
     def space(self, scope: Scope, window: FetchWindow) -> bool:
         """List a space whole, store its listings, and fetch what changed in its window.
 
-        And what joined it since its stored listing, whatever its update time, as a page
-        moved in keeps its own, with what joined before and is not stored whole yet; a
-        space never listed before has none. Joined is by every listed entry's id, one that
-        the adapter refuses among them. The listing is stored once its documents are
-        fetched, with the joined that this fetch did not store whole, which the next takes. An
-        entry that the adapter refuses has no update time: it leaves the space's coverage
-        inexact, so that the next fetch asks for its whole period again. The task
-        ``listing`` reports the pages of its listings read, and ``fetch_listed`` the
-        documents. Return whether the space was listed whole. All is the span
-        ``fetch.space``, an error when the space could not be listed.
+        And what joined it since its stored listing, whatever its update time, with what
+        joined before and is not stored whole yet; a space never listed before has none.
+        The listing is stored once its documents are fetched. The task ``listing`` reports
+        the pages of its listings read. Return whether the space was listed whole.
         """
         key = scope.key
         with TRACER.start_as_current_span("fetch.space", attributes={"kb_mcp.scope": key}) as span:
@@ -421,16 +390,9 @@ class Fetching:
         ``holder`` is the scope as its listings are kept, a space by its id, a project by
         its key; ``held`` the ids, by document class, that its last whole read names, read
         by id alone, and, for a project, those that its searches found since; ``listed``
-        those that this fetch's whole read names, None when the fetch
-        made none. The absent are the documents held that the store holds, and those
-        already tombstoned in the scope; one that another scope of the source found absent
-        keeps that tombstone and its state, so that a confirmed one stays confirmed. A
-        document that this fetch's whole read names is present, and loses any tombstone, of
-        whichever scope. A whole read of before
-        neither starts nor ends an absence: without one, the scope's tombstones stay as
-        they are, to be probed again. The record is written before the whole read is
-        replaced, so that no absent document is lost to a fetch that stops; they are
-        probed once every scope of the fetch is read.
+        those that this fetch's whole read names, None when the fetch made none. The absent
+        are the documents held that the store holds, and those already tombstoned in the
+        scope.
         """
         # A former entry of an unresolved space keeps its id as its key: found now.
         known = {
@@ -472,16 +434,11 @@ class Fetching:
         """Probe what each scope's whole read no longer names, and record what is gone.
 
         Those not confirmed are probed, at most ``MAX_PROBES`` a scope and a fetch, those
-        on their way first; the rest stay pending. A tombstone of another scope, of a
-        document absent from this one too, goes on from its own state; a document that a
-        later scope's whole read of this fetch named has none left, and stays present. A
-        document answering from another scope is followed there once that scope's last
-        whole read names it, and stays pending until then. Raises SignInNeededError when
-        too many answer gone and the session no longer holds; when the site does not
-        answer, nothing is believed. The task ``probes`` reports a scope's probes, each by
-        its document's id; all is the span ``fetch.probes``. The scopes kept, those whose
-        whole reads the site's sources keep, this one's and its peers', are read once, and
-        each one's whole read once, when a probe first finds a document there.
+        on their way first; the rest stay pending. Raises SignInNeededError when too many
+        answer gone and the session no longer holds; when the site does not answer,
+        nothing is believed. The task ``probes`` reports a scope's probes, each by its
+        document's id. The scopes kept are read once, and each one's whole read once, when
+        a probe first finds a document there.
         """
         stores = (self.store, *self.peers)
         types = {CLASSES[key[1]] for absent, _, _ in self.absent.values() for key in absent}
@@ -524,10 +481,9 @@ class Fetching:
         """GET a document absent from its scope's whole read, and say what became of it.
 
         ``kept`` are the scopes, by document type, whose whole reads the site's sources
-        keep, this one's and its peers', so that a scope of another site, whose keys may
-        be the same, is never one; ``listings`` the ids that each kept scope's whole reads
-        name, by scope and type, which a probe that first finds a document there reads.
-        A probe that fails is a problem by its document, as ``fetch_document`` names one.
+        keep, this one's and its peers'; ``listings`` the ids that each kept scope's whole
+        reads name, by scope and type, which a probe that first finds a document there
+        reads. A probe that fails is a problem by its document.
         """
         document_class = CLASSES[key[1]]
         request, whereabouts = PROBES[document_class]
@@ -594,14 +550,10 @@ class Fetching:
     def project(self, scope: Scope, window: FetchWindow) -> bool:
         """Search a project's issues updated in its window, and fetch what changed.
 
-        A fetch that writes first tracks what the project no longer holds
-        (``track_project``), and keeps the ids that the search finds before fetching
-        them, so that the next whole read misses none that it stored. The task
-        ``listing`` reports the pages of the search read, and ``fetch_listed`` the
-        issues found. Return whether the search was read whole,
-        each of its entries read: an entry that the adapter refuses has no update time
-        for the coverage to stop at, so it holds the project's. All is the span
-        ``fetch.project``, an error when the search could not be read.
+        A fetch that writes first tracks what the project no longer holds, and keeps the
+        ids that the search finds before fetching them. The task ``listing`` reports the
+        pages of the search read. Return whether the search was read whole, each of its
+        entries read.
         """
         key = scope.key
         start = (window.period.start - JQL_MARGIN).date()
@@ -633,13 +585,7 @@ class Fetching:
     def track_project(self, scope: Scope) -> None:
         """Track what a project no longer holds, by a whole read made when due.
 
-        A project ``due`` is read whole, every issue by id whatever its update time, and
-        that read replaces its last; one that fails is counted, ``fetch.scope_failed``,
-        and the last stays, the search going on. What the project held, its last whole
-        read's issues and those that its searches found since, and this one does not
-        name is tracked as absent; a project that this fetch does not read whole
-        keeps its tombstones as they are, so that what is absent already is still probed
-        at each fetch. The task ``listing`` reports the pages of the whole read.
+        The task ``listing`` reports the pages of the whole read.
         """
         key, issues = scope.key, None
         if scope in self.due:
@@ -668,15 +614,11 @@ class Fetching:
         """Fetch what a scope lists in its window and the raw store lacks; complete what it has.
 
         A document that ``joined`` names, by id, is taken as if in the window. Return the
-        ids of those taken and stored whole, all in a plan.
-        ``fetch.listed`` says at INFO how many documents the scope lists, how many are
-        in its window, stored already and to fetch, with the window's start and reason.
-        The counts hold, by type, those in the window and those stored when --since gave
-        the window; else those new or changed since the last fetch. Those stored get the
-        files they lack, without a task; the task ``documents`` reports those to fetch,
-        each by its id. ``first_failed`` keeps, for the scope, the update time of the
-        earliest not stored whole. A document listed twice, as an issue saved while its
-        search pages through can shift another into the next page, is taken once.
+        ids of those taken and stored whole, all in a plan. The counts hold, by type, those
+        in the window and those stored when --since gave the window; else those new or
+        changed since the last fetch. Those stored get the files they lack, without a task;
+        the task ``documents`` reports those to fetch, each by its id. A document listed
+        twice is taken once.
         """
         in_window = list(
             dict.fromkeys(
@@ -743,10 +685,7 @@ class Fetching:
         """Fetch a listed document whose revision is not stored; say if it is stored whole.
 
         It is not when its fetch failed, its snapshot was refused, or a file it keeps
-        failed; a plan counts it to fetch, and fails none. The fetch is a trace of its
-        own, ``fetch.document``, linked to the span of the run's trace current when it
-        begins, saying the document's id and type; an error when the fetch fails, which
-        is a warning, by the document's id.
+        failed; a plan counts it to fetch, and fails none.
         """
         what = self.label(document.document_class)
         if self.plan:
@@ -782,10 +721,8 @@ class Fetching:
         """Download a snapshot's files, then store it with their digests; say if it is whole.
 
         A snapshot that its adapter refuses is stored all the same, without files: raw
-        first, so that a fixed adapter reads it, and a later fetch downloads its files.
-        Read, its document's title goes on the current span, and in ``fetch.document``
-        at DEBUG; refused, it is a warning, without the id that it would have given. It is
-        whole when read, with every file it keeps.
+        first, so that a fixed adapter reads it, and a later fetch downloads its files. It
+        is whole when read, with every file it keeps.
         """
         try:
             snapshot = REPRESENTATIONS[document_class].snapshot(responses)
@@ -837,8 +774,7 @@ class Fetching:
     def files(self, attachments: Iterable[Attachment]) -> tuple[dict[str, str], bool]:
         """Download the attachments' files that are kept; return their digests by id.
 
-        Return too whether every file kept was downloaded: a skip is no failure. A file
-        skipped is said at INFO, one that failed is a warning, each by its id and its name.
+        Return too whether every file kept was downloaded: a skip is no failure.
         """
         log = structlog.get_logger()
         blobs: dict[str, str] = {}
@@ -872,10 +808,7 @@ class Fetching:
         return blobs, whole
 
     def users(self) -> None:
-        """Merge the names of the Confluence authors seen into the site users kept.
-
-        All is the span ``fetch.users``.
-        """
+        """Merge the names of the Confluence authors seen into the site users kept."""
         with TRACER.start_as_current_span("fetch.users"):
             users: list[object] = []
             authors = sorted(self.authors)
@@ -1013,19 +946,11 @@ def run_fetch(
 ) -> Outcome[FetchCounts]:
     """Run a fetch of one source signed in as the settings say, and give how it ended.
 
-    The scopes are one source's; another source's are another fetch. Each scope is
-    fetched over its window, and one searched by update time
-    also read whole when ``whole_read_due`` says so. The coverage of every scope listed
-    or searched whole grows as ``Coverage.extended`` rules, and each read whole was read
-    whole when the fetch started. Every fetch reads the tombstones and keeps each as it
-    finds it, even when it stops; the other sources of its site, by their whole
-    reads, say with its own which scopes are kept.
-    ``fetch.coverage`` says at INFO what became of each finished scope's coverage,
-    and why it was held, if it was. It ends done when nothing failed, failed when
-    something did, and sign in again when the sign-in no longer holds or no session was
-    saved; Ctrl-C, and any other error that stops it, pass. Raises PeriodError when --since
-    does not come before the windows' end, StoreBusyError when another run writes, and
-    ValueError for scopes of no source or of several, all before anything is written.
+    It ends done when nothing failed, failed when something did, and sign in again when
+    the sign-in no longer holds or no session was saved; Ctrl-C, and any other error that
+    stops it, pass. Raises PeriodError when --since does not come before the windows' end,
+    StoreBusyError when another run writes, and ValueError for scopes of no source or of
+    several, all before anything is written.
     """
     counts, problems = FetchCounts(), []
     ending: Ending | None = None
