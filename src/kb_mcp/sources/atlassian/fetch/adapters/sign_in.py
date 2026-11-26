@@ -1,8 +1,7 @@
 """How a run signs in to the site: by the session that ``login`` saved, or by an API token.
 
-Either gives a client for the site, and keeps what a run leaves of it: the site renews
-the session's cookies as it answers, so they are written back; nothing of a token is
-kept, and a run signed in by one reads and writes nothing of the session.
+Nothing of a token is kept, and a run signed in by one reads and writes nothing of the
+session.
 """
 
 from __future__ import annotations
@@ -74,9 +73,8 @@ class SavedSession(Record):
     def cookies(self) -> Path:
         """Give the file of the site's cookies: its own, or the session kept before.
 
-        Until a run that writes moves it, the session kept before sessions were a site's
-        is this site's when ``kept_why`` judges it so and the site has no cookies of its
-        own, so that a dry run or ``doctor`` before it needs no login; never another site's.
+        The session kept before is this site's while ``kept_why`` judges it so and the site
+        has no cookies of its own; never another site's.
         """
         own, former = self.folder / COOKIES, self.folder.parent / COOKIES
         if not own.exists() and kept_why(former.parent, self.source, self.sites) is None:
@@ -145,9 +143,8 @@ def sites_of(settings: Settings) -> dict[str, str]:
 def choose_sign_in(settings: Settings, source: str) -> SignIn:
     """Sign in by the source's API token when one is set, else by the session that ``login`` saved.
 
-    Either signs in as the account that the source's table, ``[sources.<source>]``, gives,
-    to its site. The token goes with the account's email; the commands refuse a token
-    without one before they run, and the site would refuse it.
+    The token goes with the account's email; the commands refuse a token without one
+    before they run, and the site would refuse it.
     """
     table = getattr(settings.sources, source)
     token = table.api_token

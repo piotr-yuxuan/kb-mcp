@@ -1,8 +1,6 @@
 """Jira Cloud REST v3 responses, read into the domain's types.
 
-What this code knows of the shape of Jira's JSON is here and nowhere else. When the
-site changes a response, the fix is in this module, and the raw store can be read
-again without fetching anything.
+What this code knows of the shape of Jira's JSON is here and nowhere else.
 """
 
 from __future__ import annotations
@@ -36,9 +34,7 @@ ISSUE_FIELDS = (
 )
 
 # The responses that a snapshot of an issue keeps, by file name.
-# GET /rest/api/3/issue/{id}?expand=renderedFields
 ISSUE = "issue.json"
-# The comments of every page of GET /rest/api/3/issue/{id}/comment?expand=renderedBody.
 COMMENTS = "comments.json"
 
 # Where an attachment's file is on the site, as the path of its content address.
@@ -73,11 +69,7 @@ def attachment(fields: Fields) -> Attachment:
 
 
 def issue(fields: Fields) -> Issue:
-    """Read an issue from a search that asked for ``ISSUE_FIELDS``, or from a GET.
-
-    Jira sends a field it was asked for even when it is null, except ``parent``, which
-    only an issue with a parent has.
-    """
+    """Read an issue from a search that asked for ``ISSUE_FIELDS``, or from a GET."""
     values = fields.object("fields")
     reporter = values.optional_object("reporter")
     creator = values.optional_object("creator")
@@ -124,11 +116,7 @@ def identity(responses: Mapping[str, object]) -> tuple[str, str]:
 
 
 def snapshot(responses: Mapping[str, object]) -> Snapshot:
-    """Read an issue from the responses that its snapshot keeps.
-
-    An issue without a description has a null one among its rendered fields; the
-    rendered fields themselves are always there when they were asked for.
-    """
+    """Read an issue from the responses that its snapshot keeps."""
     fields = Fields(responses.get(ISSUE), ISSUE)
     return Snapshot(
         document=issue(fields),
@@ -152,8 +140,7 @@ def search_request(project: str, start: date, end: date) -> Request:
     """GET the issues of a project updated from ``start`` until before ``end``, by date.
 
     Jira reads these dates in the signed-in site user's time zone, so a caller widens them
-    and decides on each issue's ``updated`` time. The key is quoted, as JQL needs for some
-    keys.
+    and decides on each issue's ``updated`` time.
     """
     jql = (
         f'project = "{project}" AND updated >= "{start.isoformat()}"'
@@ -166,11 +153,7 @@ def search_request(project: str, start: date, end: date) -> Request:
 
 
 def listing_request(project: str) -> Request:
-    """GET the first page of every issue of a project, by id and key, whatever its update time.
-
-    A search without a date bound reads the project whole, as a listing reads a space;
-    it pages as ``search_page`` reads.
-    """
+    """GET the first page of every issue of a project, by id and key, whatever its update time."""
     return Request(
         path="/rest/api/3/search/jql",
         params={
@@ -182,10 +165,7 @@ def listing_request(project: str) -> Request:
 
 
 def entry_ids(entries: object) -> set[str]:
-    """Read only the ids of a search's issues, whatever else each holds.
-
-    An entry without a usable id names nothing; entries that are not a list name none.
-    """
+    """Read only the ids of a search's issues, whatever else each holds."""
     ids: set[str] = set()
     for entry in entries if type(entries) is list else []:
         identifier = entry.get("id") if type(entry) is dict else None
