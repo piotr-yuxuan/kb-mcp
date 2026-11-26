@@ -57,8 +57,9 @@ def resumption(
 
     It may not be resumed when no record of it is there, its record or its settings do not
     read, ``sources`` no longer run its configuration, or ``resume_refused`` says so; each
-    refusal names the run. Else the resume says what it will do, and which source's fetch
-    will not run, by the light check of the settings that the run recorded.
+    refusal names the run, and the file at fault. Else the resume says what it will do, and
+    which source's fetch will not run, by the light check of the settings that the run
+    recorded.
     """
     runs = loaded.settings.runs
     record = RunRecord(runs / run)

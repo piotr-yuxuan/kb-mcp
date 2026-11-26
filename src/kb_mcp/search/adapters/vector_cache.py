@@ -194,8 +194,8 @@ def lock_of(store: Path) -> Path:
 def locked(lock: Path, operation: int, event: str, holder: str) -> Iterator[None]:
     """Hold a lock file by ``flock``'s ``operation``, shared or exclusive, waiting for it.
 
-    A lock found held is logged once as ``event``; raise TimeoutError, naming ``holder``,
-    after WAIT_S seconds.
+    A lock found held is logged once as ``event``; raise TimeoutError, naming the lock and
+    ``holder``, after WAIT_S seconds.
     """
     with lock.open("a") as file:
         for attempt in itertools.count():
@@ -217,7 +217,7 @@ def locked(lock: Path, operation: int, event: str, holder: str) -> Iterator[None
 def shared(store: Path) -> Iterator[None]:
     """Hold the store's lock shared, as a build does from its start until its index is in.
 
-    Wait for a prune; raise TimeoutError after WAIT_S seconds.
+    Wait for a prune; raise TimeoutError, naming the lock, after WAIT_S seconds.
     """
     with locked(lock_of(store), fcntl.LOCK_SH, "vectors.lock_wait", "a prune of the vector cache"):
         yield
