@@ -481,9 +481,10 @@ class Fetching:
         """GET a document absent from its scope's whole read, and say what became of it.
 
         ``kept`` are the scopes, by document type, whose whole reads the site's sources
-        keep, this one's and its peers'; ``listings`` the ids that each kept scope's whole
-        reads name, by scope and type, which a probe that first finds a document there
-        reads. A probe that fails is a problem by its document.
+        keep, this one's and its peers', so that a scope of another site, whose keys may
+        be the same, is never one; ``listings`` the ids that each kept scope's whole reads
+        name, by scope and type, which a probe that first finds a document there reads. A
+        probe that fails is a problem by its document.
         """
         document_class = CLASSES[key[1]]
         request, whereabouts = PROBES[document_class]

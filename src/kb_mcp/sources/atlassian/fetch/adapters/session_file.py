@@ -120,7 +120,6 @@ def write_cookies(path: Path, cookies: Iterable[Mapping[str, object]]) -> None:
     A failure leaves the cookies saved before as they were.
     """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # The hidden file that replace_synced makes is the user's alone (mkstemp's 0600).
     replace_synced(path, json.dumps([dict(cookie) for cookie in cookies]).encode())
 
 

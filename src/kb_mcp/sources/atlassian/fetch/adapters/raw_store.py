@@ -131,7 +131,7 @@ def _write_synced(path: Path, data: bytes) -> None:
 
 
 def replace_synced(path: Path, data: bytes) -> None:
-    """Write a file whole, through a hidden file renamed over it."""
+    """Write a file whole, through a hidden file, the user's alone (0600), renamed over it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, hidden = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     os.close(handle)
