@@ -940,7 +940,9 @@ per thousand of their tokens, a ratio of two sums over the questions that have e
 
 The rule that keeps a [setting](#setting)'s value unless a challenger, measured on the
 same golden questions, qualifies; one per decision. Its control is the value in use, its
-family the values that may replace it. A rule is of one of two kinds. Either it asks a
+family the values that may replace it. Its arms share every other setting, save the
+search mode, which a rule may take at each value's own, as the embedding model's does,
+its times in the control's mode. A rule is of one of two kinds. Either it asks a
 gain, over a family that it fixes whatever a run measures: a challenger qualifies only
 if its mean on the rule's deciding measure is higher than the control's, with a p-value
 below 0.05 once multiplied by the family's size. Or it asks no gain, over the values
@@ -1025,4 +1027,5 @@ and how a run tells of itself.
   but `ask_verdict` decides a tool, not a setting, on a gain alone, by one paired
   difference of agents' successes, its p-value Holm-adjusted over the three measures
   that it compares, where a default rule weighs a family of a setting's values by its
-  guards, its bound and, if it asks a gain, its deciding measure.
+  guards, its bound and its deciding measure, which it tests for a gain only if it asks
+  one.
