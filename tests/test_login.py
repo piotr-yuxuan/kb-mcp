@@ -42,6 +42,12 @@ SIGN_IN_AGAIN = 3
 BAD_ARGUMENTS = 2
 
 
+@pytest.fixture(autouse=True)
+def tmp_path_as_home(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Make each test's scratch folder its home, where its runs log and keep their data."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
 def test_only_the_site_cookies_of_the_browser_are_saved(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -84,7 +90,6 @@ def test_the_command_says_each_site_signed_in_on_stdout(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str], detail: str
 ) -> None:
     """The result, the same in each detail; as JSON, one document, a row per site."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
     opened(monkeypatch)
     assert main([*login(tmp_path, "jira"), "--detail", detail]) == 0
@@ -101,7 +106,6 @@ def test_a_sign_in_that_does_not_complete_exits_3_with_an_error(
 
     The run's log file holds the error too.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
     reason = "the sign-in window was closed"
 
@@ -132,7 +136,6 @@ def test_login_alone_signs_in_a_source_with_its_site_alone(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """Review round 1: no project yet, its site set: in use, and signed in."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     signed_in = opened(monkeypatch)
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
     assert main(login(tmp_path)) == 0
@@ -143,7 +146,6 @@ def test_login_alone_signs_in_each_site_of_the_sources_configured_once(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Criterion 4: two sources of one site, one sign-in; a source of another, its own."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     signed_in = opened(monkeypatch)
     config = tmp_path / "config.toml"
     config.write_text(
@@ -162,7 +164,6 @@ def test_login_alone_leaves_a_source_that_signs_in_by_a_token_and_named_signs_it
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     """A session would serve it nothing; named, the user asked for it."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     signed_in = opened(monkeypatch)
     for name, value in {
         "KB_MCP_SOURCES__JIRA__PROJECTS": '["PRB"]',
@@ -190,7 +191,6 @@ def test_a_site_not_set_is_refused_before_a_window_opens(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Named by the source's location; nothing is signed in to."""
-    monkeypatch.setenv("HOME", str(tmp_path))
 
     def refused(*_: object, **__: object) -> None:
         raise AssertionError
@@ -204,7 +204,6 @@ def test_login_of_one_source_refuses_no_setting_of_another(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Criterion 4: Confluence configured without its site stops no sign-in of Jira's."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     signed_in = opened(monkeypatch)
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SPACES", '["MFS"]')
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
@@ -217,7 +216,6 @@ def test_the_command_says_the_source_s_other_settings_are_not_used(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """An email given signs in by no browser: said, by its layer; the source named, last."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     opened(monkeypatch)
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__SITE", SITE)
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__EMAIL", "someone@example.invalid")
@@ -274,7 +272,6 @@ def test_a_connector_of_its_own_signs_in_by_its_run_and_reads_none_of_another(
 
     Each other source's location is said not applied, as login reads it.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     given = ["--format", "json"]
     assert main([*login(tmp_path, "drive"), *given], WITH_DRIVE) == BAD_ARGUMENTS
     err = capsys.readouterr().err
@@ -291,7 +288,6 @@ def test_doctor_checks_each_source_by_its_connector_s_own_checks(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Only those that this machine configures: its check after the machine's."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__DRIVE__FOLDER", "/made/up")
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
     assert main(options, WITH_DRIVE) == 0
@@ -303,7 +299,6 @@ def test_a_login_of_two_sites_that_fails_at_the_second_says_the_first_signed_in(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Review round 1: exit 3, the first site in the result and in login.signed_in."""
-    monkeypatch.setenv("HOME", str(tmp_path))
 
     def first_alone(_: object, site: str, *__: object, **___: object) -> None:
         if site == CLIENT:
@@ -323,7 +318,6 @@ def test_a_login_of_two_sites_that_fails_at_the_first_signs_in_the_second(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 070, criterion 3: the next site is tried; exit 3, the second in the result."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     tried: list[str] = []
 
     def second_alone(_: object, site: str, *__: object, **___: object) -> None:
@@ -351,7 +345,6 @@ def test_login_alone_leaves_a_source_by_a_token_without_its_site_as_with_one(
     site is signed in, and Jira is neither signed in nor refused, the echo saying nothing
     of its site. Named, Jira would sign in in the browser: refused without its site, exit 2.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     signed_in = opened(monkeypatch)
     for name, value in {
         "KB_MCP_SOURCES__CONFLUENCE__SITE": SITE,
@@ -383,7 +376,6 @@ def test_a_connector_s_login_that_does_not_complete_stops_no_other_connector_s(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 070: Atlassian's sign-in does not complete; the drive's, run after it, signs in."""
-    monkeypatch.setenv("HOME", str(tmp_path))
 
     def closed(*_: object, **__: object) -> None:
         message = "the sign-in window was closed"
@@ -408,7 +400,6 @@ def test_login_alone_signs_in_the_others_past_a_source_without_its_site(
     not be signed in, and why; Confluence's site is signed in, and an error, login.refused,
     names Jira and the setting: exit 1. Named, Jira refuses the run, exit 2.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     signed_in = opened(monkeypatch)
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__PROJECTS", '["PRB"]')
