@@ -564,6 +564,8 @@ def test_eval_records_as_documented(telemetry: InMemory, tmp_path: Path) -> None
     (root,) = (span for span in emitted.spans if span.name == "eval")
     assert "search.semantic" in {span.name for span in emitted.spans}
     assert {span.trace_id for span in emitted.spans} == {root.trace_id}
+    named = frozenset({"gen_ai.request.model", "kb_mcp.chunking"})  # none of the searches'
+    assert {span.attributes for span in emitted.spans if span.name == "eval.model"} == {named}
     with emitted.gathering(telemetry, "eval"):
         assert main(["eval", "--yes", str(refused), *by_meaning(data, URL)]) == ExitStatus.REFUSED
     answers = Scripted(refused={"revert release"})
