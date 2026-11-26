@@ -462,6 +462,43 @@ def test_llama_server_starts_only_for_reranking_and_stops_after(mac: Mac) -> Non
     )
 
 
+@pytest.mark.parametrize(
+    ("way", "why"),
+    [
+        ("check fails", "kb-mcp reranker check exited 1"),
+        ("never answers", "llama-server did not answer within 1 s"),
+        ("not on PATH", "llama-server is not on PATH"),
+    ],
+)
+def test_the_reranking_is_skipped_when_no_reranker_is_ready(mac: Mac, way: str, why: str) -> None:
+    """D10: skipped when the reranker cannot start or ``reranker check`` fails, saying why.
+
+    eval-rerank never runs, the other steps do, the run exits 0, and a llama-server started
+    here is stopped.
+    """
+    (mac.home / RERANKER).parent.mkdir(parents=True)
+    (mac.home / RERANKER).write_bytes(b"the model")
+    with nothing_listening() as url:
+        if way == "check fails":
+            mac.plan["statuses"] = {"reranker check": 1}
+        else:
+            mac.plan["settings"]["rerank"]["url"] = url
+        if way == "never answers":
+            mac.plan["llama_serves"] = False
+        if way == "not on PATH":
+            (mac.root / "bin" / "llama-server").unlink()
+        done = mac.run()
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert [each[0] for each in mac.calls("kb-mcp") if each[0].startswith("eval")] == ["eval"] * 3
+    assert f"reranking: skipped, as {why}" in said(done.stdout)
+    [*_, reranking, _] = json.loads(mac.archived("manifest.json"))["steps"]
+    assert reranking["status"].startswith("skipped")
+    stopped = [each for each in mac.log() if each["program"] == "llama-server"]
+    assert [each["event"] for each in stopped if each["event"] == "stopped"] == (
+        ["stopped"] if way == "never answers" else []
+    )
+
+
 @pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
 def test_llama_server_stops_on_interruption_and_when_the_window_closes(
     mac: Mac, signum: signal.Signals
@@ -605,10 +642,12 @@ def test_colour_and_pager_only_on_a_terminal(mac: Mac, way: str) -> None:
 def test_progress_names_the_step_and_its_last_duration(mac: Mac) -> None:
     """D11: each step's rule says "step N of 4", then its command, and its time last time.
 
-    The last time is the previous archive's manifest's; the time elapsed ends the step.
+    The last time is the previous archive's manifest's, of a step that succeeded; the time
+    elapsed ends the step.
     """
     (mac.home / "Downloads").mkdir()
-    steps = [{"name": "chunking", "status": "ok", "seconds": 750}]
+    steps = [{"name": "search-mode", "status": "failed, exit 1", "seconds": 3}]
+    steps += [{"name": "chunking", "status": "ok", "seconds": 750}]
     with zipfile.ZipFile(mac.home / "Downloads" / "kb-mcp evals 20261120T090000Z.zip", "w") as old:
         old.writestr("manifest.json", json.dumps({"steps": steps}))
     progress = said(mac.run().stdout)
@@ -619,6 +658,7 @@ def test_progress_names_the_step_and_its_last_duration(mac: Mac) -> None:
     )
     assert re.search(r"chunking: done in \d+\.\d min; 12\.5 min last time", progress)
     assert "search-mode: done in" in progress
+    assert "last time" not in progress.partition("Step 2 of 4")[0]
     assert "last time" not in progress.partition("Step 3 of 4")[2]
 
 

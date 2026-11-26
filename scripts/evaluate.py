@@ -621,7 +621,7 @@ def main() -> int:
     try:
         with zipfile.ZipFile(max((Path.home() / "Downloads").glob("kb-mcp evals *.zip"))) as packed:
             steps = json.loads(packed.read("manifest.json"))["steps"]
-        last = {each["name"]: float(each["seconds"]) for each in steps if each["seconds"]}
+        last = {each["name"]: float(each["seconds"]) for each in steps if each["status"] == "ok"}
     except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile):
         last = {}
     stamp, folder = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()), settings.data / "eval"
