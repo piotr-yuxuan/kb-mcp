@@ -42,10 +42,7 @@ SIGN_IN_AGAIN = 3
 BAD_ARGUMENTS = 2
 
 
-@pytest.fixture(autouse=True)
-def tmp_path_as_home(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """Make each test's scratch folder its home, where its runs log and keep their data."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+pytestmark = pytest.mark.usefixtures("tmp_path_as_home")
 
 
 def test_only_the_site_cookies_of_the_browser_are_saved(

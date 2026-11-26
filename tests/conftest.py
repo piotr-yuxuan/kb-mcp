@@ -104,6 +104,12 @@ def home(scratch_home: Path) -> Path:
 
 
 @pytest.fixture
+def tmp_path_as_home(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Make the test's scratch folder its home, where its runs log and keep their data."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
+@pytest.fixture
 def through_logging() -> Iterator[None]:
     """Route structlog through the standard library for one test, then undo it."""
     levels = {name: logging.getLogger(name).level for name in CHANGED}

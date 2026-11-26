@@ -34,10 +34,7 @@ A_SOURCE = "KB_MCP_SOURCES__JIRA__PROJECTS"
 A_SITE = "KB_MCP_SOURCES__JIRA__SITE"
 
 
-@pytest.fixture(autouse=True)
-def tmp_path_as_home(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    """Make each test's scratch folder its home, where its runs log and keep their data."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+pytestmark = pytest.mark.usefixtures("tmp_path_as_home")
 
 
 def states(checks: list[object]) -> dict[str, str]:
