@@ -504,7 +504,10 @@ def step(
     console.print(f"{name}: done in {seconds / 60:.1f} min{since}.", style="green")
     for line in lines:
         console.print(line)
-    return Done(name, "ok", seconds, verdict or "no verdict recorded", written[-1], lines, found)
+    fallback = "no verdict recorded"  # by a kb-mcp older than the step's rule
+    if name == "embedding-model" and len({each["model"] for each in results["indexes"]}) <= 1:
+        fallback = "no verdict: one model measured; name another with --compare"
+    return Done(name, "ok", seconds, verdict or fallback, written[-1], lines, found)
 
 
 def tables(ended: list[Done], settings: Settings, *first: Table, colour: bool) -> str:
