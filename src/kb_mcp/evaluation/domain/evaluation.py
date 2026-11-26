@@ -143,9 +143,9 @@ class DefaultRule(Record):
 class Verdict(Record):
     """What a default rule gave on the arms run: the value kept, or why there is none.
 
-    Each arm is named by its value. Each challenger run has its clauses, its gain, the
-    groups' losses and what it spends; ``failed`` names those that it fails, of ``gain``,
-    ``guards`` and ``bound``.
+    Each arm is named by its value, or by its value and mode. Each challenger run has its
+    clauses, its gain, the groups' losses and what it spends; ``failed`` names those that it
+    fails, of ``gain``, ``guards`` and ``bound``.
     """
 
     rule: str  # its name
