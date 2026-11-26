@@ -116,12 +116,14 @@ class Quoted(Record):
 class DefaultRule(Record):
     """The rule that keeps a setting's value unless a challenger qualifies on the same questions.
 
-    Its family is ``values`` but the control. A challenger qualifies when its mean on
-    ``decides`` is higher than the control's, with a p-value below ALPHA once multiplied
-    by the family's size; when no group of ``guards`` loses more of MRR@10 than it allows;
-    and when it spends at most ``bound``: tokens embedded, as a multiple of the control's,
-    or a search's 95th percentile, in milliseconds. Of those qualifying, the cheapest
-    within MARGIN of the best mean is kept: the fewest tokens, or the first of ``values``.
+    Its family is ``values`` but the control, or without values the arms run but the
+    control. A challenger qualifies when, if the rule ``gains``, its mean on ``decides`` is
+    higher than the control's, with a p-value below ALPHA once multiplied by the family's
+    size; when no group of ``guards`` loses more of MRR@10 than it allows; and when it
+    spends at most ``bound``: tokens embedded, as a multiple of the control's, or a
+    search's 95th percentile, in milliseconds; without a bound, less than the control.
+    Of those qualifying, the cheapest within MARGIN of the best mean is kept: the fewest
+    tokens, or the first of ``values``, or without values the least spent.
     """
 
     name: str  # the decision, as a verdict says it
@@ -129,7 +131,8 @@ class DefaultRule(Record):
     decides: Literal["MRR@10", "Evidence@ask"]
     guards: Mapping[str, float]  # the most MRR@10 that each group may lose, "all" of them
     spends: Literal["tokens", "ms"]
-    bound: float
+    bound: float | None
+    gains: bool = True
 
 
 class Verdict(Record):
@@ -137,7 +140,7 @@ class Verdict(Record):
 
     Each arm is named by its value. Each challenger run has its clauses, its gain, the
     groups' losses and what it spends; ``failed`` names those that it fails, of ``gain``,
-    ``guards`` and ``bound``.
+    ``guards`` and ``bound``; ``modes``, if any, the search mode of each value measured.
     """
 
     rule: str  # its name
@@ -151,9 +154,14 @@ class Verdict(Record):
     losses: Mapping[str, Mapping[str, float]] = Field(default_factory=dict)  # by group
     spent: Mapping[str, int] = Field(default_factory=dict)  # as the bound reads it
     failed: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+    modes: Mapping[str, str] = Field(default_factory=dict)
 
     def lines(self) -> list[str]:
-        """Say the verdict, then each challenger's clauses, then the values not run."""
+        """Say the verdict, then each challenger's clauses, then the values not run.
+
+        No p-value for a rule that asks no gain; without a bound, each cost against the
+        control's; with modes, each value's.
+        """
         rule = RULES[self.rule]
         if self.kept is None:
             said = f"no verdict, since {self.reason}"
@@ -173,15 +181,31 @@ class Verdict(Record):
             gains, holds, within = (
                 "no" if clause in failed else "yes" for clause in ("gain", "guards", "bound")
             )
-            if rule.spends == "tokens":
+            named, against = name, f"{self.means[self.control]:.3f}"
+            if self.modes:
+                named = f"{name}, in {self.modes[name]}"
+                against = f"{against} in {self.modes[self.control]}"
+            tested = ""
+            if rule.gains:
+                tested = f", adjusted p = {self.adjusted[name]:.4f}, gains {gains}"
+            if rule.bound is None:
+                spent = (
+                    f"95th percentile {self.spent[name]:,} ms against"
+                    f" {self.spent[self.control]:,} ms, cheaper {within}"
+                )
+            elif rule.spends == "tokens":
                 most = rule.bound * self.spent[self.control]
-                spent = f"{self.spent[name]:,} tokens embedded, at most {most:,.0f}"
+                spent = (
+                    f"{self.spent[name]:,} tokens embedded, at most {most:,.0f}, within {within}"
+                )
             else:
-                spent = f"95th percentile {self.spent[name]:,} ms, at most {rule.bound:,.0f} ms"
+                spent = (
+                    f"95th percentile {self.spent[name]:,} ms, at most {rule.bound:,.0f} ms,"
+                    f" within {within}"
+                )
             lines.append(
-                f"  {name}: {rule.decides} {self.means[name]:.3f} against"
-                f" {self.means[self.control]:.3f}, adjusted p = {self.adjusted[name]:.4f},"
-                f" gains {gains}; MRR@10 lost: {losses}, holds {holds}; {spent}, within {within}"
+                f"  {named}: {rule.decides} {self.means[name]:.3f} against {against}{tested};"
+                f" MRR@10 lost: {losses}, holds {holds}; {spent}"
             )
         if self.untested:
             lines.append(f"  {', '.join(self.untested)}: not run, so cannot qualify")
@@ -293,13 +317,13 @@ def verdict(
 
     Each arm gives the measure that the rule decides on, question by question, of the
     questions that it measures, in the same order for all; its MRR@10 by group, "all" the
-    questions; and what it spends. An arm outside the rule's values is left out. Without
-    the control, a challenger, or a question measured, there is no verdict, and the reason
-    says why. Values compare as reported: means and losses to three decimals, p-values to
-    four, times in whole milliseconds. A group that the golden file does not name has no
-    loss, and holds.
+    questions; and what it spends. An arm outside the rule's values, if it names any, is
+    left out. Without the control, a challenger, or a question measured, there is no
+    verdict, and the reason says why. Values compare as reported: means and losses to three
+    decimals, p-values to four, times in whole milliseconds. A group that the golden file
+    does not name has no loss, and holds.
     """
-    family = [value for value in rule.values if value != control]
+    family = [value for value in rule.values or arms if value != control]
     run = [value for value in family if value in arms]
     untested = tuple(value for value in family if value not in arms)
     if control not in arms:
@@ -323,9 +347,11 @@ def verdict(
     groups = {name: arms[name][1] for name in (control, *run)}
     spent = {name: arms[name][2] for name in (control, *run)}
     means = {name: round(fmean(each), 3) for name, each in scores.items()}
-    adjusted = {
-        name: min(1.0, len(family) * paired_test(scores[control], scores[name])) for name in run
-    }
+    adjusted: dict[str, float] = {}
+    if rule.gains:
+        adjusted = {
+            name: min(1.0, len(family) * paired_test(scores[control], scores[name])) for name in run
+        }
     losses = {
         name: {
             group: round(round(groups[control][group], 3) - round(groups[name][group], 3), 3)
@@ -334,12 +360,18 @@ def verdict(
         }
         for name in run
     }
-    most = rule.bound * (spent[control] if rule.spends == "tokens" else 1)
+    most = spent[control] - 1  # without a bound: less than the control, in whole units
+    if rule.bound is not None:
+        most = rule.bound * (spent[control] if rule.spends == "tokens" else 1)
     failed = {
         name: tuple(
             clause
             for clause, holds in (
-                ("gain", means[name] > means[control] and round(adjusted[name], 4) < ALPHA),
+                (
+                    "gain",
+                    not rule.gains
+                    or (means[name] > means[control] and round(adjusted[name], 4) < ALPHA),
+                ),
                 ("guards", all(loss <= rule.guards[group] for group, loss in losses[name].items())),
                 ("bound", spent[name] <= most),
             )
@@ -350,7 +382,7 @@ def verdict(
     qualified = [name for name in run if not failed[name]]
     best = max((means[name] for name in qualified), default=0.0)
     close = [name for name in qualified if round(best - means[name], 3) <= MARGIN]
-    cheaper = spent.__getitem__ if rule.spends == "tokens" else rule.values.index
+    cheaper = spent.__getitem__ if rule.spends == "tokens" or not rule.values else rule.values.index
     return Verdict(
         rule=rule.name,
         fixed=fixed,

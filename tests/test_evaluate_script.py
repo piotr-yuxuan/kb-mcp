@@ -90,7 +90,7 @@ def measures(mrr: float, tokens: float = 0.0) -> dict:
 def verdict(rule: str, fixed: dict, control: str, kept: str | None, reason: str = "") -> dict:
     """Give a default rule's verdict as a results file keeps it."""
     found = {"rule": rule, "fixed": fixed, "control": control, "kept": kept}
-    clauses = {key: {} for key in ("means", "adjusted", "losses", "spent", "failed")}
+    clauses = {key: {} for key in ("means", "adjusted", "losses", "spent", "failed", "modes")}
     return found | {"reason": reason or None, "untested": []} | clauses
 
 
