@@ -241,11 +241,13 @@ arguments it had, such as `serve --allow-remote-embeddings`, save `--data-dir` a
 ```bash
 claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp serve
 claude mcp remove --scope user atlassian-offline-mcp
-claude mcp get kb-mcp
+claude mcp list
 ```
 
-Its command is `kb-mcp serve`, and none of its arguments is `--data-dir`, `--config` or
-`--site`; check each other client's entry below the same way.
+Its line for kb-mcp shows the command `kb-mcp serve`, and none of its arguments is
+`--data-dir`, `--config` or `--site`; check each other client's entry below the same
+way. The example registers `kb-mcp serve` alone: add after `serve` the arguments that
+the old entry had, save those three.
 
 - **Claude Code** names a tool after its server: rename each rule
   `mcp__atlassian-offline-mcp__...` as `mcp__kb-mcp__...`, in `~/.claude/settings.json`
