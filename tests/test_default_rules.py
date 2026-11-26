@@ -95,69 +95,88 @@ def test_the_search_mode_rule_holds_its_clauses(
     assert found.kept == kept
 
 
-def ruled(monkeypatch: MonkeyPatch, **changed: object) -> DefaultRule:
-    """Put in RULES, where a verdict's lines read it, a rule on MRR@10 as given, else as below.
+# The two kinds of rule, on MRR@10 with a guard of 0.05 on identifier: one asks a gain over
+# two values, the control first, within a 95th percentile of 500 ms; the other asks none
+# over the values run, and has no bound.
+GAIN = DefaultRule(
+    name="gain",
+    values=("control", "b"),
+    decides="MRR@10",
+    guards={"identifier": 0.05},
+    spends="ms",
+    bound=500,
+)
+OPEN = GAIN.model_copy(update={"name": "open", "values": (), "bound": None})
 
-    Two values, the control first, a guard of 0.05 on identifier, a search's 95th
-    percentile within 500 ms, a gain asked.
-    """
-    fields = {"name": "test", "values": ("control", "b"), "decides": "MRR@10"}
-    fields |= {"guards": {"identifier": 0.05}, "spends": "ms", "bound": 500}
-    rule = DefaultRule(**fields | changed)
-    monkeypatch.setitem(RULES, rule.name, rule)
-    return rule
+
+@pytest.fixture
+def kinds(monkeypatch: MonkeyPatch) -> None:
+    """Put the two kinds in RULES, where a verdict's lines read them."""
+    monkeypatch.setitem(RULES, GAIN.name, GAIN)
+    monkeypatch.setitem(RULES, OPEN.name, OPEN)
 
 
-@pytest.mark.parametrize(("gains", "kept"), [(True, "control"), (False, "b")])
+@pytest.mark.parametrize(
+    ("rule", "kept", "said"),
+    [
+        (
+            GAIN,
+            "control",
+            (
+                ", adjusted p = 0.0010, gains no; MRR@10 lost: identifier 0.000, holds yes;"
+                " 95th percentile 100 ms, at most 500 ms, within yes"
+            ),
+        ),
+        (
+            OPEN,
+            "b",
+            (
+                "; MRR@10 lost: identifier 0.000, holds yes; 95th percentile 100 ms against"
+                " 188 ms, cheaper yes"
+            ),
+        ),
+    ],
+)
+@pytest.mark.usefixtures("kinds")
 def test_a_rule_without_gain_needs_none(
-    monkeypatch: MonkeyPatch, *, gains: bool, kept: str
+    monkeypatch: MonkeyPatch, rule: DefaultRule, kept: str, said: str
 ) -> None:
-    """D2: a challenger lower on MRR@10, within the guards and the bound, qualifies only then.
+    """D2: a challenger lower on MRR@10, within the guards and faster, qualifies without values.
 
     No p-value is adjusted, and its line gives none, nor ``gains``.
     """
     monkeypatch.setattr(rules, "paired_test", lambda *_: SIGNIFICANT)
-    rule = ruled(monkeypatch, gains=gains)
-    found = verdict(rule, "control", {"control": mode(0.6), "b": mode(0.58)}, {})
+    found = verdict(rule, "control", {"control": mode(0.6, 188), "b": mode(0.58)}, {})
     assert found.kept == kept
-    assert found.adjusted == ({"b": SIGNIFICANT} if gains else {})
-    tested = ", adjusted p = 0.0010, gains no" if gains else ""
-    assert found.lines()[1] == (
-        f"  b: MRR@10 0.580 against 0.600{tested}; MRR@10 lost: identifier 0.000, holds yes;"
-        " 95th percentile 100 ms, at most 500 ms, within yes"
-    )
+    assert found.adjusted == ({"b": SIGNIFICANT} if rule.values else {})
+    assert found.lines()[1] == f"  b: MRR@10 0.580 against 0.600{said}"
 
 
 @pytest.mark.parametrize(
     ("tail_ms", "kept", "cheaper"),
     [(187, "b", "yes"), (188, "control", "no"), (189, "control", "no")],
 )
-def test_a_bound_of_none_asks_strictly_less(
-    monkeypatch: MonkeyPatch, tail_ms: int, kept: str, cheaper: str
-) -> None:
+@pytest.mark.usefixtures("kinds")
+def test_a_bound_of_none_asks_strictly_less(tail_ms: int, kept: str, cheaper: str) -> None:
     """D2: without a bound, a challenger must spend less than the control, 188 ms here.
 
     Its line gives each 95th percentile, and whether it is cheaper.
     """
-    monkeypatch.setattr(rules, "paired_test", lambda *_: SIGNIFICANT)
-    rule = ruled(monkeypatch, bound=None)
-    found = verdict(rule, "control", {"control": mode(0.6, 188), "b": mode(0.7, tail_ms)}, {})
+    found = verdict(OPEN, "control", {"control": mode(0.6, 188), "b": mode(0.7, tail_ms)}, {})
     assert found.kept == kept
     assert found.lines()[1] == (
-        "  b: MRR@10 0.700 against 0.600, adjusted p = 0.0010, gains yes; MRR@10 lost:"
-        f" identifier 0.000, holds yes; 95th percentile {tail_ms} ms against 188 ms,"
-        f" cheaper {cheaper}"
+        "  b: MRR@10 0.700 against 0.600; MRR@10 lost: identifier 0.000, holds yes;"
+        f" 95th percentile {tail_ms} ms against 188 ms, cheaper {cheaper}"
     )
 
 
-def test_a_family_of_the_values_run(monkeypatch: MonkeyPatch) -> None:
+def test_a_family_of_the_values_run() -> None:
     """D2: a rule without values weighs every arm run but the control, and names none untested.
 
     Of those that qualify within the margin, the one that spends the least is kept.
     """
-    rule = ruled(monkeypatch, values=(), gains=False, bound=None)
     arms = {"current": mode(0.6, 188), "x": mode(0.6, 150), "y": mode(0.595, 120)}
-    found = verdict(rule, "current", arms | {"z": mode(0.7, 200)}, {})
+    found = verdict(OPEN, "current", arms | {"z": mode(0.7, 200)}, {})
     assert found.untested == ()
     assert set(found.failed) == {"x", "y", "z"}
     assert found.failed["z"] == ("bound",)
@@ -166,13 +185,22 @@ def test_a_family_of_the_values_run(monkeypatch: MonkeyPatch) -> None:
 
 def test_a_rule_without_values_asks_no_gain() -> None:
     """D2: no Bonferroni correction runs over a family that the run sets."""
-    assert [name for name, rule in RULES.items() if not rule.values and rule.gains] == []
+    assert (GAIN.gains, OPEN.gains) == (True, False)
+    assert [rule.gains for rule in RULES.values()] == [bool(rule.values) for rule in RULES.values()]
 
 
-def test_a_verdict_with_modes_names_each_value_s_mode(monkeypatch: MonkeyPatch) -> None:
+def test_a_rule_without_values_has_no_bound_and_spends_time() -> None:
+    """D2: a rule's bound is None exactly when it names no values; such a rule spends ms."""
+    assert [rule.bound is None for rule in RULES.values()] == [
+        not rule.values for rule in RULES.values()
+    ]
+    assert {rule.spends for rule in RULES.values() if not rule.values} == {"ms"}
+
+
+@pytest.mark.usefixtures("kinds")
+def test_a_verdict_with_modes_names_each_value_s_mode() -> None:
     """D2, D4: ``verdict`` gives no modes; once set, a challenger's line names each value's."""
-    rule = ruled(monkeypatch, values=(), gains=False, bound=None)
-    found = verdict(rule, "current", {"current": mode(0.6, 188), "x": mode(0.6, 150)}, {})
+    found = verdict(OPEN, "current", {"current": mode(0.6, 188), "x": mode(0.6, 150)}, {})
     assert found.modes == {}
     moded = found.model_copy(update={"modes": {"current": "semantic", "x": "hybrid"}})
     assert moded.lines()[1] == (

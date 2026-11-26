@@ -944,15 +944,15 @@ family the values that may replace it. A rule is of one of two kinds. Either it 
 gain, over a family that it fixes whatever a run measures: a challenger qualifies only
 if its mean on the rule's deciding measure is higher than the control's, with a p-value
 below 0.05 once multiplied by the family's size. Or it asks no gain, over the values
-that the run measured but the control, which no list can name. Either way, a challenger
-qualifies when no group of questions that the rule guards loses more of MRR@10 than it
-allows, and when what it spends stays within the rule's bound, or, without a bound,
-below what the control spends. Of those that qualify, the cheapest within the rule's
-margin of the best mean is kept, else the control. A verdict names the value kept, or
-says why there is none, and changes no setting.
+that the run measured but the control, which no list can name; its bound is then to
+spend less than the control. Either way, a challenger qualifies when no group of
+questions that the rule guards loses more of MRR@10 than it allows, and when what it
+spends stays within the rule's bound. Of those that qualify, the cheapest within the
+rule's margin of the best mean is kept, else the control. A verdict names the value
+kept, or says why there is none, and changes no setting.
 
 - **In the code.** [`DefaultRule`](../../src/kb_mcp/evaluation/domain/evaluation.py),
-  whose `gains` gives its kind,
+  whose `values`, named or not, give its kind,
   [`Verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py),
   [`verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py) and
   [`RULES`](../../src/kb_mcp/evaluation/domain/evaluation.py).

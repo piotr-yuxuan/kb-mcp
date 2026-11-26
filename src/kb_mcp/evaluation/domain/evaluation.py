@@ -116,14 +116,15 @@ class Quoted(Record):
 class DefaultRule(Record):
     """The rule that keeps a setting's value unless a challenger qualifies on the same questions.
 
-    Its family is ``values`` but the control, or without values the arms run but the
-    control. A challenger qualifies when, if the rule ``gains``, its mean on ``decides`` is
-    higher than the control's, with a p-value below ALPHA once multiplied by the family's
-    size; when no group of ``guards`` loses more of MRR@10 than it allows; and when it
-    spends at most ``bound``: tokens embedded, as a multiple of the control's, or a
-    search's 95th percentile, in milliseconds; without a bound, less than the control.
-    Of those qualifying, the cheapest within MARGIN of the best mean is kept: the fewest
-    tokens, or the first of ``values``, or without values the least spent.
+    Of two kinds. With ``values``, its family is they but the control, and a challenger
+    qualifies when its mean on ``decides`` is higher than the control's, with a p-value
+    below ALPHA once multiplied by the family's size; when no group of ``guards`` loses more
+    of MRR@10 than it allows; and when it spends at most ``bound``: tokens embedded, as a
+    multiple of the control's, or a search's 95th percentile, in milliseconds. Without
+    values, its family is the arms run but the control; it asks no gain, has no bound and
+    spends ms: a challenger must search faster than the control. Of those qualifying, the
+    cheapest within MARGIN of the best mean is kept: the fewest tokens, or the first of
+    ``values``, or without values the least spent, then the higher mean, then the name.
     """
 
     name: str  # the decision, as a verdict says it
@@ -131,8 +132,12 @@ class DefaultRule(Record):
     decides: Literal["MRR@10", "Evidence@ask"]
     guards: Mapping[str, float]  # the most MRR@10 that each group may lose, "all" of them
     spends: Literal["tokens", "ms"]
-    bound: float | None
-    gains: bool = True
+    bound: float | None  # None exactly without values
+
+    @property
+    def gains(self) -> bool:
+        """Whether a challenger must gain on ``decides``: exactly when the rule names values."""
+        return bool(self.values)
 
 
 class Verdict(Record):
@@ -250,7 +255,6 @@ RULES = {
             guards={"all": 0.03, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05},
             spends="ms",
             bound=None,
-            gains=False,
         ),
     )
 }
