@@ -59,15 +59,15 @@ MODEL_URL = (
 )
 MODEL_SHA256 = "22c9979ce4fbcdc5acdc310c6641c32797eff1aa980b8f7a2db8a8ea23429a48"
 LLAMA_FLAGS = ("--reranking", "--alias", "qwen3-reranker-0.6b", "-c", "8192")
-# Each step, in the default rules' order, with the rule that gives its verdict; embedding
-# models have none, being chosen from public benchmarks.
+# Each step, in the default rules' order, with the rule that gives its verdict.
 STEPS = {"search-mode": "search mode", "chunking": "chunking", "reranking": "reranking depth"}
-STEPS |= {"embedding-model": None}
+STEPS |= {"embedding-model": "embedding model"}
 # The chunkings that the chunking step compares, and the models that the last step compares
 # with the setting's, unless options name others: the user's, since another's first run
 # embeds the whole mirror anew, for hours.
 CHUNKINGS = ("sections", "windows")
 COMPARED = ("embeddinggemma:300m",)
+UNRULED = "no verdict recorded"  # by a step whose results hold no verdict of its rule
 PULL_S = DOWNLOAD_S = 30 * 60  # seconds that a pull, and the download, may take
 STOP_S = 10  # seconds that a process stopped may take to end
 # MRR@10's rules of thumb, a reader's budgets in tokens, and the noise at 100 questions.
@@ -474,8 +474,12 @@ def step(
     name: str,
     command: list[str],
     readied: Callable[[], AbstractContextManager[str | None]] = contextlib.nullcontext,
+    unruled: str = UNRULED,
 ) -> Done:
-    """Run a step once readied, logged on a pseudo-terminal; analyse the results it wrote."""
+    """Run a step once readied, logged on a pseudo-terminal; analyse the results it wrote.
+
+    Its verdict is its rule's, else ``unruled``, which says why there is none.
+    """
     console, last = run.console, run.last.get(name)
     console.rule(f"Step {[*STEPS].index(name) + 1} of {len(STEPS)}: {name}", style="cyan")
     since = f"; {last / 60:.1f} min last time" if last else ""
@@ -505,7 +509,7 @@ def step(
     console.print(f"{name}: done in {seconds / 60:.1f} min{since}.", style="green")
     for line in lines:
         console.print(line)
-    return Done(name, "ok", seconds, verdict or "no default rule", written[-1], lines, found)
+    return Done(name, "ok", seconds, verdict or unruled, written[-1], lines, found)
 
 
 def tables(ended: list[Done], settings: Settings, *first: Table, colour: bool) -> str:
@@ -638,11 +642,19 @@ def main() -> int:
     chunkings = [flag for each in options.chunking or CHUNKINGS for flag in ("--chunking", each)]
     compared = [flag for each in models for flag in ("--model", each)]
     rerank, wait = ["kb-mcp", "eval-rerank", *evaluate[2:]], options.reranker_wait
+    unweighed = UNRULED  # as by a kb-mcp older than the embedding model's rule
+    if len(models) == 1:
+        unweighed = "no verdict: one model measured; name another with --compare"
     ended = [
         step(run, "search-mode", [*evaluate, "--chunking", settings.chunking]),
         step(run, "chunking", [*evaluate, *chunkings]),
         step(run, "reranking", rerank, lambda: reranker(run, wait)),
-        step(run, "embedding-model", [*evaluate, *compared, "--chunking", settings.chunking]),
+        step(
+            run,
+            "embedding-model",
+            [*evaluate, *compared, "--chunking", settings.chunking],
+            unruled=unweighed,
+        ),
     ]
     finish(run, ended, version)
     return int(any(not each.status.startswith(("ok", "skipped")) for each in ended))

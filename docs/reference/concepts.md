@@ -940,15 +940,21 @@ per thousand of their tokens, a ratio of two sums over the questions that have e
 
 The rule that keeps a [setting](#setting)'s value unless a challenger, measured on the
 same golden questions, qualifies; one per decision. Its control is the value in use, its
-family the values that may replace it, both fixed by the rule whatever a run measures.
-A challenger qualifies when its mean on the rule's deciding measure is higher than the
-control's, with a p-value below 0.05 once multiplied by the family's size; when no group
-of questions that the rule guards loses more of MRR@10 than it allows; and when what it
+family the values that may replace it. Its arms share every other setting, save the
+search mode where a rule weighs a value in several modes, each an arm of its own, as the
+embedding model's does. A rule is of one of two kinds. Either it asks a
+gain, over a family that it fixes whatever a run measures: a challenger qualifies only
+if its mean on the rule's deciding measure is higher than the control's, with a p-value
+below 0.05 once multiplied by the family's size. Or it asks no gain, over the values
+that the run measured but the control, which no list can name; its bound is then to
+spend less than the control. Either way, a challenger qualifies when no group of
+questions that the rule guards loses more of MRR@10 than it allows, and when what it
 spends stays within the rule's bound. Of those that qualify, the cheapest within the
 rule's margin of the best mean is kept, else the control. A verdict names the value
 kept, or says why there is none, and changes no setting.
 
 - **In the code.** [`DefaultRule`](../../src/kb_mcp/evaluation/domain/evaluation.py),
+  whose `values`, named or not, give its kind,
   [`Verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py),
   [`verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py) and
   [`RULES`](../../src/kb_mcp/evaluation/domain/evaluation.py).
@@ -1017,8 +1023,9 @@ and how a run tells of itself.
   ending nor what it removes.
 - `StoreBusyError` and `RunBusyError`: a store held fails the unit that would write it; a
   run held refuses the invocation that would resume it.
-- `DefaultRule` and `ask_verdict`: both keep a default unless a challenger is shown
-  better; but `ask_verdict` decides a tool, not a setting, by one paired difference of
-  agents' successes, its p-value Holm-adjusted over the three measures that it compares,
-  where a default rule weighs a family of a setting's values by its deciding measure,
-  its guards and its bound.
+- `DefaultRule` and `ask_verdict`: both keep a default unless a challenger qualifies;
+  but `ask_verdict` decides a tool, not a setting, on a gain alone, by one paired
+  difference of agents' successes, its p-value Holm-adjusted over the three measures
+  that it compares, where a default rule weighs a family of a setting's values by its
+  guards, its bound and its deciding measure, which it tests for a gain only if it asks
+  one.

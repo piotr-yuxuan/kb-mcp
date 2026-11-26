@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from kb_mcp.config.settings import Settings
+from kb_mcp.evaluation.app.evaluation import Costs, IndexMeasures, verdicts
 from kb_mcp.evaluation.domain import evaluation as rules
 from kb_mcp.evaluation.domain.evaluation import (
     RULES,
@@ -29,6 +31,7 @@ from kb_mcp.evaluation.domain.grading import AgentAnswer, Quote, grade
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -539,3 +542,153 @@ def test_within_the_margin_the_cheapest_qualifier_wins(
     0.01 of 0.600, and 0.589 is not; 0.995 is within 0.01 of 1.000, and 0.980 is not.
     """
     assert decide(rule, control, arms).kept == kept
+
+
+# The golden questions of an index built by hand, alike but for their ids.
+ASKED = [Question(id=f"q{number}", text="x", expected=("a",)) for number in range(QUESTIONS)]
+
+
+def indexed(
+    model: str, scores: Mapping[str, float], tails_ms: Mapping[str, int], chunking: str = "windows"
+) -> IndexMeasures:
+    """Measure an index by hand: in each mode, every question at its MRR@10, and its tail."""
+    costs = Costs(chunks=1, characters=4, tokens=None, bytes=1)
+    of_index = IndexMeasures(
+        model=model,
+        fingerprint="f",
+        embedded=0,
+        seconds=0.0,
+        chunking=chunking,
+        costs=costs,
+        documents={},
+        documents_sha256="d",
+    )
+    for mode, score in scores.items():
+        each = Measures(recall=score, reciprocal_rank=score, ndcg=score, success=score)
+        of_index.per[mode] = dict.fromkeys((question.id for question in ASKED), each)
+        of_index.groups[mode] = {"all": each}
+        of_index.times[mode] = (0.0, tails_ms[mode] / 1000)
+        of_index.asked[mode] = {question.id: Quoted(found=1.0, evidence=None) for question in ASKED}
+    return of_index
+
+
+# Each mode's 95th percentile, in milliseconds, of every index built by hand but the
+# candidate's, and of the candidate's.
+TAILS = {"lexical": 10, "semantic": 150, "hybrid": 188}
+CANDIDATE_TAILS = {"lexical": 12, "semantic": 120, "hybrid": 160}
+
+
+def by_meaning(semantic: float, hybrid: float) -> dict[str, float]:
+    """Score the modes by meaning as given; lexical search, which reads no model, best."""
+    return {"lexical": 0.9, "semantic": semantic, "hybrid": hybrid}
+
+
+@pytest.mark.parametrize(
+    ("search_mode", "current", "control", "mean"),
+    [
+        # The current model in the setting's mode, though better in the other.
+        ("hybrid", (0.7, 0.6), "hybrid", 0.6),
+        ("semantic", (0.6, 0.7), "semantic", 0.6),
+        # The setting reads no model: the current model in its best mode by meaning.
+        ("lexical", (0.6, 0.7), "hybrid", 0.7),
+        # A tie, as reported, goes to semantic, the cheaper.
+        ("lexical", (0.65, 0.6504), "semantic", 0.65),
+    ],
+)
+def test_each_model_is_weighed_in_its_mode(
+    tmp_path: Path, search_mode: str, current: tuple[float, float], control: str, mean: float
+) -> None:
+    """D3: one verdict for the chunking, after the others, each arm a model in one mode.
+
+    The control is the current model, in the setting's mode if it reads a model, else in
+    its best; a candidate gives an arm in each mode by meaning. Each arm's reciprocal
+    ranks, groups and 95th percentile are its index's in its mode. Each row scores the
+    current model's semantic then hybrid search, and gives the control's mode and mean.
+    """
+    settings = Settings(data_dir=tmp_path, model="current", search_mode=search_mode)
+    measured = [indexed("current", by_meaning(*current), TAILS)]
+    measured.append(indexed("candidate", by_meaning(0.62, 0.65), CANDIDATE_TAILS))
+    ruled = verdicts(measured, ASKED, settings)
+    rules_run = ["search mode", "search mode", "chunking", "chunking", "embedding model"]
+    assert [each.rule for each in ruled] == rules_run
+    found = ruled[-1]
+    named = f"current, {control}"
+    assert (found.fixed, found.control) == ({"chunking": "windows"}, named)
+    weighed = {named: mean, "candidate, semantic": 0.62, "candidate, hybrid": 0.65}
+    assert found.means == weighed
+    tails = {"candidate, semantic": 120, "candidate, hybrid": 160}
+    assert found.spent == {named: TAILS[control]} | tails
+    assert found.adjusted == {}
+
+
+@pytest.mark.parametrize(
+    ("search_mode", "candidate", "failed", "kept"),
+    [
+        # Within the guards and faster in semantic; in hybrid, it loses too much and is slower.
+        (
+            "hybrid",
+            {"semantic": (0.59, 120), "hybrid": (0.5, 200)},
+            {"candidate, semantic": (), "candidate, hybrid": ("guards", "bound")},
+            "candidate, semantic",
+        ),
+        # Faster in semantic but too poor; better in hybrid but slower: it fails in both.
+        (
+            "semantic",
+            {"semantic": (0.4, 140), "hybrid": (0.62, 400)},
+            {"candidate, semantic": ("guards",), "candidate, hybrid": ("bound",)},
+            "current, semantic",
+        ),
+    ],
+)
+def test_a_candidate_qualifies_in_one_mode_or_none(
+    tmp_path: Path,
+    search_mode: str,
+    candidate: Mapping[str, tuple[float, int]],
+    failed: Mapping[str, tuple[str, ...]],
+    kept: str,
+) -> None:
+    """The lane's ruling of round 2: each mode's quality and cost are weighed together.
+
+    A candidate's quality in one mode never joins its search time in another. The current
+    model scores 0.6 in both modes, at TAILS; each row gives the candidate's MRR@10 and
+    95th percentile in each mode by meaning.
+    """
+    settings = Settings(data_dir=tmp_path, model="current", search_mode=search_mode)
+    measured = [indexed("current", by_meaning(0.6, 0.6), TAILS)]
+    scores = by_meaning(candidate["semantic"][0], candidate["hybrid"][0])
+    tails = {"lexical": 12} | {mode: tail for mode, (_, tail) in candidate.items()}
+    measured.append(indexed("candidate", scores, tails))
+    found = verdicts(measured, ASKED, settings)[-1]
+    assert found.failed == failed
+    assert found.kept == kept
+
+
+@pytest.mark.parametrize(
+    "measured",
+    [
+        # One model, over two chunkings.
+        [indexed("current", by_meaning(0.6, 0.6), TAILS, each) for each in ("sections", "windows")],
+        # Two models, each over a chunking of its own.
+        [
+            indexed("current", by_meaning(0.6, 0.6), TAILS, "sections"),
+            indexed("candidate", by_meaning(0.6, 0.6), TAILS, "windows"),
+        ],
+    ],
+)
+def test_one_model_gives_no_embedding_verdict(
+    tmp_path: Path, measured: list[IndexMeasures]
+) -> None:
+    """D3, T6: a chunking over which one model alone was measured has nothing to weigh."""
+    settings = Settings(data_dir=tmp_path, model="current")
+    ruled = verdicts(measured, ASKED, settings)
+    assert [each.rule for each in ruled if each.rule == "embedding model"] == []
+    assert {each.rule for each in ruled} == {"search mode", "chunking"}
+
+
+def test_an_embedding_verdict_without_the_setting_s_model_says_so(tmp_path: Path) -> None:
+    """D3: two models measured over a chunking, neither the setting's: no verdict, and why."""
+    settings = Settings(data_dir=tmp_path, model="current")
+    measured = [indexed(name, by_meaning(0.6, 0.6), TAILS) for name in ("a", "b")]
+    found = verdicts(measured, ASKED, settings)[-1]
+    assert (found.rule, found.kept) == ("embedding model", None)
+    assert found.reason == "its control, current, was not run"

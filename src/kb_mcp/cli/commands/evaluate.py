@@ -99,9 +99,10 @@ def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
 
     Short gives each index's row of all the questions, mode by mode, for search and for
     ask, and its costs; detailed, its tables of every group. Both end with the questions
-    that Section@10 reads, the search mode's verdict for each index and the chunking's for
-    each model, each with its clauses and the values not run, then the questions skipped.
-    Lexical search's rows come with the first index alone.
+    that Section@10 reads, the search mode's verdict for each index, the chunking's for
+    each model and the embedding model's for each chunking of two models or more, each with
+    its clauses and the values not run, then the questions skipped. Lexical search's rows
+    come with the first index alone.
     """
     aligned = evaluated.indexes[0].aligned
     said = [f"Section@10 reads the questions whose expected document every arm found: {aligned}."]

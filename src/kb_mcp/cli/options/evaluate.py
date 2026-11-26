@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 
 
 def models_named(arguments: argparse.Namespace, _settings: Mapping[str, object]) -> dict[str, str]:
-    """Evaluate the models that --model names, if any, in place of the setting."""
-    return {"model": "replaced by --model"} if arguments.model else {}
+    """Evaluate one model that --model names in place of the setting; of two, it is the control."""
+    return {"model": "replaced by --model"} if len(set(arguments.model or ())) == 1 else {}
 
 
 def register(
@@ -43,8 +43,9 @@ def register(
             " ask by mode and group, with its ranks, times and costs, and the documents that it"
             " indexed, by source and type, and their digest; verdicts, the default"
             " rules' verdicts, the search mode's for each model and chunking, then the"
-            " chunking's for each model; skipped, the golden questions left out, each with its"
-            " ref and why; results, the file that keeps them."
+            " chunking's for each model, then the embedding model's for each chunking of two"
+            " models or more, each arm a model in a mode; skipped, the golden questions left"
+            " out, each with its ref and why; results, the file that keeps them."
         ),
     )
     actions, flags = add_settings_options(parser)

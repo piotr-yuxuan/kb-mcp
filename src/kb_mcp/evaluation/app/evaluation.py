@@ -6,7 +6,7 @@ Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answere
 ``Library.quoted``, as ``ask`` answers, in each mode, whose answers ``Library.in_mode``
 gives as served, for their tokens; the measures of
 ``evaluation.domain.evaluation`` say how the modes compare, and its default rules which
-search mode and chunking to keep. Each evaluated index is a span; each
+search mode, chunking and embedding model to keep. Each evaluated index is a span; each
 question is timed and logged, and each mode's scores measured, as
 ``docs/reference/telemetry/eval.md`` lists it.
 """
@@ -434,30 +434,39 @@ def prepared(
     return of_index, library
 
 
+def arm(
+    of_index: IndexMeasures, mode: str, questions: Sequence[Question]
+) -> tuple[list[float], dict[str, float], int]:
+    """Give an index's arm in a mode as a rule on MRR@10 reads it: ranks, groups, tail in ms."""
+    return (
+        [of_index.per[mode][question.id].reciprocal_rank for question in questions],
+        {group: each.reciprocal_rank for group, each in of_index.groups[mode].items()},
+        round(of_index.times[mode][1] * 1000),
+    )
+
+
 def verdicts(
     measured: Sequence[IndexMeasures], questions: Sequence[Question], settings: Settings
 ) -> list[Verdict]:
     """Apply the default rules against the settings, each by the indexes measured.
 
-    The search mode's to each index, then the chunking's to each model's, in hybrid mode.
+    The search mode's to each index, then the chunking's to each model's, in hybrid mode,
+    then the embedding model's to each chunking of two models or more, each arm a model in
+    a mode, named "<model>, <mode>": the control, the setting's model in the setting's mode
+    if it reads a model, else in its best mode by meaning; every other model, in each mode
+    by meaning.
     """
     found = [
         verdict(
             RULES["search mode"],
             settings.search_mode,
-            {
-                mode: (
-                    [of_index.per[mode][question.id].reciprocal_rank for question in questions],
-                    {group: each.reciprocal_rank for group, each in of_index.groups[mode].items()},
-                    round(of_index.times[mode][1] * 1000),
-                )
-                for mode in MODES
-            },
+            {mode: arm(of_index, mode, questions) for mode in MODES},
             {"model": of_index.model, "chunking": of_index.chunking},
         )
         for of_index in measured
     ]
     arms: dict[str, dict[str, tuple[list[float], dict[str, float], int]]] = {}
+    models: dict[str, dict[str, IndexMeasures]] = {}
     for of_index in measured:
         asked = (of_index.asked["hybrid"][question.id].evidence for question in questions)
         arms.setdefault(of_index.model, {})[of_index.chunking] = (
@@ -465,10 +474,29 @@ def verdicts(
             {group: each.reciprocal_rank for group, each in of_index.groups["hybrid"].items()},
             of_index.costs.estimated,
         )
-    return found + [
+        models.setdefault(of_index.chunking, {})[of_index.model] = of_index
+    found += [
         verdict(RULES["chunking"], settings.chunking, chunkings, {"model": model})
         for model, chunkings in arms.items()
     ]
+    meaning = [mode for mode in MODES if mode != "lexical"]  # lexical search reads no model
+    for chunking, indexes in models.items():
+        if len(indexes) == 1:  # its family is the other models run: none
+            continue
+        control, weighed = settings.model, {}  # unmeasured, the control is named by its model
+        for model, of_index in indexes.items():
+            modes = meaning
+            if model == settings.model:
+                mrr = {
+                    mode: round(of_index.groups[mode]["all"].reciprocal_rank, 3) for mode in modes
+                }
+                best = max(mrr, key=mrr.__getitem__)  # of a tie, the cheaper mode, the first
+                if settings.search_mode in mrr:
+                    best = settings.search_mode
+                control, modes = f"{model}, {best}", [best]
+            weighed |= {f"{model}, {mode}": arm(of_index, mode, questions) for mode in modes}
+        found.append(verdict(RULES["embedding model"], control, weighed, {"chunking": chunking}))
+    return found
 
 
 def record(

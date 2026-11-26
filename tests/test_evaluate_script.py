@@ -594,6 +594,57 @@ def test_a_failed_step_is_reported_and_the_next_runs(mac: Mac) -> None:
     assert re.search(r"embedding-model\W+ok", done.stdout)
 
 
+@pytest.mark.parametrize(
+    ("options", "weighed", "said"),
+    [
+        (
+            (),
+            [
+                verdict(
+                    "embedding model",
+                    {"chunking": "windows"},
+                    f"{MODELS[0]}, hybrid",
+                    f"{MODELS[1]}, semantic",
+                )
+            ],
+            (
+                "Embedding model for windows: embeddinggemma:300m, semantic, in place of"
+                " qwen3-embedding:0.6b, hybrid."
+            ),
+        ),
+        # A kb-mcp older than the embedding model's rule records no verdict of it.
+        ((), [], "no verdict recorded"),
+        # One model measured, as when --compare names the setting's: nothing to weigh.
+        (
+            ("--compare", MODELS[0]),
+            [],
+            "no verdict: one model measured; name another with --compare",
+        ),
+    ],
+)
+def test_the_embedding_model_step_reports_its_verdict(
+    mac: Mac, options: tuple[str, ...], weighed: list[dict], said: str
+) -> None:
+    """093's D5: the steps' table and the manifest give the embedding model's verdict.
+
+    Its analysis says it with the others, when its results hold it; without one, the step
+    says why, if it can tell.
+    """
+    results = eval_results()
+    results["verdicts"] += weighed
+    mac.plan["runs"]["eval"][2] = {"results": results}
+    done = mac.run(*options)
+    assert done.returncode == 0
+    [step] = [
+        each
+        for each in json.loads(mac.archived("manifest.json"))["steps"]
+        if each["name"] == "embedding-model"
+    ]
+    assert step["verdict"] == said
+    analysis = mac.archived("analyses/embedding-model.txt")
+    assert (f"{said}\n" in analysis) is bool(weighed)
+
+
 def test_eval_agents_is_not_run(mac: Mac) -> None:
     """D10: no eval-agents; --yes is given to eval and eval-rerank alone."""
     mac.run()

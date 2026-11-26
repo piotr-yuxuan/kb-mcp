@@ -471,6 +471,54 @@ def test_the_chunking_control_is_the_setting(
     assert set(verdict["means"]) == {"sections", "windows"}
 
 
+# The embedding model's verdict on GOLDEN, a second model weighed in each mode by meaning
+# against the setting's, tiny, in hybrid mode: its losses, and its search time against
+# tiny's, each in its arm's mode.
+WEIGHED = re.compile(
+    r"  small, (semantic|hybrid): MRR@10 \d\.\d{3} against \d\.\d{3}; MRR@10 lost: all"
+    r" -?\d\.\d{3}, identifier n/a, keyword -?\d\.\d{3}, paraphrase -?\d\.\d{3}, holds"
+    r" (yes|no); 95th percentile [\d,]+ ms against [\d,]+ ms, cheaper (yes|no)"
+)
+
+
+def test_eval_prints_and_records_the_embedding_model_verdict(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D3, D4: two models over a chunking: the verdicts end with the embedding model's.
+
+    It asks no gain, so it gives no p-value; the results file and the JSON keep it, each
+    arm named by its model and mode.
+    """
+    (data / "golden.yaml").write_text(GOLDEN, encoding="utf-8")
+    answers = Scripted({"tiny:latest": DIGEST, "small:latest": DIGEST})
+    two = ["--model", "tiny", "--model", "small", "--chunking", "windows"]
+    with serving(answers) as url:
+        given = [str(data / "golden.yaml"), *options(data, url), *two]
+        assert main(["eval", "--yes", *given]) == 0
+        lines = capsys.readouterr().out.splitlines()
+        assert main(["eval", "--yes", *given, "--format", "json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    said = next(at for at, line in enumerate(lines) if line.startswith("Embedding model for"))
+    assert re.fullmatch(
+        r"Embedding model for windows, by the default rule: (tiny, hybrid stays|small,"
+        r" (semantic|hybrid), in place of tiny, hybrid)\.",
+        lines[said],
+    )
+    weighed_in = [WEIGHED.fullmatch(line) for line in lines[said + 1 : said + 3]]
+    assert [each and each[1] for each in weighed_in] == ["semantic", "hybrid"]
+    assert lines[said + 3].startswith("Results: ")
+    kept = json.loads(Path(lines[said + 3].removeprefix("Results: ")).read_text("utf-8"))
+    rules_run = ["search mode", "search mode", "chunking", "chunking", "embedding model"]
+    for verdicts_kept in (kept["verdicts"], document["verdicts"]):
+        assert [each["rule"] for each in verdicts_kept] == rules_run
+        weighed = verdicts_kept[-1]
+        assert weighed["fixed"] == {"chunking": "windows"}
+        assert weighed["control"] == "tiny, hybrid"
+        assert set(weighed["means"]) == {"tiny, hybrid", "small, semantic", "small, hybrid"}
+        assert "modes" not in weighed
+        assert (weighed["adjusted"], weighed["untested"]) == ({}, [])
+
+
 def test_a_refused_golden_file_exits_2(data: Path, capsys: CaptureFixture[str]) -> None:
     """The command names the fault, by the error eval.refused, and evaluates nothing.
 

@@ -1351,7 +1351,7 @@ nothing of the program reads those logs.
 | `skipped` | the golden questions left out, each `{"id", "ref", "why"}`: the first of its expected refs that names no document of the index, and why |
 | `test` | the paired test: its `kind`, its `samples` and its `seed` |
 | `indexes` | each evaluated index, a model and a chunking, as below |
-| `verdicts` | the default rules' verdicts, as below: the search mode's for each index, then the chunking's for each model |
+| `verdicts` | the default rules' verdicts, as below: the search mode's for each index, then the chunking's for each model, then the embedding model's for each chunking over which two models or more were measured |
 
 Each of `indexes`, its measures by mode (`lexical`, `semantic`, `hybrid`):
 
@@ -1383,14 +1383,14 @@ Each of `verdicts`:
 
 | Key | Value |
 |---|---|
-| `rule` | the rule's name: `search mode`, `chunking` or `reranking depth` |
-| `fixed` | what the arms share: the `model` and the `chunking` for the search mode, the `model` for the chunking, nothing for the depth |
-| `control` | the control's value |
+| `rule` | the rule's name: `search mode`, `chunking`, `reranking depth` or `embedding model` |
+| `fixed` | what the arms share: the `model` and the `chunking` for the search mode, the `model` for the chunking, nothing for the depth, the `chunking` for the embedding model |
+| `control` | the control's value; for the embedding model, `<model>, <mode>`, as each of its values, or the setting's model alone when it was not measured |
 | `kept` | the value kept, the control's when no challenger qualifies; null when there is no verdict |
 | `reason` | why there is no verdict; else null |
 | `untested` | the values of the rule's family that the run did not measure |
 | `means` | by value measured: the mean of the deciding measure, to three decimals |
-| `adjusted` | by challenger: its p-value times the size of the rule's family, at most 1 |
+| `adjusted` | by challenger: its p-value times the size of the rule's family, at most 1; empty for a rule that asks no gain, the embedding model's |
 | `losses` | by challenger, then guarded group: the MRR@10 that it loses against the control |
 | `spent` | by value measured: the tokens that its index embeds, or a search's 95th percentile in whole milliseconds |
 | `failed` | by challenger: the clauses that it fails, of `gain`, `guards` and `bound` |

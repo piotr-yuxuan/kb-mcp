@@ -58,14 +58,22 @@ each in a line with its challengers' clauses below it
   `chunking` when it beats it on Evidence@ask with a p-value below 0.05 once multiplied
   by three, the other chunkings, loses at most 0.02 of MRR@10 over all the questions and
   0.05 on `identifier`, `keyword` and `paraphrase`, and embeds at most three times its
-  tokens.
+  tokens;
+- the embedding model's, for each chunking over which `--model` names two models or
+  more, each arm a model in one mode, named `<model>, <mode>`: the setting `model`, in
+  the setting's mode when that mode reads a model, else in its best mode by meaning; and
+  every other model in each mode by meaning. Another model replaces the setting's when,
+  in one of its modes, it loses at most 0.03 of MRR@10 over all the questions and 0.05
+  on `identifier`, `keyword` and `paraphrase`, and searches faster at the 95th
+  percentile, all measured in that mode; it need not rank better.
 
 Of the challengers that qualify, those within 0.01 of the best are as good, and the
-cheapest is kept: words, then meaning, then hybrid search for the mode, and the
-chunking that embeds the fewest tokens. A verdict is the rule's on your questions, and
-changes no setting. It says `no verdict, since` and why when the run did not measure
-the setting's value, as `--chunking` without the setting's chunking does, or any
-challenger, or when no question has the evidence that Evidence@ask reads.
+cheapest is kept: words, then meaning, then hybrid search for the mode, the chunking
+that embeds the fewest tokens, and the model that searches fastest. A verdict is the
+rule's on your questions, and changes no setting. It says `no verdict, since` and why
+when the run did not measure the setting's value, as `--chunking` without the setting's
+chunking does, or any challenger, or when no question has the evidence that Evidence@ask
+reads.
 
 A question whose expected ref names no document of the index is skipped, and the output
 names each, then what to do:
