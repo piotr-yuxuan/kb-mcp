@@ -1,9 +1,6 @@
 """The work log's fetcher: its folder, read in place, into its source's copy store.
 
-The work log's declaration names this module, a ``Fetcher``: ``preflight`` refuses a work
-log that is not a folder, which fails its unit alone, and ``fetch`` reads it into its copy
-store, or in a dry run says what that would change, and says the problems, as the work
-log's events do.
+The work log's declaration names this module, a ``Fetcher``.
 """
 
 from __future__ import annotations
@@ -38,11 +35,7 @@ def fetch(run: SourceRun) -> Outcome[WorklogFetched]:
     """Read the run's work log into its copy store, or in a dry run say what that would change.
 
     Another run writing the store fails the fetch before it reads, a problem by the copy
-    store and an error, ``fetch.store_busy``; so does a store that does not read, its
-    error ``fetch.refused`` naming the file and the field. Both errors name the source.
-    Each problem is a warning, ``worklog.problem``, by its place, its reason and what it
-    held back, never content; so is that a fetch with problems, not a dry run, found no
-    document gone, ``worklog.nothing_removed``.
+    store; so does a store that does not read.
     """
     source = run.source.name
     try:

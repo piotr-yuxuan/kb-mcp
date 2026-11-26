@@ -1,8 +1,6 @@
 """The work log's copy store: what one work log's fetch keeps, in one JSON file of its own.
 
-The layout: docs/reference/data-layout.md, section "The work log's copy store". This
-module alone reads and writes it, through ``kernel.fields.Fields`` for its reading: a
-field missing, of another type or refused by the domain is named by its path, never its
+This module alone reads and writes it; a field at fault is named by its path, never its
 value.
 """
 
@@ -34,8 +32,7 @@ class CopyStore:
     """One work log's copy store: the folder ``<root>/<source>/``, its file and its lock.
 
     The file is replaced whole, through a hidden file renamed into place, so that a reader
-    finds the last write whole or the one before it. One run at a time writes, inside
-    ``writing``.
+    finds the last write whole or the one before it.
     """
 
     def __init__(self, root: Path, source: str) -> None:

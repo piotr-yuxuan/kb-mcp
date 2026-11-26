@@ -1,11 +1,6 @@
 """The work log's folder, read in place: never written, and never through git.
 
-``listed`` finds ``todo.org``, ``todo.org_archive`` and every ``*.org`` under the folders
-of transcripts, ``transcripts/`` and ``meetings/``, and counts the HTML transcripts, which
-are never read; ``org_text`` reads one of them. Names beginning with ``.`` or ``#`` or
-ending in ``~`` (hidden files, and Emacs's lock, autosave and backup files) are passed
-over. A link is followed only to a file or a folder inside the work log. A file over a
-bound, linking out or not UTF-8 is named by its path, never by its content.
+A file over a bound, linking out or not UTF-8 is named by its path, never by its content.
 """
 
 from __future__ import annotations
@@ -50,9 +45,8 @@ class OrgFiles(Record):
 def listed(folder: Path, *, archives: bool) -> OrgFiles:
     """Find the work log's org files under ``folder``, following links inside it alone.
 
-    Without ``archives``, ``todo.org_archive``, ``transcripts/archive/`` and
-    ``meetings/archive/`` are left out. Past 20,000 transcripts in both folders, the first
-    in path order are kept and a problem naming the folders is reported.
+    Past ``TRANSCRIPT_COUNT`` transcripts in both folders, the first in path order are kept
+    and a problem naming the folders is reported.
     """
     root = folder.resolve()
     if not root.is_dir():
@@ -105,8 +99,6 @@ def listed(folder: Path, *, archives: bool) -> OrgFiles:
                 )
         elif real.is_file():
             found.append(relative)
-    # Of the files found, the HTML transcripts are counted; todo.org, todo.org_archive and
-    # the org transcripts are read.
     html = sum(1 for path in found if path.parts[0] in TRANSCRIPT_FOLDERS and path.suffix == HTML)
     others = sorted(path for path in found if path.parts[0] not in TRANSCRIPT_FOLDERS)
     transcripts = sorted(
