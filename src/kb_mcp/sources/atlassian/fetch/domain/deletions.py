@@ -1,11 +1,4 @@
-"""Documents that the site no longer has: when to say so, and when not to believe it.
-
-A document absent from its scope's new whole read, a space's listing or a project's,
-gets a tombstone, pending until a probe answers. A first answer of gone dates it; a
-second, on a later run, confirms it, and the mirror then leaves the document out. Too
-many gone at once is more likely a lost session than a mass deletion, so the caller
-checks the session before believing it.
-"""
+"""Documents that the site no longer has: when to say so, and when not to believe it."""
 
 from __future__ import annotations
 
@@ -47,11 +40,8 @@ class ProbeAnswer(StrEnum):
 class Tombstone(Record):
     """A document absent from its scope's whole read, on its way to being believed gone.
 
-    Known by its scope's source, its document type and its id; ``scope`` is the scope
-    whose whole read found it absent. It is pending until a probe answers gone
-    (``first_gone`` is then that time), and confirmed once a later probe, at least
-    ``CONFIRM_AFTER`` later, answers gone again. A pending one waits for a probe, however
-    many runs that takes.
+    ``scope`` is the scope whose whole read found it absent. A pending one waits for a
+    probe, however many runs that takes.
     """
 
     scope: Scope
@@ -82,11 +72,9 @@ def after_probes(
 ) -> dict[DocumentKey, Tombstone]:
     """Return the tombstones of one scope once its absent documents were probed.
 
-    ``known`` are the scope's tombstones before; ``absent`` maps each document missing
-    from the new whole read to its scope; ``answers`` holds the probes made, which may be
-    fewer than the absent, or none. An absent document without an answer keeps its
-    tombstone, or becomes pending; one answering gone moves on a step; one listed again,
-    moved or present loses its tombstone.
+    ``answers`` may hold fewer probes than the absent, or none: an absent document without
+    an answer keeps its tombstone, or becomes pending. One listed again, or moved, loses its
+    tombstone.
     """
     kept: dict[DocumentKey, Tombstone] = {}
     for key, scope in absent.items():
@@ -113,13 +101,8 @@ def too_many_gone(answers: Mapping[DocumentKey, ProbeAnswer], stored: int) -> bo
 def answer_of(found: str, status: str | None, kept: Collection[str], *, named: bool) -> ProbeAnswer:
     """Say what a probe that the site answered found.
 
-    ``found`` is the scope that holds the document now, and ``kept`` those whose whole
-    reads the raw store keeps, each as its listings are kept; ``status`` is the
-    document's own, where the site gives one; ``named`` says whether the found scope's
-    last whole read names the document. A document trashed, or in a scope never read
-    whole, is gone; one that a whole read names has moved there, and is followed by that
-    scope's own reads; any other is still somewhere, unsettled, and probed again on a
-    later run, so that its tracking never ends unseen.
+    ``found`` is the scope that holds the document now; ``kept``, those whose whole reads
+    the raw store keeps; ``named``, whether the found scope's last whole read names it.
     """
     if status in GONE_STATUSES or found not in kept:
         return ProbeAnswer.GONE
