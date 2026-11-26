@@ -23,6 +23,7 @@ from kb_mcp.kernel.names import BLOBS, IDENTIFIER, RefusedError, StoreBusyError,
 from kb_mcp.kernel.records import Problem, Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    CONFLUENCE_CLASSES,
     REVISION,
     BlogPost,
     Folder,
@@ -109,16 +110,14 @@ class Representation(Record):
 
 CONFLUENCE_FILES = (confluence_v2.DOCUMENT, confluence_v2.VIEW, confluence_v2.ATTACHMENTS)
 REPRESENTATIONS: dict[type[FetchedDocument], Representation] = {
-    Page: Representation(
-        files=CONFLUENCE_FILES,
-        identity=confluence_v2.identity,
-        snapshot=partial(confluence_v2.snapshot, Page),
-    ),
-    BlogPost: Representation(
-        files=CONFLUENCE_FILES,
-        identity=confluence_v2.identity,
-        snapshot=partial(confluence_v2.snapshot, BlogPost),
-    ),
+    **{
+        each: Representation(
+            files=CONFLUENCE_FILES,
+            identity=confluence_v2.identity,
+            snapshot=partial(confluence_v2.snapshot, each),
+        )
+        for each in CONFLUENCE_CLASSES
+    },
     Issue: Representation(
         files=(jira_v3.ISSUE, jira_v3.COMMENTS),
         identity=jira_v3.identity,

@@ -96,13 +96,11 @@ STOPPED = "runs: "
 
 # How each document type is read from its listing, and which GETs make its snapshot.
 LISTED: dict[type[FetchedDocument], Callable[[Fields], Listed]] = {
-    Page: partial(confluence_v2.listed, document_class=Page),
-    BlogPost: partial(confluence_v2.listed, document_class=BlogPost),
+    **{each: partial(confluence_v2.listed, document_class=each) for each in CONFLUENCE_CLASSES},
     Issue: jira_v3.listed,
 }
 SNAPSHOT_REQUESTS: dict[type[FetchedDocument], SnapshotRequests] = {
-    Page: confluence_v2.snapshot_requests,
-    BlogPost: confluence_v2.snapshot_requests,
+    **dict.fromkeys(CONFLUENCE_CLASSES, confluence_v2.snapshot_requests),
     Issue: jira_v3.snapshot_requests,
 }
 # How a document absent from its scope's whole read is asked for, and where its answer
