@@ -1,6 +1,6 @@
 [project]
 name = "kb-mcp"
-version = "0.1.16"
+version = "0.1.17"
 description = "An offline mirror of Confluence, Jira Cloud and a work log, served to coding agents over MCP."
 readme = "README.md"
 requires-python = ">=3.14"
