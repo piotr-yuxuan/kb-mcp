@@ -23,7 +23,6 @@ from kb_mcp.observability.observed import (
     ConsoleLines,
     Remaining,
     log_file,
-    route_through_logging,
 )
 
 if TYPE_CHECKING:
@@ -36,24 +35,12 @@ NOW = datetime(2026, 10, 22, 21, 5, 9, tzinfo=UTC)
 RUN = "0123456789abcdef"
 SENTINEL = "sentinel-token-3f8a"
 BASIC = base64.b64encode(f"tests@example.invalid:{SENTINEL}".encode()).decode()
-# The loggers whose levels a test changes, the root's first.
-CHANGED = ("", "httpx", "httpcore", "urllib3", "requests")
+pytestmark = pytest.mark.usefixtures("through_logging")
 # Criterion 6's title: an escape sequence, a bell, a right-to-left override and markup,
 # on two lines.
 TITLE = "Release \x1b[31mnotes\x07 \N{RIGHT-TO-LEFT OVERRIDE}plan [red]draft\nsecond line"
 # The title as the console shows it.
 INERT = "Release [31mnotes plan [red]draft second line"
-
-
-@pytest.fixture(autouse=True)
-def through_logging() -> Iterator[None]:
-    """Route structlog through the standard library for one test, then undo it."""
-    levels = {name: logging.getLogger(name).level for name in CHANGED}
-    route_through_logging()
-    yield
-    structlog.reset_defaults()
-    for name, level in levels.items():
-        logging.getLogger(name).setLevel(level)
 
 
 @contextmanager
