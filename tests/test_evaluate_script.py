@@ -595,10 +595,10 @@ def test_a_failed_step_is_reported_and_the_next_runs(mac: Mac) -> None:
 
 
 @pytest.mark.parametrize(
-    ("models", "weighed", "said"),
+    ("options", "weighed", "said"),
     [
         (
-            MODELS,
+            (),
             [
                 verdict(
                     "embedding model",
@@ -613,13 +613,17 @@ def test_a_failed_step_is_reported_and_the_next_runs(mac: Mac) -> None:
             ),
         ),
         # A kb-mcp older than the embedding model's rule records no verdict of it.
-        (MODELS, [], "no verdict recorded"),
+        ((), [], "no verdict recorded"),
         # One model measured, as when --compare names the setting's: nothing to weigh.
-        (MODELS[:1], [], "no verdict: one model measured; name another with --compare"),
+        (
+            ("--compare", MODELS[0]),
+            [],
+            "no verdict: one model measured; name another with --compare",
+        ),
     ],
 )
 def test_the_embedding_model_step_reports_its_verdict(
-    mac: Mac, models: tuple[str, ...], weighed: list[dict], said: str
+    mac: Mac, options: tuple[str, ...], weighed: list[dict], said: str
 ) -> None:
     """093's D5: the steps' table and the manifest give the embedding model's verdict.
 
@@ -627,11 +631,9 @@ def test_the_embedding_model_step_reports_its_verdict(
     says why, if it can tell.
     """
     results = eval_results()
-    [index] = results["indexes"]
-    results["indexes"] = [index | {"model": model} for model in models]
     results["verdicts"] += weighed
     mac.plan["runs"]["eval"][2] = {"results": results}
-    done = mac.run()
+    done = mac.run(*options)
     assert done.returncode == 0
     [step] = [
         each
