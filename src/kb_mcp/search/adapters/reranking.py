@@ -1,13 +1,7 @@
 """Reranking by a cross-encoder behind llama.cpp's ``llama-server`` on this machine.
 
-Only this module knows the API: the request and answer that ``llama-server``, started
-with ``--reranking``, shares with Jina's and Cohere's rerank APIs, and the quirks of its
-prompt. The rest of the code sees scores: one for each text, in the order given, the
-higher the more relevant; only their order means anything.
-
-The mirror's text never leaves this machine: the server's address is a literal address
-of this machine, which ``model_api.endpoint`` checks again, ``RERANKING`` allowing no
-other.
+Only this module knows the API; of the scores it gives, the higher the more relevant, only
+their order means anything. The mirror's text never leaves this machine.
 """
 
 from __future__ import annotations
@@ -90,12 +84,8 @@ def rerank(
     ValueError, and nothing is sent. Raises RerankError otherwise, of kind
     ``unanswered`` when no attempt got a whole answer, ``refused`` for a status that may
     point at what was sent, and ``bad_answer`` for anything else; its message names the
-    model and the error, never the answer, which echoes the query.
-
-    The reranking is a span ``rerank <model>``, whose kind of operation is this
-    project's, the GenAI conventions naming none for reranking; its duration and the
-    tokens counted, if any, are measured as theirs, and ``rerank.request`` says it at
-    DEBUG, the texts' count and length, never their text.
+    model and the error, never the answer, which echoes the query. Its kind of operation
+    is this project's, as the GenAI conventions name none for reranking.
     """
     longest = max(map(len, texts), default=0)
     if not 0 < len(texts) <= MOST_TEXTS or longest > LONGEST_TEXT or len(query) > LONGEST_QUERY:
@@ -163,9 +153,8 @@ def rerank(
 def served(endpoint: Endpoint) -> tuple[str, ...]:
     """Give the names of the models that the server lists; none from one that lists none.
 
-    A single-model ``llama-server`` scores with its one model whatever a request names,
-    so that a caller compares these with the name it sends. Raises RerankError when no
-    answer comes, or when the list cannot be read.
+    A single-model ``llama-server`` scores with its one model whatever a request names.
+    Raises RerankError when no answer comes, or when the list cannot be read.
     """
     try:
         status, body = send(endpoint, "GET", "models", SEARCH)

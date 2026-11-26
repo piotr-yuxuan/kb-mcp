@@ -1,9 +1,6 @@
 """Reranking through a server: the order that its scores give, or why there is none.
 
-The server's failures are remembered for QUIET_S seconds, as the embedding endpoint's
-are: searches then keep their own order at once, rather than each wait on a server
-that does not answer. A refusal is the request's, not the server's: it is not
-remembered, and the next search asks again.
+Its failures are remembered for QUIET_S seconds, but for a refusal, the request's.
 """
 
 from __future__ import annotations
@@ -47,10 +44,7 @@ class Reranking:
         depth: int,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        """Score with ``score``, a query and its texts; rerank ``depth`` documents at most.
-
-        Failures are timed by ``clock``.
-        """
+        """Score with ``score``, a query and its texts; rerank ``depth`` documents at most."""
         self.depth = depth
         self._score = score
         self._clock = clock
@@ -61,8 +55,7 @@ class Reranking:
         """Order the texts by their relevance to the query, the highest first, ties as given.
 
         The request is made outside the lock, which guards only the failure remembered. A
-        search not reranked is counted in ``kb_mcp.rerank.fallbacks`` by why, and a failure
-        said by the warning ``rerank.fallback``, once: the next ones are quiet.
+        failure is warned of once: the next ones within QUIET_S seconds are quiet.
         """
         with self._lock:
             reason, until = self._failure

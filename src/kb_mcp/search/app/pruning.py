@@ -1,10 +1,7 @@
 """Pruning the vector cache to what the indexes on disk read, after an index by meaning.
 
-The vectors kept are those that the index in place and the evaluation's indexes read,
-and those of the index that the run wrote: the files are the truth, so that deleting an
-evaluation's index lets the next prune drop its vectors. A prune holds the store's lock
-exclusive, which no build in progress holds, so that it never deletes what a build
-embeds; ``docs/reference/telemetry/embed.md`` lists what it records.
+A prune holds the store's lock exclusive, which no build in progress holds, so that it
+never deletes what a build embeds.
 """
 
 from __future__ import annotations
@@ -71,9 +68,8 @@ class Pruned(Record):
 
     ``kept`` counts the vectors left in the store, ``kept_for_evaluation`` those of them
     that the evaluation's indexes alone read. ``shrinks`` says whether the store gives
-    freed pages back to the file system at all, as one made before plan 023 never does;
-    ``reclaimed``, whether this prune's went back.
-    ``reason`` and ``file`` say why it did not prune, or why the space stayed.
+    freed pages back at all; ``reason`` and ``file``, why it did not prune, or why the
+    space stayed.
     """
 
     outcome: PruneOutcome
@@ -138,14 +134,10 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
 def prune(store: Path, index: Path, evaluation_indexes: Path, filled: Filled) -> Pruned:
     """Delete from the store every vector that neither the index nor the evaluation reads.
 
-    Nor any that the index that the run wrote reads, by ``filled``'s ``kept``. A file that
-    it skipped, or no document, holds the prune back, as the index then lacks what the
-    mirror still holds; so does an index that cannot say which vectors it
-    reads, being by words alone or damaged, and a folder that cannot be listed, or a
-    link, among the evaluation's. Either way, it would delete what the mirror still
-    needs. A build holding the store's lock
-    defers it. The store's own failure to delete fails it, nothing deleted; the span
-    ``index.prune`` holds it.
+    Nor any of ``filled.kept``, which the index that the run wrote reads. A file skipped,
+    no document, an index that cannot say which vectors it reads, or a folder of the
+    evaluation's that cannot be listed holds it back; a build holding the store's lock
+    defers it; the store's own failure fails it, nothing deleted.
     """
     started = time.monotonic()
     with TRACER.start_as_current_span("index.prune") as span:

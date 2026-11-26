@@ -1,9 +1,7 @@
 """Search by meaning over an index: the query embedded by its model, connected once a build.
 
-The model is the one the index names, never the setting, and only while the endpoint's
-fingerprint for it is the index's: vectors of other weights would not compare with the
-query's. Anything missing gives a reason instead of documents, so that the caller
-answers by words and says why.
+The model is the index's, never the setting, and only while its fingerprint is the index's;
+anything missing gives a reason instead of documents.
 """
 
 from __future__ import annotations
