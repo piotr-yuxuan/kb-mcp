@@ -63,7 +63,11 @@ LLAMA_FLAGS = ("--reranking", "--alias", "qwen3-reranker-0.6b", "-c", "8192")
 # models have none, being chosen from public benchmarks.
 STEPS = {"search-mode": "search mode", "chunking": "chunking", "reranking": "reranking depth"}
 STEPS |= {"embedding-model": None}
-MODELS = ("qwen3-embedding:0.6b", "embeddinggemma:300m")  # that the last step compares
+# The chunkings that the chunking step compares, and the models that the last step compares
+# with the setting's, unless options name others: the user's, since another's first run
+# embeds the whole mirror anew, for hours.
+CHUNKINGS = ("sections", "windows")
+COMPARED = ("embeddinggemma:300m",)
 PULL_S = DOWNLOAD_S = 30 * 60  # seconds that a pull, and the download, may take
 STOP_S = 10  # seconds that a process stopped may take to end
 # MRR@10's rules of thumb, a reader's budgets in tokens, and the noise at 100 questions.
@@ -229,13 +233,12 @@ def ready(console: Console) -> tuple[Settings, str]:
     return settings, version
 
 
-def ollama_ready(console: Console, settings: Settings, seconds: float) -> None:
-    """Make Ollama answer, opening it if its address is silent; pull each model it lacks.
+def ollama_ready(console: Console, url: str, models: list[str], seconds: float) -> None:
+    """Make Ollama answer at its address, opening it if silent; pull each model it lacks.
 
     Raises NotReadyError when Ollama does not answer within the seconds given, since every
     step embeds. A model not pulled is said, and the steps that need it fail.
     """
-    url = settings.embedding_url
     if not answers(url):
         console.print(f"Ollama does not answer at {url}: opening it.", style="yellow")
         run_command(["open", "-ga", "Ollama"], 60)
@@ -243,7 +246,7 @@ def ollama_ready(console: Console, settings: Settings, seconds: float) -> None:
             message = f"Ollama did not answer at {url} within {seconds:g} s: start it, then again."
             raise NotReadyError(message)
     console.print(f"Ollama answers at {url}.", style="green")
-    for model in dict.fromkeys((settings.model, *MODELS)):
+    for model in models:
         if run_command(["ollama", "show", model], 60).returncode == 0:
             console.print(f"{model}: in Ollama.", style="green")
             continue
@@ -588,6 +591,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0])
     parser.add_argument("--ollama-wait", type=float, default=60, help="seconds for Ollama to start")
     parser.add_argument("--reranker-wait", type=float, default=120, help="seconds for llama-server")
+    parser.add_argument(
+        "--chunking",
+        action="append",
+        metavar="NAME",
+        help=f"a chunking that the chunking step compares, once for each; {' and '.join(CHUNKINGS)}"
+        " by default, since another's first run embeds the whole mirror anew, for hours",
+    )
+    parser.add_argument(
+        "--compare",
+        action="append",
+        metavar="MODEL",
+        help="a model that the last step compares with the setting's, once for each;"
+        f" {', '.join(COMPARED)} by default",
+    )
     options = parser.parse_args()
     fancy = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
     terminal = {"markup": False, "emoji": False, "highlight": False, "soft_wrap": True}
@@ -596,7 +613,8 @@ def main() -> int:
         signal.signal(each, interrupted)
     try:
         settings, version = ready(console)
-        ollama_ready(console, settings, options.ollama_wait)
+        models = [*dict.fromkeys((settings.model, *(options.compare or COMPARED)))]
+        ollama_ready(console, settings.embedding_url, models, options.ollama_wait)
     except NotReadyError as error:
         console.print(str(error), style="red")
         return 2
@@ -617,13 +635,14 @@ def main() -> int:
             style = "yellow" if answer.returncode else "green"
             console.print(f"{' '.join(command)}: exit {answer.returncode}", style=style)
     evaluate = ["kb-mcp", "eval", str(folder / "golden.yaml"), "--detail", "detailed", "--yes"]
-    models = [flag for model in MODELS for flag in ("--model", model)]
+    chunkings = [flag for each in options.chunking or CHUNKINGS for flag in ("--chunking", each)]
+    compared = [flag for each in models for flag in ("--model", each)]
     rerank, wait = ["kb-mcp", "eval-rerank", *evaluate[2:]], options.reranker_wait
     ended = [
         step(run, "search-mode", [*evaluate, "--chunking", settings.chunking]),
-        step(run, "chunking", evaluate),
+        step(run, "chunking", [*evaluate, *chunkings]),
         step(run, "reranking", rerank, lambda: reranker(run, wait)),
-        step(run, "embedding-model", [*evaluate, *models, "--chunking", settings.chunking]),
+        step(run, "embedding-model", [*evaluate, *compared, "--chunking", settings.chunking]),
     ]
     finish(run, ended, version)
     return int(any(not each.status.startswith(("ok", "skipped")) for each in ended))

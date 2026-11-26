@@ -222,10 +222,11 @@ class Mac:
         (self.root / "plan.json").write_text(json.dumps(self.plan), "utf-8")
         return {"PATH": str(self.root / "bin"), "HOME": str(self.home), **more}
 
-    def run(self) -> subprocess.CompletedProcess[str]:
-        """Run the script, its output to a pipe, each of its waits given a second."""
-        return subprocess.run(
-            [sys.executable, "scripts/evaluate.py", "--ollama-wait", "1", "--reranker-wait", "1"],
+    def run(self, *options: str) -> subprocess.CompletedProcess[str]:
+        """Run the script, its output to a pipe, each wait given a second, then the options."""
+        waits = ["--ollama-wait", "1", "--reranker-wait", "1"]
+        return subprocess.run(  # noqa: S603 the test's Python on the script, with a row's options
+            [sys.executable, "scripts/evaluate.py", *waits, *options],
             env=self.environment(),
             cwd=ROOT,
             capture_output=True,
@@ -283,6 +284,11 @@ def said(text: str) -> str:
     return " ".join(text.split())
 
 
+def given(arguments: list[str], flag: str) -> list[str]:
+    """Give the value that follows each time a flag is given, in order."""
+    return [arguments[at + 1] for at, each in enumerate(arguments) if each == flag]
+
+
 def started_llama_server(mac: Mac) -> list[list[str]]:
     """Give the arguments of each llama-server started, its --version aside."""
     return [each for each in mac.calls("llama-server") if each != ["--version"]]
@@ -318,11 +324,40 @@ def on_terminal(mac: Mac, **more: str) -> bytes:
     return written
 
 
-def test_the_settings_come_from_kb_mcp_check(mac: Mac) -> None:
+@pytest.mark.parametrize(
+    ("options", "chunkings", "models"),
+    [
+        ((), ["sections", "windows"], ["custom:1b", MODELS[1]]),
+        (
+            (
+                "--chunking",
+                "section-paths",
+                "--chunking",
+                "windows",
+                "--compare",
+                "nomic-embed-text",
+            ),
+            ["section-paths", "windows"],
+            ["custom:1b", "nomic-embed-text"],
+        ),
+        (
+            ("--compare", "custom:1b", "--compare", MODELS[0]),
+            ["sections", "windows"],
+            ["custom:1b", MODELS[0]],
+        ),
+    ],
+)
+def test_the_settings_come_from_kb_mcp_check(
+    mac: Mac, options: tuple[str, ...], chunkings: list[str], models: list[str]
+) -> None:
     """D10: the data directory, the addresses, the model and chunking are check's, not defaults.
 
     Ollama and the reranker answer at check's addresses alone, so neither is opened nor
-    started; the golden file and the logs are under check's data directory.
+    started; the golden file and the logs are under check's data directory. The search
+    mode's and the embedding model's steps take the setting's chunking; the chunking step
+    compares those that --chunking names, by default the user's pair, sections and windows,
+    whatever the setting. The setting's model comes first in the last step, then those that
+    --compare names, each once, by default the user's embeddinggemma:300m; each is pulled.
     """
     elsewhere = mac.root / "elsewhere"
     (elsewhere / "eval").mkdir(parents=True)
@@ -330,15 +365,18 @@ def test_the_settings_come_from_kb_mcp_check(mac: Mac) -> None:
     mac.plan["settings"] |= {
         "data_dir": str(elsewhere),
         "model": "custom:1b",
-        "chunking": "sections",
+        "chunking": "small-to-big",
     }
-    done = mac.run()
+    done = mac.run(*options)
     assert done.returncode == 0, done.stdout + done.stderr
     evaluations = [each for each in mac.calls("kb-mcp") if each[0] in {"eval", "eval-rerank"}]
     assert {each[1] for each in evaluations} == {str(elsewhere / "eval" / "golden.yaml")}
-    search_mode = evaluations[0]
-    assert search_mode[search_mode.index("--chunking") + 1] == "sections"
-    assert ["show", "custom:1b"] in mac.calls("ollama")
+    search_mode, chunking, _, embedding = evaluations
+    assert given(search_mode, "--chunking") == ["small-to-big"]
+    assert given(chunking, "--chunking") == chunkings
+    assert given(embedding, "--model") == models
+    assert given(embedding, "--chunking") == ["small-to-big"]
+    assert [each[1] for each in mac.calls("ollama") if each[0] == "show"] == models
     assert mac.calls("open") == []
     assert started_llama_server(mac) == []
     assert {log.name.split("-", 1)[1] for log in (elsewhere / "eval" / "logs").iterdir()} >= {
@@ -458,15 +496,7 @@ def test_a_wait_stops_at_its_deadline(mac: Mac) -> None:
     with nothing_listening() as url:
         mac.plan["settings"]["embedding_url"] = url
         start = time.monotonic()
-        done = subprocess.run(
-            [sys.executable, "scripts/evaluate.py", "--ollama-wait", "2"],
-            env=mac.environment(),
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
+        done = mac.run("--ollama-wait", str(WAITED))
         took = time.monotonic() - start
     assert done.returncode == REFUSED
     assert f"within {WAITED} s" in said(done.stdout)
