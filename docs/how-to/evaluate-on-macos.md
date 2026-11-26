@@ -65,10 +65,12 @@ red line, and logs the outputs of `kb-mcp doctor --detail detailed` and
    cannot be downloaded, the server does not answer in time, or `kb-mcp reranker check`
    fails.
 4. **embedding-model**: `eval` of the setting's model and of `embeddinggemma:300m`, or
-   of the models that `--compare` names, over the setting's chunking. No rule decides
-   the model: published benchmarks choose it, as
+   of the models that `--compare` names, over the setting's chunking. Published
+   benchmarks choose the candidates, as
    [evaluating search](../explanation/search-evaluation.md#choosing-a-model-from-published-results)
-   says, and the step reports their measures side by side.
+   says; the embedding model's default rule weighs each, in its best mode, against the
+   setting `model`: a candidate that loses little and searches faster would replace
+   it. A kb-mcp older than that rule gives no verdict, and the step says so.
 
 `eval-agents` is not run: it needs agents' runs, which call a model.
 

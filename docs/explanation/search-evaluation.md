@@ -106,7 +106,8 @@ leaderboard by a few points over thousands of queries. A home-made comparison wo
 mostly measure noise, cost a download and a cold embedding per candidate, and tune the
 choice to questions that we wrote ourselves. Our own runs serve another purpose: to
 check that the chosen model works in our pipeline (prompts, chunks, fusion) and to
-choose the way of searching.
+choose the way of searching. The embedding model's default rule (below) is that check:
+it asks a candidate no gain, only that it lose little and search faster.
 
 ## Measuring on our own corpus
 
@@ -311,11 +312,12 @@ improve, the smallest possible p is 2/2^n, so it takes at least six to fall belo
 
 ### Several tests at once: Bonferroni over a fixed family
 
-A default rule (below) compares each challenger of its family with the control: several
-tests at once. At 0.05 each, the chance that at least one challenger that is truly no
-better shows a gain by chance grows with their number m: about 1 - 0.95^m, 0.10 for two
-tests, 0.19 for four. A correction raises each p-value so that the chance of any false
-gain in the family stays near 0.05; a decision rests on the adjusted values.
+A default rule that asks a gain (below) compares each challenger of its family with the
+control: several tests at once. At 0.05 each, the chance that at least one challenger
+that is truly no better shows a gain by chance grows with their number m: about
+1 - 0.95^m, 0.10 for two tests, 0.19 for four. A correction raises each p-value so that
+the chance of any false gain in the family stays near 0.05; a decision rests on the
+adjusted values.
 
 - **Bonferroni's correction** multiplies each p-value by m and caps it at 1.
 - **[Holm's step-down method](https://www.jstor.org/stable/4615733)** (1979) sorts the
@@ -325,8 +327,9 @@ gain in the family stays near 0.05; a decision rests on the adjusted values.
   × 2 = 0.3052, and the larger, 0.1968 × 1, is raised to 0.3052 so as not to fall below
   it.
 
-The default rules correct by Bonferroni over the rule's family, its m fixed by the rule:
-two search modes, three chunkings, four depths, whatever the run measured. By Holm, one
+The default rules that ask a gain correct by Bonferroni over the rule's family, its m
+fixed by the rule: two search modes, three chunkings, four depths, whatever the run
+measured. By Holm, one
 challenger's adjusted p-value depends on the others' raw ones, so a verdict would depend
 on which arms were run: a challenger alone in its run keeps its raw p-value; beside
 others that score worse, it is multiplied by their number. By Bonferroni over the fixed
@@ -339,6 +342,9 @@ beside two others that score worse. What Bonferroni costs: when several challeng
 truly better, Holm finds more of them; and a run of one challenger pays for the whole
 family. `eval-agents` keeps Holm, over the three measures that it compares, a family
 that never changes ([evaluating with agents](../how-to/evaluate-with-agents.md)).
+
+The embedding model's default rule asks no gain: it tests nothing, and so corrects for
+nothing, its family, the models that a run measures, being fixed by no list.
 
 ### Effect size, significance and power
 
@@ -428,8 +434,8 @@ Once the numbers are known, the user may weigh what the rule left out, such as
 ranking against speed, provided the rule's verdict stays on record and the choice is
 said to be theirs; plan 018's bar said as much, leaving the decision to the user
 if it failed.
-The defaults since plan 025 are such a choice (below). Those bars, and the reranking's,
-are now rules of one kind, the default rules.
+The defaults since plan 025 are such a choice (below). Those bars, the reranking's and
+the owner's bar for the embedding model are now the default rules.
 
 ### The default rules
 
@@ -439,23 +445,30 @@ data that `eval` and `eval-rerank` apply
 ([`RULES`](../../src/kb_mcp/evaluation/domain/evaluation.py),
 [`verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py)). Each has:
 
-- a **control**, the value in use, and a **family**, the values that may replace it,
-  fixed by the rule whatever a run measures;
-- a **deciding measure**: a challenger must beat the control on it, its mean higher,
-  with a p-value below 0.05 once multiplied by the size of the family (Bonferroni's
-  correction, above);
+- a **control**, the value in use, and a **family**, the values that may replace it;
+- a **deciding measure**, on which the rule may ask a **gain**: a challenger must then
+  beat the control on it, its mean higher, with a p-value below 0.05 once multiplied by
+  the size of the family (Bonferroni's correction, above);
 - **guards**: groups of questions that may lose at most so much of MRR@10, so that a
   gain on average is not paid for by a kind of question that agents send often;
 - a **bound** on what a challenger may spend: tokens embedded, as a multiple of the
-  control's, or a search's 95th percentile on the machine measured;
+  control's, or a search's 95th percentile on the machine measured; or, without a
+  bound, less than the control spends;
 - a **margin**: of the challengers that qualify, those within 0.01 of the best mean are
   as good as the best, and the cheapest of them is kept. Else the control stays.
 
-| Rule | Control | Family | Decides on | Guards: MRR@10 lost, at most | Bound | Margin | Cheaper |
-|---|---|---|---|---|---|---|---|
-| search mode | the setting `search_mode` | the two other modes | MRR@10 | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 500 ms | 0.01 | `lexical`, then `semantic`, then `hybrid` |
-| chunking | the setting `chunking` | the three other chunkings | Evidence@ask, in hybrid mode | 0.02 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase`, in hybrid mode | tokens embedded within three times the control's | 0.01 | fewer tokens embedded |
-| reranking depth | the order not reranked | depths 10, 20, 30 and 50 | MRR@10 | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 5 s | 0.01 | a smaller depth |
+A rule is of one of two kinds. Either it asks a gain over a family that it fixes,
+whatever a run measures, as the search mode's, the chunking's and the reranking depth's
+do; or it asks no gain, over the values that the run measured but the control, which
+no list can name, as the embedding model's does: a challenger then qualifies by its
+guards and by spending less than the control.
+
+| Rule | Control | Family | Decides on | Gain | Guards: MRR@10 lost, at most | Bound | Margin | Cheaper |
+|---|---|---|---|---|---|---|---|---|
+| search mode | the setting `search_mode` | the two other modes | MRR@10 | asked | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 500 ms | 0.01 | `lexical`, then `semantic`, then `hybrid` |
+| chunking | the setting `chunking` | the three other chunkings | Evidence@ask, in hybrid mode | asked | 0.02 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase`, in hybrid mode | tokens embedded within three times the control's | 0.01 | fewer tokens embedded |
+| reranking depth | the order not reranked | depths 10, 20, 30 and 50 | MRR@10 | asked | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 5 s | 0.01 | a smaller depth |
+| embedding model | the setting `model` | the models measured but the control | MRR@10, each model in its mode | none asked | 0.03 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase` | a search's 95th percentile less than the control's | 0.01 | the faster search |
 
 - **The search mode's default rule** applies to each model and chunking that `eval`
   measures, the three modes being measured on each. Words cost an index alone; meaning
@@ -475,12 +488,29 @@ data that `eval` and `eval-rerank` apply
   it measures; [reranking](reranking.md#the-default-rule-fixed-before-the-run) says why
   each clause. An arm whose rerankings failed on more than 5% of the questions, measured
   in their order not reranked, gives no verdict.
+- **The embedding model's default rule** applies to each chunking over which `eval`
+  measures two models or more; over one, it says nothing. A leaderboard chooses the
+  candidates ([choosing a model](#choosing-a-model-from-published-results)); the golden
+  questions only check that one, in its best mode, loses at most 0.03 of MRR@10 over all
+  the questions and 0.05 on each of `identifier`, `keyword` and `paraphrase`, and
+  searches faster. The current model is weighed as it is served, in the setting
+  `search_mode` when that reads a model, else in its best mode by meaning; a candidate
+  in its best of `semantic` and `hybrid`, a tie going to `semantic`, and its search
+  timed in that mode. Lexical search reads no model. Its verdict is advice, as every
+  verdict is. It leaves out the time to build an index: the vector cache that `eval`
+  shares with `embed` always holds the current model's vectors, so its index would be
+  timed reading the cache while a candidate's is timed embedding. A candidate truly
+  equal to the current model fails the overall guard about one time in seven, at a
+  standard error near 0.028 over 100 questions, and each group's about one time in six,
+  near one standard error at some 33 questions: about half the time, one of the four
+  refuses it.
 
-A run need not measure the whole family: a challenger that it did not measure cannot
-qualify, and the verdict names it. There is no verdict when the control was not run,
-when no challenger was, or when no question has a measure of the deciding one, such as
-Evidence@ask without evidence phrases; the verdict says why. A verdict is the rule's on
-these questions, on this machine: it changes no setting, which stays the user's to set.
+A run need not measure the whole of a fixed family: a challenger that it did not measure
+cannot qualify, and the verdict names it. There is no verdict when the control was not
+run, when no challenger was, or when no question has a measure of the deciding one, such
+as Evidence@ask without evidence phrases; the verdict says why. A verdict is the rule's
+on these questions, on this machine: it changes no setting, which stays the user's to
+set.
 
 Values compare as reported: means to three decimals, p-values to four, times in whole
 milliseconds, and a group's loss as the difference of its two means so shown. A loss of
@@ -517,6 +547,15 @@ Chunking for qwen3-embedding:0.6b, by the default rule: windows stays.
 `gains` is the deciding measure's clause, `holds` the guards', `within` the bound's. The
 first line says `<value> stays` when the control is kept, `<value>, in place of
 <control>` when a challenger replaces it, or `no verdict, since <why>`.
+
+A rule that asks no gain gives no p-value nor `gains`; one without a bound gives each
+cost against the control's, and `cheaper`; the embedding model's verdict names each
+model's mode:
+
+```
+Embedding model for windows, by the default rule: qwen3-embedding:0.6b stays.
+  embeddinggemma:300m, in hybrid: MRR@10 <mean> against <control's mean> in hybrid; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; 95th percentile <ms> ms against <control's ms> ms, cheaper <yes or no>
+```
 
 ### Query time
 
@@ -778,9 +817,10 @@ For each model and chunking, the output has a part headed `## <model>, <chunking
 
 At the end, the output says how many questions Section@10 reads, those whose expected
 document every arm found; then the search mode's verdict for each model and chunking,
-the chunking's for each model, each with its challengers' clauses (see *The default
-rules*, above); then the questions skipped, if any, each with its ref. A verdict is the
-rule's on these questions, not the setting.
+the chunking's for each model and the embedding model's for each chunking of two models
+or more, each with its challengers' clauses (see *The default rules*, above); then the
+questions skipped, if any, each with its ref. A verdict is the rule's on these
+questions, not the setting.
 
 Each challenger's p-value is multiplied by its rule's family, whatever the run
 measured, so a run of two chunkings and the sandbox run of four give the same adjusted
