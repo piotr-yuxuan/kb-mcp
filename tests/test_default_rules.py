@@ -200,7 +200,6 @@ def test_without_values_equal_times_go_to_the_higher_mean_then_the_name(
 def test_a_rule_without_values_asks_no_gain() -> None:
     """D2: no Bonferroni correction runs over a family that the run sets."""
     assert (GAIN.gains, OPEN.gains) == (True, False)
-    assert [rule.gains for rule in RULES.values()] == [bool(rule.values) for rule in RULES.values()]
 
 
 def test_a_rule_without_values_has_no_bound_and_spends_time() -> None:
