@@ -1,4 +1,4 @@
-"""``eval-rerank``: measure search reranked at each depth on golden questions, by the bar."""
+"""``eval-rerank``: measure search reranked at each depth, and the default rule's verdict."""
 
 from __future__ import annotations
 
@@ -18,17 +18,18 @@ from kb_mcp.evaluation.app.evaluation import (
     EvaluationError,
     GoldenError,
     read_golden,
+    skipping,
 )
 from kb_mcp.evaluation.app.reranked import (
     Arm,
     Arms,
     Counted,
-    decided,
+    depth_verdict,
     measured,
     recorded,
 )
-from kb_mcp.evaluation.domain.reranking import GROUPS, Decision
-from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S, RERANKING, STAMP, ExitStatus
+from kb_mcp.evaluation.domain.evaluation import Verdict
+from kb_mcp.kernel.names import BAR_DEPTHS, RERANKING, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
 from kb_mcp.mcp.app.tools import Library, UnanswerableError
 from kb_mcp.search.adapters.embedding import connect
@@ -50,11 +51,12 @@ DIVIDER = "|---|---|---|---|---|---|---|---|---|---|---|---|"
 
 
 class DepthsEvaluated(Record):
-    """Each arm measured, the bar's decision, the mode, and the results file."""
+    """Each arm measured, the default rule's verdict, the mode, and the results file."""
 
     arms: list[Arm]
-    decision: Decision | None
+    verdicts: list[Verdict]
     mode: str
+    skipped: list[dict[str, str]]  # the golden questions left out, each with its ref and why
     results: Path
 
 
@@ -69,7 +71,8 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        read = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
+        index = Library(SqliteIndex(settings.index), settings.docs)
+        read, skipped = read_golden(golden, index.resolve)
         questions = chosen(read, arguments.sample, arguments.seed)
     except (GoldenError, OSError, UnanswerableError, AgentsError) as error:
         structlog.get_logger().error("eval.refused", reason=str(error))
@@ -86,16 +89,18 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
             score = Counted(functools.partial(rerank, server, reranker.model, bounds=EVALUATION))
             evaluated = EvaluatedIndex(connect(opened, settings.model), settings.chunking)
             arms = Arms(settings.search_mode, depths, score, built_at)
-            found = measured(evaluated, settings, questions, arms, time.perf_counter)
+            of_index, found = measured(evaluated, settings, questions, arms, time.perf_counter)
     except (ModelError, EvaluationError) as error:
         structlog.get_logger().error("eval.not_evaluated", reason=str(error))
         return ExitStatus.FAILED, None
-    decision = decided(found, questions)
+    ruled = [depth_verdict(found, questions)]
     about: dict[str, object] = {
         "built_at": built_at.isoformat(),
         "mode": settings.search_mode,
         "model": settings.model,
         "chunking": settings.chunking,
+        **of_index.model_dump(include={"fingerprint", "costs", "documents", "documents_sha256"}),
+        "skipped": skipped,
         "reranker": reranker.model,
         "served": listed,
         "sample": None
@@ -104,10 +109,10 @@ def run(arguments: argparse.Namespace, loaded: Loaded) -> tuple[ExitStatus, Dept
     }
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}-rerank.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    kept = recorded(found, decision, golden, about)
+    kept = recorded(found, ruled, golden, about)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
     return ExitStatus.OK, DepthsEvaluated(
-        arms=found, decision=decision, mode=settings.search_mode, results=results
+        arms=found, verdicts=ruled, mode=settings.search_mode, skipped=skipped, results=results
     )
 
 
@@ -126,12 +131,11 @@ def arm_row(arm: Arm, group: str) -> str:
 
 
 def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
-    """Write each arm's row, every group's in detail; the first ranking's recall; the bar.
+    """Write each arm's row, every group's in detail; the first ranking's recall; the verdict.
 
-    The bar's verdicts come depth by depth, each clause said with the groups' losses,
-    then each qualifying depth's p-value against the best, then the depth at which to
-    turn reranking on, or that it is better left off, by this machine's times; with
-    depths other than the bar's, that there is no verdict.
+    Then the questions whose reranking failed, by depth, if any. The default rule's
+    verdict says the depth kept, or why there is none; then each depth's clauses, by this
+    machine's times, and the depths of its family not run; then the questions skipped.
     """
     arms = evaluated.arms
     plain = arms[0]
@@ -144,33 +148,8 @@ def text(evaluated: DepthsEvaluated, detail: Detail) -> str:
     ]
     recall = ", ".join(f"@{size} {share:.3f}" for size, share in plain.recall.items())
     lines += ["", f"Recall of the order not reranked: {recall}", ""]
-    decision = evaluated.decision
-    if decision is None:
-        bar = ", ".join(map(str, BAR_DEPTHS))
-        lines.append(f"No verdict: the bar decides on depths {bar} alone.")
-    else:
-        losses = {
-            each.depth: ", ".join(
-                f"{name} {each.losses[name]:.3f}" if name in each.losses else f"{name} n/a"
-                for name in GROUPS
-            )
-            for each in decision.verdicts
-        }
-        lines += [
-            f"Depth {each.depth}: MRR@10 adjusted p = {each.adjusted:.4f}; gains"
-            f" {'yes' if each.beats else 'no'}; groups lose {losses[each.depth]},"
-            f" hold {'yes' if each.holds else 'no'};"
-            f" within {BOUND_S:g} s here {'yes' if each.fast else 'no'}"
-            for each in decision.verdicts
-        ]
-        lines += [
-            f"Depth {depth} against the best qualifying: MRR@10 p = {pvalue:.4f}"
-            for depth, pvalue in decision.against_best.items()
-        ]
-        chosen = decision.depth
-        lines.append(
-            f"By the bar, with this machine's times: turn reranking on, at depth {chosen}."
-            if chosen
-            else "By the bar, with this machine's times: leave reranking off."
-        )
+    if failed := ", ".join(f"{arm.failed} at depth {arm.depth}" for arm in arms if arm.failed):
+        lines.append(f"Questions not reranked, their reranking having failed: {failed}.")
+    lines += [line for each in evaluated.verdicts for line in each.lines()]
+    lines += skipping(evaluated.skipped)
     return "\n".join([*lines, f"Results: {evaluated.results}", ""])

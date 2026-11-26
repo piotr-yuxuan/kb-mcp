@@ -86,8 +86,6 @@ The answer's schema:
 """
 # Seconds that listing a surface's tools may take, its server starting.
 LISTING_S = 60.0
-# The outcomes of a run that the tests compare; the others leave its question out.
-GRADED = ("success", "failure")
 OWN = ConfigDict(strict=True, extra="forbid", frozen=True)
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -483,6 +481,8 @@ BROKEN = {
     "unconsented": "a call lacked the consent",
     "outdated": "prepared before the consent was given per call",
 }
+# Why a run without a result was never attempted: its question leaves the tests.
+UNATTEMPTED = frozenset({BROKEN["unconsented"], BROKEN["outdated"]})
 
 
 def judged(
@@ -572,24 +572,28 @@ class Results(Record):
     outcomes: list[AgentRunOutcome]
     verdict: GradeVerdict
     counted: dict[str, int]  # runs by result
-    left_out: int  # questions out of the tests, a run of theirs without a result
-    pairs: int  # questions in the tests, both their runs graded
+    left_out: int  # questions out of the tests, a run of theirs never attempted
+    pairs: int  # questions in the tests, both their runs judged
+    no_result: dict[str, int]  # by surface, the runs attempted without a result: failures
 
 
 def concluded(directory: Path, runs: Runs, outcomes: Sequence[AgentRunOutcome]) -> Results:
-    """Judge B against A on the questions whose both runs were graded; keep the results.
+    """Judge B against A on the questions whose both runs were judged; keep the results.
 
-    ``results.json`` holds ids, numbers, the prompts' SHA-256 and the models reported,
-    never a question's text. ``eval.agent.graded`` says at INFO the runs counted and
-    whether ask stays.
+    A run attempted without a result fails its arm; one never attempted leaves the tests.
+    ``results.json`` keeps ids, numbers, the prompts' SHA-256 and the models reported,
+    never a question's text; ``eval.agent.graded`` says at INFO the runs counted, ask's verdict.
     """
     by_question: dict[str, dict[str, AgentRunOutcome]] = {}
     for outcome in outcomes:
         by_question.setdefault(outcome.question, {})[outcome.surface] = outcome
+    settled = [
+        each for each in by_question.values() if all(o.result != "pending" for o in each.values())
+    ]
     pairs = [
         (each["A"], each["B"])
-        for each in by_question.values()
-        if {"A", "B"} <= set(each) and all(each[side].result in GRADED for side in ("A", "B"))
+        for each in settled
+        if {"A", "B"} <= set(each) and not {o.reason for o in each.values()} & UNATTEMPTED
     ]
     verdict = ask_verdict(
         {
@@ -602,16 +606,17 @@ def concluded(directory: Path, runs: Runs, outcomes: Sequence[AgentRunOutcome]) 
             "tokens": [(float(a.handed), float(b.handed)) for a, b in pairs],
         }
     )
-    settled = len(by_question) - len(
-        [1 for each in by_question.values() if any(o.result == "pending" for o in each.values())]
-    )
     results = Results(
         model=runs.model,
         outcomes=list(outcomes),
         verdict=verdict,
         counted=dict(Counter(outcome.result for outcome in outcomes)),
-        left_out=settled - len(pairs),
+        left_out=len(settled) - len(pairs),
         pairs=len(pairs),
+        no_result={
+            side: sum(pair[place].result == "no result" for pair in pairs)
+            for place, side in enumerate("AB")
+        },
     )
     kept = {
         "golden_sha256": runs.golden_sha256,

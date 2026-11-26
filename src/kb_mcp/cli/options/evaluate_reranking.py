@@ -43,7 +43,7 @@ def described(arguments: argparse.Namespace, settings: Mapping[str, object]) -> 
     )
     costs = (
         f"each question: a search not reranked, then {sum(depths)} texts scored in all;"
-        f" the bar decides on depths {', '.join(map(str, BAR_DEPTHS))} alone"
+        f" the default rule weighs those of depths {', '.join(map(str, BAR_DEPTHS))} that run"
     )
     return measures, costs
 
@@ -55,12 +55,13 @@ def register(
     """Add ``eval-rerank`` to the command."""
     parser = subparsers.add_parser(
         "eval-rerank",
-        help="measure search reranked at each depth on golden questions, against the bar",
+        help="measure search reranked at each depth on golden questions, by the default rule",
         epilog=(
             "With --format json: arms, each depth's measures of search and ask by group,"
-            " with its ranks, times, tokens and Recall@N, depth 0 the order not reranked;"
-            " decision, the bar's verdicts and default depth; results, the file that keeps"
-            " them."
+            " with its ranks, times, tokens and Recall@N, and the questions whose reranking"
+            " failed, measured in their order not reranked, depth 0 that order;"
+            " verdicts, the default rule's verdict on the reranking depth; skipped, the golden"
+            " questions left out, each with its ref and why; results, the file that keeps them."
         ),
     )
     actions, flags = add_settings_options(parser)
@@ -75,7 +76,7 @@ def register(
         type=depth,
         help=(
             "documents reranked, as one arm; by default"
-            f" {', '.join(map(str, BAR_DEPTHS))}, the bar's"
+            f" {', '.join(map(str, BAR_DEPTHS))}, the default rule's family"
         ),
     )
     sample = parser.add_argument(

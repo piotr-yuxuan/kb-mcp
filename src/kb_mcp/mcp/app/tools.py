@@ -150,6 +150,8 @@ def search_filters(sources: Sequence[str]) -> type[SearchFilters]:
 
 
 NOT_SET_UP = "this server searches by words alone"
+# What a search's note says, before why, when its reranking failed.
+UNRERANKED = " Not reranked: "
 
 
 class UnanswerableError(Exception):
@@ -372,7 +374,7 @@ def reranked(
             )
         reordering = reranking.reorder(asked.query, texts)
         if reordering.order is None:
-            return replace(ranked, note=f"{ranked.note} Not reranked: {reordering.reason}.")
+            return replace(ranked, note=f"{ranked.note}{UNRERANKED}{reordering.reason}.")
         order = reordering.order
     if len(ranked.paths) < start + len(order):
         message = "cursor: the ranking changed since; call again without the cursor"
@@ -622,8 +624,10 @@ class Shown(Record):
     """A document ranked for a query, with the section a search shows for it."""
 
     path: str
+    ref: str
     section: int
     text: str  # the section's text, or the passage quoted, as the body holds it
+    snippet: str = ""  # what a search's hit shows of it
 
 
 class Library:
@@ -651,6 +655,10 @@ class Library:
     def rerank_with(self, reranking: Reranking | None) -> Library:
         """Give a library over the same index, reranking through ``reranking``, for evaluations."""
         return Library(self._index, self._docs, self._meaning, self._mode, reranking)
+
+    def in_mode(self, mode: Mode) -> Library:
+        """Give a library over the same index, searching and asking in ``mode``, for evaluations."""
+        return Library(self._index, self._docs, self._meaning, mode, self._reranking)
 
     @contextmanager
     def _reading(self) -> Iterator[SearchReader]:
@@ -844,7 +852,7 @@ class Library:
     def quoted(self, question: str, mode: Mode) -> list[Shown]:
         """Give the passages of ask's first answer in a mode, for an evaluation."""
         return [
-            Shown(path=entry.path, section=passage.number, text=passage.text)
+            Shown(path=entry.path, ref=entry.front.ref, section=passage.number, text=passage.text)
             for entry, passage in self._asked(question, None, None, mode)[1]
         ]
 
@@ -875,11 +883,24 @@ class Library:
             found = self._find(reader, ref)
         return None if found is None else found.path
 
+    def cited(self, ref: str) -> str | None:
+        """Find the path of the document that a citation names, as ``resolve`` does.
+
+        None for a ref that names none, or several: a citation unresolved, for an evaluation.
+        """
+        with self._reading() as reader:
+            try:
+                found = self._find(reader, ref)
+            except UnanswerableError:  # a ref of several documents
+                return None
+        return None if found is None else found.path
+
     def ranked(self, query: str, mode: Mode, limit: int = SEARCH_LIMIT) -> tuple[list[Shown], str]:
         """Rank documents for a query as search does, in a mode, for an evaluation.
 
-        Give the first ``limit``, each with the section that search shows for it, and
-        the note saying why meaning was not used, if it was asked for and was not.
+        Give the first ``limit``, each with its ref, the section that search shows for it
+        and its snippet, and the note saying why meaning was not used, if it was asked for
+        and was not.
         """
         planned = plan_query(query)
         with self._reading() as reader:
@@ -892,9 +913,17 @@ class Library:
             }
             shown = []
             for path in ranked.paths[:limit]:
-                number = snippet_of(reader, indexed[path], ranked, planned).number
-                start, end = reader.bounds(path)[number - 1]
-                shown.append(Shown(path=path, section=number, text=reader.text(path, start, end)))
+                passage = snippet_of(reader, indexed[path], ranked, planned)
+                start, end = reader.bounds(path)[passage.number - 1]
+                shown.append(
+                    Shown(
+                        path=path,
+                        ref=indexed[path].front.ref,
+                        section=passage.number,
+                        text=reader.text(path, start, end),
+                        snippet=responses.short(passage.text, responses.SNIPPET),
+                    )
+                )
         return shown, ranked.note
 
     def read(

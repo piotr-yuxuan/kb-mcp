@@ -22,15 +22,16 @@ from kb_mcp.evaluation.app.evaluation import (
     IndexMeasures,
     ask_row,
     built,
-    compared,
     evaluate,
     heading,
     read_golden,
     record,
     row,
+    skipping,
     table,
+    verdicts,
 )
-from kb_mcp.evaluation.domain.evaluation import CONTROL, Choice
+from kb_mcp.evaluation.domain.evaluation import Verdict
 from kb_mcp.kernel.fields import RepresentationError
 from kb_mcp.kernel.names import CHUNKINGS, STAMP, ExitStatus
 from kb_mcp.kernel.records import Record
@@ -47,10 +48,11 @@ if TYPE_CHECKING:
 
 
 class IndexesEvaluated(Record):
-    """What each evaluated index measured, each model's chunking, and the results file."""
+    """What each evaluated index measured, the default rules' verdicts, and the results file."""
 
     indexes: list[IndexMeasures]
-    choices: dict[str, Choice]
+    verdicts: list[Verdict]
+    skipped: list[dict[str, str]]  # the golden questions left out, each with its ref and why
     results: Path
 
 
@@ -65,7 +67,8 @@ def run(
     settings = loaded.settings
     try:
         golden = arguments.golden.read_text(encoding="utf-8")
-        questions = read_golden(golden, Library(SqliteIndex(settings.index), settings.docs).resolve)
+        index = Library(SqliteIndex(settings.index), settings.docs)
+        questions, skipped = read_golden(golden, index.resolve)
     except (GoldenError, OSError, UnanswerableError) as error:
         structlog.get_logger().error("eval.refused", reason=str(error))
         return ExitStatus.REFUSED, None
@@ -83,34 +86,28 @@ def run(
         return ExitStatus.FAILED, None
     results = settings.evaluations / "results" / f"{built_at.strftime(STAMP)}.json"
     results.parent.mkdir(parents=True, exist_ok=True)
-    choices = compared(measured, questions)
-    kept = record(measured, golden, built_at, choices)
+    ruled = verdicts(measured, questions, settings)
+    kept = record(measured, golden, built_at, ruled, skipped)
     results.write_text(json.dumps(kept, indent=1), encoding="utf-8")
-    return ExitStatus.OK, IndexesEvaluated(indexes=measured, choices=choices, results=results)
+    return ExitStatus.OK, IndexesEvaluated(
+        indexes=measured, verdicts=ruled, skipped=skipped, results=results
+    )
 
 
 def text(evaluated: IndexesEvaluated, detail: Detail) -> str:
-    """Write each evaluated index's measures, each model's chunking, then the results file.
+    """Write each evaluated index's measures, the default rules' verdicts, the results file.
 
     Short gives each index's row of all the questions, mode by mode, for search and for
-    ask, and its costs; detailed, its tables of every group and the tests of each mode
-    against words. Both end with each model's default chunking by the rule, and its
-    tests against the control. Lexical search's rows come with the first index alone.
+    ask, and its costs; detailed, its tables of every group. Both end with the questions
+    that Section@10 reads, the search mode's verdict for each index and the chunking's for
+    each model, each with its clauses and the values not run, then the questions skipped.
+    Lexical search's rows come with the first index alone.
     """
-    choices = [
-        line
-        for model, choice in evaluated.choices.items()
-        for line in (
-            f"Default chunking for {model}, by the rule: {choice.chunking}",
-            *(
-                f"  {name}, {measure} against {CONTROL}: p = {value:.4f},"
-                f" adjusted (Holm) {choice.adjusted[name][measure]:.4f}"
-                for name, tested in choice.pvalues.items()
-                for measure, value in tested.items()
-            ),
-        )
-    ]
-    closing = "\n".join([*choices, f"Results: {evaluated.results}", ""])
+    aligned = evaluated.indexes[0].aligned
+    said = [f"Section@10 reads the questions whose expected document every arm found: {aligned}."]
+    said += [line for each in evaluated.verdicts for line in each.lines()]
+    said += skipping(evaluated.skipped)
+    closing = "\n".join([*said, f"Results: {evaluated.results}", ""])
     if detail == "detailed":
         return f"{table(evaluated.indexes)}\n{closing}"
     lines = []

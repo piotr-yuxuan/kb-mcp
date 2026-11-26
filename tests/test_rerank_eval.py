@@ -2,38 +2,47 @@
 
 from __future__ import annotations
 
+import functools
 import json
+from statistics import fmean
 from typing import TYPE_CHECKING
 
 import pytest
 
 from kb_mcp.cli.main import main
+from kb_mcp.config.settings import Settings
 from kb_mcp.evaluation.app import reranked as measuring
-from kb_mcp.evaluation.app.evaluation import read_golden
+from kb_mcp.evaluation.app.evaluation import EvaluatedIndex, evaluate, read_golden
 from kb_mcp.evaluation.app.reranked import Counted
-from kb_mcp.evaluation.domain import reranking as bar
-from kb_mcp.evaluation.domain.reranking import (
-    BarVerdict,
-    Decision,
-    Depthed,
-    default_reranking,
-)
-from kb_mcp.kernel.names import BAR_DEPTHS, ExitStatus
+from kb_mcp.evaluation.domain import evaluation as rules
+from kb_mcp.evaluation.domain.evaluation import RULES, Measures, Question, Verdict, verdict
+from kb_mcp.kernel.names import ExitStatus
 from kb_mcp.mcp.app.tools import Library
-from kb_mcp.search.adapters.reranking import Reranked
+from kb_mcp.observability.progress import drawn
+from kb_mcp.search.adapters.reranking import Reranked, RerankError
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.meaning import Meaning
-from tests.endpoint import Reranks, Scripted, connect_scripted, serving
+from tests.endpoint import (
+    Reranks,
+    Scripted,
+    connect_scripted,
+    nothing_listening,
+    serving,
+    tiny,
+)
+from tests.mirrors import MOMENT
 from tests.reference import Emitted, undocumented
-from tests.test_evaluate import GOLDEN, data
+from tests.test_evaluate import GOLDEN, READERS, data, golden, read_by, ticking
+from tests.test_progress import Recorded
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
+    from kb_mcp.evaluation.domain.evaluation import Quoted
     from tests.conftest import InMemory
 
 __all__ = ["data"]  # the fixture of test_evaluate, used here
@@ -41,28 +50,35 @@ __all__ = ["data"]  # the fixture of test_evaluate, used here
 QUESTIONS = 30
 SAMPLE = 2  # of the golden file's three questions
 GROUPS = {"identifier": 0.600, "keyword": 0.800}
+# Plan 022's family, and the level of an adjusted p-value.
+FAMILY = ["10", "20", "30", "50"]
+ALPHA_LEVEL = 0.05
+# An arm as the default rule reads it: MRR@10 question by question, by group, and its time.
+type Arm = tuple[tuple[float, ...], dict[str, float], int]
+# Each arm that a command measured: search's and ask's measures by question, its times.
+type ByArm = list[tuple[Mapping[str, Measures], Mapping[str, Quoted], tuple[float, float]]]
 
 
-def arm(score: float, tail_ms: int = 900, **groups: float) -> Depthed:
+def arm(score: float, tail_ms: int = 900, **groups: float) -> Arm:
     """Make an arm whose every question scores ``score``, its groups as given or as GROUPS."""
-    return Depthed(reciprocal=(score,) * QUESTIONS, groups=GROUPS | groups, tail_ms=tail_ms)
+    return (score,) * QUESTIONS, GROUPS | groups, tail_ms
 
 
 PLAIN = arm(0.0)
 
 
-def depths(**arms: Depthed) -> dict[int, Depthed]:
-    """Key arms by depth, given as ``d10=...``."""
-    return {int(name[1:]): each for name, each in arms.items()}
+def decided(plain: Arm, **arms: Arm) -> Verdict:
+    """Apply the bar to the order not reranked and to depths given as ``d10=...``."""
+    depths = {"none": plain, **{name[1:]: each for name, each in arms.items()}}
+    return verdict(RULES["reranking depth"], "none", depths, {})
 
 
-def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_taken() -> None:
-    """A gain on all 30 questions is significant after Holm; equal arms: the cheapest."""
+def test_every_depth_gaining_on_every_question_qualifies_and_the_smallest_is_kept() -> None:
+    """A gain on all 30 questions is significant, times four; equal means: the smallest."""
     gaining = arm(1.0)
-    decision = default_reranking(PLAIN, depths(d10=gaining, d20=gaining, d30=gaining, d50=gaining))
-    assert decision is not None
-    assert [verdict.qualifies for verdict in decision.verdicts] == [True] * 4
-    assert decision.depth == BAR_DEPTHS[0]
+    found = decided(PLAIN, d10=gaining, d20=gaining, d30=gaining, d50=gaining)
+    assert found.failed == dict.fromkeys(FAMILY, ())
+    assert found.kept == "10"
 
 
 @pytest.mark.parametrize("group", sorted(GROUPS))
@@ -75,35 +91,27 @@ def test_a_group_may_lose_0_05_as_reported_and_no_more(
 ) -> None:
     """The loss between the means as the table shows them: 0.600 to 0.550, 0.601 to 0.550."""
     lost = arm(1.0, **{group: after})
-    decision = default_reranking(
-        arm(0.0, **{group: before}), depths(d10=lost, d20=lost, d30=lost, d50=lost)
-    )
-    assert decision is not None
-    assert [verdict.losses[group] for verdict in decision.verdicts] == [loss] * 4
-    assert [verdict.holds for verdict in decision.verdicts] == [holding] * 4
-    assert [verdict.qualifies for verdict in decision.verdicts] == [holding] * 4
-    assert decision.depth == (BAR_DEPTHS[0] if holding else None)
+    found = decided(arm(0.0, **{group: before}), d10=lost, d20=lost, d30=lost, d50=lost)
+    assert [found.losses[depth][group] for depth in FAMILY] == [loss] * 4
+    assert [("guards" in found.failed[depth]) for depth in FAMILY] == [not holding] * 4
+    assert found.kept == ("10" if holding else "none")
 
 
 def test_a_depth_shown_lower_does_not_gain() -> None:
     """Significantly different, but worse at every depth: no gain, so no depth."""
-    decision = default_reranking(arm(1.0), depths(d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN))
-    assert decision is not None
-    assert all(round(verdict.adjusted, 4) < bar.ALPHA for verdict in decision.verdicts)
-    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
-    assert decision.depth is None
+    found = decided(arm(1.0), d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN)
+    assert all(round(each, 4) < ALPHA_LEVEL for each in found.adjusted.values())
+    assert [found.failed[depth] for depth in FAMILY] == [("gain",)] * 4
+    assert found.kept == "none"
 
 
-@pytest.mark.parametrize(("tail_ms", "chosen"), [(5000, BAR_DEPTHS[0]), (5001, None)])
-def test_a_search_may_take_5_seconds_at_the_95th_percentile(
-    tail_ms: int, chosen: int | None
-) -> None:
-    """The user's bound, in whole milliseconds; slower at every depth, no depth is chosen."""
+@pytest.mark.parametrize(("tail_ms", "kept"), [(5000, "10"), (5001, "none")])
+def test_a_search_may_take_5_seconds_at_the_95th_percentile(tail_ms: int, kept: str) -> None:
+    """The user's bound, in whole milliseconds; slower at every depth, no depth is kept."""
     timed = arm(1.0, tail_ms)
-    decision = default_reranking(PLAIN, depths(d10=timed, d20=timed, d30=timed, d50=timed))
-    assert decision is not None
-    assert [verdict.fast for verdict in decision.verdicts] == [chosen is not None] * 4
-    assert decision.depth == chosen
+    found = decided(PLAIN, d10=timed, d20=timed, d30=timed, d50=timed)
+    assert [("bound" in found.failed[depth]) for depth in FAMILY] == [kept == "none"] * 4
+    assert found.kept == kept
 
 
 def scripted_tests(monkeypatch: MonkeyPatch, pvalues: dict[tuple[float, float], float]) -> None:
@@ -112,78 +120,65 @@ def scripted_tests(monkeypatch: MonkeyPatch, pvalues: dict[tuple[float, float], 
     def test(before: Sequence[float], after: Sequence[float]) -> float:
         return pvalues.get((before[0], after[0]), 1.0)
 
-    monkeypatch.setattr(bar, "paired_test", test)
+    monkeypatch.setattr(rules, "paired_test", test)
 
 
 @pytest.mark.parametrize(("pvalue", "gains"), [(0.0125, False), (0.0124, True)])
 def test_an_adjusted_p_of_0_05_is_no_gain(
     monkeypatch: MonkeyPatch, pvalue: float, *, gains: bool
 ) -> None:
-    """Holm multiplies the smallest of four by 4: 0.05 is no gain, 0.0496 is one."""
+    """Bonferroni multiplies each of the four by 4: 0.05 is no gain, 0.0496 is one."""
     scripted_tests(monkeypatch, {(0.0, 0.4): pvalue})
-    decision = default_reranking(
-        PLAIN, depths(d10=arm(0.4), d20=arm(0.0), d30=arm(0.0), d50=arm(0.0))
-    )
-    assert decision is not None
-    first = decision.verdicts[0]
-    assert round(first.adjusted, 4) == round(pvalue * len(BAR_DEPTHS), 4)
-    assert first.beats is gains
-    assert decision.depth == (BAR_DEPTHS[0] if gains else None)
+    found = decided(PLAIN, d10=arm(0.4), d20=arm(0.0), d30=arm(0.0), d50=arm(0.0))
+    assert round(found.adjusted["10"], 4) == round(pvalue * len(FAMILY), 4)
+    assert ("gain" not in found.failed["10"]) is gains
+    assert found.kept == ("10" if gains else "none")
 
 
-@pytest.mark.parametrize(("pvalue", "chosen"), [(0.2, 0), (0.04996, 0), (0.0499, 1)])
-def test_the_smallest_depth_not_shown_worse_than_the_best_is_taken(
-    monkeypatch: MonkeyPatch, pvalue: float, chosen: int
-) -> None:
-    """20 the best; 10, against it, not shown lower (p of 0.0500 as reported), or shown lower.
-
-    Each qualifying depth's p-value against the best is kept.
-    """
-    gains = {(0.0, 0.5): 0.001, (0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
-    arms = depths(d10=arm(0.5), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
-    scripted_tests(monkeypatch, gains | {(0.6, 0.5): pvalue})
-    decision = default_reranking(PLAIN, arms)
-    assert decision is not None
-    assert decision.depth == BAR_DEPTHS[chosen]
-    assert decision.against_best == dict(zip(BAR_DEPTHS, [pvalue, 1.0, 1.0, 1.0], strict=True))
-
-
-def test_a_depth_that_does_not_qualify_is_neither_the_best_nor_taken(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    """10 ranks highest and gains, but is too slow: 20, the best qualifying, is taken."""
-    gains = {(0.0, 0.7): 0.001, (0.0, 0.6): 0.001, (0.0, 0.55): 0.001, (0.0, 0.52): 0.001}
-    scripted_tests(monkeypatch, gains | {(0.6, 0.55): 0.3})
-    decision = default_reranking(
-        PLAIN, depths(d10=arm(0.7, 5001), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
-    )
-    assert decision is not None
-    assert [verdict.qualifies for verdict in decision.verdicts] == [False, True, True, True]
-    assert decision.against_best == {20: 1.0, 30: 0.3, 50: 1.0}
-    assert decision.depth == BAR_DEPTHS[1]
+def test_a_depth_that_does_not_qualify_is_neither_the_best_nor_kept() -> None:
+    """10 ranks highest and gains, but is too slow: 20, the best qualifying, is kept."""
+    found = decided(PLAIN, d10=arm(0.7, 5001), d20=arm(0.6), d30=arm(0.55), d50=arm(0.52))
+    assert [depth for depth in FAMILY if not found.failed[depth]] == ["20", "30", "50"]
+    assert found.kept == "20"
 
 
 def test_a_gain_too_small_to_show_is_no_gain(monkeypatch: MonkeyPatch) -> None:
     """Means of 0.0004 and 0 both read 0.000: no gain, however small the p-value."""
     scripted_tests(monkeypatch, {(0.0, 0.0004): 0.001})
     small = arm(0.0004)
-    decision = default_reranking(PLAIN, depths(d10=small, d20=small, d30=small, d50=small))
-    assert decision is not None
-    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
+    found = decided(PLAIN, d10=small, d20=small, d30=small, d50=small)
+    assert [found.failed[depth] for depth in FAMILY] == [("gain",)] * 4
 
 
-def test_another_set_of_depths_gets_no_verdict() -> None:
-    """The bar decides on its four depths alone."""
-    assert default_reranking(PLAIN, depths(d10=arm(1.0), d20=arm(1.0))) is None
+@pytest.mark.parametrize(
+    ("run", "kept", "untested"),
+    [
+        (("10", "20", "30"), "10", ("50",)),
+        (("20",), "20", ("10", "30", "50")),
+        (("30", "50"), "30", ("10", "20")),
+        (("10", "20", "30", "40", "50"), "10", ()),
+    ],
+)
+def test_a_subset_of_depths_gets_a_verdict(
+    run: tuple[str, ...], kept: str, untested: tuple[str, ...]
+) -> None:
+    """E1: the depths of the family run are weighed, any of them; one outside it is left out.
+
+    Every depth run gains alike: the smallest of the family run is kept, and the depths
+    of the family not run are named.
+    """
+    found = decided(PLAIN, **{f"d{depth}": arm(1.0) for depth in run})
+    assert found.kept == kept
+    assert found.untested == untested
+    assert set(found.means) == {"none", *run} - {"40"}
 
 
 def test_with_no_depth_qualifying_reranking_stays_off_each_clause_said() -> None:
-    """No gain anywhere: every verdict given, none qualifying, no depth."""
-    decision = default_reranking(PLAIN, depths(d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN))
-    assert decision is not None
-    assert [verdict.depth for verdict in decision.verdicts] == list(BAR_DEPTHS)
-    assert [verdict.beats for verdict in decision.verdicts] == [False] * 4
-    assert decision.depth is None
+    """No gain anywhere: every depth's clauses given, none qualifying; none is kept."""
+    found = decided(PLAIN, d10=PLAIN, d20=PLAIN, d30=PLAIN, d50=PLAIN)
+    assert list(found.failed) == FAMILY
+    assert [found.failed[depth] for depth in FAMILY] == [("gain",)] * 4
+    assert found.kept == "none"
 
 
 def test_counted_asks_a_query_s_texts_once_and_sums_the_tokens() -> None:
@@ -210,6 +205,72 @@ def test_counted_asks_a_query_s_texts_once_and_sums_the_tokens() -> None:
     assert len(asked) == len(["a", "a b", "r"])
 
 
+def depth_arm(
+    depth: int, score: float, questions: Sequence[Question], failed: int = 0
+) -> measuring.Arm:
+    """Make a depth's arm whose every question scores ``score``, within the bound of time."""
+    each = Measures(recall=score, reciprocal_rank=score, ndcg=score, success=score)
+    return measuring.Arm(
+        depth=depth,
+        per={question.id: each for question in questions},
+        groups={"all": each},
+        asked={},
+        ranks={},
+        times=(0.1, 0.2),
+        tokens=None,
+        recall={},
+        failed=failed,
+    )
+
+
+@pytest.mark.parametrize(("failed", "kept"), [(0, "10"), (1, "10"), (2, None)])
+def test_too_many_failures_give_no_verdict(failed: int, kept: str | None) -> None:
+    """D6: a depth whose reranking failed on more than 5% of 20 questions gives no verdict.
+
+    One of 20 is 5%, which a verdict allows: every depth gains alike, and 10, the smallest,
+    is kept. Two are more: no verdict, and the reason names the depth and the count.
+    """
+    questions = [Question(id=f"q{number}", text="", expected=("a.md",)) for number in range(20)]
+    found = [
+        depth_arm(0, 0.0, questions),
+        depth_arm(10, 1.0, questions, failed),
+        *(depth_arm(depth, 1.0, questions) for depth in (20, 30, 50)),
+    ]
+    ruled = measuring.depth_verdict(found, questions)
+    assert ruled.kept == kept
+    if kept is None:
+        assert "more than 5% of the questions" in str(ruled.reason)
+        assert "2 of 20 at depth 10" in str(ruled.reason)
+        assert ruled.lines()[0].startswith("Reranking depth, by the default rule: no verdict")
+
+
+def test_a_failed_reranking_keeps_the_plain_order_and_is_counted(data: Path) -> None:
+    """D6, E9: q1's reranking refused at depth 2; it keeps its order not reranked, counted.
+
+    The others are reranked, here in reverse, so that q2's expected document moves; q1's
+    texts are asked once, its search, ranking and answer all kept in the order not reranked.
+    """
+    questions = golden(data)
+    asked: list[str] = []
+
+    def score(query: str, texts: Sequence[str]) -> Reranked:
+        asked.append(query)
+        if query == questions[0].text:
+            message = "the reranking server refused the request"
+            raise RerankError(message, "refused")
+        return Reranked(scores=[float(place) for place in range(len(texts))], tokens=len(texts))
+
+    settings = Settings(data_dir=data, model="tiny", search_mode="hybrid")
+    arms = measuring.Arms("hybrid", (2,), Counted(score), MOMENT)
+    index = EvaluatedIndex(tiny(), "windows")
+    _, (plain, reranked) = measuring.measured(index, settings, questions, arms, ticking())
+    assert (plain.failed, reranked.failed) == (0, 1)
+    assert reranked.per["q1"] == plain.per["q1"]
+    assert reranked.ranks["q1"] == plain.ranks["q1"]
+    assert reranked.ranks["q2"] != plain.ranks["q2"]
+    assert asked.count(questions[0].text) == 1
+
+
 def evaluated(data: Path, url: str, rerank_url: str, *more: str) -> int:
     """Run eval-rerank on the golden file, by meaning and words, at depths 2 and 3."""
     golden = data / "golden.yaml"
@@ -233,7 +294,10 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
         assert evaluated(data, url, rerank_url) == 0
     out, err = capsys.readouterr()
     assert "reranking: depths 2, 3, in the hybrid mode" in err
-    assert "No verdict: the bar decides on depths 10, 20, 30, 50 alone." in out
+    assert (
+        "Reranking depth, by the default rule: no verdict, since no challenger of its family"
+        " was run.\n  10, 20, 30, 50: not run, so cannot qualify\n"
+    ) in out
     sizes = [len(request["documents"]) for request in answers.asked]
     assert sizes == [2, 2, 2, 3, 3, 3]
     [results] = (data / "eval" / "results").glob("*-rerank.json")
@@ -243,9 +307,32 @@ def test_each_depth_asks_once_a_question_and_the_results_keep_no_question(
     record = json.loads(kept)
     assert [each["depth"] for each in record["arms"]] == [0, 2, 3]
     assert record["served"] == ["qwen3-reranker-0.6b"]
-    assert record["decision"] is None
+    assert "decision" not in record
+    assert [verdict["kept"] for verdict in record["verdicts"]] == [None]
     assert record["sample"] is None
     assert all(each["tokens"] for each in record["arms"][1:])
+
+
+def test_rerank_results_hold_the_digest_costs_and_fingerprint(data: Path) -> None:
+    """D5, E5: as eval's results keep them of the same index, the model's connection given.
+
+    The documents indexed, by digest and by source and type; the index's costs, its bytes
+    those of its file; the fingerprint of the tiny model, as its connection gives it.
+    """
+    command, results = READERS[0]
+    assert read_by(data, command, GOLDEN) == 0
+    [index] = json.loads(max(data.glob(results)).read_text("utf-8"))["indexes"]
+    command, results = READERS[1]
+    assert read_by(data, command, GOLDEN) == 0
+    [kept] = [json.loads(path.read_text("utf-8")) for path in data.glob(results)]
+    assert kept["documents_sha256"] == index["documents_sha256"]
+    assert kept["documents"] == index["documents"]
+    assert kept["fingerprint"] == index["fingerprint"] == tiny().fingerprint
+    same = ("chunks", "characters", "estimated")
+    assert {key: kept["costs"][key] for key in same} == {key: index["costs"][key] for key in same}
+    built = data / "eval" / "indexes" / "windows" / "tiny.sqlite"
+    assert kept["costs"]["bytes"] == built.stat().st_size
+    assert "tokens" in kept["costs"]
 
 
 def test_a_sample_measures_that_many_questions_the_same_at_each_depth(
@@ -279,7 +366,7 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url, "--format", "json") == 0
     record = json.loads(capsys.readouterr().out)
-    questions = read_golden(
+    questions, _ = read_golden(
         GOLDEN, Library(SqliteIndex(data / "index.sqlite"), data / "docs").resolve
     )
     index = data / "eval" / "indexes" / "windows" / "tiny.sqlite"
@@ -303,52 +390,176 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
 
 
 @pytest.mark.parametrize(
-    ("chosen", "said"), [(20, "turn reranking on, at depth 20."), (None, "leave reranking off.")]
+    ("kept", "said"), [("20", "20, in place of none."), ("none", "none stays.")]
 )
-def test_the_bar_s_verdicts_are_written_by_this_machine_s_times(
-    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, chosen: int | None, said: str
+def test_eval_rerank_prints_and_records_the_verdict(
+    data: Path, capsys: CaptureFixture[str], monkeypatch: MonkeyPatch, kept: str, said: str
 ) -> None:
-    """Each clause, a group's loss or n/a, each p-value against the best, the depth chosen."""
-    verdicts = (
-        BarVerdict(depth=10, adjusted=0.004, beats=True, losses={"keyword": 0.051}, fast=False),
-        BarVerdict(
-            depth=20,
-            adjusted=0.004,
-            beats=True,
-            losses={"identifier": 0.0, "keyword": -0.012},
-            fast=True,
-        ),
+    """The depth kept; each depth's clauses, a group's loss or n/a; the depths not run.
+
+    The results file and the output as JSON keep the verdict as given, among the verdicts.
+    """
+    decision = Verdict(
+        rule="reranking depth",
+        fixed={},
+        control="none",
+        kept=kept,
+        untested=("30", "50"),
+        means={"none": 0.5, "10": 0.7, "20": 0.6},
+        adjusted={"10": 0.004, "20": 0.004},
+        losses={"10": {"keyword": 0.051}, "20": {"identifier": 0.0, "keyword": -0.012}},
+        spent={"none": 300, "10": 5001, "20": 4200},
+        failed={"10": ("guards", "bound"), "20": ()},
     )
-    decision = Decision(verdicts=verdicts, depth=chosen, against_best={20: 1.0, 30: 0.3})
-    monkeypatch.setattr(measuring, "default_reranking", lambda _plain, _arms: decision)
+    monkeypatch.setattr(measuring, "verdict", lambda *_: decision)
     with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url) == 0
+    expected = [
+        f"Reranking depth, by the default rule: {said}",
+        (
+            "  10: MRR@10 0.700 against 0.500, adjusted p = 0.0040, gains yes; MRR@10 lost:"
+            " identifier n/a, keyword 0.051, holds no; 95th percentile 5,001 ms, at most"
+            " 5,000 ms, within no"
+        ),
+        (
+            "  20: MRR@10 0.600 against 0.500, adjusted p = 0.0040, gains yes; MRR@10 lost:"
+            " identifier 0.000, keyword -0.012, holds yes; 95th percentile 4,200 ms, at most"
+            " 5,000 ms, within yes"
+        ),
+        "  30, 50: not run, so cannot qualify",
+    ]
     lines = capsys.readouterr().out.splitlines()
-    assert (
-        "Depth 10: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier n/a,"
-        " keyword 0.051, hold no; within 5 s here no"
-    ) in lines
-    assert (
-        "Depth 20: MRR@10 adjusted p = 0.0040; gains yes; groups lose identifier 0.000,"
-        " keyword -0.012, hold yes; within 5 s here yes"
-    ) in lines
-    assert "Depth 30 against the best qualifying: MRR@10 p = 0.3000" in lines
-    assert f"By the bar, with this machine's times: {said}" in lines
+    assert lines[lines.index(expected[0]) :][: len(expected)] == expected
+    [results] = (data / "eval" / "results").glob("*-rerank.json")
+    kept_as = json.loads(results.read_text(encoding="utf-8"))["verdicts"]
+    assert kept_as == [decision.model_dump(mode="json")]
+    with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
+        assert evaluated(data, url, rerank_url, "--format", "json") == 0
+    document = json.loads(capsys.readouterr().out)
+    assert "decision" not in document
+    assert document["verdicts"] == [decision.model_dump(mode="json")]
 
 
 def test_an_arm_that_falls_back_stops_the_run_naming_the_depth(
     data: Path, capsys: CaptureFixture[str]
 ) -> None:
-    """A refusal, which an evaluation does not retry, leaves a search not reranked."""
-    with serving(Scripted()) as url, serving(Reranks(statuses=[400])) as rerank_url:
+    """By words, which would measure another arm: the endpoint refuses to embed q2's query."""
+    with serving(Scripted(refused={"revert release"})) as url, serving(Reranks()) as rerank_url:
         assert evaluated(data, url, rerank_url) == ExitStatus.FAILED
-    err = capsys.readouterr().err
-    assert "depth 2, q1" in err
-    assert "Not reranked" in err
+    assert "depth 0, q2: Ranked by words alone" in capsys.readouterr().err
+    assert not (data / "eval" / "results").exists()
+
+
+def test_a_run_whose_reranking_failed_keeps_its_results_and_says_how_many(
+    data: Path, capsys: CaptureFixture[str]
+) -> None:
+    """D6, E9: a refusal, which an evaluation does not retry, no longer stops the run.
+
+    q1 at depth 2 is counted, in the output and the results; one of three questions is
+    more than 5%, so there is no verdict, and the output says why.
+    """
+    with serving(Scripted()) as url, serving(Reranks(statuses=[400])) as rerank_url:
+        assert evaluated(data, url, rerank_url) == 0
+    out = capsys.readouterr().out
+    assert "Questions not reranked, their reranking having failed: 1 at depth 2." in out
+    assert (
+        "Reranking depth, by the default rule: no verdict, since the reranking failed on more"
+        " than 5% of the questions: 1 of 3 at depth 2."
+    ) in out
+    [results] = (data / "eval" / "results").glob("*-rerank.json")
+    record = json.loads(results.read_text(encoding="utf-8"))
+    assert [arm["failed"] for arm in record["arms"]] == [0, 1, 0]
+
+
+def eval_arms(data: Path, clock: Callable[[], float]) -> ByArm:
+    """Evaluate GOLDEN with windows; give each mode's measures, ask's and search's times."""
+    settings = Settings(data_dir=data, model="tiny")
+    [run] = evaluate(settings, golden(data), [EvaluatedIndex(tiny(), "windows")], clock, MOMENT)
+    return [(run.per[mode], run.asked[mode], run.times[mode]) for mode in run.per]
+
+
+def rerank_arms(data: Path, clock: Callable[[], float]) -> ByArm:
+    """Measure GOLDEN at depth 2, in hybrid mode; give each arm's measures and times."""
+    settings = Settings(data_dir=data, model="tiny", search_mode="hybrid")
+    scores = Counted(lambda _query, texts: Reranked(scores=[0.0] * len(texts), tokens=None))
+    arms = measuring.Arms("hybrid", (2,), scores, MOMENT)
+    index = EvaluatedIndex(tiny(), "windows")
+    _, found = measuring.measured(index, settings, golden(data), arms, clock)
+    return [(arm.per, {}, arm.times) for arm in found]
+
+
+# Seconds that a search takes by the test's clock, and a ranking read for the measures.
+SERVED_S, DEEP_S = 0.25, 7.0
+# Each command that measures questions arm by arm.
+COMMANDS = pytest.mark.parametrize("measured_by", [eval_arms, rerank_arms], ids=["eval", "rerank"])
+
+
+@COMMANDS
+def test_a_search_is_timed_as_served(
+    data: Path, monkeypatch: MonkeyPatch, measured_by: Callable[[Path, Callable[[], float]], ByArm]
+) -> None:
+    """D6, E17: a search's time is the search tool's, given the question alone, as served.
+
+    So at its default limit; the deeper rankings read for the measures, Recall@N's and
+    the replay's, are not timed: by the clock here, a search takes a quarter of a second,
+    a ranking 7 s.
+    """
+    now = [0.0]
+    asked: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    search, ranked = Library.search, Library.ranked
+
+    @functools.wraps(search)
+    def served(library: Library, *given: object, **named: object) -> str:
+        asked.append((given, named))
+        now[0] += SERVED_S
+        return search(library, *given, **named)
+
+    @functools.wraps(ranked)
+    def deep(library: Library, *given: object, **named: object) -> object:
+        now[0] += DEEP_S
+        return ranked(library, *given, **named)
+
+    monkeypatch.setattr(Library, "search", served)
+    monkeypatch.setattr(Library, "ranked", deep)
+    times = [times for _, _, times in measured_by(data, lambda: now[0])]
+    assert times == [(SERVED_S, SERVED_S)] * len(times)
+    assert asked
+    assert all(len(given) == 1 and not named for given, named in asked)
+
+
+@COMMANDS
+def test_the_progress_names_carry_the_running_results(
+    data: Path, measured_by: Callable[[Path, Callable[[], float]], ByArm]
+) -> None:
+    """D9: each question's name on the bar carries the results of the arm's questions done.
+
+    Their MRR@10 and, in eval, their Evidence@ask, of those with evidence; before the
+    first question of an arm is done, none.
+    """
+    recorded = Recorded()
+    with drawn(recorded):
+        arms = measured_by(data, ticking())
+    begun = max(at for at, call in enumerate(recorded.calls) if call[:2] == ("begin", "questions"))
+    shown = [call[2] for call in recorded.calls[begun:] if call[0] == "show"]
+    questions = golden(data)
+    names = iter(dict.fromkeys(shown))
+    for per, asked, _ in arms:
+        for done, question in enumerate(questions):
+            name = next(names)
+            ranks = [per[each.id].reciprocal_rank for each in questions[:done]]
+            held = [
+                evidence
+                for each in questions[:done]
+                if each.id in asked and (evidence := asked[each.id].evidence) is not None
+            ]
+            assert question.id in name
+            assert f"MRR@10 {fmean(ranks):.3f}" in name if ranks else "MRR@10" not in name
+            assert f"Evidence@ask {fmean(held):.3f}" in name if held else "Evidence" not in name
+    assert next(names, None) is None
 
 
 def test_eval_rerank_records_as_documented(telemetry: InMemory, data: Path) -> None:
-    """Measured; refused by the reranking server; a golden file refused."""
+    """Measured; a reranking refused, and counted; no reranking server; a golden file refused."""
     emitted = Emitted()
     with (
         serving(Scripted()) as url,
@@ -359,6 +570,12 @@ def test_eval_rerank_records_as_documented(telemetry: InMemory, data: Path) -> N
     with (
         serving(Scripted()) as url,
         serving(Reranks(statuses=[400])) as rerank_url,
+        emitted.gathering(telemetry, "eval-rerank"),
+    ):
+        assert evaluated(data, url, rerank_url) == 0
+    with (
+        serving(Scripted()) as url,
+        nothing_listening() as rerank_url,
         emitted.gathering(telemetry, "eval-rerank"),
     ):
         assert evaluated(data, url, rerank_url) == ExitStatus.FAILED

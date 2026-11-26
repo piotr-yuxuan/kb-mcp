@@ -2,8 +2,9 @@
 
 How this project decides how to search: which embedding model to use, and whether to
 rank by words, by meaning, or by both. It explains the reasoning, the measures and the
-statistics, and what the runs so far do and do not show, so that the next decision,
-on your own content, can be made the same way.
+statistics, the default rules that weigh a challenger against a setting, how to read the
+numbers, and what the runs so far do and do not show, so that the next decision, on your
+own content, can be made the same way.
 
 Two questions need two kinds of evidence:
 
@@ -126,8 +127,14 @@ There are 32 identifier, 34 keyword and 39 paraphrase questions; 90 in English, 
 French. `spikes/golden_refs.py` turns them into a golden file that `eval` reads, with
 each document named as the mirror holds it.
 
-`eval` runs every question through `Library.ranked`, the code that answers agents'
-`search`, once per mode, and keeps the first ten documents.
+For every question, in each mode, `eval` ranks it through `Library.ranked`, the code
+that ranks agents' `search`, and keeps the first 30 documents, the first ten for the
+measures; answers it through `Library.quoted`, as `ask` answers; then asks `search` and
+`ask` themselves, as the server answers an agent, for what their answers cost and how
+long a search takes. Refs resolve through the index that the server reads. A question
+whose expected ref names no document there is skipped, and named with its ref: an index
+older than the mirror misses documents, and `kb-mcp index` brings it up to date. A
+helping ref that names none is dropped, and two refs of one document count once.
 
 ### The measures, on one worked example
 
@@ -156,11 +163,123 @@ evidence phrase; the one shown for B does not.
 
   It rewards every answer, and helpful documents too, the more the higher they come.
 - **Section@10**: of the expected documents found in the first ten that have an
-  evidence phrase, the share whose shown section holds it (case, spacing and Markdown
-  marks ignored). A's does, B's does not: **0.5**. It says whether the agent is shown
-  the right part of a long page, not merely the page.
+  evidence phrase, the share whose shown section holds it. A's does, B's does not:
+  **0.5**. It says whether the agent is shown the right part of a long page, not merely
+  the page.
 
-`eval` averages each measure over all questions, and over each group.
+Evidence is sought as a reader would find it: both texts are read without Markdown's
+backslash escapes, emphasis and code marks, and table pipes, links and images as their
+words, in one case and with spaces as one; then the phrase must be there as whole words,
+so that "art the brokers" is not found in "Restart the brokers". One function
+does it ([`holds`](../../src/kb_mcp/evaluation/domain/evaluation.py)) for Section@10,
+Evidence@ask, the records of each hit, and the grading of agents' quotes.
+
+`eval` averages each measure over all questions, and over each group, but Section@10:
+it averages over the questions whose expected document, with its evidence, every arm of
+the run found in its first ten, every index and every mode, and the output says how
+many. Otherwise an arm that finds fewer documents would average over other questions,
+perhaps easier ones, and the arms would not compare.
+
+### What an answer costs
+
+An agent pays for what it reads, in tokens of its context. `eval` counts, for each
+question and mode, the characters of the first answer of `search` (8 hits, its default)
+and of `ask`, as the server writes them to an agent, at four characters a token, the
+estimate that the evaluation's costs use. The tables give their means, `Tokens` in each.
+
+**E/kT**, the evidence per thousand tokens, says what `ask`'s answers give for what they
+cost: over the questions that have evidence, the evidence that their passages hold (each
+question's Evidence@ask, summed) divided by the thousands of tokens of their answers. It
+is a ratio of sums, not a mean of each question's ratio. Take two questions: one answer
+of 1,000 tokens holds its evidence, another of 3,000 tokens holds none. E/kT is (1 + 0)
+/ (1 + 3) = 0.25: one answer in evidence for 4,000 tokens spent. The mean of the two
+ratios would be (1/1 + 0/3) / 2 = 0.5, as if the short answer's luck paid for the long
+one; and an answer of no token would divide by zero. While `ask`'s budget is fixed, its
+answers are about the same length, and E/kT orders the arms as Evidence@ask does; it
+tells them apart once answers differ in length.
+
+The results file keeps, question by question, every measure that the tables average:
+each question's measures of `search` (`per`) and of `ask` (`asked_per`), by mode, and
+the raw data from which others can be computed later (`raw`): the hits of `search`'s
+first answer, each with its ref, the section shown, the tokens that reading that section
+costs and whether its snippet and its section hold the evidence; `ask`'s passages, each
+with its ref, characters and whether it holds the evidence; and the first 30 refs of the
+mode's ranking. Ranks, not scores: enough to replay a fusion of the rankings by words
+and by meaning, or another cut-off, without running the search again. [The data
+layout](../reference/data-layout.md#evaluation-results) lists the keys.
+
+### Reading MRR@10 with Success@1 and Recall@10
+
+For one question, the reciprocal rank is one over the rank of the first expected
+document, and 0 if it is not in the first ten; MRR@10 is its mean over the questions.
+
+| Rank of the first expected document | 1 | 2 | 3 | 4 | 5 | 10 | past 10 |
+|---|---|---|---|---|---|---|---|
+| Reciprocal rank | 1 | 0.5 | 0.333 | 0.25 | 0.2 | 0.1 | 0 |
+
+The curve falls steeply: a document moved from rank 2 to rank 1 gains 0.5, one moved
+from rank 10 to rank 5, 0.1. MRR@10 is mostly a measure of how often the first hit is
+right, with a little credit for the second and the third.
+
+A ladder for reading it, when each question expects one document, as most golden
+questions do. Read it on 100 questions or more: a group of 30 moves by about 0.15 by
+chance, one of 12 says nothing.
+
+| MRR@10 | Reading | What an agent lives through |
+|---|---|---|
+| 0.85 and up | excellent | the first hit is right about four times in five; the rest at rank 2 |
+| 0.70 to 0.85 | good | right first about two times in three, found in the first three almost always |
+| 0.50 to 0.70 | fair | right first about half the time; one or two reads more on the others; some misses |
+| 0.30 to 0.50 | poor | right first a third of the time; many misses; the agent rephrases |
+| under 0.30 | failing | the agent cannot rely on it |
+
+Public benchmarks score lower for strong systems (on MS MARCO, MRR@10 is about 0.19 for
+words alone and about 0.4 for good retrievers by meaning) because their judgements are
+sparse: many right answers are not labelled. Numbers compare only on the same questions
+with the same judgements.
+
+**The same MRR, two shapes.** MRR alone hides where the documents land. Both systems
+below score MRR@10 = 0.60:
+
+| System | First expected document at rank 1 | At rank 2 | Missed | Success@1 | MRR@10 | Recall@10 |
+|---|---|---|---|---|---|---|
+| A | 60% | 0% | 40% | 0.60 | 0.60 | 0.60 |
+| B | 20% | 80% | 0% | 0.20 | 0.60 | 1.00 |
+
+A is right first more often, and hopeless the rest of the time: the agent rephrases,
+searches again, or answers wrongly. B is rarely right first, but always second: one read
+more, never a miss. For an agent, B is often the cheaper, since a second read costs a
+section, and a miss costs a rephrasing, more searches, or a wrong answer. So read three
+numbers together:
+
+| Measure | The question it answers | The cost it stands for |
+|---|---|---|
+| Success@1 | was the first hit right? | nothing more to read |
+| MRR@10 | how high, on average? | how many hits are read before the right one |
+| Recall@10 | was it anywhere in the first ten? | whether reading on can help at all |
+
+Recall@10 less Success@1 is the share of questions where reading on pays; one less
+Recall@10, the share where it cannot, and the agent must search again.
+
+**Why MRR understates what reading costs.** An agent that reads the hits in order pays
+for each one up to the right one, so its cost follows the mean rank, not the mean
+reciprocal rank. One over MRR@10 is the harmonic mean of the ranks, which is never more
+than their arithmetic mean: ranks 1 and 9 give an MRR@10 of 0.556, as if the mean rank
+were 1.8, where the agent reads five hits on average. Two systems of the same MRR can
+cost different tokens, which is why `eval` counts the tokens of the answers, and keeps,
+for each hit, what reading it costs.
+
+The other measures, with a rule of thumb for each:
+
+| Measure | What it says | Rule of thumb |
+|---|---|---|
+| Recall@10 | the share of the expected documents in the first ten | with one expected document, the share of questions where it shows at all; under 0.8, the agent often searches twice |
+| nDCG@10 | like MRR@10, but every expected and helping document counts, discounted by rank | close to MRR@10 when one document is expected; higher when several are and they rank well |
+| Section@10 | when an expected document is in the first ten, whether the section shown holds the evidence | the share of hits whose `read` opens at the answer; under 0.6, many reads are wasted |
+| Found@ask | the share of the expected documents that `ask` quotes a passage of | `ask`'s recall |
+| Evidence@ask | the share of evidence phrases that `ask`'s passages hold | whether `ask` saves a `read` |
+| Tokens | the mean tokens of `search`'s first answer, or of `ask`'s | what one call costs the agent |
+| E/kT | the evidence that `ask` holds per thousand tokens of its answers | what `ask` gives for what it costs |
 
 ### Paired tests
 
@@ -190,22 +309,44 @@ that far from zero only when the three non-zero signs agree: 4 patterns of 16, p
 0.25. Three consistent improvements cannot be significant: with n questions that all
 improve, the smallest possible p is 2/2^n, so it takes at least six to fall below 0.05.
 
-### Several tests at once: Holm's correction
+### Several tests at once: Bonferroni over a fixed family
 
-Each run tests several comparisons (semantic against lexical, hybrid against lexical,
-for each model). At 0.05 each, the chance that at least one of them is a false alarm
-grows with their number. [Holm's step-down method](https://www.jstor.org/stable/4615733)
-(1979) adjusts the p-values: sort them, multiply the i-th smallest of m by m - i + 1,
-keep each no smaller than the one before, cap at 1. In plan 018's run, p = 0.1526 and
-0.1968: the smaller becomes 0.1526 × 2 = 0.3052, and the larger, 0.1968 × 1, is raised to
-0.3052 so as not to fall below it. A decision rests on the adjusted values.
+A default rule (below) compares each challenger of its family with the control: several
+tests at once. At 0.05 each, the chance that at least one challenger that is truly no
+better shows a gain by chance grows with their number m: about 1 - 0.95^m, 0.10 for two
+tests, 0.19 for four. A correction raises each p-value so that the chance of any false
+gain in the family stays near 0.05; a decision rests on the adjusted values.
+
+- **Bonferroni's correction** multiplies each p-value by m and caps it at 1.
+- **[Holm's step-down method](https://www.jstor.org/stable/4615733)** (1979) sorts the
+  p-values, multiplies the i-th smallest of m by m - i + 1, keeps each no smaller than
+  the one before, and caps at 1: never stricter than Bonferroni, and less strict for all
+  but the smallest. In plan 018's run, p = 0.1526 and 0.1968: the smaller becomes 0.1526
+  × 2 = 0.3052, and the larger, 0.1968 × 1, is raised to 0.3052 so as not to fall below
+  it.
+
+The default rules correct by Bonferroni over the rule's family, its m fixed by the rule:
+two search modes, three chunkings, four depths, whatever the run measured. By Holm, one
+challenger's adjusted p-value depends on the others' raw ones, so a verdict would depend
+on which arms were run: a challenger alone in its run keeps its raw p-value; beside
+others that score worse, it is multiplied by their number. By Bonferroni over the fixed
+family, a challenger's adjusted p-value is its own raw one times m, the same whether the
+run measured it alone or with all the others. For example, with `windows` as the
+setting and a run of `windows` and `sections` alone, `sections`' raw p-value on
+Evidence@ask of 0.02 is adjusted to 3 × 0.02 = 0.06, not below 0.05, whether or not the
+two other chunkings ran; by Holm, it would stay 0.02 alone, and qualify, and become 0.06
+beside two others that score worse. What Bonferroni costs: when several challengers are
+truly better, Holm finds more of them; and a run of one challenger pays for the whole
+family. `eval-agents` keeps Holm, over the three measures that it compares, a family
+that never changes ([evaluating with agents](../how-to/evaluate-with-agents.md)).
 
 ### Effect size, significance and power
 
 A p-value says how surprising a difference would be if there were none, not how large
-it is. `eval` reports each mode's MRR@10, so their difference, and its adjusted p; read
-both. Counting the questions that each mode wins helps too: in plan 018's run, hybrid
-did better than lexical on 32 questions, worse on 14, and the same on 59.
+it is. Each verdict of `eval` gives each challenger's mean beside the control's, so
+their difference, and its adjusted p; read both. Counting the questions that each mode
+wins helps too: in plan 018's run, hybrid did better than lexical on 32 questions, worse
+on 14, and the same on 59.
 
 **Power** is the chance that a test detects a real difference. It grows with the
 number of questions and falls with the spread s of the per-question differences (their
@@ -216,13 +357,25 @@ detectable difference in MRR@10 was **0.065 to 0.12**. Plan 011's hybrid gain wi
 model, 0.067, was at that edge, and significant; plan 018's, 0.039, was below it, and
 not. "Not significant" means "not shown", not "no difference".
 
+Rules of thumb, from the same arithmetic:
+
+- With 100 questions, one MRR@10 is known to about ±0.08, 95 times in 100: reciprocal
+  ranks lie between 0 and 1, many at 1 and many at 0, and spread by about 0.4.
+- Two arms on the same 100 questions: a difference under 0.07 is noise; the paired test
+  sees 0.07 to 0.12 and more four times in five, by how much the questions disagree.
+- To see 0.05, a set needs some 200 to 600 questions, (2.8 s / 0.05)² at the spreads
+  above; to see 0.03, more than 500.
+- Per group of about 33, read only differences of 0.15 or more; per group of 12, none.
+- Look at the questions that moved, too: a gain made of nearly as many questions down
+  as up is churn more than progress.
+
 `eval` does not print the counts or the spread, but its results file holds what they
 need: for each model, mode and question, the ranks of the question's expected documents
-within the first ten (`null` beyond). This prints them for hybrid against lexical, with
-the test that `eval` runs; two results files of the same golden file compare two models
-the same way, as the comparison with plan 011's model below was made. A results file
-written before plan 054 names its evaluated indexes `runs`, not `indexes`: read it so in
-these lines and those below.
+within the first ten (`null` beyond), and each question's measures under `per`. This
+prints them for hybrid against lexical, with `eval`'s paired test; two results files of
+the same golden file compare two models the same way, as the comparison with plan 011's
+model below was made. A results file written before plan 054 names its evaluated indexes
+`runs`, not `indexes`: read it so in these lines and those below.
 
 ```python
 import json, math, statistics, sys
@@ -275,14 +428,105 @@ Once the numbers are known, the user may weigh what the rule left out, such as
 ranking against speed, provided the rule's verdict stays on record and the choice is
 said to be theirs; plan 018's bar said as much, leaving the decision to the user
 if it failed.
-The defaults since plan 025 are such a choice (below).
+The defaults since plan 025 are such a choice (below). Those bars, and the reranking's,
+are now rules of one kind, the default rules.
+
+### The default rules
+
+A **default rule** keeps a setting's value unless a challenger, measured on the same
+golden questions, qualifies. There is one per decision, written before the runs, as
+data that `eval` and `eval-rerank` apply
+([`RULES`](../../src/kb_mcp/evaluation/domain/evaluation.py),
+[`verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py)). Each has:
+
+- a **control**, the value in use, and a **family**, the values that may replace it,
+  fixed by the rule whatever a run measures;
+- a **deciding measure**: a challenger must beat the control on it, its mean higher,
+  with a p-value below 0.05 once multiplied by the size of the family (Bonferroni's
+  correction, above);
+- **guards**: groups of questions that may lose at most so much of MRR@10, so that a
+  gain on average is not paid for by a kind of question that agents send often;
+- a **bound** on what a challenger may spend: tokens embedded, as a multiple of the
+  control's, or a search's 95th percentile on the machine measured;
+- a **margin**: of the challengers that qualify, those within 0.01 of the best mean are
+  as good as the best, and the cheapest of them is kept. Else the control stays.
+
+| Rule | Control | Family | Decides on | Guards: MRR@10 lost, at most | Bound | Margin | Cheaper |
+|---|---|---|---|---|---|---|---|
+| search mode | the setting `search_mode` | the two other modes | MRR@10 | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 500 ms | 0.01 | `lexical`, then `semantic`, then `hybrid` |
+| chunking | the setting `chunking` | the three other chunkings | Evidence@ask, in hybrid mode | 0.02 over all the questions; 0.05 on `identifier`, `keyword` and `paraphrase`, in hybrid mode | tokens embedded within three times the control's | 0.01 | fewer tokens embedded |
+| reranking depth | the order not reranked | depths 10, 20, 30 and 50 | MRR@10 | 0.05 on `identifier` and on `keyword` | a search's 95th percentile within 5 s | 0.01 | a smaller depth |
+
+- **The search mode's default rule** applies to each model and chunking that `eval`
+  measures, the three modes being measured on each. Words cost an index alone; meaning
+  costs a model, an embedding of the question and a slower search; hybrid search costs
+  both. Whichever is the setting, another mode replaces it only when shown better on
+  MRR@10, and of those that are, within the margin, the cheaper. Its bound, 500 ms,
+  replaces the 200 ms that the bars of the runs below asked; hybrid search over
+  `windows` took 266 ms at the 95th percentile on the development laptop's processor.
+- **The chunking's default rule** applies to each model, in hybrid mode. It decides on
+  Evidence@ask, whether `ask`'s passages hold the evidence, which is what a chunking
+  changes most directly; E/kT is reported beside, and orders the arms alike while
+  `ask`'s budget is fixed. Its cost is the tokens that the index embeds, at four
+  characters each: three times the control's admits `small-to-big`, which repeats each
+  chunk's context, about 2.1 times `sections`', and refuses only a cold build three
+  times as long. [Chunking](chunking.md#how-they-are-compared) says more.
+- **The reranking depth's default rule** is applied by `eval-rerank` to the depths that
+  it measures; [reranking](reranking.md#the-default-rule-fixed-before-the-run) says why
+  each clause. An arm whose rerankings failed on more than 5% of the questions, measured
+  in their order not reranked, gives no verdict.
+
+A run need not measure the whole family: a challenger that it did not measure cannot
+qualify, and the verdict names it. There is no verdict when the control was not run,
+when no challenger was, or when no question has a measure of the deciding one, such as
+Evidence@ask without evidence phrases; the verdict says why. A verdict is the rule's on
+these questions, on this machine: it changes no setting, which stays the user's to set.
+
+Values compare as reported: means to three decimals, p-values to four, times in whole
+milliseconds, and a group's loss as the difference of its two means so shown. A loss of
+0.050 holds, 0.051 does not; a group that the golden file does not name has no loss to
+show, holds, and reads `n/a`.
+
+**Why a margin.** Of two challengers that qualify, one 0.004 behind the best, at a third
+of its cost, is as good for any purpose: 0.004 is far below what 100 questions can tell
+apart. The margin says how close counts as equal; then the cheapest wins. An earlier
+rule asked instead that the cheaper be "not shown lower" than the best by a second test,
+which takes a lack of evidence for evidence of equality: at about 100 questions, an arm
+0.08 worse is often not shown lower.
+
+**A guard sometimes refuses a challenger that is truly equal.** A guard is a threshold
+on a group's mean, not a test, and a group's mean moves by chance. With the spread of
+per-question differences seen on the sandbox, about 0.28, the mean difference of a group
+of 33 questions varies by about 0.28 / √33 ≈ 0.05, one standard error. A challenger
+truly equal to the control would show, by chance, a loss past 0.05 on such a group about
+one time in six, the share of a normal distribution past one standard deviation; with
+two guarded groups, about three times in ten on one or the other. Over all of 100
+questions, the standard error is about 0.028, and the chunking's guard of 0.02 refuses
+an equal challenger about one time in four. A wider guard refuses fewer harmless
+challengers and lets more real losses through: the guards are the user's to widen.
+
+What a verdict looks like, the first line saying what the rule keeps, then each
+challenger's clauses, then the values of the family not run:
+
+```
+Chunking for qwen3-embedding:0.6b, by the default rule: windows stays.
+  sections: Evidence@ask <mean> against <control's mean>, adjusted p = <p>, gains <yes or no>; MRR@10 lost: all <loss>, identifier <loss>, keyword <loss>, paraphrase <loss>, holds <yes or no>; <tokens> tokens embedded, at most <three times the control's>, within <yes or no>
+  section-paths, small-to-big: not run, so cannot qualify
+```
+
+`gains` is the deciding measure's clause, `holds` the guards', `within` the bound's. The
+first line says `<value> stays` when the control is kept, `<value>, in place of
+<control>` when a challenger replaces it, or `no verdict, since <why>`.
 
 ### Query time
 
-`eval` times every query and reports the median and the **95th percentile** (by
-nearest rank: the time that 95 % of queries do not exceed). The tail, not the average,
-is what an agent feels when a search stalls. The first query by meaning is run untimed
-beforehand, since it reads the index's vectors.
+`eval` times each question's `search` as the server answers an agent, its whole first
+answer at the default limit of 8 hits, in each mode, and reports the median and the
+**95th percentile** (by nearest rank: the time that 95 % of searches do not exceed).
+The tail, not the average, is what an agent feels when a search stalls. The first query
+by meaning is run untimed beforehand, since it reads the index's vectors. `eval-rerank`
+times each search the same way, reranked at its arm's depth, apart from the deeper
+ranking that it reads, untimed, for Recall@N.
 
 ## The results
 
@@ -369,7 +613,7 @@ above stay as written: what changed is the choice made after them, the user's.
 
 The same questions and defaults, hybrid search over `windows`, on 2026-10-26, reranked
 by Qwen3-Reranker-0.6B through llama.cpp 0.6.0 on this laptop's CPU, one depth a run
-as the machine was shared ([reranking](reranking.md) explains the bar):
+as the machine was shared ([reranking](reranking.md) explains the rule):
 
 | Depth | MRR@10 | Identifier | Keyword | Success@1 | Evidence@ask | Search, median | Search, 95th |
 |---|---|---|---|---|---|---|---|
@@ -489,7 +733,7 @@ uv run kb-mcp embed --config <missing-file> --data-dir <data>
 
 `index` should report 1,474 documents (263 pages and 1,211 issues), as in plans 011 and
 018; without `ENG`, 31 questions name tickets that the mirror lacks, which `eval`
-refuses by name. `embed` then embeds the mirror's windows, which `eval` then
+skips, naming each. `embed` then embeds the mirror's windows, which `eval` then
 finds in `<data>/vectors.sqlite` and does not embed again.
 
 ```bash
@@ -507,11 +751,10 @@ uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <
 `eval` builds its own index per model and chunking under `<data>/eval/indexes/`,
 measures the three modes on each, embeds only what `<data>/vectors.sqlite` lacks,
 prints the tables, and writes the numbers (never the questions) to
-`<data>/eval/results/`. It measures every chunking, whatever the setting `chunking`
-says, unless `--chunking` names some; and the setting's model unless `--model` names
-others, several to compare them in one run. `--detail detailed` adds every group and
-the tests of each mode against words. To compare the defaults with the chunking that
-plan 019's rule kept:
+`<data>/eval/results/`. It measures every chunking unless `--chunking` names some, the
+setting `chunking` being the control of the chunking's rule; and the setting's model
+unless `--model` names others, several to compare them in one run. `--detail detailed`
+adds every group. To compare the defaults with the chunking that plan 019's rule kept:
 
 ```bash
 uv run kb-mcp eval <data>/eval/sandbox.yaml --config <missing-file> --data-dir <data> --model qwen3-embedding:0.6b --chunking sections --chunking windows --detail detailed
@@ -524,21 +767,24 @@ the sandbox run of all four chunkings took 6 minutes once every vector was kept.
 For each model and chunking, the output has a part headed `## <model>, <chunking>`:
 
 - In its table of `search`, the row of a mode and the group `all` gives MRR@10 and the
-  other measures, then `Query, median` and `Query, 95th`: the median and the 95th
-  percentile of the time to rank one question, in milliseconds (see *Query time*,
-  above). The row `hybrid` is the defaults' when the chunking is `windows`. Plan 018's
-  bar asked for 200 ms at most; this laptop's CPU took 266 ms there.
-- With `--detail detailed`, `MRR@10, hybrid against lexical: p = ..., adjusted (Holm)
-  ...` tests hybrid search against words on that chunking. The rows of `lexical` come
-  with the first chunking alone, since words ignore the chunking.
-- At the end, `Default chunking for <model>, by the rule: ...`, with each challenger's
-  tests against `sections`: the verdict of plan 019's rule on these questions, which is
-  not the setting.
+  other measures, the tokens of `search`'s first answer, then `Query, median` and
+  `Query, 95th`: the median and the 95th percentile of the time to answer one question's
+  `search`, in milliseconds (see *Query time*, above). The row `hybrid` is the
+  defaults' when the chunking is `windows`. The search mode's rule asks for 500 ms at
+  most; this laptop's CPU took 266 ms there to rank.
+- In its table of `ask`, Found@ask, Evidence@ask, the tokens of `ask`'s first answer and
+  E/kT. The rows of `lexical` come with the first chunking alone, since words ignore the
+  chunking.
 
-Holm's correction adjusts the tests of one run together, so its adjusted p-values depend
-on how many chunkings and models the run measures: a run of two chunkings adjusts less
-than the sandbox run of four. Compare runs of the same shape, or read the raw p-values
-beside them.
+At the end, the output says how many questions Section@10 reads, those whose expected
+document every arm found; then the search mode's verdict for each model and chunking,
+the chunking's for each model, each with its challengers' clauses (see *The default
+rules*, above); then the questions skipped, if any, each with its ref. A verdict is the
+rule's on these questions, not the setting.
+
+Each challenger's p-value is multiplied by its rule's family, whatever the run
+measured, so a run of two chunkings and the sandbox run of four give the same adjusted
+p-value to the chunkings that both measure.
 
 The results file keeps each run's times in seconds, `[median, 95th]` by mode under
 `times` (and under `ask_times` for `ask`). This prints the 95th percentiles in
@@ -548,7 +794,8 @@ milliseconds:
 uv run python -c 'import json, sys; [print(run["model"], run["chunking"], mode, round(times[1] * 1000), "ms") for run in json.load(open(sys.argv[1]))["indexes"] for mode, times in run["times"].items()]' <data>/eval/results/<time>.json
 ```
 
-`eval` tests each mode against words alone, never two modes against each other. The
+The search mode's rule tests each mode against the setting's alone, never the two
+others against each other. The
 results file keeps, under `ranks`, each question's rank of each expected document by
 mode, `null` past the tenth, from which each question's MRR@10 follows. These lines run
 `eval`'s own paired test of semantic search against hybrid search over `windows` (the
@@ -573,13 +820,16 @@ print(sum(gain > 0 for gain in gains), sum(gain < 0 for gain in gains), gains.co
 EOF
 ```
 
-`ask`'s measures, Found@ask and Evidence@ask, are kept by group alone, so no such test
-can be run on them.
+`ask`'s measures, Found@ask and Evidence@ask, are kept question by question too, under
+`asked_per`, by mode, so the same test runs on them: read
+`run["asked_per"][mode][id]["evidence"]`, null for a question without evidence, which
+leaves the test. A results file written before keeps them by group alone.
 
 ### Measuring reranking
 
-Plan 022's bar says whether reranking is worth turning on on a machine, and at which
-depth ([reranking](reranking.md#the-bar-fixed-before-the-run)); it is off by default.
+The reranking depth's default rule says whether reranking is worth turning on on a
+machine, and at which depth
+([reranking](reranking.md#the-default-rule-fixed-before-the-run)); it is off by default.
 With the sandbox's data directory as above, Ollama running with the model, and
 the reranking server started as [the how-to](../how-to/reranking.md#start-the-server)
 starts it, at its address and under its alias, which are the settings' defaults:
@@ -599,11 +849,12 @@ each of the 105 questions, 2.6 to 4.6 million tokens. By the estimate in
 minutes on a laptop's GPU; on a laptop's CPU with llama.cpp 0.6.0, depths 10, 20 and 30
 took 50, 64 and 74 minutes, a run each, and depth 50 could not end. The output has a
 table with a row per depth, `none` the order not reranked, the first ranking's Recall@N,
-a line per depth with each clause's verdict and each group's loss, each qualifying
-depth's p-value against the best, and the bar's last line, `By the bar, with this
-machine's times: turn reranking on, at depth N.` or `...: leave reranking off.` Its
-third clause reads the times of the machine that ran it: only a run on the machine
-that serves agents tells whether to turn reranking on there.
+the questions whose reranking failed, by depth, if any, then the rule's verdict:
+`Reranking depth, by the default rule: N, in place of none.` to turn reranking on at
+depth N, `...: none stays.` to leave it off, or `...: no verdict, since ...`; then each
+depth's clauses and each group's loss, and the depths not run. Its bound reads the times
+of the machine that ran it: only a run on the machine that serves agents tells whether
+to turn reranking on there.
 [The how-to](../how-to/reranking.md#measure-it) also gives a short measure, one depth
 on a sample of the questions, and what to check in each.
 
@@ -618,13 +869,15 @@ the model; otherwise the first run embeds the windows again.
    to see differences of 0.05 in MRR@10.
 2. For each, find the documents that answer it by hand, and a phrase of each that
    states the answer. The guide shows the file's format.
-3. Write the bar before the first run, as above.
+3. The default rules are written already. For another decision, write its rule before
+   the first run, as above.
 4. Keep the golden file in `<data>/eval/`, never in a repository: it holds your
    company's content.
 5. Run `eval` as in [comparing chunkings and modes](#comparing-chunkings-and-modes),
-   on your golden file and without `--config`; read the groups as well as the totals,
-   and the query time in `Query, 95th` against the 200 ms of plan 018's bar; keep the
-   results files to compare later runs.
+   on your golden file and without `--config`, so that the rules' controls are your
+   settings; read the groups as well as the totals, Success@1 and Recall@10 beside
+   MRR@10, and the query time in `Query, 95th` against the search mode's 500 ms; keep
+   the results files to compare later runs.
 
 ## Sources
 

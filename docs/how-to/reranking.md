@@ -155,11 +155,12 @@ allows one, so that the mirror's text stays here.
 
 ## Measure it
 
-Plan 022 fixed a bar before any run: reranking at a depth is worth it if it
-significantly improves the first answer (MRR@10), loses little on questions that name
-things, and keeps a search within 5 seconds at the 95th percentile on the machine that
-serves agents. The [explanation](../explanation/reranking.md#the-bar-fixed-before-the-run)
-gives the bar in full, and
+The reranking depth's default rule, written before any run, says that reranking at a
+depth is worth it if it significantly improves the first answer (MRR@10), loses little
+on questions that name things, and keeps a search within 5 seconds at the 95th
+percentile on the machine that serves agents. The
+[explanation](../explanation/reranking.md#the-default-rule-fixed-before-the-run) gives
+the rule in full, and
 [evaluating search](../explanation/search-evaluation.md#the-measures-on-one-worked-example)
 what each measure means. Two measures, of different cost, tell how reranking does on
 your machine and your questions.
@@ -178,13 +179,26 @@ kb-mcp reranker check
 
 Each measure is then one command, which asks before it runs (`--yes` runs it at once,
 as a script does). It measures the settings' model, chunking and search mode, first
-not reranked, then reranked, and stops with exit 1, saying why, when a server does not
-answer or a search falls back, since a search not reranked would measure something
-else; a golden file or a sample refused exits 2. It writes a table to stdout and its
-results, ids and numbers only, never a question's text, to
+not reranked, then reranked. It stops with exit 1, saying why, when a server does not
+answer as it begins, or a search falls back to words, which would measure something
+else; a golden file of which no question is left, or a sample refused, exits 2. A
+question whose expected ref names no document of the index is skipped and named, as
+[golden questions](golden-questions.md) says. A question whose reranking fails during
+the run, the server not answering, refusing the request or answering what does not
+parse, is measured at that depth in its order not reranked, as a search answers then,
+and counted under the table:
+
+```
+Questions not reranked, their reranking having failed: 3 at depth 50.
+```
+
+Past 5% of the questions at a depth, there is no verdict: look at the server's log
+before measuring again. Each measure writes a table to stdout and its results, ids,
+numbers and the refs of the questions skipped, never a question's text, to
 `<data>/eval/results/<UTC time>-rerank.json`: keep them to compare later runs. With
-`--format json`, the same comes as one JSON document, whose `decision.depth` is the
-bar's depth, or null when none qualifies.
+`--format json`, the same comes as one JSON document, whose `verdicts[0].kept` is the
+depth kept, `none` to leave reranking off, or null when there is no verdict,
+`verdicts[0].reason` saying why.
 
 ### Short: one depth, on a sample
 
@@ -204,22 +218,24 @@ CPU with llama.cpp 0.6.0, about 12 minutes, at 36 seconds a search.
 In its table, compare the row of depth 30 with the row `none`, group `all`, and with
 `--detail detailed` each group:
 
-- `Search, 95th`: within 5,000 ms, the bar's bound, on the machine that serves agents.
+- `Search, 95th`: within 5,000 ms, the rule's bound, on the machine that serves agents.
   Past 30,000 ms, searches would give up on the server and answer in their own order:
   lower `rerank.depth`, or leave reranking off.
 - `MRR@10` and `Success@1`: reranking should raise them. On 20 questions, a difference
   smaller than about 0.12 may be chance either way; a larger fall is the sign to run
   the long measure.
 - The rows of the groups `identifier` and `keyword`: a loss past 0.05 of MRR@10 is what
-  the bar refuses.
+  the rule refuses.
 - The line `Recall of the order not reranked`: at `@30`, the share of the expected
   documents within the first 30 found, the most that reranking 30 can bring into the
   first ten.
 
-It ends `No verdict: the bar decides on depths 10, 20, 30, 50 alone.`: only the long
-measure applies the bar.
+It ends with the rule's verdict on depth 30 alone, its clauses, and
+`10, 20, 50: not run, so cannot qualify`. Depth 30's p-value is multiplied by four, the
+rule's family, as in the long measure: on 20 questions only a large gain passes, and the
+long measure is the one to decide by.
 
-### Long: four depths, and the bar's verdict
+### Long: four depths, and the rule's verdict
 
 To decide, on this machine, whether to turn reranking on, and at which depth:
 
@@ -233,20 +249,25 @@ estimate. On a laptop's CPU with llama.cpp 0.6.0, each depth took about an hour,
 depth 50 could not end, one request passing the run's deadline of 300 seconds: the
 long measure is for the machine that serves agents.
 
-Under the table, a line for each depth gives each clause of the bar:
+Under the table come the verdict, which says what to do, then a line for each depth
+with each clause of the rule:
 
 ```
-Depth <N>: MRR@10 adjusted p = <p>; gains <yes or no>; groups lose identifier <loss>, keyword <loss>, hold <yes or no>; within 5 s here <yes or no>
+Reranking depth, by the default rule: <the depth kept, in place of none; or none stays; or no verdict, since why>.
+  <N>: MRR@10 <mean> against <mean of none>, adjusted p = <p>, gains <yes or no>; MRR@10 lost: identifier <loss>, keyword <loss>, holds <yes or no>; 95th percentile <ms> ms, at most 5,000 ms, within <yes or no>
 ```
 
-`gains` is clause 1, the MRR@10 higher with a Holm-adjusted p below 0.05; `hold`,
-clause 2, each group losing 0.05 at most; `within 5 s here`, clause 3, by this
-machine's times. Then, for the depths that qualify, each one's p-value against the
-best, and the last line, which says what to do:
+`gains` is clause 1, the MRR@10 higher with a p-value below 0.05 once multiplied by
+four; `holds`, clause 2, each group losing 0.05 at most; `within`, clause 3, by this
+machine's times. Of the depths that qualify, those within 0.01 of the best MRR@10 are as
+good, and the smallest is kept:
 
-- `By the bar, with this machine's times: turn reranking on, at depth N.`: set
-  `enabled = true` and `depth = N` under `[rerank]`.
-- `By the bar, with this machine's times: leave reranking off.`: no depth qualifies.
+- `Reranking depth, by the default rule: N, in place of none.`: set `enabled = true`
+  and `depth = N` under `[rerank]`.
+- `Reranking depth, by the default rule: none stays.`: no depth qualifies; leave
+  reranking off.
+- `Reranking depth, by the default rule: no verdict, since ...`: what follows says why,
+  such as rerankings that failed on more than 5% of the questions.
 
 The verdict holds for the model, the server's version, the golden questions and the
 machine it was measured with: measure again when one of them changes.
@@ -257,7 +278,8 @@ The sandbox's verdict is not your corpus's, and a laptop's CPU is not a Mac's GP
 whether reranking helps your agents is for a measure on the machine where kb-mcp
 serves them, here a Mac, with your mirror and your questions, to say. Everything below
 runs there, on the mirror that `prepare` keeps, and nothing of the corpus leaves that
-machine.
+machine. [Evaluate on a Mac](evaluate-on-macos.md) runs the steps below in one script,
+the servers readied, and packs their results.
 
 1. **The two servers.** llama.cpp 0.7.0 or later, with Metal: Homebrew's
    (`brew install llama.cpp`), or llama.cpp's flake at its tag, as
@@ -277,13 +299,13 @@ machine.
    ```
 
    The second line of `reranker check` times one search's request: past 5 seconds,
-   the bar's third clause is likely to fail at that depth.
+   the rule's third clause is likely to fail at that depth.
 
 2. **Golden questions on your own content.** About 30 to begin with, written as
    [golden questions](golden-questions.md) says: questions as agents ask them, keywords
    and names as often as sentences, each with the documents that answer it. Put the
    group `identifier` on the questions that name a thing, such as an issue key, and
-   `keyword` on those of a few words: the bar's second clause reads those two groups.
+   `keyword` on those of a few words: the rule's second clause reads those two groups.
    Keep the file in `<data>/eval/`, here `~/kb-mcp/eval/golden.yaml`,
    never in a repository: it holds your company's content. Thirty questions show only
    large differences; a hundred or more are needed to see 0.05 of MRR@10.
@@ -300,33 +322,33 @@ machine.
    the table, compare the row of depth 30 with the row `none`: `MRR@10` and
    `Success@1`, group `all` and each group, and `Search, 95th` against 5,000 ms. On 20
    questions, a difference smaller than about 0.12 may be chance;
-   [short](#short-one-depth-on-a-sample) says more. It gives no verdict.
+   [short](#short-one-depth-on-a-sample) says more. Its verdict weighs depth 30 alone.
 
-4. **The long run**, the bar's verdict: every question, at depths 10, 20, 30 and 50.
+4. **The long run**, the rule's verdict: every question, at depths 10, 20, 30 and 50.
 
    ```bash
    kb-mcp eval-rerank ~/kb-mcp/eval/golden.yaml --detail detailed
    ```
 
    110 texts a question: about 6 to 10 minutes for 30 questions by the estimate, 20 to
-   35 for a hundred. Read, as [long](#long-four-depths-and-the-bars-verdict) details:
+   35 for a hundred. Read, as [long](#long-four-depths-and-the-rules-verdict) details:
 
    - the table: each depth's `MRR@10` against the row `none`, for `all` and for each
      group, and `Search, 95th`;
-   - a line per depth: `MRR@10 adjusted p`, the paired test against the order not
-     reranked, Holm-adjusted over the four depths; then the three clauses, `gains`,
-     `hold` (the losses of `identifier` and `keyword`, 0.05 at most) and `within 5 s
-     here`;
-   - the last line, which decides: `turn reranking on, at depth N`, or `leave
-     reranking off`.
+   - the verdict, which decides: `N, in place of none` to turn reranking on at depth
+     N, or `none stays` to leave it off;
+   - a line per depth: its MRR@10 against the order not reranked's, the p-value of
+     their paired test multiplied by four, then the three clauses, `gains`, `holds`
+     (the losses of `identifier` and `keyword`, 0.05 at most) and `within`.
 
-   What justifies turning it on is that last line naming a depth: MRR@10 higher with an
+   What justifies turning it on is the verdict naming a depth: MRR@10 higher with an
    adjusted p below 0.05, the two groups losing 0.05 at most, and a search within 5
    seconds at the 95th percentile on the Mac. With 30 questions, only a large gain
    passes the test: a gain short of it calls for more questions, not for turning it on.
 
 5. **The search modes**, on the same golden file: `eval` measures words, meaning and
-   hybrid, which says whether hybrid, the default, or meaning alone suits your corpus.
+   hybrid, and the search mode's default rule says whether another mode than the
+   setting's, hybrid by default, suits your corpus better.
    [Comparing chunkings and modes](../explanation/search-evaluation.md#comparing-chunkings-and-modes)
    says how to read it; for the default chunking alone, on the Mac:
 
@@ -337,16 +359,19 @@ machine.
 6. **What to send back.** The results files under `<data>/eval/results/`, the
    `<UTC time>-rerank.json` of each `eval-rerank` run and the `<UTC time>.json` of
    `eval`'s, or the tables that the runs print. They hold the golden file's SHA-256,
-   the models, measures, ranks and times, by question id and by group: never a
-   question's text, a document's ref or its content. Look over the ids and the group
-   names first, since you wrote them: they are all of your file that the results
-   repeat.
+   the models, measures, ranks and times, by question id and by group; the documents
+   indexed, counted by source and type; the refs of the questions skipped; and, in
+   `eval`'s, the refs of the documents that each answer showed, page ids and issue keys
+   ([evaluation results](../reference/data-layout.md#evaluation-results)). They hold
+   never a question's text nor a document's content. Look over the ids, the group names
+   and the refs first: the ids and the groups are your file's, the refs name your
+   documents.
 
 ## Change the model
 
 Nothing that this program stores depends on the reranker, so no index is rebuilt: start
 `llama-server` with another file and its alias, set `rerank.model`, and measure again,
-short then long, since the bar's verdict belongs to a model.
+short then long, since the rule's verdict belongs to a model.
 
 Any server that answers llama.cpp's rerank request at `/v1/rerank`, on this machine,
 should work; only `llama-server` is tested. Text Embeddings Inference answers another

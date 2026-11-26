@@ -925,12 +925,33 @@ refs of the documents that answer it and of those that help; the evaluation scor
 
 ### measure
 
-One number of how a [ranking](#ranking) answers a golden question, or many on average,
-such as MRR@10 or Section@10.
+A number about a [ranking](#ranking) or about an answer, for one golden question or for
+many on average: how the ranking answers the question, such as MRR@10 or Section@10, or
+what the answer costs, such as its tokens and E/kT, the evidence that the answers hold
+per thousand of their tokens, a ratio of two sums over the questions that have evidence.
 
 - **In the code.** [`Measures`](../../src/kb_mcp/evaluation/domain/evaluation.py),
-  [`measure`](../../src/kb_mcp/evaluation/domain/evaluation.py) and
+  [`measure`](../../src/kb_mcp/evaluation/domain/evaluation.py),
+  [`Quoted`](../../src/kb_mcp/evaluation/domain/evaluation.py), whose
+  [`Quoted.mean`](../../src/kb_mcp/evaluation/domain/evaluation.py) sums E/kT, and
   [`CUTOFF`](../../src/kb_mcp/evaluation/domain/evaluation.py).
+
+### default rule
+
+The rule that keeps a [setting](#setting)'s value unless a challenger, measured on the
+same golden questions, qualifies; one per decision. Its control is the value in use, its
+family the values that may replace it, both fixed by the rule whatever a run measures.
+A challenger qualifies when its mean on the rule's deciding measure is higher than the
+control's, with a p-value below 0.05 once multiplied by the family's size; when no group
+of questions that the rule guards loses more of MRR@10 than it allows; and when what it
+spends stays within the rule's bound. Of those that qualify, the cheapest within the
+rule's margin of the best mean is kept, else the control. A verdict names the value
+kept, or says why there is none, and changes no setting.
+
+- **In the code.** [`DefaultRule`](../../src/kb_mcp/evaluation/domain/evaluation.py),
+  [`Verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py),
+  [`verdict`](../../src/kb_mcp/evaluation/domain/evaluation.py) and
+  [`RULES`](../../src/kb_mcp/evaluation/domain/evaluation.py).
 
 ### command
 
@@ -996,3 +1017,8 @@ and how a run tells of itself.
   ending nor what it removes.
 - `StoreBusyError` and `RunBusyError`: a store held fails the unit that would write it; a
   run held refuses the invocation that would resume it.
+- `DefaultRule` and `ask_verdict`: both keep a default unless a challenger is shown
+  better; but `ask_verdict` decides a tool, not a setting, by one paired difference of
+  agents' successes, its p-value Holm-adjusted over the three measures that it compares,
+  where a default rule weighs a family of a setting's values by its deciding measure,
+  its guards and its bound.

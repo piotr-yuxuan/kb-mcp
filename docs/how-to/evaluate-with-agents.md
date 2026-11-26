@@ -8,8 +8,10 @@ subagents; it spends that session's subscription, so the user says when it runs.
 
 ## What it needs
 
-The index the server answers from, and a golden file whose refs the mirror holds, as for
-`eval` ([golden questions](golden-questions.md)). The server that the bridge starts
+The index the server answers from, and a golden file, as for `eval`
+([golden questions](golden-questions.md)): a question whose expected ref names no
+document of the index is skipped, and `prepare` names it, then says how to bring the
+index up to date. The server that the bridge starts
 reads the same settings as the commands below: run them all from one shell. By default
 it searches in hybrid mode, so the endpoint must serve the model, Ollama or any other
 OpenAI-compatible API, and the index built by meaning ([embeddings](embeddings.md));
@@ -103,15 +105,29 @@ kb-mcp eval-agents grade pilot --yes
 steps or the above write it, naming the file and the field (repair or remove that file,
 and mark its run `invalid`, before grading again), and grades each answer: citation
 recall and precision, quotes grounded in the documents that their refs name, and
-evidence quoted. A run succeeds when its answer says the base holds it, every quote is
-grounded, and each expected document's evidence is within a quote. A run returned
-without an answer kept is a failure; one `failed`, `invalid`, or whose call timed out,
-lost its server, lacked the consent or was of runs prepared before it was given per
-call gives no result, and its question leaves the tests, counted. It writes
-`results.json`, of ids and numbers, the prompts' SHA-256 and the models reported, never
-a question's text, and says B against A on success, calls and tokens handed over, each
-with its interval, and whether `ask` stays among the default tools. `--detail detailed`
-adds each run. It exits 1 when the runs spent past twice their estimates: stop; the
+evidence quoted. A quote is grounded when the document that its ref names holds it,
+read as evidence is read: Markdown's escapes and marks aside, links and images as their
+words, one case, whole words. A ref that names no document, or several, such as an id
+that a page and an issue share, is an unresolved citation: it cites no document and
+grounds no quote, and the grading goes on. A run succeeds when its answer says the base
+holds it, every quote is grounded, and each expected document's evidence is within a
+quote. A run returned without an answer kept is a failure. One `failed` or `invalid`,
+or whose call timed out or failed, was attempted and gave no result: it counts as a
+failure of its surface. One whose call lacked the consent, or was of runs prepared
+before it was given per call, was never attempted: its question leaves the tests, on
+both surfaces, counted as left out. A question with a run still pending waits for it.
+It writes `results.json`, of ids and numbers, the prompts' SHA-256 and the models
+reported, never a question's text, and says the runs by outcome, the questions in the
+tests and those left out, B against A on success, calls and tokens handed over, each
+with its interval, and whether `ask` stays among the default tools, with the runs
+without a result that it counted as failures on each surface:
+
+```
+ask stays among the default tools; runs without a result, counted as failures: A 1, B 0
+```
+
+With no question in the tests, it says `no verdict on ask`. `--detail detailed` adds
+each run. It exits 1 when the runs spent past twice their estimates: stop; the
 estimates change through a plan, from what was spent.
 
 ```bash

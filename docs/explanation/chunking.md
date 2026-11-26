@@ -18,7 +18,8 @@ since plan 025, by the user's choice:
 | `section-paths` | as `sections` | the title, the breadcrumb, the heading path (`A > B`), each cut to 200 characters, the chunk | the chunk |
 | `small-to-big` | as `sections`, up to 128 tokens | as `section-paths` | its section, whole up to 2,400 characters, else 2,400 of it centred on the chunk |
 
-- **`sections`** is plan 011's, the control: every other is measured against it.
+- **`sections`** is plan 011's, and was the control of the first comparison; the
+  control is now the setting's chunking, `windows` by default.
 - **`windows`** ignores the headings: 300 tokens is the user's figure and a fifth
   of overlap the usual one; Chroma found 200 to 400 tokens strong even without overlap
   ([chroma]). Two windows in a row share 200 to 240 characters when no word passes 40,
@@ -54,19 +55,33 @@ answer whose count is no count. If a run's characters per reported token fell ou
 first call meets it ([golden questions](../how-to/golden-questions.md)): `search` by
 011's measures, and `ask` by Found@ask and Evidence@ask, the share of expected
 documents among its passages and the share whose evidence their passage holds, within
-its fixed budget. The costs are the characters of the texts that each index embeds,
+its fixed budget, with the tokens of each answer and E/kT, the evidence held per
+thousand of them. The costs are the characters of the texts that each index embeds,
 whatever the vector cache held, and their tokens; the texts embedded in the run, its
 seconds and the tokens reported; the index's bytes; and the times of `search` and `ask`.
 Vectors are kept by model and text, so a text that two chunkings share is embedded once.
 
-Plan 019's rule, which `eval` still applies, chooses in hybrid mode with the setting's
-model: a challenger qualifies when it beats `sections` on Evidence@ask with a p-value
-below 0.05 once adjusted by Holm over the six tests of three challengers on MRR@10 and
-Evidence@ask, loses at most 0.02 of MRR@10, and costs at most three times `sections`'
-tokens; the best Evidence@ask wins, and within 0.01 the cheaper; else `sections` stays.
-Three times, because `small-to-big` repeats each chunk's context, about 2.1 times
-`sections`' tokens; only a cold build three times as long is refused. The work set
-should decide again.
+`eval` applies the chunking's default rule to each model's indexes, in hybrid mode
+([the default rules](search-evaluation.md#the-default-rules)). Its control is the
+setting `chunking`, whichever it is; its family, the three other chunkings. A challenger
+qualifies when it beats the control on Evidence@ask with a p-value below 0.05 once
+multiplied by three, the family's size; loses at most 0.02 of MRR@10 over all the
+questions, and at most 0.05 on the groups `identifier`, `keyword` and `paraphrase`; and
+embeds at most three times the control's tokens. Of those that qualify, the ones within
+0.01 of the best Evidence@ask are as good as the best, and the one that embeds the
+fewest tokens is kept; else the control stays. A run of some chunkings, by `--chunking`,
+gives a verdict among those, and names the others as not run; without the setting's
+chunking among them there is no verdict, and the output says why. Three times, because
+`small-to-big` repeats each chunk's context, about 2.1 times `sections`' tokens; only a
+cold build three times as long is refused. The work set should decide again.
+
+Plan 019's rule, which the runs below applied, differed in three ways: its control was
+`sections`, whatever the setting; it tested each challenger on MRR@10 too, and adjusted
+the six tests by Holm, so that a challenger's adjusted p-value depended on the other
+chunkings run; and it guarded MRR@10 over all the questions alone. The chunking's
+default rule corrects by Bonferroni over its fixed family, so that a verdict does not
+depend on which chunkings ran, and guards the groups `identifier`, `keyword` and
+`paraphrase` as well.
 
 ## On the sandbox
 
@@ -95,8 +110,8 @@ Found@ask 0.795, Evidence@ask 0.276.
 | `section-paths` | 6,729 | 2,815,916 | 703,979 | 38 MB | 206 ms |
 | `small-to-big` | 9,149 | 3,039,022 | 759,755 | 50 MB | 219 ms |
 
-The tests of the rule, in hybrid mode, each challenger against `sections`, adjusted by
-Holm over the six:
+The tests of plan 019's rule, in hybrid mode, each challenger against `sections`,
+adjusted by Holm over the six, as that rule did:
 
 | Challenger | MRR@10, p (adjusted) | Evidence@ask, p (adjusted) |
 |---|---|---|
@@ -104,7 +119,7 @@ Holm over the six:
 | `section-paths` | 0.3044 (1.0000) | 1.0000 (1.0000) |
 | `small-to-big` | 0.9571 (1.0000) | 0.8629 (1.0000) |
 
-**The rule keeps `sections`**: no challenger beat it on Evidence@ask in hybrid mode.
+**The rule kept `sections`**: no challenger beat it on Evidence@ask in hybrid mode.
 `windows` ranked better, significantly once adjusted (MRR@10 0.639 against 0.578),
 with half the chunks, a smaller index and 1.11 times the tokens, and by meaning alone
 its passages held the evidence more often (0.500 against 0.329); in hybrid mode the
@@ -140,8 +155,8 @@ better on 25 questions, hybrid on 22, and 58 tied. Its leads in Evidence@ask (0.
 against 0.357) and Found@ask (0.910 against 0.852) were not tested, since the results
 file keeps `ask`'s measures by group, not by question. [Comparing chunkings and
 modes](search-evaluation.md#comparing-chunkings-and-modes) gives the lines of that test.
-The rules and their verdicts stay as recorded, and `eval` still prints the rule's
-verdict on any set of questions.
+The rules and their verdicts stay as recorded; `eval` now prints the chunking's default
+rule's verdict on any set of questions, its control the setting, `windows` by default.
 
 What the choice gains, on the sandbox: the first expected document comes sooner
 (MRR@10 0.639, against 0.578 for hybrid search over `sections` and 0.539 for words

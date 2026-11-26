@@ -65,6 +65,18 @@ Follow the `workflow:plans` skill with these parameters:
   or a setting, run `uv run python -m tests.reference_pages` and commit the pages it
   rewrites; else the reference test fails, naming them.
 - What runs log, trace and measure: `docs/reference/telemetry/`, changed with the code.
+- Messages: an error or a refusal says what was wrong, the value or the valid ones, and
+  what to do next; no plan shortens one to save lines; phase 1 of a convergence pins
+  each refusal of the context's commands and tools by that substance.
+- A quality plan, one that improves what agents receive or what it costs them rather
+  than converging a context, has its lines under `src/` estimated before its approval by
+  three estimators that read the plan and the documents, never the code; from the second
+  such plan on, their median is scaled by the ratio that the last one measured. Its
+  checks fail above that figure plus 20% or plus 50 lines, whichever is more; only the
+  user raises it. Its record gives the ratio of its measured lines to the median. The
+  rule is static-sql-lineage's, but for its check of the whole every three plans, which
+  the budget's absolute targets per context already hold, and its budget for `tests/`,
+  which the user's budget leaves out.
 - At most three review rounds.
 
 ## The concepts
@@ -82,7 +94,10 @@ code takes them, and the names of each entry's "In the code" paragraph.
   Changes: <and how>
   Retires: <and what replaces them>
   Relies on: <concepts used unchanged>
+  Reuses: <operations and types at the base that its steps call or extend>
   ```
+
+  *Reuses* comes last, and the review of the draft checks it against the code.
 
 - A definition changes only in a plan whose *Concepts* declares the change, and never
   to make a check pass; the pre-merge summary shows the page's diff. An "In the code"
@@ -137,7 +152,8 @@ src/kb_mcp/  the package, one folder per bounded context
 tests/       the tests and their fixtures
 sandbox/     the fictional company seeded into the sandbox site, and its tests
 spikes/      the proof test of reading Atlassian Cloud through a browser session
-scripts/     release.py, which CD runs to release the commit that CI checked
+scripts/     release.py, which CD runs to release the commit that CI checked;
+             evaluate.command, which Finder opens to run evaluate.py's evaluations
 deploy/      Grafana's LGTM container, to observe runs on this machine
 docs/        the pages, a folder for each Diataxis kind
 docs/work/   plans, their checks and notes, and the roadmap; not tracked

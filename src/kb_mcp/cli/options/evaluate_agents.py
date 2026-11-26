@@ -48,8 +48,8 @@ def register(
         help="evaluate ask through agents: prepare their runs, bridge their calls, grade",
         epilog=(
             "Its options of output come before the step. With --format json: prepare, the"
-            " runs written; call, the answer; answer, the answer kept; grade, each run's"
-            " outcome, the verdict on ask and the runs counted."
+            " runs written and the golden questions skipped; call, the answer; answer, the"
+            " answer kept; grade, each run's outcome, the verdict on ask and the runs counted."
         ),
     )
     add_output_options(parser)

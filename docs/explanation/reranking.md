@@ -3,10 +3,11 @@
 Search finds documents in two stages when reranking is on. The first is this program's
 own, by words, by meaning or both; the second sends the first documents it found, with
 the question, to a reranking server on this machine, and shows them in the order of the
-server's scores. Plan 022 added it, with a bar written before any run. It is off by
-default: on the sandbox it ranked worse, and the user chose the more accurate results;
-the bar's verdict, measured on the machine that serves agents with its own questions,
-tells whether to turn it on there, and at which depth.
+server's scores. Plan 022 added it, with a bar written before any run, now the
+reranking depth's default rule. It is off by default: on the sandbox it ranked worse,
+and the user chose the more accurate results; the rule's verdict, measured on the
+machine that serves agents with its own questions, tells whether to turn it on there,
+and at which depth.
 [The how-to](../how-to/reranking.md) sets it up, turns it on and measures it.
 
 ## Two ways a model can read a question
@@ -87,32 +88,45 @@ words, saying why, and none asks again for as long. A server that answers too sl
 costs more: one search waits its 30 seconds, then the next ones go without for 30.
 Off, the default, the server is never asked.
 
-## The bar, fixed before the run
+## The default rule, fixed before the run
 
 "Data-driven inspires me confidence", the user said: the defaults follow a rule
-written before any measure, applied by `eval-rerank` on the golden questions to depths
-10, 20, 30 and 50 exactly. A depth qualifies if:
+written before any measure. `eval-rerank` applies the reranking depth's default rule
+([the default rules](search-evaluation.md#the-default-rules)) to the depths that it
+measures: its control is the order not reranked, its family the depths 10, 20, 30 and
+50. A depth qualifies if:
 
-1. it beats the order not reranked on MRR@10, with an adjusted p below 0.05, by the
-   paired randomisation test of [evaluating search](search-evaluation.md#paired-tests),
-   Holm's correction over the four depths;
+1. it beats the order not reranked on MRR@10, by the paired randomisation test of
+   [evaluating search](search-evaluation.md#paired-tests), with a p-value below 0.05
+   once multiplied by four, the family's size (Bonferroni's correction);
 2. it loses at most 0.05 of MRR@10 on the questions of the groups `identifier` and
    `keyword`;
 3. on the machine that serves agents, a search with it takes at most 5 seconds at the
    95th percentile.
 
-Among the depths that qualify, the smallest whose MRR@10 is not shown lower than the
-best's (the same test, p of 0.05 or more) is the depth to set as `rerank.depth`. If
-none qualifies, `eval-rerank` says to leave reranking off. The bar was written to decide
-the default; the user chose first reranking on by default, then, with the measures,
-off, for the more accurate results, so its verdict is now advice: whether to turn it on
-on the machine measured. Values
-compare as reported: means to three decimals, a group's loss as the difference of its
-two means so shown, p-values to four decimals, times in whole milliseconds. A loss of
-0.050 qualifies, 0.051 does not; a group that the golden questions do not name has no
+Among the depths that qualify, those within 0.01 of the best MRR@10 are as good as the
+best, and the smallest of them is the depth to set as `rerank.depth`. If none
+qualifies, the order not reranked stays: leave reranking off. Any depths may be run, one
+or all, with `--depth`: the verdict weighs those run, and names the others of the
+family, which cannot qualify. The rule was written to decide the default; the user chose
+first reranking on by default, then, with the measures, off, for the more accurate
+results, so its verdict is now advice: whether to turn it on on the machine measured.
+Values compare as reported: means to three decimals, a group's loss as the difference of
+its two means so shown, p-values to four decimals, times in whole milliseconds. A loss
+of 0.050 qualifies, 0.051 does not; a group that the golden questions do not name has no
 loss to show, and `eval-rerank` says `n/a`.
 
+A question whose reranking fails, the server not answering, refusing the request or
+answering what does not parse, keeps its order not reranked in that arm, as a search
+does, and is counted; an arm that failed on more than 5% of the questions gives no
+verdict, since it would measure the order not reranked more than the reranking.
+
 - **Clause 1** is the test of plans 011 and 018, its family of four fixed in advance.
+  The bar first adjusted it by Holm's step-down method, which made a depth's adjusted
+  p-value depend on the other depths' raw ones, so that the verdict changed with the
+  depths run; Bonferroni's multiplies each by four, whatever ran: a little stricter,
+  never dependent on the others
+  ([several tests at once](search-evaluation.md#several-tests-at-once-bonferroni-over-a-fixed-family)).
 - **Clause 2** allows more than plans 011 and 018 did (0.02), by the arithmetic of
   small groups. The sandbox has 32 identifier questions and 34 keyword ones; with the
   spread of per-question differences seen in plan 018 (0.281), the standard error of a
@@ -124,7 +138,10 @@ loss to show, and `eval-rerank` says `n/a`.
   for which a person keeps attention ([nielsen]). A query by meaning was asked 200 ms
   in plan 018, but it embeds ten words where a reranker reads N passages, and an
   agent's own turn takes seconds. By the estimate above, it admits a depth of about 30.
-- **Ties go to the cheaper depth** unless it is shown worse.
+- **Within 0.01, the cheaper depth.** The bar first kept the smallest depth "not shown
+  lower" than the best by a second test, which takes a lack of evidence for evidence of
+  equality: at 105 questions, a depth 0.08 worse is often not shown lower. The margin of
+  0.01 says instead how close counts as equal.
 - **Power.** With 105 questions, the runs of plans 011 and 018 could detect
   differences of MRR@10 of 0.065 to 0.12 ([power](search-evaluation.md#effect-size-significance-and-power)).
   Published gains of rerankers are of that order ([qwen3], [beir]), but the sandbox is
@@ -166,7 +183,7 @@ benchmarking candidates here:
   even 10 documents would take some 7 to 13 seconds on a laptop's GPU, past the 5.
   Within the bound, the best is the 0.6B.
 - **Changing it** costs a server command and a setting, and a run of `eval-rerank`,
-  since the bar's verdict belongs to a model; nothing stored depends on the reranker.
+  since the rule's verdict belongs to a model; nothing stored depends on the reranker.
 
 ## Why a server of its own
 
@@ -186,7 +203,7 @@ reads is the mirror's, and no flag allows another ("No remote reranker.").
 - **Fusing the scores** with the first ranking's, or a threshold on them: they are not
   calibrated across questions, and a fusion tuned on the sandbox's 105 questions would
   fit them.
-- **Shorter texts**: 600 characters would about halve the time; if the bar fails on
+- **Shorter texts**: 600 characters would about halve the time; if the rule refuses on
   time alone, a later plan measures them.
 - **Reranking `browse`**, sorted by update, or the documents named.
 

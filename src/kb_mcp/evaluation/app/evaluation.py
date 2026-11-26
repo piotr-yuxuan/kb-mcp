@@ -3,47 +3,49 @@
 Each evaluated index, a model connected and a chunking, gets its own file, built from the
 mirror like any other with the vector cache, so a second evaluation embeds nothing new.
 Every question is ranked by ``Library.ranked``, as ``search`` ranks, and answered by
-``Library.quoted``, as ``ask`` answers, in each mode; the measures and the paired tests
-of ``evaluation.domain.evaluation`` say how the modes compare, and its rule which
-chunking each model's index should be cut by. Each evaluated index is a span; each
+``Library.quoted``, as ``ask`` answers, in each mode, whose answers ``Library.in_mode``
+gives as served, for their tokens; the measures of
+``evaluation.domain.evaluation`` say how the modes compare, and its default rules which
+search mode and chunking to keep. Each evaluated index is a span; each
 question is timed and logged, and each mode's scores measured, as
 ``docs/reference/telemetry/eval.md`` lists it.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
+import itertools
+import json
+from collections import Counter
 from dataclasses import dataclass
 from statistics import median
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING
 
 import structlog
 import yaml
 from opentelemetry import metrics, trace
-from pydantic import ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, computed_field
 
-from kb_mcp.config.settings import SearchMode
 from kb_mcp.evaluation.domain.evaluation import (
-    CONTROL,
     CUTOFF,
+    MODES,
+    RULES,
     SAMPLES,
     SEED,
     Measures,
     Question,
     Quoted,
-    Scored,
     averages,
-    default_chunking,
-    holm,
     measure,
-    paired_test,
     percentile,
     quoting,
+    verdict,
 )
 from kb_mcp.evaluation.domain.golden import Golden
 from kb_mcp.kernel.names import CHARACTERS_PER_TOKEN
 from kb_mcp.kernel.records import Record
-from kb_mcp.mcp.app.tools import Library
+from kb_mcp.mcp.app.tools import SEARCH_LIMIT, Library
 from kb_mcp.observability.progress import task
 from kb_mcp.search.adapters.sqlite_index import SqliteIndex
 from kb_mcp.search.app.indexing import Embedding, build_index
@@ -54,11 +56,10 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from kb_mcp.config.settings import Settings
-    from kb_mcp.evaluation.domain.evaluation import Choice
+    from kb_mcp.evaluation.domain.evaluation import Verdict
     from kb_mcp.kernel.names import Chunking
     from kb_mcp.search.adapters.embedding import Embedder
 
-MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)
 # What the refusal of a golden file says, by the type of Pydantic's error; of another
 # type, Pydantic's message, which holds no input, or the rule's.
 SAID = {
@@ -70,14 +71,19 @@ SAID = {
 }
 # The types of Pydantic's error for a field that a question does not have.
 UNKNOWN = frozenset({"extra_forbidden", "invalid_key"})
+# Why a golden question is skipped, and what to do about it.
+STALE = "an expected ref that names no document of the index"
+UPDATE = "An index older than the mirror misses documents; kb-mcp index brings it up to date."
 # The share of queries faster than the slow time reported: its 95th percentile.
 TAIL = 0.95
+# The documents of each ranking that the results keep, by ref, to replay its fusion.
+RANKED = 30
 HEADER = (
-    "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 |"
+    "| Mode | Group | Recall@10 | MRR@10 | nDCG@10 | Success@1 | Section@10 | Tokens |"
     " Query, median | Query, 95th |"
 )
 # The line under the header, one cell per column.
-DIVIDER = "|---|---|---|---|---|---|---|---|---|"
+DIVIDER = "|---|---|---|---|---|---|---|---|---|---|"
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
 # How long each question took to rank, by chunking and mode; each mode's measures on
@@ -89,8 +95,8 @@ QUESTION_DURATION = METER.create_histogram(
 SCORE = METER.create_gauge(
     "kb_mcp.eval.score", unit="1", description="A mode's measure on all the golden questions"
 )
-ASK_HEADER = "| Mode | Group | Found@ask | Evidence@ask | Ask, median | Ask, 95th |"
-ASK_DIVIDER = "|---|---|---|---|---|---|"
+ASK_HEADER = "| Mode | Group | Found@ask | Evidence@ask | Tokens | E/kT | Ask, median | Ask, 95th |"
+ASK_DIVIDER = "|---|---|---|---|---|---|---|---|"
 
 
 class GoldenError(ValueError):
@@ -101,13 +107,16 @@ class EvaluationError(Exception):
     """An evaluation that would not measure what it says; the message says why."""
 
 
-def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Question]:
+def read_golden(
+    text: str, resolve: Callable[[str], str | None]
+) -> tuple[list[Question], list[dict[str, str]]]:
     """Read golden questions from YAML, each ref resolved to the path that it names.
 
     ``Golden`` reads the file, strictly. Its refusals are given by where each is, as
     ``golden[i]`` and the field, never by what was found there: an unknown or missing
-    field, one of another type, or a rule broken. A ref that the mirror does not hold is
-    refused too, by its question.
+    field, one of another type, or a rule broken. A question with an expected ref that
+    names no document is skipped, and given with its ref and why; a partial ref that names
+    none is dropped; refs of one document count once. Refused when no question is left.
     """
     try:
         golden = Golden.model_validate(yaml.safe_load(text))
@@ -124,29 +133,51 @@ def read_golden(text: str, resolve: Callable[[str], str | None]) -> list[Questio
             refusals.append(f"golden{where}: {said or each['msg']}")
         message = "; ".join(refusals)
         raise GoldenError(message) from None
-    return [
-        Question(
-            id=given.id,
-            text=given.question,
-            expected=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.expected),
-            partial=tuple(path_of(ref, f"golden[{index}]", resolve) for ref in given.partial),
-            groups=tuple(given.groups),
-            evidence={
-                path_of(ref, f"golden[{index}]", resolve): phrase
-                for ref, phrase in given.evidence.items()
-            },
+    questions, skipped = [], []
+    for given in golden.root:
+        paths = {ref: resolve(ref) for ref in (*given.expected, *given.partial)}
+        if stale := [ref for ref in given.expected if paths[ref] is None]:
+            skipped.append({"id": given.id, "ref": stale[0], "why": STALE})
+            continue
+        questions.append(
+            Question(
+                id=given.id,
+                text=given.question,
+                expected=tuple(dict.fromkeys(paths[ref] for ref in given.expected)),
+                partial=tuple(dict.fromkeys(paths[ref] for ref in given.partial if paths[ref])),
+                groups=tuple(given.groups),
+                evidence={paths[ref]: phrase for ref, phrase in given.evidence.items()},
+            )
         )
-        for index, given in enumerate(golden.root)
-    ]
-
-
-def path_of(ref: str, where: str, resolve: Callable[[str], str | None]) -> str:
-    """Resolve a golden file's ref to a path of the mirror, or refuse it, naming ``where`` it is."""
-    path = resolve(ref)
-    if path is None:
-        message = f"{where}: {ref!r} is not mirrored"
+    if not questions:
+        message = " ".join(["No question left to measure.", *skipping(skipped)])
         raise GoldenError(message)
-    return path
+    return questions, skipped
+
+
+def skipping(skipped: Sequence[Mapping[str, str]]) -> list[str]:
+    """Say each golden question skipped, by its ref and why, then how to bring the index up."""
+    said = [f"Skipped {each['id']}, for {each['ref']!r}: {each['why']}." for each in skipped]
+    return [*said, UPDATE] if said else []
+
+
+def running(
+    question: Question,
+    arm: str,
+    per: Mapping[str, Measures],
+    asked: Mapping[str, Quoted] | None = None,
+) -> str:
+    """Name a question as progress shows it: its arm and id, then the results of those done.
+
+    The running MRR@10 of the arm's questions done, and their Evidence@ask, when ``asked``
+    has any with evidence.
+    """
+    if not per:
+        return f"{arm} {question.id}"
+    held = Quoted.mean(list(asked.values())).evidence if asked else None
+    evidence = "" if held is None else f", Evidence@ask {held:.3f}"
+    rank = Measures.mean(list(per.values())).reciprocal_rank
+    return f"{arm} {question.id}: MRR@10 {rank:.3f}{evidence}"
 
 
 @dataclass(frozen=True)
@@ -165,6 +196,7 @@ class Costs(Record):
     tokens: int | None  # that the endpoint reported for the texts embedded for this index
     bytes: int  # of the index file
 
+    @computed_field
     @property
     def estimated(self) -> int:
         """The tokens of the texts that the chunks embed, at the characters of a token."""
@@ -182,15 +214,21 @@ class IndexMeasures(Record):
     seconds: float  # how long the index took to build, embedding included
     chunking: str
     costs: Costs
+    documents: dict[str, dict[str, int]]  # indexed, by source and type
+    documents_sha256: str  # of each document indexed, its path with its digest, sorted
     per: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then question
-    groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)  # mode, then group
+    # By mode, then group; Section@10 of the questions whose expected document every arm,
+    # each index and mode, found: ``aligned`` of them, so that the arms average alike.
+    groups: dict[str, dict[str, Measures]] = Field(default_factory=dict)
+    aligned: int = 0
     ranks: dict[str, dict[str, list[int | None]]] = Field(default_factory=dict)  # mode, question
     times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th, in s
-    pvalues: dict[str, float] = Field(default_factory=dict)  # mode against lexical
-    adjusted: dict[str, float] = Field(default_factory=dict)  # by Holm, over every index
     asked: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, then question
     asked_groups: dict[str, dict[str, Quoted]] = Field(default_factory=dict)  # mode, group
     ask_times: dict[str, tuple[float, float]] = Field(default_factory=dict)  # median, 95th
+    # By mode, then question, for the results alone: search's hits, with the tokens that
+    # reading each costs and whether it holds evidence; ask's passages; the ranking's refs.
+    raw: dict[str, dict[str, dict[str, list]]] = Field(default_factory=dict, exclude=True)
 
 
 def evaluate(
@@ -200,12 +238,12 @@ def evaluate(
     clock: Callable[[], float],
     built_at: datetime,
 ) -> list[IndexMeasures]:
-    """Rank and answer every question in every mode on each evaluated index; compare the modes.
+    """Rank and answer every question in every mode on each evaluated index.
 
     Each evaluated index is ``prepared``. Raises EvaluationError when a mode by meaning
     falls back to words, which would measure words twice, and ModelError for a model
     that fails. For each, its index's build reports its own tasks, then the task
-    ``questions`` every question in every mode, each by its id.
+    ``questions`` every question in every mode, each named by ``running``.
 
     Each is the span ``eval.model``; each question, timed in
     ``kb_mcp.eval.question.duration`` and said at DEBUG by ``eval.question``; each mode's
@@ -218,34 +256,75 @@ def evaluate(
     for evaluated in indexes:
         name = evaluated.embedder.name
         named = {"gen_ai.request.model": name, "kb_mcp.chunking": evaluated.chunking}
-        with TRACER.start_as_current_span("eval.model", attributes=named):
+        with TRACER.start_as_current_span("eval.model", attributes=named) as span:
+            # The served answers' attributes stay off this span, and their spans in its trace.
+            hidden = trace.NonRecordingSpan(span.get_span_context())
             of_index, library = prepared(evaluated, settings, questions, clock, built_at)
             with task("questions", len(MODES) * len(questions)) as asked:
                 for mode in MODES:
-                    of_index.per[mode], of_index.ranks[mode], of_index.asked[mode] = {}, {}, {}
-                    spent, asking = [], []
-                    for question in asked.each(questions, lambda one: one.id):
-                        started = clock()
-                        shown, note = library.ranked(question.text, mode, limit=CUTOFF)
-                        spent.append(clock() - started)
-                        QUESTION_DURATION.record(
-                            spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
-                        )
+                    of_index.per[mode], of_index.ranks[mode] = {}, {}
+                    of_index.asked[mode], of_index.raw[mode] = {}, {}
+                    spent, asking, served = [], [], library.in_mode(mode)
+                    for question in asked.each(
+                        questions,
+                        functools.partial(
+                            running, arm=mode, per=of_index.per[mode], asked=of_index.asked[mode]
+                        ),
+                    ):
+                        shown, note = library.ranked(question.text, mode, limit=RANKED)
                         if note:
                             message = f"{name}, {mode}:{note}"
                             raise EvaluationError(message)
-                        paths = [each.path for each in shown]
-                        texts = {each.path: each.text for each in shown}
-                        of_index.per[mode][question.id] = measure(paths, question, texts)
+                        paths = [each.path for each in shown[:CUTOFF]]
+                        started = clock()
+                        quoted = library.quoted(question.text, mode)
+                        asking.append(clock() - started)
+                        # As the server answers, the search timed.
+                        with trace.use_span(hidden):
+                            started = clock()
+                            search = served.search(question.text)
+                            spent.append(clock() - started)
+                            answer = served.ask(question.text)
+                        QUESTION_DURATION.record(
+                            spent[-1], {"kb_mcp.chunking": evaluated.chunking, "kb_mcp.mode": mode}
+                        )
+                        of_index.per[mode][question.id] = measure(
+                            paths,
+                            question,
+                            {each.path: each.text for each in shown},
+                            len(search) // CHARACTERS_PER_TOKEN,
+                        )
                         of_index.ranks[mode][question.id] = [
                             paths.index(path) + 1 if path in paths else None
                             for path in question.expected
                         ]
-                        started = clock()
-                        quoted = library.quoted(question.text, mode)
-                        asking.append(clock() - started)
-                        passages = [(each.path, each.text) for each in quoted]
-                        of_index.asked[mode][question.id] = quoting(passages, question)
+                        of_index.asked[mode][question.id] = quoting(
+                            [(each.path, each.text) for each in quoted],
+                            question,
+                            len(answer) // CHARACTERS_PER_TOKEN,
+                        )
+                        of_index.raw[mode][question.id] = {
+                            "hits": [
+                                {
+                                    "ref": each.ref,
+                                    "section": each.section,
+                                    "read_tokens": len(library.read(each.ref, each.section))
+                                    // CHARACTERS_PER_TOKEN,
+                                    "snippet_evidence": question.evidenced(each.path, each.snippet),
+                                    "section_evidence": question.evidenced(each.path, each.text),
+                                }
+                                for each in shown[:SEARCH_LIMIT]
+                            ],
+                            "passages": [
+                                {
+                                    "ref": each.ref,
+                                    "characters": len(each.text),
+                                    "evidence": question.evidenced(each.path, each.text),
+                                }
+                                for each in quoted
+                            ],
+                            "ranking": [each.ref for each in shown],
+                        }
                         log.debug(
                             "eval.question",
                             id=question.id,
@@ -254,21 +333,12 @@ def evaluate(
                             seconds=round(spent[-1], 3),
                             reciprocal_rank=of_index.per[mode][question.id].reciprocal_rank,
                         )
-                    of_index.groups[mode] = averages(of_index.per[mode], questions, Measures.mean)
                     of_index.asked_groups[mode] = averages(
                         of_index.asked[mode], questions, Quoted.mean
                     )
                     of_index.times[mode] = (median(spent), percentile(spent, TAIL))
                     of_index.ask_times[mode] = (median(asking), percentile(asking, TAIL))
-                    lexical = [
-                        of_index.per["lexical"][question.id].reciprocal_rank
-                        for question in questions
-                    ]
-                    moded = [
-                        of_index.per[mode][question.id].reciprocal_rank for question in questions
-                    ]
-                    of_index.pvalues[mode] = paired_test(lexical, moded)
-                    every = of_index.groups[mode]["all"]
+                    every = Measures.mean(list(of_index.per[mode].values()))
                     scored = {**named, "kb_mcp.mode": mode}
                     SCORE.set(every.recall, {**scored, "kb_mcp.measure": f"recall@{CUTOFF}"})
                     SCORE.set(every.reciprocal_rank, {**scored, "kb_mcp.measure": f"mrr@{CUTOFF}"})
@@ -287,10 +357,18 @@ def evaluate(
                 index_seconds=round(of_index.seconds, 3),
             )
         measured.append(of_index)
-    tests = [(of_index, mode) for of_index in measured for mode in MODES[1:]]
-    adjusted = holm([of_index.pvalues[mode] for of_index, mode in tests])
-    for (of_index, mode), value in zip(tests, adjusted, strict=True):
-        of_index.adjusted[mode] = value
+    found = {
+        question.id
+        for question in questions
+        if all(of.per[mode][question.id].section is not None for of in measured for mode in MODES)
+    }
+    for of_index, mode in itertools.product(measured, MODES):
+        aligned = {
+            key: each if key in found else each.model_copy(update={"section": None})
+            for key, each in of_index.per[mode].items()
+        }
+        of_index.groups[mode] = averages(aligned, questions, Measures.mean)
+        of_index.aligned = len(found)
     return measured
 
 
@@ -322,6 +400,11 @@ def prepared(
         tokens=embedder.tokens,
         bytes=index.stat().st_size,
     )
+    with SqliteIndex(index).reading() as reader:
+        held = reader.held()
+    documents: dict[str, Counter[str]] = {}
+    for source, kind in held.typed.values():
+        documents.setdefault(source, Counter())[kind] += 1
     of_index = IndexMeasures(
         model=name,
         fingerprint=embedder.fingerprint,
@@ -329,6 +412,10 @@ def prepared(
         seconds=seconds,
         chunking=evaluated.chunking,
         costs=costs,
+        documents=documents,
+        documents_sha256=hashlib.sha256(
+            json.dumps(sorted(held.documents.items())).encode()
+        ).hexdigest(),
     )
     # The model that the index names is this embedder's.
     meaning = Meaning({name: embedder}.__getitem__)
@@ -347,38 +434,55 @@ def prepared(
     return of_index, library
 
 
-def compared(measured: Sequence[IndexMeasures], questions: Sequence[Question]) -> dict[str, Choice]:
-    """Choose each model's default chunking by the rule, by its indexes' hybrid measures.
+def verdicts(
+    measured: Sequence[IndexMeasures], questions: Sequence[Question], settings: Settings
+) -> list[Verdict]:
+    """Apply the default rules against the settings, each by the indexes measured.
 
-    Only a model with an index cut by the control gets a choice.
+    The search mode's to each index, then the chunking's to each model's, in hybrid mode.
     """
-    scored: dict[str, dict[str, Scored]] = {}
+    found = [
+        verdict(
+            RULES["search mode"],
+            settings.search_mode,
+            {
+                mode: (
+                    [of_index.per[mode][question.id].reciprocal_rank for question in questions],
+                    {group: each.reciprocal_rank for group, each in of_index.groups[mode].items()},
+                    round(of_index.times[mode][1] * 1000),
+                )
+                for mode in MODES
+            },
+            {"model": of_index.model, "chunking": of_index.chunking},
+        )
+        for of_index in measured
+    ]
+    arms: dict[str, dict[str, tuple[list[float], dict[str, float], int]]] = {}
     for of_index in measured:
         asked = (of_index.asked["hybrid"][question.id].evidence for question in questions)
-        scored.setdefault(of_index.model, {})[of_index.chunking] = Scored(
-            reciprocal_ranks=tuple(
-                of_index.per["hybrid"][question.id].reciprocal_rank for question in questions
-            ),
-            evidence=tuple(each for each in asked if each is not None),
-            tokens=of_index.costs.estimated,
+        arms.setdefault(of_index.model, {})[of_index.chunking] = (
+            [each for each in asked if each is not None],
+            {group: each.reciprocal_rank for group, each in of_index.groups["hybrid"].items()},
+            of_index.costs.estimated,
         )
-    return {
-        model: default_chunking(chunkings)
-        for model, chunkings in scored.items()
-        if CONTROL in chunkings
-    }
+    return found + [
+        verdict(RULES["chunking"], settings.chunking, chunkings, {"model": model})
+        for model, chunkings in arms.items()
+    ]
 
 
 def record(
     measured: Sequence[IndexMeasures],
     golden: str,
     built_at: datetime,
-    choices: Mapping[str, Choice],
+    ruled: Sequence[Verdict],
+    skipped: Sequence[Mapping[str, str]],
 ) -> dict[str, object]:
     """Give what a results file keeps: ids, models and numbers, never a question's text."""
     return {
         "golden_sha256": hashlib.sha256(golden.encode()).hexdigest(),
         "built_at": built_at.isoformat(),
+        "skipped": skipped,
         "test": {"kind": "paired randomisation, two-sided", "samples": SAMPLES, "seed": SEED},
         "indexes": [
             {
@@ -387,11 +491,8 @@ def record(
                 "fingerprint": of_index.fingerprint,
                 "embedded": of_index.embedded,
                 "seconds": of_index.seconds,
-                "costs": of_index.costs.model_dump() | {"estimated": of_index.costs.estimated},
                 "times": of_index.times,
                 "ask_times": of_index.ask_times,
-                "pvalues": of_index.pvalues,
-                "adjusted": of_index.adjusted,
                 "groups": {
                     mode: {group: each.model_dump() for group, each in groups.items()}
                     for mode, groups in of_index.groups.items()
@@ -401,10 +502,15 @@ def record(
                     for mode, groups in of_index.asked_groups.items()
                 },
                 "ranks": of_index.ranks,
+                **of_index.model_dump(
+                    include={"costs", "documents", "documents_sha256", "per", "aligned"}
+                ),
+                "asked_per": of_index.model_dump(include={"asked"})["asked"],
+                "raw": of_index.raw,
             }
             for of_index in measured
         ],
-        "chunking": {model: choice.model_dump() for model, choice in choices.items()},
+        "verdicts": [each.model_dump() for each in ruled],
     }
 
 
@@ -414,7 +520,7 @@ def row(mode: str, group: str, each: Measures, times: tuple[float, float]) -> st
     section = "n/a" if each.section is None else f"{each.section:.3f}"
     return (
         f"| {mode} | {group} | {each.recall:.3f} | {each.reciprocal_rank:.3f} |"
-        f" {each.ndcg:.3f} | {each.success:.3f} | {section} |"
+        f" {each.ndcg:.3f} | {each.success:.3f} | {section} | {each.tokens:,.0f} |"
         f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
     )
 
@@ -423,9 +529,10 @@ def ask_row(mode: str, group: str, each: Quoted, times: tuple[float, float]) -> 
     """Write a mode's ask measures of a group as a row under ``ASK_HEADER``, with its times."""
     median_s, tail_s = times
     evidence = "n/a" if each.evidence is None else f"{each.evidence:.3f}"
+    per_kilotoken = "n/a" if each.per_kilotoken is None else f"{each.per_kilotoken:.3f}"
     return (
-        f"| {mode} | {group} | {each.found:.3f} | {evidence} |"
-        f" {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
+        f"| {mode} | {group} | {each.found:.3f} | {evidence} | {each.tokens:,.0f} |"
+        f" {per_kilotoken} | {median_s * 1000:.0f} ms | {tail_s * 1000:.0f} ms |"
     )
 
 
@@ -446,7 +553,7 @@ def built(of_index: IndexMeasures) -> str:
 
 
 def table(measured: Sequence[IndexMeasures]) -> str:
-    """Write the measures of each evaluated index as Markdown: search's, ask's, the tests.
+    """Write the measures of each evaluated index as Markdown: search's, then ask's.
 
     Lexical search ignores the model and the chunking: its rows come with the first index
     alone.
@@ -465,12 +572,6 @@ def table(measured: Sequence[IndexMeasures]) -> str:
             ask_row(mode, group, of_index.asked_groups[mode][group], of_index.ask_times[mode])
             for mode in modes
             for group in sorted(of_index.asked_groups[mode], key=lambda name: (name != "all", name))
-        ]
-        lines.append("")
-        lines += [
-            f"MRR@10, {mode} against lexical: p = {of_index.pvalues[mode]:.4f},"
-            f" adjusted (Holm) {of_index.adjusted[mode]:.4f}"
-            for mode in MODES[1:]
         ]
         lines.append("")
     return "\n".join(lines)

@@ -17,9 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from kb_mcp.evaluation.domain.evaluation import (
     ALPHA,
     SEED,
+    holds,
     holm,
     paired_test,
-    plain,
 )
 from kb_mcp.kernel.records import Record
 
@@ -86,7 +86,7 @@ class Graded(Record):
     found: bool  # the agent said that the base holds the answer
     recall: float  # the share of the expected documents cited, as source or quote
     precision: float | None  # of the documents cited, the share expected or helping
-    grounded: bool  # every quote is in the document its ref names, spacing aside
+    grounded: bool  # every quote is held by the document its ref names, as evidence is
     evidence: bool  # each expected document's evidence is within a quote of it
 
     @property
@@ -103,20 +103,16 @@ def grade(
 ) -> Graded:
     """Grade an answer: ``resolve`` gives the path a ref names, ``body`` a path's text.
 
-    A quote is grounded when its words, spacing aside, are in the body of the document
-    its ref names; a ref that names none grounds nothing. Evidence is compared as
-    Section@10 compares it: marks and links aside, without regard to case.
+    A quote is grounded when the body of the document its ref names ``holds`` it; a ref
+    that names none grounds nothing. Evidence is compared alike, as Section@10 does.
     """
     quoted = [(resolve(quote.ref), quote.text) for quote in answer.quotes]
     cited = {resolve(ref) for ref in answer.sources} | {path for path, _ in quoted}
     cited.discard(None)
     known = {*question.expected, *question.partial}
-    grounded = all(
-        path is not None and " ".join(text.split()) in " ".join(body(path).split())
-        for path, text in quoted
-    )
+    grounded = all(path is not None and holds(body(path), text) for path, text in quoted)
     evidence = all(
-        any(path == expected and plain(phrase) in plain(text) for path, text in quoted)
+        any(path == expected and holds(text, phrase) for path, text in quoted)
         for expected, phrase in question.evidence.items()
     )
     return Graded(
@@ -140,7 +136,7 @@ class Difference(Record):
 class GradeVerdict(Record):
     """Whether ``ask`` stays among the default tools, and each measure's difference."""
 
-    keeps_ask: bool
+    keeps_ask: bool | None  # None: no verdict, no pair of runs to test
     differences: dict[str, Difference]
 
 
@@ -161,8 +157,10 @@ def ask_verdict(pairs: Mapping[str, Sequence[tuple[float, float]]]) -> GradeVerd
     ``pairs`` gives, for each measure (``success``, ``calls``, ``tokens``), A's and B's
     value question by question. Each is tested by ``paired_test``, Holm-adjusted over
     the measures. ``ask`` leaves the default tools only when B's success is lower with
-    an adjusted p-value below ALPHA.
+    an adjusted p-value below ALPHA. Without a pair, there is no verdict.
     """
+    if not pairs["success"]:
+        return GradeVerdict(keeps_ask=None, differences={})
     pvalues = {
         name: paired_test([a for a, _ in each], [b for _, b in each])
         for name, each in pairs.items()

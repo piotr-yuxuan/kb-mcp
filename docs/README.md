@@ -50,6 +50,9 @@ the command and those who change its code, unless it is marked for contributors.
   searched from the shell and by agents; its traps, and what an engine does not get.
 - [Golden questions](how-to/golden-questions.md): questions about your own content, to
   measure with `eval` which search mode, model and chunking suit it.
+- [Evaluate search on a Mac in one click](how-to/evaluate-on-macos.md): one script,
+  opened from Finder, readies Ollama, the models and a reranking server, runs every
+  evaluation with its progress and an analysis, and packs the results to share.
 - [Observe runs with Grafana](how-to/observe-with-grafana.md): traces, metrics and logs
   in Grafana's LGTM container on this machine, with Podman or Docker.
 - [Evaluate `ask` with agents](how-to/evaluate-with-agents.md), for contributors: golden
@@ -116,10 +119,11 @@ the command and those who change its code, unless it is marked for contributors.
 - [Chunking](explanation/chunking.md): how documents are cut into chunks for search by
   meaning, and how the four chunkings were compared.
 - [Evaluating search](explanation/search-evaluation.md): how the embedding model was
-  chosen, and how ranking by words, by meaning or by both is measured.
+  chosen, how ranking by words, by meaning or by both is measured and read, what an
+  answer costs, and the default rules that keep a setting unless a challenger qualifies.
 - [Reranking](explanation/reranking.md): how a server on this machine reorders the first
   documents found, why only those, what a search does when it fails, why it is off by
-  default, and the bar that says whether to turn it on.
+  default, and the default rule that says whether to turn it on.
 
 ## Elsewhere in the repository
 

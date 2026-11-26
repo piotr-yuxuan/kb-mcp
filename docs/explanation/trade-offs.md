@@ -474,7 +474,8 @@ parent's from its snapshot in the raw store
   a document since plan 061, so that a page under one sits under it by its id.
 - **Cost.** Every hit, passage and link is a few characters longer, measured by
   [the budgets' tests](../../tests/test_budgets.py). A bare key that two documents hold
-  is refused, so an agent citing it makes `eval agents` refuse its grading. An issue's
+  is refused, so an agent citing it leaves an unresolved citation, which `eval-agents`
+  grades as citing no document. An issue's
   breadcrumb stops at the first parent that the raw store lacks, with that parent's
   title. `browse` looks a listed document's parents of other scopes up through the index,
   one query a level. Under the chunkings `section-paths` and `small-to-big`, whose texts carry the

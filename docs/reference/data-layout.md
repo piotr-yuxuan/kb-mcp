@@ -30,7 +30,7 @@ no location and is not for commands.
 | `<data>/aliases.toml` | `aliases` | the user (043) | `index` (043), [below](#the-alias-file) |
 | `<data>/vectors.sqlite` | `vectors` | `embed`, `eval`, `eval-rerank` (011) | `embed`, `eval`, `eval-rerank` (011) |
 | `<data>/vectors.sqlite.lock` | `vectors`, by `vector_cache.lock_of` | `embed`, `eval`, `eval-rerank` (023) | `embed`, `eval`, `eval-rerank` (023) |
-| `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011) | `eval`, `eval-rerank` (011); its indexes, `embed` (023) |
+| `<data>/eval/` | `evaluations` | the user, `eval`, `eval-rerank` (011); its `logs/`, `scripts/evaluate.py` | `eval`, `eval-rerank` (011); its indexes, `embed` (023); its results, `scripts/evaluate.py` |
 | `<data>/session/` | `session` | `login`, a `fetch` whose site renews its cookies (004) | a run signed in by the saved session (004, 015) |
 | `<data>/session/.lock` | `session`, by `adopt_former_session` | `login`, a `fetch` that moves the former session (059) | the same, which leaves the move to a run holding it (059) |
 | `<data>/runs/` | `runs` | each run of `fetch`, `prepare`, `index`, `embed` and `refresh` but a dry run (062); `fetch` before (004) | `refresh --resume` (062), [below](#runs) |
@@ -1323,20 +1323,111 @@ each of those files has one writer; a later index that reads the store does so t
 so takes the store's lock, and adds its files to what the prune follows. Under
 `<data>/eval/`, `indexes/<chunking>/<model>.sqlite` (each `/` and `:` of the name
 written `_`) are the indexes that `eval` builds, one per model and chunking, and
-`results/<UTC time>.json`
-its numbers: the golden file's SHA-256, models, chunkings, measures of `search` and of
-`ask`, costs, ranks and tests, by question id, never a question's text, and for each
-model the chunking that plan 019's rule chooses. `results/<UTC time>-rerank.json` are
-`eval-rerank`'s (plan 022): the golden file's SHA-256, the mode, the models, the
-chunking, the ids that the reranking server lists, and the sample, its number of
-questions and its seed, or `null` for every question; for each depth, 0 for the order
-not reranked, the measures of `search` and of `ask` by group, the times, the tokens and
-the ranks by question id, and for depth 0 Recall@N at each depth measured; then the
-bar's verdicts and the depth it chooses, or `null` when the depths measured are not
-the bar's. `eval-agents` writes into a directory
+`results/` holds the numbers of `eval` and `eval-rerank`, which
+[evaluation results](#evaluation-results) lists. `eval-agents` writes into a directory
 of its own, given by `--out`, never under `<data>/` unless placed there: its layout is
 in [evaluating with agents](../how-to/evaluate-with-agents.md).
 A `<data>/models/` folder left by plan 011 is read by nothing.
+
+## Evaluation results
+
+Each run of `eval` writes `<data>/eval/results/<UTC time>.json`, and each run of
+`eval-rerank` `<data>/eval/results/<UTC time>-rerank.json`: one JSON object each, which
+nothing of the program reads back, and which the macOS script and later analyses read.
+They hold ids, numbers and refs, never a question's text nor a document's content: the
+golden questions by their ids, the documents by their refs. Their keys are a contract:
+a key changes or leaves only by a decision of a plan, which says how.
+
+`scripts/evaluate.py`, which runs the evaluations on a Mac, logs each of its steps in
+`<data>/eval/logs/<stamp>-<step>.log`, and reads the results that its steps write;
+nothing of the program reads those logs.
+
+`eval`'s file:
+
+| Key | Value |
+|---|---|
+| `golden_sha256` | the SHA-256 of the golden file read |
+| `built_at` | when the run began, in ISO 8601, UTC |
+| `skipped` | the golden questions left out, each `{"id", "ref", "why"}`: the first of its expected refs that names no document of the index, and why |
+| `test` | the paired test: its `kind`, its `samples` and its `seed` |
+| `indexes` | each evaluated index, a model and a chunking, as below |
+| `verdicts` | the default rules' verdicts, as below: the search mode's for each index, then the chunking's for each model |
+
+Each of `indexes`, its measures by mode (`lexical`, `semantic`, `hybrid`):
+
+| Key | Value |
+|---|---|
+| `model`, `chunking`, `fingerprint` | the index's model, its chunking, and the model's fingerprint |
+| `embedded`, `seconds` | the texts that the model embedded for it in this run, and how long its build took, in seconds |
+| `costs` | `chunks`; `characters`, of the texts that the chunks embed; `tokens`, that the endpoint reported, or null; `bytes`, of the index file; `estimated`, the characters at four a token |
+| `documents` | the documents indexed, counted by source, then by type |
+| `documents_sha256` | the SHA-256 of the JSON list of the documents indexed, each its path and its file's digest, sorted by path |
+| `times`, `ask_times` | by mode, `[median, 95th percentile]` in seconds of a `search` as the server answers it, and of an answer of `ask` |
+| `groups` | by mode, then group, `all` among them: the means of `recall`, `reciprocal_rank`, `ndcg`, `success`, `section` and `tokens`, `section` over the questions that `aligned` counts, null when none |
+| `asked` | by mode, then group: the means of `found`, `evidence`, null without evidence, and `tokens`, and `per_kilotoken`, E/kT, the evidence held over the thousands of tokens that the answers of the questions with evidence cost, null when they cost none |
+| `ranks` | by mode, then question id: each expected document's rank in the first ten, null past it |
+| `per` | by mode, then question id: the question's own measures, as `groups` has them, `section` its own, null when no expected document with evidence was found |
+| `asked_per` | by mode, then question id: the question's own measures of `ask`, as `asked` has them |
+| `aligned` | how many questions `groups`' `section` averages: those whose expected document, with evidence, every index and mode of the run found in its first ten |
+| `raw` | by mode, then question id: `hits`, `passages` and `ranking`, as below |
+
+Each question's `raw`:
+
+| Key | Value |
+|---|---|
+| `hits` | the hits of `search`'s first answer, at most 8, the first first: each `ref`; `section`, the number of the section shown; `read_tokens`, the tokens of `read`'s answer for that section; `snippet_evidence` and `section_evidence`, whether its snippet, and its section, hold the evidence of an expected document |
+| `passages` | the passages of `ask`'s first answer: each `ref`, its `characters` and whether it holds the `evidence` of an expected document |
+| `ranking` | the refs of the mode's first 30 documents, the first first |
+
+Each of `verdicts`:
+
+| Key | Value |
+|---|---|
+| `rule` | the rule's name: `search mode`, `chunking` or `reranking depth` |
+| `fixed` | what the arms share: the `model` and the `chunking` for the search mode, the `model` for the chunking, nothing for the depth |
+| `control` | the control's value |
+| `kept` | the value kept, the control's when no challenger qualifies; null when there is no verdict |
+| `reason` | why there is no verdict; else null |
+| `untested` | the values of the rule's family that the run did not measure |
+| `means` | by value measured: the mean of the deciding measure, to three decimals |
+| `adjusted` | by challenger: its p-value times the size of the rule's family, at most 1 |
+| `losses` | by challenger, then guarded group: the MRR@10 that it loses against the control |
+| `spent` | by value measured: the tokens that its index embeds, or a search's 95th percentile in whole milliseconds |
+| `failed` | by challenger: the clauses that it fails, of `gain`, `guards` and `bound` |
+
+`eval-rerank`'s file:
+
+| Key | Value |
+|---|---|
+| `golden_sha256`, `test`, `built_at`, `skipped` | as in `eval`'s |
+| `mode`, `model`, `chunking` | the settings measured |
+| `fingerprint`, `costs`, `documents`, `documents_sha256` | of its index, as in `eval`'s |
+| `reranker` | the setting `rerank.model` |
+| `served` | the ids that the reranking server lists |
+| `sample` | `{"questions", "seed"}`, or null for every question |
+| `arms` | each depth measured, 0 for the order not reranked, as below |
+| `verdicts` | the reranking depth's verdict, as `eval`'s verdicts, its values `none` and the depths |
+
+Each of `arms`:
+
+| Key | Value |
+|---|---|
+| `depth` | the depth, 0 for the order not reranked |
+| `groups`, `asked` | by group: the means of `search`'s measures and of `ask`'s, as in `eval`'s, but their `tokens`, not counted: 0, and `per_kilotoken` null |
+| `times` | `[median, 95th percentile]` in seconds of a `search` as the server answers it, reranked at the depth |
+| `tokens` | the tokens that the reranking server counted for the arm's requests, null when an answer counted none |
+| `recall` | by each depth N measured: the share of the expected documents in the arm's first N; the order not reranked's is the most that reranking N documents can bring into the first ten |
+| `ranks` | by question id: each expected document's rank in the first ten, null past it |
+| `failed` | the questions whose reranking failed, measured in their order not reranked |
+
+`eval-agents grade` writes `results.json` into the runs' directory: `golden_sha256`;
+`agents`, the alias of the agents' model; `models`, those that the harness reported;
+`model`; `outcomes`, each run's outcome, as `--format json` gives it; `verdict`, with
+`keeps_ask`, null when no question is in the tests, and `differences`, B less A on
+`success`, `calls` and `tokens`; `counted`, the runs by outcome; `pairs`, the questions
+in the tests; `left_out`, those that a run never attempted leaves out; and `no_result`,
+by surface, `A` and `B`, the runs in the tests that were attempted and gave no result,
+each counted as a failure.
 
 ## The session
 

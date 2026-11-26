@@ -2,7 +2,7 @@
 
 Pure: rankings come in as lists of document paths, best first, and questions name the
 paths that answer them; so do the passages that ask quotes, with their texts. Nothing
-here runs a search. ``default_chunking`` holds plan 019's rule for the default chunking.
+here runs a search. ``RULES`` holds the default rules as data, and ``verdict`` applies one.
 """
 
 from __future__ import annotations
@@ -11,11 +11,13 @@ import math
 import re
 from collections.abc import Mapping
 from statistics import fmean
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, get_args
 
 import numpy as np
 from pydantic import Field
 
+from kb_mcp.config.settings import SearchMode
+from kb_mcp.kernel.names import BAR_DEPTHS, BOUND_S, CHUNKINGS
 from kb_mcp.kernel.records import Record
 
 if TYPE_CHECKING:
@@ -27,18 +29,20 @@ CUTOFF = 10
 EXPECTED, PARTIAL = 2, 1
 SAMPLES = 10_000
 SEED = 11
-# What evidence is compared without: a link's address, emphasis and code marks, and the
-# pipes of a table's cells, which plain text renders as spaces.
-LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+# What evidence is compared without: Markdown's backslash escapes, a link's or an image's
+# address and an image's mark, emphasis and code marks, and the pipes of a table's cells,
+# which plain text renders as spaces.
+ESCAPE = re.compile(r"\\([!-/:-@\[-`{-~])")
+LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 MARKS = re.compile(r"[*_`|]")
-# Plan 019's rule: the chunking that a challenger must beat; the level of its adjusted
-# p-value on Evidence@ask; the MRR@10 it may lose; how many times the control's tokens
-# it may cost; and within how much Evidence@ask two are taken as equal.
-CONTROL = "sections"
+# The level of an adjusted p-value; within how much of the best mean a default rule keeps
+# the cheapest challenger that qualifies.
 ALPHA = 0.05
-MRR_LOSS = 0.02
-COST = 3
-TIE = 0.01
+MARGIN = 0.01
+# The arm not reranked, the control of the reranking depth, as a verdict names it.
+NOT_RERANKED = "none"
+# The search modes, the cheapest first.
+MODES: tuple[SearchMode, ...] = get_args(SearchMode.__value__)
 
 
 class Question(Record):
@@ -51,6 +55,10 @@ class Question(Record):
     groups: tuple[str, ...] = ()  # such as the kind of wording, or the language
     evidence: Mapping[str, str] = Field(default_factory=dict)  # a phrase of an expected path
 
+    def evidenced(self, path: str, text: str) -> bool:
+        """Say whether a document's text holds its evidence; False for one without."""
+        return path in self.evidence and holds(text, self.evidence[path])
+
 
 class Measures(Record):
     """How one ranking answers one question, or many on average."""
@@ -62,6 +70,7 @@ class Measures(Record):
     # Of the expected documents with evidence found within CUTOFF, the share whose shown
     # section holds the evidence; None when there is none such.
     section: float | None = None
+    tokens: float = 0  # of search's first answer, as served
 
     @classmethod
     def mean(cls, many: Sequence[Measures]) -> Measures:
@@ -73,6 +82,7 @@ class Measures(Record):
             ndcg=fmean(each.ndcg for each in many),
             success=fmean(each.success for each in many),
             section=fmean(sections) if sections else None,
+            tokens=fmean(each.tokens for each in many),
         )
 
 
@@ -83,48 +93,157 @@ class Quoted(Record):
     # Evidence@ask: of the expected documents with evidence, the share whose evidence
     # their passage holds; None when none has evidence.
     evidence: float | None
+    tokens: float = 0  # of ask's first answer, as served
+    per_kilotoken: float | None = None  # E/kT: evidence held per thousand tokens
 
     @classmethod
     def mean(cls, many: Sequence[Quoted]) -> Quoted:
-        """Average over questions; Evidence@ask over those that have evidence."""
-        evidence = [each.evidence for each in many if each.evidence is not None]
+        """Average over questions; Evidence@ask over those that have evidence.
+
+        E/kT is a ratio of sums over the questions with evidence: the evidence held over
+        the thousands of tokens that their answers cost.
+        """
+        held = [each for each in many if each.evidence is not None]
+        spent = sum(each.tokens for each in held) / 1000
         return cls(
-            found=fmean(each.found for each in many), evidence=fmean(evidence) if evidence else None
+            found=fmean(each.found for each in many),
+            evidence=fmean(each.evidence for each in held) if held else None,
+            tokens=fmean(each.tokens for each in many),
+            per_kilotoken=sum(each.evidence for each in held) / spent if spent else None,
         )
 
 
-class Scored(Record):
-    """What a chunking scored in hybrid mode, question by question, and what it costs."""
+class DefaultRule(Record):
+    """The rule that keeps a setting's value unless a challenger qualifies on the same questions.
 
-    reciprocal_ranks: tuple[float, ...]  # MRR@10 of each question
-    evidence: tuple[float, ...]  # Evidence@ask of each question with evidence
-    tokens: int  # of the texts that its index embeds, at the characters of a token
-
-
-class Choice(Record):
-    """The default chunking that the rule gives, and the tests that it read.
-
-    Each test is a challenger's against the control, on ``mrr`` or ``evidence``.
+    Its family is ``values`` but the control. A challenger qualifies when its mean on
+    ``decides`` is higher than the control's, with a p-value below ALPHA once multiplied
+    by the family's size; when no group of ``guards`` loses more of MRR@10 than it allows;
+    and when it spends at most ``bound``: tokens embedded, as a multiple of the control's,
+    or a search's 95th percentile, in milliseconds. Of those qualifying, the cheapest
+    within MARGIN of the best mean is kept: the fewest tokens, or the first of ``values``.
     """
 
-    chunking: str
-    pvalues: dict[str, dict[str, float]]
-    adjusted: dict[str, dict[str, float]]  # by Holm, over every test
+    name: str  # the decision, as a verdict says it
+    values: tuple[str, ...]  # cheapest first, when what it spends is time
+    decides: Literal["MRR@10", "Evidence@ask"]
+    guards: Mapping[str, float]  # the most MRR@10 that each group may lose, "all" of them
+    spends: Literal["tokens", "ms"]
+    bound: float
+
+
+class Verdict(Record):
+    """What a default rule gave on the arms run: the value kept, or why there is none.
+
+    Each arm is named by its value. Each challenger run has its clauses, its gain, the
+    groups' losses and what it spends; ``failed`` names those that it fails, of ``gain``,
+    ``guards`` and ``bound``.
+    """
+
+    rule: str  # its name
+    fixed: Mapping[str, str]  # the settings that the arms share, such as the model
+    control: str
+    kept: str | None  # None: no verdict
+    reason: str | None = None  # why there is no verdict
+    untested: tuple[str, ...] = ()  # the family's values not run, which cannot qualify
+    means: Mapping[str, float] = Field(default_factory=dict)  # on decides, to three decimals
+    adjusted: Mapping[str, float] = Field(default_factory=dict)  # times the family's size
+    losses: Mapping[str, Mapping[str, float]] = Field(default_factory=dict)  # by group
+    spent: Mapping[str, int] = Field(default_factory=dict)  # as the bound reads it
+    failed: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    def lines(self) -> list[str]:
+        """Say the verdict, then each challenger's clauses, then the values not run."""
+        rule = RULES[self.rule]
+        if self.kept is None:
+            said = f"no verdict, since {self.reason}"
+        elif self.kept == self.control:
+            said = f"{self.kept} stays"
+        else:
+            said = f"{self.kept}, in place of {self.control}"
+        held = f" for {', '.join(self.fixed.values())}" if self.fixed else ""
+        lines = [f"{rule.name.capitalize()}{held}, by the default rule: {said}."]
+        for name, failed in self.failed.items():
+            losses = ", ".join(
+                f"{group} {self.losses[name][group]:.3f}"
+                if group in self.losses[name]
+                else f"{group} n/a"
+                for group in rule.guards
+            )
+            gains, holds, within = (
+                "no" if clause in failed else "yes" for clause in ("gain", "guards", "bound")
+            )
+            if rule.spends == "tokens":
+                most = rule.bound * self.spent[self.control]
+                spent = f"{self.spent[name]:,} tokens embedded, at most {most:,.0f}"
+            else:
+                spent = f"95th percentile {self.spent[name]:,} ms, at most {rule.bound:,.0f} ms"
+            lines.append(
+                f"  {name}: {rule.decides} {self.means[name]:.3f} against"
+                f" {self.means[self.control]:.3f}, adjusted p = {self.adjusted[name]:.4f},"
+                f" gains {gains}; MRR@10 lost: {losses}, holds {holds}; {spent}, within {within}"
+            )
+        if self.untested:
+            lines.append(f"  {', '.join(self.untested)}: not run, so cannot qualify")
+        return lines
+
+
+# The default rules, by name. A guard of 0.05 is about one standard error of a group's
+# mean difference at some 32 questions: one of 0.02 would refuse a harmless challenger
+# about one time in three.
+RULES = {
+    rule.name: rule
+    for rule in (
+        DefaultRule(
+            name="search mode",
+            values=MODES,
+            decides="MRR@10",
+            guards={"identifier": 0.05, "keyword": 0.05},
+            spends="ms",
+            bound=500,
+        ),
+        DefaultRule(
+            name="chunking",
+            values=CHUNKINGS,
+            decides="Evidence@ask",
+            guards={"all": 0.02, "identifier": 0.05, "keyword": 0.05, "paraphrase": 0.05},
+            spends="tokens",
+            bound=3,
+        ),
+        DefaultRule(
+            name="reranking depth",
+            values=(NOT_RERANKED, *(str(depth) for depth in BAR_DEPTHS)),
+            decides="MRR@10",
+            guards={"identifier": 0.05, "keyword": 0.05},
+            spends="ms",
+            bound=BOUND_S * 1000,
+        ),
+    )
+}
 
 
 def plain(text: str) -> str:
-    """Write text as evidence is compared: links as their words, no marks, one case, spaced."""
-    return " ".join(MARKS.sub("", LINK.sub(r"\1", text)).casefold().split())
+    """Write text as evidence is compared: unescaped, links as their words, no marks, one case."""
+    return " ".join(MARKS.sub("", LINK.sub(r"\1", ESCAPE.sub(r"\1", text))).casefold().split())
+
+
+def holds(text: str, phrase: str) -> bool:
+    """Say whether a text holds a phrase: both ``plain``, the phrase as whole words."""
+    return re.search(rf"(?<!\w){re.escape(plain(phrase))}(?!\w)", plain(text)) is not None
 
 
 def measure(
-    ranked: Sequence[str], question: Question, shown: Mapping[str, str] | None = None
+    ranked: Sequence[str],
+    question: Question,
+    shown: Mapping[str, str] | None = None,
+    tokens: int = 0,
 ) -> Measures:
     """Measure one ranking against the documents of one question.
 
     nDCG takes each document's relevance as its gain, discounted by the logarithm of
     its rank, over the best ordering of the question's documents. ``shown`` gives the
-    text of the section shown for each ranked document, for Section@10.
+    text of the section shown for each ranked document, for Section@10; ``tokens``, those
+    of search's answer.
     """
     top = list(ranked[:CUTOFF])
     expected = set(question.expected)
@@ -135,7 +254,7 @@ def measure(
     best = sum(gain / math.log2(rank + 1) for rank, gain in enumerate(ideal, 1))
     texts = shown or {}
     held = [
-        plain(question.evidence[path]) in plain(texts.get(path, ""))
+        holds(texts.get(path, ""), question.evidence[path])
         for path in top
         if path in expected and path in question.evidence
     ]
@@ -145,59 +264,105 @@ def measure(
         ndcg=found / best,
         success=1.0 if top[:1] and top[0] in expected else 0.0,
         section=fmean(held) if held else None,
+        tokens=tokens,
     )
 
 
-def quoting(passages: Sequence[tuple[str, str]], question: Question) -> Quoted:
-    """Measure the passages of ask's first answer, each a path and its text, for a question."""
+def quoting(passages: Sequence[tuple[str, str]], question: Question, tokens: int = 0) -> Quoted:
+    """Measure the passages of ask's first answer, each a path and its text, for a question.
+
+    ``tokens`` are the answer's; one question's E/kT is reckoned as a group's.
+    """
     texts = dict(passages)
     held = [
-        plain(phrase) in plain(texts.get(path, ""))
+        holds(texts.get(path, ""), phrase)
         for path, phrase in question.evidence.items()
         if path in question.expected
     ]
     found = sum(path in texts for path in question.expected) / len(question.expected)
-    return Quoted(found=found, evidence=fmean(held) if held else None)
+    return Quoted.mean([Quoted(found=found, evidence=fmean(held) if held else None, tokens=tokens)])
 
 
-def default_chunking(scored: Mapping[str, Scored]) -> Choice:
-    """Choose the default chunking among those scored, the control among them, by the rule.
+def verdict(
+    rule: DefaultRule,
+    control: str,
+    arms: Mapping[str, tuple[Sequence[float], Mapping[str, float], int]],
+    fixed: Mapping[str, str],
+) -> Verdict:
+    """Apply a default rule to the arms run, each named by its value, against the control.
 
-    A challenger qualifies when it beats the control on Evidence@ask, with a p-value
-    below ALPHA once adjusted by Holm over every test of every challenger, on MRR@10
-    and on Evidence@ask; loses at most MRR_LOSS of MRR@10; and costs at most COST times
-    the control's tokens. The best Evidence@ask wins, and within TIE of it the cheapest;
-    else the control stays.
+    Each arm gives the measure that the rule decides on, question by question, of the
+    questions that it measures, in the same order for all; its MRR@10 by group, "all" the
+    questions; and what it spends. An arm outside the rule's values is left out. Without
+    the control, a challenger, or a question measured, there is no verdict, and the reason
+    says why. Values compare as reported: means and losses to three decimals, p-values to
+    four, times in whole milliseconds. A group that the golden file does not name has no
+    loss, and holds.
     """
-    control = scored[CONTROL]
-    pvalues = {
-        name: {
-            "mrr": paired_test(control.reciprocal_ranks, each.reciprocal_ranks),
-            "evidence": paired_test(control.evidence, each.evidence),
-        }
-        for name, each in scored.items()
-        if name != CONTROL
+    family = [value for value in rule.values if value != control]
+    run = [value for value in family if value in arms]
+    untested = tuple(value for value in family if value not in arms)
+    if control not in arms:
+        reason = f"its control, {control}, was not run"
+    elif not run:
+        reason = "no challenger of its family was run"
+    elif not arms[control][0]:
+        reason = f"no golden question has a measure of {rule.decides}"
+    else:
+        reason = None
+    if reason:
+        return Verdict(
+            rule=rule.name,
+            fixed=fixed,
+            control=control,
+            kept=None,
+            reason=reason,
+            untested=untested,
+        )
+    scores = {name: arms[name][0] for name in (control, *run)}
+    groups = {name: arms[name][1] for name in (control, *run)}
+    spent = {name: arms[name][2] for name in (control, *run)}
+    means = {name: round(fmean(each), 3) for name, each in scores.items()}
+    adjusted = {
+        name: min(1.0, len(family) * paired_test(scores[control], scores[name])) for name in run
     }
-    tests = [(name, measure) for name, tested in pvalues.items() for measure in tested]
-    adjusted: dict[str, dict[str, float]] = {name: {} for name in pvalues}
-    for (name, measure), value in zip(
-        tests, holm([pvalues[name][measure] for name, measure in tests]), strict=True
-    ):
-        adjusted[name][measure] = value
-    evidence = {name: fmean(each.evidence or (0.0,)) for name, each in scored.items()}
-    mrr = {name: fmean(each.reciprocal_ranks or (0.0,)) for name, each in scored.items()}
-    qualified = [
-        name
-        for name in adjusted
-        if evidence[name] > evidence[CONTROL]
-        and adjusted[name]["evidence"] < ALPHA
-        and mrr[CONTROL] - mrr[name] <= MRR_LOSS
-        and scored[name].tokens <= COST * control.tokens
-    ]
-    best = max((evidence[name] for name in qualified), default=0.0)
-    close = [name for name in qualified if best - evidence[name] <= TIE]
-    chosen = min(close, key=lambda name: scored[name].tokens, default=CONTROL)
-    return Choice(chunking=chosen, pvalues=pvalues, adjusted=adjusted)
+    losses = {
+        name: {
+            group: round(round(groups[control][group], 3) - round(groups[name][group], 3), 3)
+            for group in rule.guards
+            if group in groups[control]
+        }
+        for name in run
+    }
+    most = rule.bound * (spent[control] if rule.spends == "tokens" else 1)
+    failed = {
+        name: tuple(
+            clause
+            for clause, holds in (
+                ("gain", means[name] > means[control] and round(adjusted[name], 4) < ALPHA),
+                ("guards", all(loss <= rule.guards[group] for group, loss in losses[name].items())),
+                ("bound", spent[name] <= most),
+            )
+            if not holds
+        )
+        for name in run
+    }
+    qualified = [name for name in run if not failed[name]]
+    best = max((means[name] for name in qualified), default=0.0)
+    close = [name for name in qualified if round(best - means[name], 3) <= MARGIN]
+    cheaper = spent.__getitem__ if rule.spends == "tokens" else rule.values.index
+    return Verdict(
+        rule=rule.name,
+        fixed=fixed,
+        control=control,
+        kept=min(close, key=cheaper, default=control),
+        untested=untested,
+        means=means,
+        adjusted=adjusted,
+        losses=losses,
+        spent=spent,
+        failed=failed,
+    )
 
 
 def paired_test(before: Sequence[float], after: Sequence[float], seed: int = SEED) -> float:

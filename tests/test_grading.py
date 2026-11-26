@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from kb_mcp.evaluation.domain.evaluation import Question
+from kb_mcp.evaluation.domain.evaluation import Question, quoting
 from kb_mcp.evaluation.domain.grading import (
     AgentAnswer,
     Harness,
@@ -87,6 +87,31 @@ def test_a_quote_not_in_the_document_its_ref_names_is_not_grounded(quote: dict[s
     found = graded(answered(quotes=(good, quote)))
     assert not found.grounded
     assert not found.success
+
+
+@pytest.mark.parametrize(
+    ("body", "quote", "held"),
+    [
+        ("Kafka keeps logs\nfor **seven days**.", "Kafka keeps logs for seven days", True),
+        ("It costs \\$5 a month.", "It costs $5 a month", True),
+        ("See ![the chart](chart.png) below.", "See the chart below", True),
+        ("KAFKA KEEPS LOGS", "kafka keeps logs", True),
+        ("Restart the brokers.", "art the brokers", False),
+    ],
+    ids=["marks and a line break", "an escape", "an image", "case", "within a word"],
+)
+def test_grounding_compares_as_evidence_does(body: str, quote: str, *, held: bool) -> None:
+    """D7, D8, E13: a quote is grounded in a body exactly where, as evidence, it is held.
+
+    Both read the texts as D8 says: escapes, an image's mark and emphasis undone, links as
+    their words, one case, whole words; ask's passage of the same body is the evidence's
+    measure.
+    """
+    question = Question(id="q1", text="", expected=("doc.md",), evidence={"doc.md": quote})
+    answer = answered(quotes=({"ref": "doc", "text": quote},))
+    found = grade(answer, question, {"doc": "doc.md"}.get, {"doc.md": body}.__getitem__)
+    assert found.grounded is held
+    assert quoting([("doc.md", body)], question).evidence == float(held)
 
 
 def test_an_expected_document_cited_without_its_evidence_is_no_success() -> None:
