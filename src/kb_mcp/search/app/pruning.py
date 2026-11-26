@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from opentelemetry.trace import Span
 
     from kb_mcp.kernel.names import Detail
+    from kb_mcp.search.app.indexing import Filled
 
 TRACER = trace.get_tracer(__name__)
 METER = metrics.get_meter(__name__)
@@ -52,18 +53,6 @@ UNLISTED = (
     " is not followed: make it readable, or put what it points to in its place; deleting it"
     " would let the next prune delete the vectors of the indexes it holds"
 )
-
-
-class Written(Record):
-    """What the index that a run wrote holds, as its prune reads it.
-
-    The files of the mirror that it skipped, its documents, and the keys of its chunks'
-    vectors, which another run's index renamed into place since may read no longer.
-    """
-
-    skipped: int
-    documents: int
-    keys: frozenset[str] = frozenset()
 
 
 # Bytes in a megabyte, as the text says the vector cache's size.
@@ -146,10 +135,10 @@ def said(pruned: Pruned, span: Span, started: float) -> Pruned:
     return pruned
 
 
-def prune(store: Path, index: Path, evaluation_indexes: Path, written: Written) -> Pruned:
+def prune(store: Path, index: Path, evaluation_indexes: Path, filled: Filled) -> Pruned:
     """Delete from the store every vector that neither the index nor the evaluation reads.
 
-    Nor any that the index that the run wrote reads, by ``written``'s keys. A file that
+    Nor any that the index that the run wrote reads, by ``filled``'s ``kept``. A file that
     it skipped, or no document, holds the prune back, as the index then lacks what the
     mirror still holds; so does an index that cannot say which vectors it
     reads, being by words alone or damaged, and a folder that cannot be listed, or a
@@ -160,8 +149,8 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, written: Written) 
     """
     started = time.monotonic()
     with TRACER.start_as_current_span("index.prune") as span:
-        if written.skipped or not written.documents:
-            reason = SKIPPED if written.skipped else NO_DOCUMENT
+        if filled.skipped or not filled.documents:
+            reason = SKIPPED if filled.skipped else NO_DOCUMENT
             return said(Pruned(outcome="held back", reason=reason), span, started)
         with vector_cache.exclusive(store) as held:
             if not held:
@@ -180,7 +169,7 @@ def prune(store: Path, index: Path, evaluation_indexes: Path, written: Written) 
             except UnavailableIndexError, sqlite3.DatabaseError:
                 held_back = Pruned(outcome="held back", reason=UNREADABLE, file=shown(path))
                 return said(held_back, span, started)
-            read = keys.pop(index) | written.keys
+            read = keys.pop(index) | filled.kept
             evaluation = set().union(*keys.values()) - read
             kept = read | evaluation
             try:

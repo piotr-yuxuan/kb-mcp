@@ -29,6 +29,7 @@ from kb_mcp.search.adapters.sqlite_index import indexes_in, reading
 from kb_mcp.search.app import pruning
 from kb_mcp.search.app.indexing import (
     Embedding,
+    Filled,
     Indexing,
     build_index,
     fill_and_prune,
@@ -41,7 +42,6 @@ from kb_mcp.search.app.pruning import (
     UNLISTED,
     UNREADABLE,
     Pruned,
-    Written,
     prune,
 )
 from tests.endpoint import Scripted, scripted, serving, tiny
@@ -61,7 +61,6 @@ if TYPE_CHECKING:
     from kb_mcp.kernel.names import Chunking
     from kb_mcp.kernel.records import Outcome
     from kb_mcp.search.adapters.embedding import Embedder
-    from kb_mcp.search.app.indexing import Filled
     from tests.conftest import InMemory
 
 FILLER_PAGES = 5
@@ -877,8 +876,8 @@ def test_an_index_by_words_alone_in_place_holds_the_prune_back(data: Path) -> No
     other = kept_whole(data)
     build_index(data / "docs", data / "index.sqlite", MOMENT)
     evaluation = data / "eval" / "indexes"
-    written = Written(skipped=0, documents=1)
-    done = prune(data / "vectors.sqlite", data / "index.sqlite", evaluation, written)
+    filled = Filled(index=data / "index.sqlite", model="tiny", chunks=0, documents=1)
+    done = prune(data / "vectors.sqlite", data / "index.sqlite", evaluation, filled)
     assert (done.outcome, done.file) == ("held back", str(data / "index.sqlite"))
     assert other in stored(data / "vectors.sqlite")
 
