@@ -389,6 +389,20 @@ def test_recall_at_n_is_the_share_of_expected_documents_in_the_first_stage_s_fir
     assert record["arms"][0]["recall"] == pytest.approx(expected)
 
 
+def test_eval_rerank_s_verdicts_have_no_modes(data: Path, capsys: CaptureFixture[str]) -> None:
+    """093's D2: each verdict of the results file and the JSON keeps ``modes``, empty here.
+
+    The reranking's rule weighs every depth in one mode, hybrid.
+    """
+    with serving(Scripted()) as url, serving(Reranks()) as rerank_url:
+        assert evaluated(data, url, rerank_url, "--format", "json") == 0
+    document = json.loads(capsys.readouterr().out)
+    [results] = (data / "eval" / "results").glob("*-rerank.json")
+    record = json.loads(results.read_text(encoding="utf-8"))
+    for verdicts in (record["verdicts"], document["verdicts"]):
+        assert [verdict["modes"] for verdict in verdicts] == [{}]
+
+
 @pytest.mark.parametrize(
     ("kept", "said"), [("20", "20, in place of none."), ("none", "none stays.")]
 )
