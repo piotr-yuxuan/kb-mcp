@@ -26,6 +26,10 @@ pandoc --version | head -1
 atlassian-offline-mcp model check
 ```
 
+This page names the old program's default data directory, `~/atlassian-offline-mcp`. If
+its settings name another `data_dir`, use that path wherever this page says
+`~/atlassian-offline-mcp`.
+
 Then check that the clone can be made safely:
 
 ```bash
@@ -71,8 +75,10 @@ reads none of them: its settings file is `~/.config/kb-mcp/config.toml`, its var
 On macOS, an APFS clone, which takes no time and no space until a file is written:
 
 ```bash
-cp -c -R ~/atlassian-offline-mcp ~/kb-mcp
+cp -c -R -p ~/atlassian-offline-mcp ~/kb-mcp
 ```
+
+`-p` keeps each file's times and modes, as the rehearsal's copy did.
 
 On Linux, `cp -a --reflink=always` does the same on Btrfs or XFS. Then check each
 database of the clone:
@@ -139,9 +145,10 @@ out the settings that hold their default. Nothing in kb-mcp stops a settings fil
 names the old directory: its first run would upgrade that directory in place, which the
 old program could no longer read, and leave no way back. A copy of the old file whole is
 refused for its `site`, but once `site` is moved into the sources' tables, a `data_dir`
-left in it passes `check` silently, as the rehearsal showed; the first `grep` finds it,
-whatever the path it names. Look in the same way at each MCP client's entry and each
-script that sets `KB_MCP_*` variables.
+left in it passes `check` silently, as the rehearsal showed. The first `grep` catches
+the usual spellings; the test that binds is `check`, whose `data_dir` and `logs.dir`
+must both say `[default]`. Look in the same way at each script that sets `KB_MCP_*`
+variables; section 7 checks the MCP clients' entries.
 
 ## 5. Check the sign-in
 
@@ -210,13 +217,13 @@ work log, against an endpoint on the machine:
 |---|---|---|---|
 | 0.1.0's `sync --since all`, which built the old directory | 36 s | 90 to the site | fetched every page and issue |
 | clone and `quick_check` | under 1 s | none | 181 files |
-| `doctor` | 2 s | 3 to the site | each source signed in |
+| `doctor` | 2.4 s | 3 to the site | each source signed in |
 | `refresh`: fetch | 2.4 s | 8 to the site | 13 pages listed, none fetched; the project's keys read whole; 29 work-log documents carried |
 | `refresh`: prepare | 0.7 s | none | 25 conversions adopted; Confluence and Jira 0 converted, every file rewritten; the work log's 29 converted |
 | `refresh`: index | 0.1 s | none | rebuilt whole: 53 documents, 192 sections, 8 persons |
 | `refresh`: embed | 0.04 s | 2 to the endpoint | 85 chunks, each vector taken back, none embedded; prune held back |
 | `eval`, every chunking | 2.5 s | 188 to the endpoint | four indexes rebuilt, none embedded (0.1.0's had embedded 316 texts) |
-| `embed` again | 1 s | 2 to the endpoint | pruned, 401 vectors kept, none deleted |
+| `embed` again | 1 s | not counted | pruned, 401 vectors kept, none deleted |
 
 On a real directory the fetch costs a few requests per space and project, whatever its
 size, and the first prepare, index and evaluation take about as long as a full prepare,
@@ -227,12 +234,18 @@ their breadcrumb, and may be embedded again; the rehearsal embedded none.
 ## 7. Register the agents again
 
 Once the first runs have ended, register kb-mcp where the old server was, with the
-arguments it had, such as `serve --allow-remote-embeddings`, then remove the old one:
+arguments it had, such as `serve --allow-remote-embeddings`, save `--data-dir` and
+`--config`, which would point kb-mcp at the old program's directory or settings, and
+`--site`, which kb-mcp refuses; then remove the old one:
 
 ```bash
 claude mcp add --scope user --transport stdio kb-mcp -- kb-mcp serve
 claude mcp remove --scope user atlassian-offline-mcp
+claude mcp get kb-mcp
 ```
+
+Its command is `kb-mcp serve`, and none of its arguments is `--data-dir`, `--config` or
+`--site`; check each other client's entry below the same way.
 
 - **Claude Code** names a tool after its server: rename each rule
   `mcp__atlassian-offline-mcp__...` as `mcp__kb-mcp__...`, in `~/.claude/settings.json`
@@ -302,7 +315,8 @@ What agents, scripts and dashboards read changed too:
 
 Until section 10, go back by going on with `atlassian-offline-mcp`: nothing touched its
 program, its settings file, its variables or its data directory. Register its server
-again where you removed it, and put back its rules of section 7 as they were:
+again where you removed it, with the arguments it had before section 7, and put back
+its rules of section 7 as they were:
 
 ```bash
 claude mcp add --scope user --transport stdio atlassian-offline-mcp -- atlassian-offline-mcp serve
