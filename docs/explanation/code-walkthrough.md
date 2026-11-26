@@ -186,8 +186,7 @@ a path on the site and its parameters, with no host to send the sign-in elsewher
 [`SiteClient.get`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py), which
 retries throttling and gateway errors within bounds, and stops the run once
 [`MAX_FAILED_IN_A_ROW`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
-GETs in a row got no answer
-([`Breaker`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)).
+GETs in a row got no answer.
 [`SiteClient.once`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py) makes
 one GET, at least [`INTERVAL_S`](../../src/kb_mcp/sources/atlassian/fetch/adapters/http.py)
 after the last, and follows a redirect only to the site or to Atlassian's

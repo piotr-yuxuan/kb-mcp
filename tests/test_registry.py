@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 
 # A setting of each source's table, by source, and a value of it in a settings file.
 SET = {"confluence": ("spaces", '["MFS"]'), "worklog": ("archives", "false")}
+# Confluence's source in a settings file: a space, and its site.
+CONFLUENCE_SETTINGS = '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n'
 
 
 def test_the_registry_holds_confluence_jira_and_the_work_log_in_name_order() -> None:
@@ -151,10 +153,7 @@ def test_a_source_that_names_some_of_its_types_is_refused_and_no_file_removed(
     spaces = replace(SPACE, document_types=types)
     registry = sourced(replace(CONFLUENCE, scope_types=(spaces,)), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
-    config.write_text(
-        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
-        "utf-8",
-    )
+    config.write_text(CONFLUENCE_SETTINGS, "utf-8")
     data = tmp_path / "data"
     post = data / "docs" / "confluence" / "MFS" / "blog" / "600-news.md"
     post.parent.mkdir(parents=True)
@@ -537,10 +536,7 @@ def test_a_fetcher_or_preparer_that_does_not_load_refuses_the_run_of_its_source(
     named = path if field == "fetcher" else (path,)
     registry = sourced(replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
-    config.write_text(
-        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
-        "utf-8",
-    )
+    config.write_text(CONFLUENCE_SETTINGS, "utf-8")
     data = tmp_path / "data"
     stage, status = ("fetch", ExitStatus.SIGN_IN_AGAIN) if field == "fetcher" else ("prepare", 0)
     given = [stage, "--yes", "--config", str(config), "--data-dir", str(data)]
@@ -566,10 +562,7 @@ def test_a_fetcher_or_preparer_that_does_not_load_refuses_a_run_before_its_recor
     named = path if field == "fetcher" else (path,)
     registry = sourced(replace(CONFLUENCE, **{field: named}), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
-    config.write_text(
-        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
-        "utf-8",
-    )
+    config.write_text(CONFLUENCE_SETTINGS, "utf-8")
     data = tmp_path / "data"
     data.mkdir()
     stage = "fetch" if field == "fetcher" else "prepare"
@@ -595,10 +588,7 @@ def test_a_role_whose_module_breaks_on_import_refuses_the_run_naming_the_path(
     monkeypatch.syspath_prepend(tmp_path)
     registry = sourced(replace(CONFLUENCE, preparers=("kb_broken",)), JIRA, WORKLOG)
     config = tmp_path / "config.toml"
-    config.write_text(
-        '[sources.confluence]\nspaces = ["MFS"]\nsite = "https://x.atlassian.net"\n',
-        "utf-8",
-    )
+    config.write_text(CONFLUENCE_SETTINGS, "utf-8")
     given = ["prepare", "--yes", "--config", str(config), "--data-dir", str(tmp_path / "data")]
     assert main([*given, "confluence"], registry) == ExitStatus.REFUSED
     err = capsys.readouterr().err

@@ -6,18 +6,22 @@ or a real Ollama on this machine, by mistake. The settings' variables of the use
 environment, and OpenTelemetry's, are removed for each test, which sets those it needs.
 Each test has a scratch home, so that a run's log file goes to a scratch log folder.
 A test that reads what is traced and measured asks for ``telemetry``: the SDK's
-providers, over in-memory exporters, put behind the API once a session.
+providers, over in-memory exporters, put behind the API once a session. One that
+reads structlog's events as the standard library's records asks for
+``through_logging``.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
+import structlog
 from opentelemetry import metrics, trace
 from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider, _Gauge
 from opentelemetry.sdk.metrics.export import AggregationTemporality, InMemoryMetricReader
@@ -25,9 +29,11 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from kb_mcp.observability.observed import route_through_logging
 from tests.endpoint import REACHABLE
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
@@ -37,6 +43,8 @@ if TYPE_CHECKING:
 PREFIX = "KB_MCP_"
 # OpenTelemetry's variables, two of which the settings read, and its SDK others.
 OTEL = "OTEL_"
+# The loggers whose levels a test changes, the root's first.
+CHANGED = ("", "httpx", "httpcore", "urllib3", "requests")
 
 
 def guard(event: str, arguments: tuple[object, ...]) -> None:
@@ -93,6 +101,23 @@ def scratch_home(tmp_path_factory: TempPathFactory, monkeypatch: MonkeyPatch) ->
 def home(scratch_home: Path) -> Path:
     """Give the test's scratch home, which a module may override with a home of its own."""
     return scratch_home
+
+
+@pytest.fixture
+def tmp_path_as_home(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Make the test's scratch folder its home, where its runs log and keep their data."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
+@pytest.fixture
+def through_logging() -> Iterator[None]:
+    """Route structlog through the standard library for one test, then undo it."""
+    levels = {name: logging.getLogger(name).level for name in CHANGED}
+    route_through_logging()
+    yield
+    structlog.reset_defaults()
+    for name, level in levels.items():
+        logging.getLogger(name).setLevel(level)
 
 
 @dataclass(frozen=True)

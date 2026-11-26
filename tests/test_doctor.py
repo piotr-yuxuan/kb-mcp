@@ -14,15 +14,13 @@ from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.declaration import Source
 from kb_mcp.sources.worklog.declared import WORKLOG
 from tests.composed import MODEL, model_of, sourced
-from tests.test_fetching import FakeSite
+from tests.test_fetching import FakeSite, settings
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
-
-    from kb_mcp.config.settings import Settings
 
 SITE = "https://sandbox.example.invalid"
 HOST = "sandbox.example.invalid"
@@ -36,17 +34,12 @@ A_SOURCE = "KB_MCP_SOURCES__JIRA__PROJECTS"
 A_SITE = "KB_MCP_SOURCES__JIRA__SITE"
 
 
+pytestmark = pytest.mark.usefixtures("tmp_path_as_home")
+
+
 def states(checks: list[object]) -> dict[str, str]:
     """Map each check to its state."""
     return {each.name: each.state for each in checks}  # type: ignore[attr-defined]
-
-
-def configured(tmp_path: Path) -> Settings:
-    """Give settings whose Confluence and Jira sources are of the site, with a data folder."""
-    return MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=tmp_path / "data",
-    )
 
 
 def test_a_missing_pandoc_fails_its_check(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -61,7 +54,7 @@ def test_tls_inspection_is_reported_and_only_no_answer_fails(
 ) -> None:
     """Inspected TLS works through the OS trust store; a site that does not answer fails."""
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: verified)
-    found = states(doctor(configured(tmp_path), sourced(CONFLUENCE, JIRA)))
+    found = states(doctor(settings(tmp_path), sourced(CONFLUENCE, JIRA)))
     assert found[f"tls {HOST}"] == state
 
 
@@ -69,7 +62,6 @@ def test_without_a_saved_session_the_doctor_exits_3(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """No session saved means signing in again, whatever else holds."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     monkeypatch.setenv(A_SITE, SITE)
@@ -77,7 +69,7 @@ def test_without_a_saved_session_the_doctor_exits_3(
     assert main(options) == NOT_SIGNED_IN
     out = capsys.readouterr().out
     assert "sign-in jira: no session saved: run kb-mcp login jira" in out
-    found = states(doctor(configured(tmp_path), sourced(JIRA)))
+    found = states(doctor(settings(tmp_path), sourced(JIRA)))
     assert found["sign-in jira"] == "sign in again"
 
 
@@ -141,7 +133,6 @@ def test_a_source_configured_without_its_site_fails_its_own_check_alone(
     Jira without its site: a check named after it fails, naming the setting, after the
     others; Confluence's site and sign-in are checked, which asks to sign in: exit 3.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     monkeypatch.setenv(A_SOURCE, '["PRB"]')
     monkeypatch.setenv("KB_MCP_SOURCES__CONFLUENCE__SITE", SITE)
@@ -178,7 +169,6 @@ def test_the_doctor_shows_the_checks_not_well_or_in_detail_every_one(
     named: list[str],
 ) -> None:
     """Without pandoc: that one in short, all three in detail, then the count well."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--detail", detail]
     assert main(options) == SOME_FAILED
@@ -192,7 +182,6 @@ def test_the_doctor_gives_every_check_as_json(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """One document: each check's name, what it found, and its state."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
     assert main(options) == SOME_FAILED
@@ -209,7 +198,6 @@ def test_a_machine_with_no_source_that_signs_in_gets_the_machine_s_checks_alone(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Plan 031, criterion 6: such as one with the work log alone, failed for nothing: exit 0."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__WORKLOG__PATH", str(tmp_path))
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
     assert main(options) == 0
@@ -218,10 +206,9 @@ def test_a_machine_with_no_source_that_signs_in_gets_the_machine_s_checks_alone(
 
 
 def test_a_registry_without_a_source_that_signs_in_reads_none_of_it(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
+    tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     """Any registry is checked: no setting of a package that it does not name is read."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]
     assert main(options, sourced(WORKLOG)) == 0
     names = [verdict["name"] for verdict in json.loads(capsys.readouterr().out)]
@@ -235,7 +222,6 @@ def test_a_sign_in_not_checked_is_said_so_and_the_settings_that_choose_it_are_re
 
     And a source's setting, which makes its checks run, is not said not read.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: None)
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__EMAIL", "someone@example.invalid")
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__API_TOKEN", "token-sentinel-7f2b")
@@ -255,7 +241,6 @@ def test_a_token_without_its_email_fails_only_a_sign_in_that_is_checked(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """A source not in use: not checked, exit 0. In use, with its site: its check fails, 1."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("KB_MCP_SOURCES__JIRA__API_TOKEN", "token-sentinel-7f2b")
     options = ["doctor", "--config", str(tmp_path / "none.toml")]
     assert main(options) == 0
@@ -274,7 +259,6 @@ def test_a_source_with_its_site_alone_is_checked(
     tmp_path: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Review round 1: a site and a token, as sops gives them, with no project: checked."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(http, "verified_by_public_cas", lambda _: True)
     monkeypatch.setenv(A_SITE, SITE)
     options = ["doctor", "--config", str(tmp_path / "none.toml"), "--format", "json"]

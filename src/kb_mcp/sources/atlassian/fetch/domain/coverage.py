@@ -1,11 +1,4 @@
-"""The period covered for each scope, and the window of each fetch.
-
-A scope (a space or a project) is covered over one period, over which every change was
-asked for; the period is exact when every change in it is known stored, and an inexact
-one may hide a failure. Without --since, a fetch asks for what changed since each scope's
-last fetch: an exact scope from its covered end, another from its covered start; a scope
-never covered, its last week.
-"""
+"""The period covered for each scope, and the window of each fetch."""
 
 from __future__ import annotations
 
@@ -21,11 +14,9 @@ from kb_mcp.kernel.records import Record
 from kb_mcp.sources.atlassian.fetch.domain.period import EPOCH, FIRST_FETCH, Period
 from kb_mcp.sources.declaration import ScopeType
 
-# What a fetch made of a scope's coverage: grown to its window's end, ended at a failure,
-# or left as it was.
+# What a fetch made of a scope's coverage.
 type CoverageChange = Literal["extended", "capped", "held"]
-# Why a window starts where it does: at --since, a day before an exact covered end, at the
-# covered start (a space, or a project's entry without ``exact``), or a week back.
+# Why a window starts where it does.
 type Reason = Literal["given", "since the last fetch", "covered start", "first fetch"]
 # How far before its covered end an exact scope's catch-up starts: a search index can lag
 # behind an edit, the window ends at this machine's clock while documents carry the
@@ -36,10 +27,7 @@ CATCH_UP_MARGIN = timedelta(days=1)
 
 
 class Scope(Record):
-    """A part of one source, read and tracked as a unit: its source, its scope type, its key.
-
-    Written by its scope type's name.
-    """
+    """A part of one source, read and tracked as a unit: its source, its scope type, its key."""
 
     source: str
     type: InstanceOf[ScopeType]
@@ -66,21 +54,15 @@ class Scope(Record):
         return scope_type.name
 
     def __str__(self) -> str:
-        """Name the scope as the user does: ``space ENG``, ``project PLAT``."""
+        """Name the scope as the user does."""
         return f"{self.type.name} {self.key}"
 
 
 class Coverage(Record):
     """Each scope's covered period, over which every change was asked for.
 
-    Such a period is ``exact`` when every change in it is known stored; one recorded without
-    ``exact`` is not, and its end may hide a failure. A space is listed whole: a failure
-    within its period (a document whose fetch failed, an entry the adapter refuses) leaves
-    it inexact, so that a fetch without --since starts at its covered start, and asks for
-    the whole period again. A project is searched by update time: its period ends at its
-    first failure, so that a search from its end asks for that again. ``as_of`` holds
-    each scope's as-of time, the end of its coverage when a fetch last left it exact;
-    ``whole_read_at`` the time of its last whole read.
+    ``exact`` holds the scopes whose every change in their period is known stored;
+    ``as_of``, a scope's end of coverage when a fetch last left it exact.
     """
 
     periods: Mapping[Scope, Period] = Field(default_factory=dict)
@@ -94,16 +76,14 @@ class Coverage(Record):
         """Return the coverage once a fetch listed or searched ``fetched`` whole for the scope.
 
         ``failed`` is the update time of the earliest document found and not stored whole.
-        The covered period stays one period: a fetch apart from it leaves it as it was,
-        ``held``, since joining would claim the gap between them; one that overlaps or
-        touches it joins it, ``extended``. A fetch sees the period whole when it is a first
-        fetch, a fetch over an exact entry, or one that starts at or before an inexact entry,
-        which it replaces; without a failure, it leaves the period exact. There a failure
-        leaves a space's inexact, and ends a project's at ``failed``, even below the old
-        end, ``capped``, or leaves it as it was when the period would then be empty,
-        inexact if it starts at the failure, so that the next fetch searches it whole. Any
-        other fetch over an inexact entry joins it and leaves it inexact. A fetch that leaves
-        it exact sets its as-of time to its end; any other leaves that as it was.
+        The covered period stays one period: a fetch apart from it is ``held``; one that
+        overlaps or touches it joins it, ``extended``. A fetch sees the period whole when it
+        is a first fetch, a fetch over an exact entry, or one that starts at or before an
+        inexact entry, which it replaces; without a failure, it leaves the period exact.
+        There a failure leaves a space's inexact, and ends a project's at ``failed``, even
+        below the old end, ``capped``, or leaves it as it was when the period would then be
+        empty, inexact if it starts at the failure. Any other fetch over an inexact entry
+        joins it and leaves it inexact.
         """
         covered = self.periods.get(scope)
         if covered is not None and (fetched.start > covered.end or fetched.end < covered.start):
@@ -144,11 +124,8 @@ def fetch_window(
     """Return the window a fetch asks for of a scope, to ``end``; None to skip the scope.
 
     It starts at ``since`` when given, and raises PeriodError when that is not before
-    ``end``. Otherwise an exact scope catches up from ``CATCH_UP_MARGIN`` before its
-    covered end, another scope covered from its covered start, and one never covered
-    starts ``FIRST_FETCH`` before ``end``; a catch-up that would start at or after
-    ``end``, an ``--until`` before it, skips the scope. Nothing starts before the epoch:
-    nothing on the site is older, and dates stay in range.
+    ``end``; a catch-up that would start at or after ``end`` skips the scope. Nothing
+    starts before the epoch: nothing on the site is older, and dates stay in range.
     """
     if since is not None:
         return FetchWindow(period=Period(max(since, EPOCH), end), reason="given")
@@ -168,12 +145,7 @@ def fetch_window(
 
 
 def whole_read_due(coverage: Coverage, scope: Scope, now: datetime) -> bool:
-    """Say whether a fetch at ``now`` reads a scope whole besides its search by update time.
-
-    It does when its scope type declares how often, and the scope was never read whole,
-    or last read whole at least that long before; a scope type that declares nothing,
-    a space's, listed whole at every fetch, never needs it.
-    """
+    """Say whether a fetch at ``now`` reads a scope whole besides its search by update time."""
     every = scope.type.whole_read_every
     if every is None:
         return False

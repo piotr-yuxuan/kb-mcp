@@ -22,11 +22,9 @@ from structlog.testing import capture_logs
 
 from kb_mcp.config.load import default_log_folder
 from kb_mcp.observability import observed
-from kb_mcp.observability.observed import log_file, route_through_logging
+from kb_mcp.observability.observed import log_file
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from _pytest.capture import CaptureFixture
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -36,19 +34,7 @@ RUN = "0123456789abcdef"
 COMMANDS = frozenset({"check", "download", "index", "login"})
 SENTINEL = "sentinel-token-3f8a"
 BASIC = base64.b64encode(f"tests@example.invalid:{SENTINEL}".encode()).decode()
-# The loggers whose levels a test changes, the root's first.
-CHANGED = ("", "httpx", "httpcore", "urllib3", "requests")
-
-
-@pytest.fixture(autouse=True)
-def through_logging() -> Iterator[None]:
-    """Route structlog through the standard library for one test, then undo it."""
-    levels = {name: logging.getLogger(name).level for name in CHANGED}
-    route_through_logging()
-    yield
-    structlog.reset_defaults()
-    for name, level in levels.items():
-        logging.getLogger(name).setLevel(level)
+pytestmark = pytest.mark.usefixtures("through_logging")
 
 
 class FullDisk(io.RawIOBase):

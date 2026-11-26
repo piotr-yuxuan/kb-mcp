@@ -41,9 +41,8 @@ def public_trust(site: str) -> Check:
 def access(settings: Settings, source: Source) -> list[Check]:
     """Say how a source signs in, and whether that still opens it, by its connector's API.
 
-    By its API token when one is set, else by the session that ``login`` saved for its
-    site; each check is named after the source, and says what the source's user does
-    once its sign-in no longer holds.
+    Each check is named after the source, and says what the source's user does once its
+    sign-in no longer holds.
     """
     signing = choose_sign_in(settings, source.name)
     name = f"sign-in {source.name}"

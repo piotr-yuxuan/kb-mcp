@@ -6,8 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-# A length of time: a number of hours, days, weeks, months or years, such as 12h, 7d, 2w,
-# 6mo or 1y. A month counts 30 days and a year 365: windows need no calendar.
+# A length of time in hours, days, weeks, months or years; a month counts 30 days, a year 365.
 AGO = re.compile(r"([1-9][0-9]{0,3})(h|d|w|mo|y)")
 UNITS = {
     "h": timedelta(hours=1),
@@ -26,8 +25,7 @@ LONGEST = timedelta(days=100 * 365)
 FIRST_FETCH = timedelta(days=7)
 # The options of a fetch's period, by flag: from when, until when, the largest file kept.
 SINCE_FLAG, UNTIL_FLAG, MAX_FILE_MB_FLAG = "--since", "--until", "--max-file-mb"
-# The largest file that a fetch keeps when no --max-file-mb says, in MiB: an option of
-# the period, as the commands add it.
+# The largest file that a fetch keeps when no --max-file-mb says, in MiB.
 DEFAULT_MAX_FILE_MB = 50
 
 

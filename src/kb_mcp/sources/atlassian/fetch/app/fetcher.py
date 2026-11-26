@@ -1,9 +1,6 @@
 """Confluence's and Jira's fetcher: one source's scopes fetched into the raw store.
 
-Both connectors name this module, a ``Fetcher``: ``preflight`` and ``fetch`` read the
-scope types of the connector of the source that a run is for, and fetch that source's
-scopes alone, each of its table's keys of each scope type, over the period that its
-options give.
+Both connectors name this module, a ``Fetcher``.
 """
 
 from __future__ import annotations
@@ -42,11 +39,8 @@ BUSY = "another run is writing it; try again once that run ends"
 def purview_of(run: SourceRun) -> Purview:
     """Read what ``run`` fetches: each key of each scope type that its table lists, its period.
 
-    The list is the setting that the scope type's option replaces. ``run.options`` holds
-    each option by its flag, as typed, None when not given: --since and --until read as
-    ``moment`` reads them, at the run's start; --max-file-mb not given is
-    ``DEFAULT_MAX_FILE_MB``. Raises KeyError for one that it does not hold, so that a flag
-    renamed cannot read as not given.
+    The list is the setting that the scope type's option replaces. Raises KeyError for an
+    option that ``run.options`` does not hold, so that a flag renamed cannot read as not given.
     """
     options, now = run.options, run.now()
     since, until = options[SINCE_FLAG], options[UNTIL_FLAG]
@@ -68,11 +62,7 @@ def preflight(run: SourceRun) -> str | None:
 
     It reads what is covered and, for a source of spaces, what answered as gone and the
     joined documents still to fetch of each space that the fetch lists, so that a damaged
-    record of another space stops nothing. A source of projects reads what answered as
-    gone once its fetch has begun (``run_fetch``), before its first request, and what
-    each project's searches found since its last whole read when the fetch reaches that
-    project, after the projects before it: either damaged then fails that source's unit
-    alone, its searches by update time too, or those still to come.
+    record of another space stops nothing.
     """
     store = RawStore(run.settings.raw, run.source.name)
     try:
@@ -92,20 +82,10 @@ def preflight(run: SourceRun) -> str | None:
 def fetch(run: SourceRun) -> Outcome[FetchCounts]:
     """Fetch what changed of the run's source, or in a dry run plan it; say what went wrong.
 
-    A fetch, not its plan, first takes the session kept before sessions were a site's, as
-    ``SignIn.adopt_former`` says.
-
     What ``preflight`` refuses may still come once the run began: a period read at a
     later fetch's start, a record damaged since, or one that ``preflight`` leaves to the
-    run. It fails this fetch alone, a problem
-    by the source and an error, ``fetch.refused``, naming the source, and the run's next
-    units go on.
-
-    Another run writing the raw store fails the fetch before it starts, a problem by the
-    raw store and an error, ``fetch.store_busy``; each scope that failed is a warning,
-    ``fetch.scope_failed``, and a sign-in that no longer holds an error,
-    ``fetch.sign_in_needed``, saying how to sign in again; both errors name the source,
-    since each source's fetch can give them.
+    run. It fails this fetch alone, a problem by the source, as another run writing the
+    raw store fails it before it starts, a problem by the raw store.
     """
     try:
         purview = purview_of(run)

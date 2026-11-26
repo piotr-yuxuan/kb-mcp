@@ -1,11 +1,4 @@
-"""What the fetch stores and the prepare reads, named once, whatever response gave it.
-
-Adapters build these types from one representation each
-(``sources.atlassian.fetch.adapters.confluence_v2``,
-``sources.atlassian.fetch.adapters.jira_v3``), and every other layer sees only these
-types. When the site changes a response, the adapter for that representation changes,
-and nothing else.
-"""
+"""What the fetch stores and the prepare reads, named once, whatever response gave it."""
 
 from __future__ import annotations
 
@@ -61,12 +54,7 @@ class Space(Record):
 
 
 class Folder(Record):
-    """A Confluence folder: a container, a node of the space's tree with a title and no body.
-
-    It is versioned as a page is, and its parent is a page or a folder, as a page's is. Its
-    status, its creation and update times and its version are each None when its response
-    gives none.
-    """
+    """A Confluence folder: a container, a node of the space's tree with a title and no body."""
 
     document_type: ClassVar[DocumentType] = FOLDER
 
@@ -113,11 +101,7 @@ class Comment(Record):
 
 
 class FetchedDocument(Record):
-    """A page, a blog post or an issue: a document with a body, fetched by its revisions.
-
-    ``document_type`` names where its source's view of the raw store keeps it; ``revision``
-    names this state of it, and orders states as text.
-    """
+    """A page, a blog post or an issue: a document with a body, fetched by its revisions."""
 
     document_type: ClassVar[DocumentType]
 
@@ -222,9 +206,7 @@ DOCUMENT_CLASSES: tuple[type[Page | BlogPost | Issue], ...] = (*CONFLUENCE_CLASS
 class Listed(Record):
     """What a listing says of a document: enough to decide whether to fetch it, and how.
 
-    An adapter reads it from a listing's entry leniently, apart from the rest of the
-    entry, so that an entry whose other fields have changed still lets the document be
-    fetched. It names its stored snapshot as the document would.
+    It names its stored snapshot as the document would.
     """
 
     document_class: type[FetchedDocument]

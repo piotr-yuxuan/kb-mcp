@@ -55,21 +55,18 @@ WITHOUT_EMAIL = "sources.confluence.email: not set; an API token signs in with i
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+def home(home: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give a scratch home, no waiting between requests, and each source's site and token.
 
     The token with its email, alike for Confluence's source and Jira's.
     """
-    scratch = tmp_path / "home"
-    scratch.mkdir()
-    monkeypatch.setenv("HOME", str(scratch))
     monkeypatch.setattr(time, "sleep", lambda _: None)
     for source in ("CONFLUENCE", "JIRA"):
         monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
     for email, credential in ((EMAIL, CREDENTIAL), (JIRA_EMAIL, JIRA_CREDENTIAL)):
         monkeypatch.setenv(email, ADDRESS)
         monkeypatch.setenv(credential, SENTINEL)
-    return scratch
+    return home
 
 
 def served(

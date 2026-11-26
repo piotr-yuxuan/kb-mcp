@@ -23,6 +23,7 @@ from kb_mcp.kernel.names import BLOBS, IDENTIFIER, RefusedError, StoreBusyError,
 from kb_mcp.kernel.records import Problem, Record
 from kb_mcp.sources.atlassian.fetch.adapters import confluence_v2, jira_v3
 from kb_mcp.sources.atlassian.fetch.domain.content import (
+    CONFLUENCE_CLASSES,
     REVISION,
     BlogPost,
     Folder,
@@ -50,46 +51,32 @@ if TYPE_CHECKING:
 
     from kb_mcp.sources.atlassian.fetch.domain.content import FetchedDocument
 
-# The store's own file in a snapshot, beside the responses.
 RECORD = "store.json"
-# The store's own records of what runs covered, and of documents that answered as gone.
 COVERAGE = "coverage.json"
 TOMBSTONES = "tombstones.json"
-# The store's own records, beside a space's listings, of when they were listed, and of the
-# documents that joined the space and are not stored yet.
 LISTED_AT = "listed_at.json"
 PENDING = "pending.json"
-# The store's own record, beside a project's last whole read, of the issues that its
-# searches by update time found since.
 SEARCHED = "searched.json"
-# The site's users, merged, in the folder of the source whose spaces named them: of its
-# site, which one source of spaces lists.
 USERS = "users.json"
-# The scope types of the coverage's entries, by name; an entry without ``type``, of a
-# former format, takes it from its source, always its connector's name in that format.
 SCOPE_TYPES = {SPACE.name: SPACE, PROJECT.name: PROJECT}
 FORMER_TYPES = {CONFLUENCE: SPACE.name, JIRA: PROJECT.name}
-# The scope type of each document type that a tombstone may name, by name; and the
-# document type of a tombstone that names the plural of its type as ``kind``, by that plural.
+# The scope type of each document type that a tombstone may name, by name.
 HELD_IN = {
     each.name: scope_type for scope_type in (SPACE, PROJECT) for each in scope_type.document_types
 }
 FORMER_KINDS = {PAGE.plural: PAGE.name, BLOGPOST.plural: BLOGPOST.name}
 # The times that a coverage's entry may hold beside its period, each a field of Coverage.
 COVERAGE_TIMES = ("as_of", "whole_read_at")
-# Where a source's view keeps the scopes' last whole reads of each document type, a
-# folder per scope, a space's named by its id and a project's by its key; and which
-# adapter reads the ids of their entries.
+# The folder of the scopes' last whole reads of each document type, and the adapter that
+# reads the ids of their entries.
 LISTINGS: dict[type[FetchedDocument], str] = {Page: "spaces", BlogPost: "spaces", Issue: "projects"}
 ENTRY_IDS: dict[type[FetchedDocument], Callable[[object], set[str]]] = {
     Page: confluence_v2.entry_ids,
     BlogPost: confluence_v2.entry_ids,
     Issue: jira_v3.entry_ids,
 }
-# The file name of a response: one safe path part, then .json.
 RESPONSE_NAME = re.compile(r"[A-Za-z0-9_-]+\.json")
 DIGEST = re.compile(r"[0-9a-f]{64}")
-# What a failed read is reported by: the field's path, or the error's class alone.
 UNREADABLE = (ValueError, OSError)
 
 
@@ -97,9 +84,8 @@ class Representation(Record):
     """How the snapshots of one document type are read.
 
     ``files`` names the responses that a snapshot of the type must have. ``identity``
-    reads only what names the folder (id and revision), so that a response whose other
-    fields have changed is still kept, to be read once its adapter is fixed;
-    ``snapshot`` reads it all.
+    reads only the id and the revision, so that a response whose other fields changed is
+    still kept; ``snapshot`` reads it all.
     """
 
     files: tuple[str, ...]
@@ -109,16 +95,14 @@ class Representation(Record):
 
 CONFLUENCE_FILES = (confluence_v2.DOCUMENT, confluence_v2.VIEW, confluence_v2.ATTACHMENTS)
 REPRESENTATIONS: dict[type[FetchedDocument], Representation] = {
-    Page: Representation(
-        files=CONFLUENCE_FILES,
-        identity=confluence_v2.identity,
-        snapshot=partial(confluence_v2.snapshot, Page),
-    ),
-    BlogPost: Representation(
-        files=CONFLUENCE_FILES,
-        identity=confluence_v2.identity,
-        snapshot=partial(confluence_v2.snapshot, BlogPost),
-    ),
+    **{
+        each: Representation(
+            files=CONFLUENCE_FILES,
+            identity=confluence_v2.identity,
+            snapshot=partial(confluence_v2.snapshot, each),
+        )
+        for each in CONFLUENCE_CLASSES
+    },
     Issue: Representation(
         files=(jira_v3.ISSUE, jira_v3.COMMENTS),
         identity=jira_v3.identity,
@@ -130,8 +114,7 @@ REPRESENTATIONS: dict[type[FetchedDocument], Representation] = {
 class StoredSnapshot(Record):
     """A stored snapshot, read into the domain, with the store's record of it.
 
-    ``blobs`` maps each downloaded attachment's id to its file's SHA-256; an attachment
-    of the snapshot that it lacks was not downloaded.
+    ``blobs`` maps each downloaded attachment's id to its file's SHA-256.
     """
 
     folder: Path
@@ -147,13 +130,16 @@ def _write_synced(path: Path, data: bytes) -> None:
         os.fsync(file.fileno())
 
 
-def _replace_synced(path: Path, data: bytes) -> None:
-    """Write a file whole, through a hidden file renamed over it."""
+def replace_synced(path: Path, data: bytes) -> None:
+    """Write a file whole, through a hidden file, the user's alone (0600), renamed over it."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, hidden = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    os.close(handle)
     try:
-        _write_synced(Path(hidden), data)
+        # Through mkstemp's descriptor: a name reopened could be swapped for a link.
+        with os.fdopen(handle, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
         Path(hidden).replace(path)
     finally:
         Path(hidden).unlink(missing_ok=True)
@@ -169,8 +155,8 @@ def _decode(path: Path) -> object:
 
 
 def _record_json(path: Path, where: str) -> object:
-    # A record the store wrote and cannot read back is a changed shape, named by ``where``,
-    # as is one that no read reaches, such as a folder in its place.
+    # A record the store wrote and cannot read back, or that no read reaches, is a changed
+    # shape, named by ``where``.
     try:
         return _decode(path)
     except UNREADABLE as error:
@@ -205,15 +191,9 @@ def _identifier(value: str, name: str) -> str:
 class RawStore:
     """One source's view of the raw store: responses as received, and files by SHA-256.
 
-    The sources share the store under ``root``: its files, coverage, records of what
-    answered as gone, and lock. Its source's snapshot of a document is
-    the folder ``<root>/<source>/<plural>/<id>/<revision>/``, one JSON file per response
-    plus the store's record. It is written whole into a hidden folder and renamed into
-    place, so it is either complete or absent, and its responses never change. A space's
-    listings are ``<root>/<source>/spaces/<id>/*.json``, a project's last whole read
-    ``<root>/<source>/projects/<key>/issues.json``, each replaced whole, and its site's
-    users ``<root>/<source>/users.json``, merged. A file is
-    ``<root>/blobs/<digest[:2]>/<digest>``. One run at a time writes, inside ``writing``.
+    The sources share the store under ``root``, its lock included. A snapshot is written
+    whole into a hidden folder and renamed into place, so it is either complete or absent,
+    and its responses never change. One run at a time writes, inside ``writing``.
     """
 
     def __init__(self, root: Path, source: str) -> None:
@@ -268,9 +248,8 @@ class RawStore:
         """Store a snapshot as received, and return its folder.
 
         Every response the type needs must be there, since a stored revision is never
-        written again; only the id and the revision are read, by the type's adapter.
-        Every file that ``blobs`` names must be stored first, with ``put_blob``. A
-        revision stored already keeps its responses, and records the new blobs.
+        written again. Every file that ``blobs`` names must be stored first, with
+        ``put_blob``. A revision stored already keeps its responses, and records the new blobs.
         """
         self._check_writing()
         representation = REPRESENTATIONS[document_class]
@@ -307,7 +286,7 @@ class RawStore:
         return folder
 
     def add_blobs(self, document: FetchedDocument | Listed, blobs: Mapping[str, str]) -> None:
-        """Record files downloaded after their snapshot was stored, such as on a retry."""
+        """Record files downloaded after their snapshot was stored."""
         self._check_writing()
         self._check_blobs(blobs)
         self._merge_blobs(self.folder(document), blobs)
@@ -323,7 +302,7 @@ class RawStore:
         if not blobs:
             return
         fetched_at, stored = self._read_record(folder)
-        _replace_synced(folder / RECORD, self._record(fetched_at, {**stored, **blobs}))
+        replace_synced(folder / RECORD, self._record(fetched_at, {**stored, **blobs}))
 
     @staticmethod
     def _record(fetched_at: datetime, blobs: Mapping[str, str]) -> bytes:
@@ -353,11 +332,7 @@ class RawStore:
         return StoredSnapshot(folder=folder, snapshot=snapshot, fetched_at=fetched_at, blobs=own)
 
     def latest(self, document_class: type[FetchedDocument]) -> Iterator[StoredSnapshot | Problem]:
-        """Yield the newest stored snapshot of each document of a type, or why it is not.
-
-        A snapshot that its adapter now refuses is yielded as ``Problem``, and the
-        others still follow.
-        """
+        """Yield the newest stored snapshot of each document of a type, or why it is not."""
         for item in _named(
             self.root / self.source / document_class.document_type.plural, IDENTIFIER
         ):
@@ -390,12 +365,7 @@ class RawStore:
         *,
         listed_at: datetime | None = None,
     ) -> None:
-        """Replace a space's listings, each as received, and say when they were listed.
-
-        They are the space itself and every result of every page of the listings of its
-        pages, blog posts and folders. ``listed_at`` lets the mirror prefer the freshest
-        of two listings that name one document, as after a move.
-        """
+        """Replace a space's listings, each as received, and say when they were listed."""
         self._check_writing()
         space_folder = self._space(Fields(space, "space").text("id"))
         for name, value in (
@@ -406,23 +376,21 @@ class RawStore:
             if type(value) is not list:
                 message = f"{name}: expected a list"
                 raise ValueError(message)
-            _replace_synced(space_folder / f"{name}.json", _encode(value))
-        _replace_synced(space_folder / "space.json", _encode(space))
+            replace_synced(space_folder / f"{name}.json", _encode(value))
+        replace_synced(space_folder / "space.json", _encode(space))
         if listed_at is not None:
             moment = {"listed_at": listed_at.astimezone(UTC).isoformat()}
-            _replace_synced(space_folder / LISTED_AT, _encode(moment))
+            replace_synced(space_folder / LISTED_AT, _encode(moment))
 
     def _put_ids(self, path: Path, ids: Collection[str]) -> None:
-        # A record of ids, sorted; none removes it.
         self._check_writing()
         if ids:
-            _replace_synced(path, _encode(sorted(ids)))
+            replace_synced(path, _encode(sorted(ids)))
         else:
             path.unlink(missing_ok=True)
 
     def _ids(self, path: Path) -> set[str]:
-        # A record of ids, none when missing; one that cannot be read is refused by name,
-        # as the store's other records are, since the ids it held would otherwise be lost.
+        # One that cannot be read is refused by name, since its ids would otherwise be lost.
         if not path.exists():
             return set()
         where = path.relative_to(self.root).as_posix()
@@ -475,7 +443,6 @@ class RawStore:
         return self._entries(path, partial(confluence_v2.document, document_class=document_class))
 
     def _listing(self, holder: str, document_class: type[FetchedDocument]) -> Path:
-        # A scope's last whole read of a document type: a space's by id, a project's by key.
         folder = self.root / self.source / LISTINGS[document_class] / _identifier(holder, "scope")
         return folder / f"{document_class.document_type.plural}.json"
 
@@ -483,9 +450,7 @@ class RawStore:
         """Return the ids that a scope's last whole read names, read by id alone.
 
         ``holder`` is the scope as its listings are kept: a space by its id, a project by
-        its key. An entry whose other fields the adapter would refuse still names its
-        document, so that deletions follow every document that a fetch fetched. A listing
-        that cannot be read at all names none.
+        its key. A listing that cannot be read at all names none.
         """
         path = self._listing(holder, document_class)
         try:
@@ -505,12 +470,12 @@ class RawStore:
         if type(issues) is not list:
             message = "issues: expected a list"
             raise ValueError(message)
-        _replace_synced(self._listing(project, Issue), _encode(issues))
+        replace_synced(self._listing(project, Issue), _encode(issues))
 
     def put_searched(self, project: str, searched: Collection[str]) -> None:
         """Keep the ids of the issues that a project's searches found since its last whole read.
 
-        None removes the record, as a whole read does.
+        None removes the record.
         """
         self._put_ids(self._listing(project, Issue).with_name(SEARCHED), searched)
 
@@ -537,7 +502,7 @@ class RawStore:
         for name, entries in (("users.json", kept), ("users", users)):
             for index, user in enumerate(entries):
                 merged[Fields(user, f"{name}[{index}]").text("accountId")] = user
-        _replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
+        replace_synced(path, _encode([merged[key] for key in sorted(merged)]))
 
     def users(self) -> list[SiteUser | Problem]:
         """Read every site user kept."""
@@ -565,14 +530,7 @@ class RawStore:
         return {folder.name for folder in folders if _named(folder, REVISION)}
 
     def coverage(self) -> Coverage:
-        """Read each scope's coverage, none when never written: its period, and more if given.
-
-        Whether it is exact, its as-of time and the time of its last whole read. An entry
-        without ``type`` is of its connector's one scope type; one without ``exact`` is not
-        exact; one without a time has none; one without ``start``, a scope read whole and
-        not yet covered, has no period. docs/reference/data-layout.md, "Coverage and
-        tombstones", tells the former formats.
-        """
+        """Read each scope's coverage, none when never written: its period, and more if given."""
         path = self.root / COVERAGE
         if not path.exists():
             return Coverage()
@@ -603,10 +561,8 @@ class RawStore:
     def put_coverage(self, coverage: Coverage) -> None:
         """Replace the record of coverage, whole; each entry with what it holds beside its period.
 
-        Its scope type, whether it is exact, and its times. A scope read whole and not yet
-        covered, its search having failed, has an entry without a period, which former
-        versions refuse. The keys of a record of periods alone keep their meaning, so that
-        the versions that knew no more still read it.
+        The keys of a record of periods alone keep their meaning, so that the versions that
+        knew no more still read it.
         """
         self._check_writing()
         times = {name: getattr(coverage, name) for name in COVERAGE_TIMES}
@@ -635,17 +591,10 @@ class RawStore:
                 key=lambda scope: (scope.source, scope.type.name, scope.key),
             )
         ]
-        _replace_synced(self.root / COVERAGE, _encode(entries))
+        replace_synced(self.root / COVERAGE, _encode(entries))
 
     def tombstones(self) -> dict[DocumentKey, Tombstone]:
-        """Read the documents that answered as gone, by source, document type and id.
-
-        An entry of the former format names the plural of its type as ``kind``, and its
-        space by id as ``space``: it is Confluence's, and of the space that Confluence's
-        view of the store lists under that id, whichever view reads it. One whose space no
-        stored listing names keeps the id as its scope's key, until a whole read of that
-        space finds it, and ``raw.spaces_unresolved`` says so once a read.
-        """
+        """Read the documents that answered as gone, by source, document type and id."""
         path = self.root / TOMBSTONES
         if not path.exists():
             return {}
@@ -699,7 +648,7 @@ class RawStore:
             }
             for stone in sorted(tombstones, key=lambda each: each.key)
         ]
-        _replace_synced(self.root / TOMBSTONES, _encode(entries))
+        replace_synced(self.root / TOMBSTONES, _encode(entries))
 
     def blob(self, digest: str) -> Path:
         """Return where the file with this SHA-256 is, or would be."""
@@ -714,5 +663,5 @@ class RawStore:
         digest = hashlib.sha256(data).hexdigest()
         path = self.blob(digest)
         if not path.exists():
-            _replace_synced(path, data)
+            replace_synced(path, data)
         return digest

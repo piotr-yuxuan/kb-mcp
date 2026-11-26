@@ -19,16 +19,16 @@ from kb_mcp.kernel.records import Outcome, Problem
 from kb_mcp.sources.atlassian.declared import JIRA
 from kb_mcp.sources.atlassian.fetch.adapters import http
 from kb_mcp.sources.atlassian.fetch.adapters.raw_store import RawStore
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
+from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, write_cookies
 from kb_mcp.sources.atlassian.fetch.app import fetcher
 from kb_mcp.sources.atlassian.fetch.app.fetching import FetchCounts, Purview, run_fetch
 from kb_mcp.sources.registry import SOURCES, refuse
 from kb_mcp.sources.worklog.declared import WORKLOG
-from tests.composed import MODEL, sourced
+from tests.composed import sourced
 from tests.recorded import unrun
 from tests.samples import v2_page
 from tests.test_cli import logged_as
-from tests.test_fetching import CAP, SITE, FakeSite, scopes, stamp
+from tests.test_fetching import CAP, SITE, FakeSite, scopes, signed_in_settings, stamp
 from tests.test_incremental_fetch import RefreshSite, run, settings
 from tests.test_observed import said
 
@@ -46,18 +46,15 @@ INTERRUPTED = 130
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+def home(home: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, no waiting between requests, and the sites.
 
     Confluence's source and Jira's are of the scripted site.
     """
-    scratch = tmp_path / "home"
-    scratch.mkdir()
-    monkeypatch.setenv("HOME", str(scratch))
     monkeypatch.setattr(time, "sleep", lambda _: None)
     for source in ("CONFLUENCE", "JIRA"):
         monkeypatch.setenv(f"KB_MCP_SOURCES__{source}__SITE", SITE)
-    return scratch
+    return home
 
 
 def command(home: Path, *options: str) -> list[str]:
@@ -72,13 +69,7 @@ def signed_in(home: Path, monkeypatch: MonkeyPatch) -> list[str]:
     Its space and project changed since 2 October: two pages, a blog post and an issue,
     with three files to keep, of which one fails, and a video, which is not kept.
     """
-    chosen = MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=(home / "kb-mcp").resolve(),
-    )
-    write_cookies(
-        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
-    )
+    signed_in_settings((home / "kb-mcp").resolve())
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     return command(home, "--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
 
@@ -145,13 +136,7 @@ def test_each_source_is_fetched_alone_into_an_entry_of_its_own(
     record, ``runs/<run id>/outcomes.json``, holds an entry of each, neither counting
     anything of the other source's.
     """
-    chosen = MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=(home / "kb-mcp").resolve(),
-    )
-    write_cookies(
-        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
-    )
+    chosen = signed_in_settings((home / "kb-mcp").resolve())
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     options = ("--space", "MFS", "--project", "PRB", "--since", "2026-10-02")
@@ -348,13 +333,7 @@ def test_a_space_that_finds_nothing_is_named_on_stderr_and_not_in_the_report(
     The run's log file holds it too, and, since plan 062, the run's record, whose
     configuration names the scopes that it fetches and whose entry holds its problems.
     """
-    chosen = MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=(home / "kb-mcp").resolve(),
-    )
-    write_cookies(
-        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
-    )
+    chosen = signed_in_settings((home / "kb-mcp").resolve())
     fake = FakeSite(spaces=[])
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     options = ("--space", "NOPE", "--since", "7d", "--detail", "detailed")
@@ -375,13 +354,7 @@ def test_a_dry_run_whose_space_finds_nothing_fails_and_exits_1(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """A dry run that finds a problem ends failed, not not run, so that its exit says so."""
-    chosen = MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=(home / "kb-mcp").resolve(),
-    )
-    write_cookies(
-        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
-    )
+    chosen = signed_in_settings((home / "kb-mcp").resolve())
     monkeypatch.setattr(http, "client", lambda *_: FakeSite(spaces=[]).client())
     options = ("--space", "NOPE", "--since", "7d", "--dry-run", "--format", "json")
     assert main(command(home, *options)) == SOME_FAILED
@@ -416,13 +389,7 @@ def test_a_busy_store_exits_1_with_its_reason(
     home: Path, monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
 ) -> None:
     """Another run writing the store: the user is told to wait for it, by an error."""
-    chosen = MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=(home / "kb-mcp").resolve(),
-    )
-    write_cookies(
-        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
-    )
+    chosen = signed_in_settings((home / "kb-mcp").resolve())
     monkeypatch.setattr(http, "client", lambda *_: FakeSite().client())
     options = ("--space", "MFS", "--since", "7d")
     with RawStore(chosen.raw, "confluence").writing():

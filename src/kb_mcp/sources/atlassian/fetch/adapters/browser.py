@@ -1,9 +1,4 @@
-"""Sign-in in a Chrome window: the one place that drives a browser.
-
-Playwright starts the installed Chrome with a dedicated profile; the user signs in as
-they always do, and the site's cookies are handed back. Nothing else reads through the
-browser.
-"""
+"""Sign-in in a Chrome window: the one place that drives a browser."""
 
 from __future__ import annotations
 
@@ -66,9 +61,8 @@ def open_sign_in_window(
 
     What to do in the window goes to stderr first, a line for the user, so that stdout
     holds the command's result alone. No script runs in the identity provider's pages:
-    only once back on the site. The caller keeps those of the site. ``extensions`` lets
-    Chrome load extensions, in case the sign-in needs one. Raises SignInFailedError when
-    no sign-in completes within ``SIGN_IN_TIMEOUT_S``, or when the window is closed.
+    only once back on the site. The caller keeps those of the site. Raises SignInFailedError
+    when no sign-in completes within ``SIGN_IN_TIMEOUT_S``, or when the window is closed.
     """
     paths = [confluence_v2.current_user_request().path, jira_v3.myself_request().path]
     sys.stderr.write(f"Sign in to {site} in the Chrome window that opens.\n")

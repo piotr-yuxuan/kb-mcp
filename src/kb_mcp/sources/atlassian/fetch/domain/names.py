@@ -1,9 +1,7 @@
 """Confluence's and Jira's names and types, each declared once: connectors, documents, scopes.
 
-A connector's name is also its one source's, that source's table, folders and the front
-matter's ``source``. A document type's plural is a folder of the raw store, its name the
-front matter's ``type``. Standard library alone, as the declaration, which ``--help``
-imports, reads it too (contract G).
+A connector's name is also that of the source declared for it. Standard library alone,
+as the declaration, which ``--help`` imports, reads it too (contract G).
 """
 
 from __future__ import annotations

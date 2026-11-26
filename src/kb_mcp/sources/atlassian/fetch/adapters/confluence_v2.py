@@ -1,8 +1,6 @@
 """Confluence Cloud REST v2 responses, and the few v1 ones v2 lacks, read into the domain.
 
-What this code knows of the shape of Confluence's JSON is here and nowhere else. When
-the site changes a response, the fix is in this module, and the raw store can be read
-again without fetching anything.
+What this code knows of the shape of Confluence's JSON is here and nowhere else.
 """
 
 from __future__ import annotations
@@ -29,11 +27,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 # The responses that a snapshot of a page or a blog post keeps, by file name.
-# GET /wiki/api/v2/{pages|blogposts}/{id}?version=N&body-format=storage&include-labels=true
 DOCUMENT = "document.json"
-# GET /wiki/api/v2/{pages|blogposts}/{id}?version=N&body-format=view, the same version.
 VIEW = "view.json"
-# The results of every page of GET /wiki/api/v2/{pages|blogposts}/{id}/attachments.
 ATTACHMENTS = "attachments.json"
 
 # The prefix under which the site serves Confluence; v2 links are relative to it.
@@ -47,11 +42,7 @@ def space(fields: Fields) -> Space:
 
 
 def folder(fields: Fields) -> Folder:
-    """Read a folder from GET /wiki/api/v2/folders/{id}: a page's fields, but its body's.
-
-    Its status, creation time and version, which the sandbox site never showed, are each
-    read only when given, so that a response without them still makes a folder.
-    """
+    """Read a folder from GET /wiki/api/v2/folders/{id}: a page's fields, but its body's."""
     version = fields.optional_object("version", absent=True)
     created = fields.time("createdAt") if fields.optional_text("createdAt", absent=True) else None
     with fields.refusals():
@@ -111,10 +102,7 @@ def document(fields: Fields, document_class: type[Page | BlogPost]) -> Page | Bl
 
 
 def attachment(fields: Fields) -> Attachment:
-    """Read an attachment from a v2 listing; its file comes through its download link.
-
-    The link is relative to the site's ``/wiki`` and leads to the v1 download.
-    """
+    """Read an attachment from a v2 listing; its file comes through its download link."""
     link = fields.text("downloadLink")
     with fields.refusals():
         require(SITE_PATH, link, "downloadLink")
@@ -130,8 +118,7 @@ def attachment(fields: Fields) -> Attachment:
 def identity(responses: Mapping[str, object]) -> tuple[str, str]:
     """Read only what names a snapshot's folder: its id and its revision.
 
-    The view must be of the same page at the same version as the document, since the
-    two are separate GETs and the page can change between them.
+    Raise RepresentationError when the view is of another page or version than the document.
     """
     stored = Fields(responses.get(DOCUMENT), DOCUMENT)
     shown = Fields(responses.get(VIEW), VIEW)
@@ -159,8 +146,7 @@ def snapshot(document_class: type[Page | BlogPost], responses: Mapping[str, obje
     )
 
 
-# What to GET, and how a listing goes on. A v2 listing's next page is the path that its
-# _links.next gives, query included.
+# What to GET, and how a listing goes on.
 LISTING_LIMIT = "250"
 LISTED_STATUSES = {Page: "current,archived", BlogPost: "current"}
 # How many account ids one GET of site users names.
@@ -209,10 +195,7 @@ def snapshot_requests(document: Listed) -> dict[str, tuple[Request, ReadPage | N
 
 
 def entry_ids(entries: object) -> set[str]:
-    """Read only the ids of a listing's entries, whatever else each entry holds.
-
-    An entry without a usable id names nothing; entries that are not a list name none.
-    """
+    """Read only the ids of a listing's entries, whatever else each entry holds."""
     ids: set[str] = set()
     for entry in entries if type(entries) is list else []:
         identifier = entry.get("id") if type(entry) is dict else None

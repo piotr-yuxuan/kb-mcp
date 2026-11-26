@@ -12,7 +12,7 @@ import certifi
 import httpx
 import structlog
 import truststore
-from pydantic import ConfigDict, Field
+from pydantic import Field
 
 from kb_mcp.kernel.records import Record
 from kb_mcp.observability.http import ObservedTransport
@@ -82,33 +82,6 @@ def refuse_plain_http(request: httpx.Request) -> None:
         raise SiteError(message)
 
 
-class Breaker(Record):
-    """Stop a run once the site or the network stops answering, GET after GET.
-
-    Only a GET that got no answer counts: a transport error, or a throttling or gateway
-    status, once its retries are spent. Any other answer, even a refusal of one item,
-    shows the site is there, and starts the count again.
-    """
-
-    model_config = ConfigDict(frozen=False)
-
-    limit: int
-    failed: int = 0
-
-    def check(self) -> None:
-        """Raise TooManyFailuresError when the last ``limit`` GETs got no answer."""
-        if self.failed >= self.limit:
-            raise TooManyFailuresError
-
-    def unanswered(self) -> None:
-        """Count a GET that got no answer."""
-        self.failed += 1
-
-    def answered(self) -> None:
-        """Start counting again."""
-        self.failed = 0
-
-
 def client(
     site: str,
     cookies: Iterable[Mapping[str, str]],
@@ -162,7 +135,7 @@ class SiteClient:
         self._sleep = sleep
         self._clock = clock
         self._last = float("-inf")
-        self._breaker = Breaker(limit=MAX_FAILED_IN_A_ROW)
+        self._failed = 0
 
     def json(self, request: Request) -> object:
         """GET a JSON response; a body that is not JSON (a proxy's page, say) fails it."""
@@ -189,10 +162,13 @@ class SiteClient:
         """GET a body, retrying throttling, gateway and transport failures four times.
 
         Raises SiteError for this GET, and TooManyFailuresError, before trying, once
-        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer. Each retry is said at DEBUG,
-        ``http.retry``, by the path, without its query, and why.
+        ``MAX_FAILED_IN_A_ROW`` GETs in a row got no answer. Only a GET that got no answer
+        counts: a transport error, or a throttling or gateway status, once its retries are
+        spent; any other answer, even a refusal of one item, starts the count again. Each
+        retry is said at DEBUG, ``http.retry``, by the path, without its query, and why.
         """
-        self._breaker.check()
+        if self._failed >= MAX_FAILED_IN_A_ROW:
+            raise TooManyFailuresError
         failure, wait, answered, last = "", 0.0, True, None
         for attempt in range(RETRIES + 1):
             if attempt:
@@ -214,17 +190,14 @@ class SiteClient:
                 break
             answered = status not in RETRIED
             if status == HTTP_OK:
-                self._breaker.answered()
+                self._failed = 0
                 return body
             failure, last = f"status {status}", status
             if answered:
                 break
             after = headers.get("retry-after", "").strip()
             wait = float(after) if after.isascii() and after.isdigit() else 2.0**attempt
-        if answered:
-            self._breaker.answered()
-        else:
-            self._breaker.unanswered()
+        self._failed = 0 if answered else self._failed + 1
         raise SiteError(failure, last)
 
     def once(self, request: Request, max_bytes: int) -> tuple[int, httpx.Headers, bytes]:

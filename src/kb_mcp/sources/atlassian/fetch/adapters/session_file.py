@@ -1,25 +1,21 @@
-"""The saved session: a site's cookies, in a file that the user alone can read.
-
-Each site's session is a folder of the session's place, named after its host: its
-cookies and the browser profile that signed it in.
-"""
+"""The saved session: a site's cookies, in a file that the user alone can read."""
 
 from __future__ import annotations
 
 import fcntl
 import json
 import os
-import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import structlog
 
 from kb_mcp.kernel.fields import Fields
+from kb_mcp.sources.atlassian.fetch.adapters.raw_store import replace_synced
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+    from pathlib import Path
 
 COOKIES = "cookies.json"
 # The browser profile of the sign-in window, beside the cookies.
@@ -70,12 +66,8 @@ def kept_why(root: Path, source: str, sites: Mapping[str, str]) -> str | None:
 def adopt_former_session(root: Path, source: str, sites: Mapping[str, str]) -> None:
     """Move the session kept before sessions were a site's into a source's site's folder, once.
 
-    That is ``root/cookies.json`` and the profile beside it, as ``kept_why`` judges,
-    under a lock of ``root``, which another run holding skips the move: it makes it. The
-    profile goes first, unless the site has one, then the cookies, whose place says that
-    the move is done: ``session.moved``, at INFO. Else, or when the lock or a move fails,
-    they stay, with a warning, ``session.not_moved``, saying why. With none, nothing is
-    said.
+    As ``kept_why`` judges, under a lock of ``root``: a run that finds it held leaves the
+    move to the run that holds it. The cookies go last, so that their place says it is done.
     """
     former, folder = root / COOKIES, folder_of(root, sites[source])
     if not former.exists():
@@ -128,16 +120,7 @@ def write_cookies(path: Path, cookies: Iterable[Mapping[str, object]]) -> None:
     A failure leaves the cookies saved before as they were.
     """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    data = json.dumps([dict(cookie) for cookie in cookies]).encode()
-    handle, hidden = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)  # mode 0600
-    try:
-        with os.fdopen(handle, "wb") as file:
-            file.write(data)
-            file.flush()
-            os.fsync(file.fileno())
-        Path(hidden).replace(path)
-    finally:
-        Path(hidden).unlink(missing_ok=True)
+    replace_synced(path, json.dumps([dict(cookie) for cookie in cookies]).encode())
 
 
 def for_site(cookies: Iterable[Mapping[str, object]], host: str) -> list[dict[str, str]]:

@@ -21,11 +21,9 @@ import pytest
 
 from kb_mcp.cli.main import main
 from kb_mcp.sources.atlassian.fetch.adapters import http
-from kb_mcp.sources.atlassian.fetch.adapters.session_file import COOKIES, folder_of, write_cookies
-from tests.composed import MODEL
 from tests.endpoint import Scripted, serving
 from tests.recorded import unrun
-from tests.test_fetching import SITE, FakeSite
+from tests.test_fetching import SITE, FakeSite, signed_in_settings
 from tests.test_observed import said as said_on
 
 if TYPE_CHECKING:
@@ -124,19 +122,16 @@ class Interrupting(Terminal):
 
 
 @pytest.fixture
-def home(tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+def home(home: Path, monkeypatch: MonkeyPatch) -> Path:
     """Give each test a scratch home directory, so that none reads or writes the user's.
 
     Its work log is the home itself, so that prepare has a source to take; each Atlassian
     source has its site.
     """
-    scratch = tmp_path / "home"
-    scratch.mkdir()
-    monkeypatch.setenv("HOME", str(scratch))
-    monkeypatch.setenv(WORKLOG_PATH, str(scratch))
+    monkeypatch.setenv(WORKLOG_PATH, str(home))
     for name, value in SITES.items():
         monkeypatch.setenv(name, value)
-    return scratch
+    return home
 
 
 @pytest.fixture
@@ -362,13 +357,7 @@ def test_a_fetch_declined_or_refused_asks_the_site_nothing(
     home: Path, monkeypatch: MonkeyPatch, *, terminal: bool
 ) -> None:
     """Nothing is spent before the question: no request, no file, the session as it was."""
-    chosen = MODEL(
-        sources={"confluence": {"site": SITE}, "jira": {"site": SITE}},
-        data_dir=(home / "kb-mcp").resolve(),
-    )
-    write_cookies(
-        folder_of(chosen.session, SITE) / COOKIES, [{"name": "s", "value": "v", "domain": "x"}]
-    )
+    signed_in_settings((home / "kb-mcp").resolve())
     fake = FakeSite()
     monkeypatch.setattr(http, "client", lambda *_: fake.client())
     before = tree(home)
