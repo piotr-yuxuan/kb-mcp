@@ -1,18 +1,17 @@
 # Upgrade from atlassian-offline-mcp
 
 How to move a machine that runs atlassian-offline-mcp 0.1.0, the program's former name,
-as `atlassian-offline-mcp --version` says, to kb-mcp `<release>`, without writing the
+as `atlassian-offline-mcp --version` says, to kb-mcp 0.1.12, without writing the
 old program, its settings or its data directory: kb-mcp works on a clone of that
 directory. Every step can be undone, by going on with the old program, until the last
 one, which removes it. The upgrade was rehearsed on a sandbox: a directory built by
-0.1.0 was cloned, brought up to date by `<release>`, and compared with the original;
+0.1.0 was cloned, brought up to date by 0.1.12, and compared with the original;
 the clone kept every document, snapshot, vector and person, downloaded nothing that it
 held and embedded nothing again. The costs below are that rehearsal's.
 
-Install `<release>` and no other release over a 0.1.0 directory: the releases after it
-rewrite the code that reads 0.1.0's formats, and only `<release>` was rehearsed. Before
-installing a later one for this move, rehearse again on a copy, with the rehearsal's
-script, `086-checks.sh`, which compares the copy with the old directory.
+Install 0.1.12 and no other release over a 0.1.0 directory: the releases after it
+rewrite the code that reads 0.1.0's formats, and only 0.1.12 was rehearsed. To
+move to a later one, upgrade to 0.1.12 first, then from it as any upgrade goes.
 
 ## 1. Before you start
 
@@ -52,11 +51,11 @@ pgrep -fl 'atlassian-offline-mcp (sync|download|mirror|index|eval|login)'
 
 ## 2. Install kb-mcp beside the old program
 
-Install from a fresh clone of `<release>`: a clone made for 0.1.0 cannot be brought up
+Install from a fresh clone of 0.1.12: a clone made for 0.1.0 cannot be brought up
 to date, since the repository's history was rewritten after it.
 
 ```bash
-git clone --branch <release> https://github.com/piotr-yuxuan/atlassian-offline-mcp.git ~/src/kb-mcp
+git clone --branch 0.1.12 https://github.com/piotr-yuxuan/kb-mcp.git ~/src/kb-mcp
 uv tool install ~/src/kb-mcp
 kb-mcp --version
 ```
