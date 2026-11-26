@@ -49,7 +49,7 @@ GOLDEN = str(Path(__file__).parents[1] / "sandbox" / "golden.yaml")
 WRITING = {
     "fetch": (["--space", "MFS"], "sources"),
     "eval": ([GOLDEN], "evaluate"),
-    "embed": ([], "embed"),
+    "embed": ([], "index"),
     "index": ([], "index"),
     "login": (["confluence"], "login"),
     "prepare": ([], "sources"),

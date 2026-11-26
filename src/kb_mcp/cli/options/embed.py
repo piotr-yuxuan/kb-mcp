@@ -1,4 +1,4 @@
-"""``embed``'s declaration; ``cli.commands.embed`` runs it."""
+"""``embed``'s declaration; ``cli.commands.index`` runs it."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def register(
     parser.set_defaults(
         command=Command(
             EMBED,
-            "kb_mcp.cli.commands.embed",
+            "kb_mcp.cli.commands.index",
             reads=("data_dir", "model", "chunking", "embedding_url", "embedding_api_key"),
             flags=flags,
             actions=actions,

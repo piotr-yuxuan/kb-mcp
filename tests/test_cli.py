@@ -195,7 +195,7 @@ def test_each_subcommand_s_command_carries_its_name_and_a_run_that_imports(name:
     package, _, module = command.run.rpartition(".")
     assert package == commands.__name__
     assert callable(importlib.import_module(command.run).run)
-    declaration = name if module == "sources" else module
+    declaration = name if module in {"sources", "index"} else module
     assert callable(importlib.import_module(f"{options.__name__}.{declaration}").register)
 
 
