@@ -76,9 +76,6 @@ if TYPE_CHECKING:
     from kb_mcp.sources.atlassian.fetch.domain.content import Attachment, FetchedDocument, Listed
     from kb_mcp.sources.atlassian.fetch.domain.period import Period
 
-    type SnapshotRequests = Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
-    type Whereabouts = Callable[[Fields], tuple[str, str | None]]
-
 # A listing longer than this many pages is refused rather than followed.
 MAX_PAGES = 400
 # Folders followed up from the pages of one space, at most.
@@ -99,13 +96,18 @@ LISTED: dict[type[FetchedDocument], Callable[[Fields], Listed]] = {
     **{each: partial(confluence_v2.listed, document_class=each) for each in CONFLUENCE_CLASSES},
     Issue: jira_v3.listed,
 }
-SNAPSHOT_REQUESTS: dict[type[FetchedDocument], SnapshotRequests] = {
+SNAPSHOT_REQUESTS: dict[
+    type[FetchedDocument], Callable[[Listed], dict[str, tuple[Request, ReadPage | None]]]
+] = {
     **dict.fromkeys(CONFLUENCE_CLASSES, confluence_v2.snapshot_requests),
     Issue: jira_v3.snapshot_requests,
 }
 # How a document absent from its scope's whole read is asked for, and where its answer
 # says it is: its scope as its listings are kept, and its own status if it has one.
-PROBES: dict[type[FetchedDocument], tuple[Callable[[str], Request], Whereabouts]] = {
+PROBES: dict[
+    type[FetchedDocument],
+    tuple[Callable[[str], Request], Callable[[Fields], tuple[str, str | None]]],
+] = {
     Page: (partial(confluence_v2.probe_request, PAGE.plural), confluence_v2.whereabouts),
     BlogPost: (partial(confluence_v2.probe_request, BLOGPOST.plural), confluence_v2.whereabouts),
     Issue: (jira_v3.probe_request, jira_v3.whereabouts),
